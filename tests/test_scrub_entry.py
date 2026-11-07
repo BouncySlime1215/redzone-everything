@@ -123,7 +123,10 @@ def test_failed_scrub_keeps_the_current_game_and_retunes_at_the_live_edge(scrub,
     out = run(c.execute("youtubetv:espn", may_cut=lambda: True))
     assert not out.ok and out.screen_unchanged and "buffer entry failed" in out.detail
     assert c.main.host == "a:5555"                               # never flipped
-    assert tuner.calls == [("b:5555", "youtubetv:espn")] * 2     # re-tuned to a known position
+    # re-tuned to a known position THROUGH another channel: a same-channel deep link doesn't reset a stick that is
+    # behind (Nick's 90 s run, Nov 7)
+    assert tuner.calls == [("b:5555", "youtubetv:espn"), ("b:5555", "youtubetv:fox"), ("b:5555", "youtubetv:espn")]
+    assert hid.behind_on is None
     assert "youtubetv:espn" not in c.held and not c.hidden_ready
     # backoff: the next try presses nothing on the stick
     out2 = run(c.execute("youtubetv:espn", may_cut=lambda: True))
@@ -279,3 +282,22 @@ def test_unavailable_screen_backoff(scrub):
     c.cfg.update({"two_stick": {"unavailable_backoff_s": 900}})
     assert c._preload_backoff(res) == 900
     assert c._preload_backoff(TuneResult(False, "prime:x", 1.0, [], "video never started")) == ctl.PRELOAD_BACKOFF_S
+
+
+def test_no_other_channel_means_no_live_claim(scrub):
+    """[Nick's 90 s run, Nov 7] With nothing to reset through, the stick is NOT re-tuned 'at live' on the same channel."""
+    c, tuner, hid, calls, result, behind = scrub
+    c.channels.codes = {"espn": c.channels.codes.get("espn", "x")}
+    result["r"] = Res(ok=False, behind_s=None, reason="focus not on the scrub bar")
+    out = run(c.execute("youtubetv:espn", may_cut=lambda: True))
+    assert not out.ok and c.main.host == "a:5555"
+    assert tuner.calls == [("b:5555", "youtubetv:espn")]         # only the first tune: no same-channel "reset"
+    assert hid.behind_on == "youtubetv:espn" and not c.hidden_ready and "youtubetv:espn" not in c.held
+
+
+def test_a_scrubbed_stick_is_marked_behind_and_a_different_channel_clears_it(scrub):
+    c, tuner, hid, calls, result, behind = scrub
+    run(_preload(c, "youtubetv:fox"))
+    assert hid.behind_on == "youtubetv:fox"
+    run(c._tune(hid, "youtubetv:espn"))
+    assert hid.behind_on is None

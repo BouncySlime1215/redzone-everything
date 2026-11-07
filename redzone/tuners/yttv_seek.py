@@ -14,11 +14,14 @@ enter_buffer(stick, seconds, ...) therefore:
   2. CENTER (a LIVE/title banner sits up for ~20 s after a tune: close and reopen until the CC button shows), then reads the screen (screencap -> local OCR -> the PNG deleted at once; numbers and labels only) and
      goes on only if the overlay is up with the PROGRESS BAR focused: a scrub label MM:SS above the knob and no row
      button (HD, CC, Networks, ...) holding focus. Anything else: fail closed;
-  3. LEFT x N (N = round(seconds / step_s), capped by max_back_s), then reads again: the scrub label must have moved
+  3. LEFT x N, then reads again: the scrub label must have moved
      back N x step_s (+- step_tol_s). Otherwise: fail closed;
   4. CENTER commits, then the player must report PLAYING again (its state only, never its position);
   5. behind_live_s: from the label reader if one is given (item 2, the overlay time label vs the wall clock), else
-     the estimate behind_before + N x step_s, with `measured` False.
+     the estimate behind_before + N x step_s + the seconds the overlay was up, with `measured` False.
+  The picture stands still while the overlay is up (Nick's 90 s run, Nov 7: asked 90, 6 LEFTs, 37.6 s -> 130.8 s
+  behind), so N is planned after the probe from what is left: seconds - one step - time in the overlay so far - one
+  more read. N is capped by max_back_s / step_s.
 "Fail closed" = no commit; the stick is re-linked to the live edge by the caller-supplied relink() (a deep link
 lands at live +-0.5 s), and the result says why. The hidden check runs before every key batch: a stick that
 became visible is never pressed again, and it is not re-linked either (that would change the screen).
@@ -187,7 +190,7 @@ async def enter_buffer(stick, seconds: float, *, cfg=None, pkg: str | None = Non
     still_hidden = still_hidden or (lambda: True)
     try:
         await _enter(stick, float(seconds), cfg, pkg, still_hidden, read_overlay, read_behind, relink,
-                     float(behind_before_s), res)
+                     float(behind_before_s), res, clock)
     except Exception as e:   # never raise into the switch path: report, and leave the stick re-linked if we can
         log.warning("enter_buffer failed: %r", e)
         res.ok, res.reason = False, f"exception: {e!r}"[:160]
@@ -225,7 +228,8 @@ async def _keys(stick, code: str, n: int, gap: float) -> bool:
     return True
 
 
-async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behind, relink, behind_before, res):
+async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behind, relink, behind_before, res,
+                 clock=time.monotonic):
     step = float(_cfg(cfg, "step_s"))
     gap = float(_cfg(cfg, "key_gap_s"))
     n = int(round(min(max(0.0, seconds), float(_cfg(cfg, "max_back_s"))) / step))
@@ -244,7 +248,8 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     # 2. open the overlay; the bar must hold focus
     if not await _keys(stick, "KEYCODE_DPAD_CENTER", 1, 0.0):
         return await _fail(res, "CENTER not sent", relink, still_hidden, pressed=True)
-    res.steps.append("CENTER")
+    t_open = clock()   # [Nick's 90 s run, Nov 7] the picture stands still while the overlay is up: every second
+    res.steps.append("CENTER")   # from here to the commit adds a second behind live (asked 90, took 37.6 -> 130.8)
     await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
     # Live finding (Nov 6): at the live edge the overlay shows NO scrub label until the first LEFT, so the first
     # press is the probe. It only moves an uncommitted knob, and it is pressed only with the overlay up and no row
@@ -265,7 +270,9 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
                 return await _fail(res, "LEFT not sent", relink, still_hidden, pressed=True)
             res.presses = 1
             await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
+            r0 = clock()
             before = await read_overlay(stick)
+            read_cost = clock() - r0
             if before is not None and before.bar_focused:
                 break
             before = None
@@ -278,6 +285,11 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     if before is None:
         return await _fail(res, "focus guard: no scrub label after the LEFT", relink, still_hidden, pressed=True)
     res.steps.append(f"bar focused at {before.scrub_s:.0f}s")
+    # Plan the rest so that LEFTs + time in the overlay land on the target: the probe gave one step, the overlay
+    # has been up (now - t_open), and the check read still to come costs about what the probe read did.
+    left_s = seconds - step - (clock() - t_open) - read_cost - float(_cfg(cfg, "overlay_wait_s"))
+    n = 1 + max(0, min(n - 1, int(round(left_s / (step + gap)))))
+    res.steps.append(f"plan: {n} LEFT(s) ({clock() - t_open:.1f}s in the overlay so far)")
     # 3. the other LEFTs, then the label must have moved back that many steps
     if not still_hidden():
         return await _fail(res, "stick became visible before the scrub", relink, still_hidden, pressed=True)
@@ -301,7 +313,8 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     if not await _keys(stick, "KEYCODE_DPAD_CENTER", 1, 0.0):
         return await _fail(res, "commit not sent", relink, still_hidden, pressed=True)
     res.committed = True
-    res.steps.append("CENTER (commit)")
+    frozen = clock() - t_open
+    res.steps.append(f"CENTER (commit) after {frozen:.1f}s in the overlay")
     end = time.monotonic() + float(_cfg(cfg, "settle_s"))
     playing = False
     while time.monotonic() < end:
@@ -313,7 +326,7 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     if not playing:
         return await _fail(res, "not playing after the commit", relink, still_hidden, pressed=True)
     # 5. how far behind now
-    res.behind_live_s = behind_before + moved + step
+    res.behind_live_s = behind_before + moved + step + frozen
     if read_behind is not None:
         try:
             got = await read_behind(stick)
