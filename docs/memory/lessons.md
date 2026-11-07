@@ -373,3 +373,13 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** media_session read flat after a seek (75 s "hold" VOID), a plain pause snapped back to live 20-30 s after resume, the overlay held open for 37.6 s turned an asked 90 into 130.8, a same-channel deep link left a stick behind (asked 90, read 23), a blind CENTER committed an uncounted step, and the label reset at a program boundary.
 - **Fix:** a position is only what the label / Prime timecode READ after the entry; anything else is "unknown", never "buffered", and a re-read is rare, budgeted and only on the hidden stick (each YouTube TV read adds 7.5 s). Runbook: [join-watchdog.md](runbooks/join-watchdog.md).
 - **Signals:** watchdog off_target, drift_reenter, drift_snapped, drift_unknown
+
+## The watchdog counted its own read as a miss (Nick's stick test, Nov 7 11:35Z)
+- **Symptom:** hidden stick (HDMI2), NBA TV, target 75: state unknown, fallback live_failed, planned 71.7, read 79.52; the stick kept
+  playing NBA TV (79 s behind); data/joins.jsonl had no rows.
+- **Cause:** the label probe's reading includes its own ~7.5 s frozen overlay, so a good join read 7.8 s "off"; the test
+  script never identify()'d the stick, so every relink tune failed at once ("youtubetv app not found"); the run was
+  from a scratch worktree, so its rows went to that worktree's data/joins.jsonl.
+- **Fix:** join.watchdog.read_adds_s (plan and target + the read, shipped lead only), identify() and printed relink
+  steps in scripts/watchdog_try.py, RZ_JOINS_LOG for the log path. Runbook: [join-watchdog.md](runbooks/join-watchdog.md).
+- **Signals:** live_failed, youtubetv app not found, off_pred_s near 7.5

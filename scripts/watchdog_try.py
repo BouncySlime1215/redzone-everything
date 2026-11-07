@@ -25,7 +25,14 @@ from redzone.tuners.adb import Stick
 
 async def main(host: str, app: str, target: float, channel: str, reset: str, drift_min: float, first_s: float):
     stick = Stick(host=host)
-    await stick.connect()
+    if not await stick.connect():
+        print(json.dumps({"error": "stick not connected", "state": stick.state}))
+        return
+    # [Nick's run, Nov 7 11:35Z] without identify() the stick has no app packages, so every relink tune failed at once
+    # ("youtubetv app not found") and the fallback said live_failed with the stick still 79 s behind on NBA TV.
+    await stick.identify()
+    from redzone.tuners.join import _default_log
+    print(json.dumps({"joins_log": str(_default_log().resolve()), "packages": sorted(stick.packages)}))
     kw: dict = {}
     probe = None
 
@@ -38,12 +45,24 @@ async def main(host: str, app: str, target: float, channel: str, reset: str, dri
         from redzone.tuners.yttv_label import LabelProbe
         cm = ChannelMap()
         tuner = TUNERS["youtubetv"]
+        channel = channel.lower().replace(" ", "")          # "NBA TV" -> "nbatv", the channel table's key
+        reset = reset.lower().replace(" ", "")
+        if not cm.yttv_code(f"youtubetv:{channel}"):
+            print(json.dumps({"error": f"no watch code for {channel!r}", "known": sorted(cm.codes)[:40]}))
+            return
         other = reset or next((k for k in sorted(cm.codes) if k != channel), "")
 
         async def relink() -> bool:
+            """Through another channel and back: a known live edge (#391). Prints each tune's steps."""
             for ch in (other, channel):
                 code = cm.yttv_code(f"youtubetv:{ch}")
-                if not ch or not code or not (await tuner.tune(stick, code, f"youtubetv:{ch}")).ok:
+                if not ch or not code:
+                    print(json.dumps({"relink": ch, "ok": False, "error": "no watch code"}))
+                    return False
+                r = await tuner.tune(stick, code, f"youtubetv:{ch}")
+                print(json.dumps({"relink": ch, "ok": r.ok, "took_s": round(r.took, 1), "error": r.error,
+                                  "steps": r.steps[-6:]}))
+                if not r.ok:
                     return False
             return bool(probe.arm(stick)) if probe else True
 

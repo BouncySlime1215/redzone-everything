@@ -93,21 +93,21 @@ def _relinker(ok=True):
 
 
 def test_watched_join_accepts_a_verified_landing_and_logs_a_row(tmp_path):
-    jf, calls = _fake_join([57.4])
+    jf, calls = _fake_join([64.9])          # a label-probe reading: lands 57.4, + the read's own 7.5 s
     rl, n = _relinker()
     p = tmp_path / "joins.jsonl"
     out = run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, log_path=p, label="stickB",
                               channel="espn"))
-    assert out.state == "buffered" and out.behind_s == 57.4 and out.attempts == 1 and not n
+    assert out.state == "buffered" and out.behind_s == 64.9 and out.attempts == 1 and not n
     row = json.loads(p.read_text().splitlines()[-1])
     assert row["kind"] == "watchdog" and row["state"] == "buffered" and row["stick"] == "stickB"
 
 
 def test_watched_join_reseeks_once_from_live_then_accepts(tmp_path):
-    jf, calls = _fake_join([130.8, 88.0])
+    jf, calls = _fake_join([130.8, 95.5])
     rl, n = _relinker()
     out = run(jw.watched_join(object(), "youtubetv", 90, relink=rl, join_fn=jf, log_path=""))
-    assert out.state == "buffered" and out.behind_s == 88.0 and out.attempts == 2 and len(n) == 1
+    assert out.state == "buffered" and out.behind_s == 95.5 and out.attempts == 2 and len(n) == 1
     assert calls == [0.0, 0.0]          # the re-seek starts from the live edge
 
 
@@ -152,16 +152,16 @@ def test_a_crashing_join_never_claims_a_buffer():
 
 
 def test_watched_join_drives_the_real_join_api(tmp_path):
-    """End to end on the scrub fake: the real join() + the label reader, verified at 57.4 for target 60."""
+    """End to end on the scrub fake: the real join() + the label reader, verified at 64.9 (57.4 + the read)."""
     from tests.test_yttv_seek import CFG, YT, FakeYTTV, reader
     s = FakeYTTV(label0=3600.0)
 
     async def label(_s):
-        return 57.4
+        return 64.9
     rl, _ = _relinker()
     out = run(jw.watched_join(s, "youtubetv", 60, relink=rl, cfg=CFG, pkg=YT, read_overlay=reader(s),
                               read_behind=label, log_path=tmp_path / "j.jsonl"))
-    assert out.state == "buffered" and out.behind_s == 57.4
+    assert out.state == "buffered" and out.behind_s == 64.9
 
 
 # ------------------------------------------------------------------------------------------- drift monitor
@@ -323,3 +323,39 @@ def test_control_drift_tick_rereads_the_hidden_stick_and_reenters_on_drift(scrub
     rows = [json.loads(x) for x in (tmp_path / "joins.jsonl").read_text().splitlines()]
     assert [r["action"] for r in rows] == ["ok", "reenter"]
     assert all("5555" not in json.dumps(r) for r in rows)          # no address in the log
+
+
+# ------------------------------------------------------------------- Nick's stick test, Nov 7 11:35Z (FAIL)
+def test_nicks_nbatv_run_counts_the_reads_own_seven_and_a_half_seconds():
+    """.181, NBA TV, target 75: planned 71.7, read 79.52 (off 7.82). The label probe's reading includes its own ~7.5 s
+    freeze, so that is a good join, not a re-seek."""
+    old = jw.verify("youtubetv", 75, 79.52, 71.7)
+    assert old.status == "off_target"                                   # what the stick test hit
+    v = jw.verify("youtubetv", 75, 79.52, 71.7, read_adds_s=7.5)
+    assert v.buffered and v.off_pred_s == 0.32 and v.measured_s == 79.52
+
+
+def test_watched_join_applies_the_read_cost_only_with_the_shipped_lead():
+    jf, _ = _fake_join([79.52])
+    rl, n = _relinker()
+    out = run(jw.watched_join(object(), "youtubetv", 75, relink=rl, join_fn=jf, log_path=""))
+    assert out.state == "buffered" and out.behind_s == 79.52 and not n
+
+    async def calibrated(stick, app, target_s, *, behind_before_s=0.0, **kw):
+        plan = jn.plan_join(app, target_s, behind_before_s)
+        plan.predicted_s, plan.bias_source = 79.2, "channel"           # a lead learned from probe readings
+        return NS(ok=True, measured_s=79.52, plan=plan)
+    out = run(jw.watched_join(object(), "youtubetv", 75, relink=rl, join_fn=calibrated, log_path=""))
+    assert out.state == "buffered" and not n                             # not counted twice
+
+
+def test_prime_reads_add_nothing():
+    v = jw.verify("prime:x", 60.0, 60.5, 60.0, read_adds_s=float(jw.wcfg(None, "read_adds_s", "prime")))
+    assert v.buffered and v.off_pred_s == 0.5
+
+
+def test_joins_log_follows_rz_joins_log(monkeypatch, tmp_path):
+    """The run from a scratch worktree logged into that worktree's data/: RZ_JOINS_LOG points it anywhere."""
+    monkeypatch.setenv("RZ_JOINS_LOG", str(tmp_path / "j.jsonl"))
+    jw.log_row({"kind": "watchdog", "state": "live"})
+    assert json.loads((tmp_path / "j.jsonl").read_text())["state"] == "live"

@@ -116,6 +116,12 @@ class JoinResult:
 
 
 def _default_log() -> Path:
+    """data/joins.jsonl of the checkout the code runs from, or $RZ_JOINS_LOG. [Nick's stick test, Nov 7] a run from a
+    scratch worktree wrote its rows to THAT worktree's data/, not the Mac repo's: set RZ_JOINS_LOG to collect them."""
+    import os
+    env = os.environ.get("RZ_JOINS_LOG", "").strip()
+    if env:
+        return Path(env).expanduser()
     from redzone.config import DATA
     return DATA / "joins.jsonl"
 
