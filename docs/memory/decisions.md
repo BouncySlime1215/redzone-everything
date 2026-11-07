@@ -1141,3 +1141,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (Prime pause at the measured B + 4.3 s) as the verdict for the Prime-pause model, 608 report-only.** NBA: the main
   grader's mid-play falls 9.7 -> 3.7 and big seen rises 67 -> 78%, but clock-truth adds entries on every seed and plays
   missed doubles; the two graders disagree and T9 diffs them, info-only. NFL unchanged in kind (switches 1.72x).
+- 2026-11-07 (integrator, T9 trace of #378 at 8452ba4): **Rule #1 risk on the scrub path: timing.behind_live_s.scrub_entry
+  must stay OFF for NBA (and every hold_only league) until EXP-610's live fix lands.** After the scrub the flip never
+  checks the destination's delayed picture for a dead ball (NBA isn't cut-timed; the whistle wait runs before the
+  22.5 s+ scrub), so live would land later than the sim's already-lenient re-check. EXP-610 pairs the live fix
+  (clock-stopped dead ball on the delayed picture, behind the scrub flag) with the same rule in the replay.
