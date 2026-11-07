@@ -1170,3 +1170,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   missed falls 16 -> 11. Resync fails on your-team crunch 17/31 (the Oct 24 WSH leave-gate night already known from
   the #363 sweep; decider.leave.low_leverage=[nba], #258, took it to 31/31 and waits on Nick's RC6.3 pick) and plays
   missed 12 -> 14. Unmodelled: 14-19 re-checks/run past 25 s (live drops and re-picks) and the live landing overshoot.
+- 2026-11-07 (integrator, correction to the EXP-610 lines): **the scrub overshoot fix is #391 (in integration/next at
+  d936ff31).** Nick's stick run at 28286690: asked 90, landed 91.3 / 91.5 s in 17.5-28 s, 3 of 3 ok (one "probe close
+  may have committed"). Those landings were estimated from the knob, not label-read; the label-measured landing waits
+  on a run with #385 + #391 together (b490ab86 / d936ff31).
