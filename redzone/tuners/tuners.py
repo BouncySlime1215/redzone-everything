@@ -471,7 +471,49 @@ class PrimeTuner(Tuner):
                     self._pressed = getattr(self, "_pressed", {})
                     self._pressed[stick.host] = True
                     steps.append("pressed: watch (focused button)" if not done else "pressed: watch live (panel)")
+                    if self.wake_nav_fix and not done:
+                        await self._wake_move_start(stick, pkg, steps, watch, may_cut)
         return await super()._confirm(stick, pkg, steps, watch, may_cut)
+
+    # tuners.prime_wake_nav (OFF): Nov 7, POR@LAL on the hidden stick (Nick): on a live game's detail
+    # page the first CENTER only wakes the nav, focus then needs one move, and a second CENTER starts
+    # it (the button says "Watch", not "Watch Live"). Without the move both blind presses land on
+    # nothing, and the switch aborts "playback not confirmed" (twice that night).
+    wake_nav_fix = False
+    wake_move_key = "KEYCODE_DPAD_DOWN"   # tuners.prime_wake_move_key; set from Nick's stick run
+    WAKE_MOVE_KEYS = ("KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_RIGHT", "KEYCODE_DPAD_UP", "KEYCODE_DPAD_LEFT")
+    WAKE_SETTLE_S = 1.5      # after the first CENTER: did it start (or open the panel) by itself?
+
+    async def _wake_move_start(self, stick: Stick, pkg: str, steps: list[str], watch: NewStream,
+                               may_cut=None) -> bool:
+        """After the first blind CENTER on the detail page: when nothing started and the screen still
+        reads as the page itself (not the Watch Live / Resume panel, where a move would put focus on
+        Resume), move focus once and press CENTER once. Fail closed: a loading stream, a player in
+        front, an unreadable screen or the panel sends nothing more (the old two-press path goes on).
+        True = the move and the second press were sent."""
+        if self.wake_move_key not in self.WAKE_MOVE_KEYS:
+            steps.append(f"wake-nav: move key {self.wake_move_key!r} not allowed; no move")
+            return False
+        if await self._watch_for(stick, pkg, watch, self.WAKE_SETTLE_S):
+            return False   # the first press started it: the next pass confirms it
+        if (await stick.playback(pkg)).get("state") in LOADING or not await self._on_detail_page(stick):
+            return False
+        text = (await stick.ocr_text()).lower()
+        if "watch live" in text:
+            return False   # the panel (Monumental+ / League Pass): Watch Live is focused, no move
+        if not ("watch" in text and any(w in text for w in self._PAGE_WORDS)):
+            steps.append("wake-nav: screen not read as the detail page; no move")
+            return False
+        require_cut(may_cut, steps, mutating=True)
+        await stick.key(self.wake_move_key)
+        steps.append(f"wake-nav: moved focus ({self.wake_move_key.rsplit('_', 1)[-1].lower()})")
+        # Right before the press: still the page, nothing loading (CENTER in a player pauses it).
+        if (await stick.playback(pkg)).get("state") in LOADING or not await self._on_detail_page(stick):
+            return False
+        require_cut(may_cut, steps, mutating=True)
+        await stick.key("KEYCODE_DPAD_CENTER")
+        steps.append("pressed: watch (after the focus move)")
+        return True
 
     _PLAYERS = ("IgnitionActivity", "PlaybackActivity")
 
