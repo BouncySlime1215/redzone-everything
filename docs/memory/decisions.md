@@ -1153,3 +1153,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   which stays off).** A knob check that fails because the label reset at a new program ("knob moved 39s, not 60s")
   retries the scrub once from the live edge, only after a re-link to live with nothing committed; otherwise it fails
   closed as before. Merged with #385 + #391 so --label gives measured reads.
+- 2026-11-07 (overseer's hidden-stick check before college football: channels.json fox/cbs are the Sunday Ticket
+  mirror codes, 'SIGN OFF | NFL ST - FOX'; 'NBC' search never started; ABC had no route; no local leaks a provable
+  watch code; station-name search -> channel page -> Select at start played FOX 50, CBS 17, WRAL, ABC 11 live in
+  12-15 s): **new flag `tuners.yttv_local_search: false`**. On: abc/cbs/fox/nbc tune by search (ABC 11 / CBS 17 /
+  FOX 50 / WRAL), accepted only on a media-session subtitle naming the station AND a live playhead (>= 30 min),
+  else BACK; fox/cbs ST mirror codes skipped except on Sundays. Off: routing unchanged. Nick flips it.
