@@ -143,6 +143,19 @@ def test_one_fallbacks_row_per_step_for_the_night_report(tmp_path):
     assert rows[0]["stick"] == "Stick on HDMI2"
 
 
+def test_record_is_silent_when_off_or_inside_a_climb():
+    L, _ = lad()
+    seen = []
+
+    async def scrub():   # the join watchdog records from inside the scrub (the buffered rung)
+        seen.append(L.record("b", "t", "buffered", False, "watchdog off_target"))
+        return fl.Step(False, "off target")
+    run(L.climb("b", "t", {"buffered": scrub}))
+    assert seen == [None] and len(L.recent) == 1 and not L.cooling("b", "buffered")
+    off = fl.FallbackLadder(Cfg())
+    assert off.record("b", "t", "buffered", True) is None and not off.recent
+
+
 def test_a_rung_can_be_turned_off():
     L, _ = lad(skip_rungs=["live"])
     c = run(L.climb("b", "t", {"buffered": bad("no label read"), "live": ok(), "other_stick": ok()}))
