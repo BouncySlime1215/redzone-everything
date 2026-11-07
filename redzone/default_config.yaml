@@ -265,6 +265,7 @@ decider:
   switch_margin: 10
   entry:
     hold_only: [nhl, nba]     # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
+    whistle_band_s: 3        # [EXP-610] scrub path only: a basketball flip needs a clock-stopped dead ball for +- this many s
     rewind_only: []      # leagues whose entries land on a dead ball with a rewind when one fits, never wait
     landing_lag_s: 0     # [landing lag] a fresh tune comes up up to this much later than the live edge (one-sided)
     cue: seek                # [seek model] seek: rewind on screen after the flip (whole 15 s presses + a 2-4 s stall) |

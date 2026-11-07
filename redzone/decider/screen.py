@@ -759,6 +759,9 @@ class Timeline:
         # [auto sync] (wallclock, period, game clock s left) of timed plays: the score bug's clock is
         # timed against these (sync.clock_sample)
         self.clocks: deque[tuple] = deque(maxlen=80)
+        # [EXP-610] (wallclock, period, game clock s left, lower-case type text) of timed plays, for the clock-stopped
+        # dead-ball check on a buffered flip (redzone/decider/whistle.py)
+        self.clock_events: deque[tuple] = deque(maxlen=120)
         self._seen_ids: deque[str] = deque(maxlen=400)
         self._last_score: tuple | None = None
         self._stopped = False
@@ -830,6 +833,8 @@ class Timeline:
         for p in new:
             if p.wallclock and getattr(p, "clock", None) is not None and getattr(p, "period", None) is not None:
                 self.clocks.append((p.wallclock, p.period, p.clock))
+                self.clock_events.append((p.wallclock, p.period, p.clock,
+                                          (getattr(p, "type_text", "") or p.kind or "").lower()))
             self._seen_ids.append(p.id)
             lo, hi = _bounds(p, now, prev_fresh)
             self.dead.add(p.id, lo, hi, p.kind, p.text, getattr(p, "type_text", ""),
