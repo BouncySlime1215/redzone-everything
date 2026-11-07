@@ -36,6 +36,7 @@ class Row:
     margin: int
     ot: int | None = None
     ot_close: bool = False
+    poss_s: float | None = None   # [EXP-1725] reachable: also need margin <= 3 * (1 + clock_s // poss_s); None = off
 
 
 def _load() -> dict[str, dict[str, Row]]:
@@ -43,7 +44,8 @@ def _load() -> dict[str, dict[str, Row]]:
     out: dict[str, dict[str, Row]] = {}
     for kind in CRUNCH_KINDS:
         out[kind] = {lg: Row(int(v["period"]), None if v.get("clock_s") is None else float(v["clock_s"]),
-                             int(v["margin"]), None if v.get("ot") is None else int(v["ot"]), bool(v.get("ot_close", False)))
+                             int(v["margin"]), None if v.get("ot") is None else int(v["ot"]), bool(v.get("ot_close", False)),
+                             None if v.get("poss_s") is None else float(v["poss_s"]))
                      for lg, v in (raw.get(kind) or {}).items()}
     return out
 
@@ -61,6 +63,8 @@ def inside(r: Row | None, period: int, clock_s: float | None, margin: int | floa
     if r is None or margin is None:
         return False
     close = abs(margin) <= r.margin
+    if r.poss_s and clock_s is not None and abs(margin) > 3 * (1 + clock_s // r.poss_s):
+        return False                # [EXP-1725] cannot be caught in the time left: decided, not crunch
     if r.ot is not None and period >= r.ot:
         return close or not r.ot_close
     if r.clock_s is None:
