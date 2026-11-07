@@ -1131,3 +1131,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-07 (integrator): **Grader freeze v43: EXP-607 (#386) pins Prime's re-sync prior at its live edge.** T9's
   trace: resync believed Prime 116 s vs true 26 s on 34/36 decisions because _attach_resync pinned every target at the
   buffered lag. Diagnostic of the sim only; NBA stays FAIL on EXP-605's shipped breaches.
+- 2026-11-07 (integrator, EXP-607 read): **The EXP-605 resync failure was a sim artifact (resync mid-play 19.0 -> 7.7
+  per run with Prime pinned at its edge), but NBA stays FAIL:** clock-truth adds 1-2 on two seeds and the primary CI
+  touches 0 on both harnesses. EXP-608 (Prime by pause) is the next read.
