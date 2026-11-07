@@ -1116,3 +1116,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   switches 1.72x and plays missed 139 -> 424. Next, both registered before they run (coordinator go-ahead): EXP-605
   NBA YouTube TV-only RC8 with Prime at B0 (T9), and EXP-606 NFL B75 dwell grid 35/60/90/120 (integrator). Neither is
   a card until a live stick holds a scrub.
+- 2026-11-07 (integrator): **Grader freeze v42: EXP-605 (#384) NBA YouTube TV-only RC8, Prime planned at its live
+  edge as the live code does, measured scrub 15 s + one 7.5 s read.** Flags off = EXP-604 byte for byte. Model pass
+  only; no card until a live stick holds a scrub and the shadow run confirms.
