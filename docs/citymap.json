@@ -1207,6 +1207,7 @@
     "redzone/contracts/switching.py",
     "redzone/tuners/adb.py",
     "redzone/tuners/prime_multiview.py",
+    "redzone/tuners/session_guard.py",
     "redzone/tuners/tuners.py",
     "redzone/tuners/yttv_seek.py",
     "redzone/tv.py",
@@ -1665,6 +1666,7 @@
     "redzone/tuners/profiles.py",
     "redzone/tuners/providers.py",
     "redzone/tuners/screen_prompts.py",
+    "redzone/tuners/session_guard.py",
     "redzone/tuners/tuners.py",
     "redzone/tuners/yttv_search.py",
     "scripts/plan_tonight.py",
@@ -4166,6 +4168,7 @@
     "redzone/tuners/prime_search.py",
     "redzone/tuners/providers.py",
     "redzone/tuners/screen_prompts.py",
+    "redzone/tuners/session_guard.py",
     "redzone/tuners/tuners.py",
     "redzone/tuners/yttv_label.py",
     "redzone/tuners/yttv_search.py",
@@ -4180,6 +4183,7 @@
     "scripts/providers_check.py",
     "scripts/rz.py",
     "scripts/screen_lab.py",
+    "scripts/session_drill.py",
     "scripts/yttv_scrub_try.py"
    ],
    "owner": "SWITCHING",
@@ -4346,10 +4350,32 @@
    "outputs": [
     "redzone/lab/night/run.py",
     "redzone/supervisor.py",
+    "redzone/tuners/session_guard.py",
     "redzone/tuners/tuners.py"
    ],
    "owner": "SWITCHING",
    "role": "Clear YouTube TV's own prompts from a screenshot: \"Who's watching?\" and \"Still watching?\".",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/session_guard.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/discovery/providers.py",
+    "redzone/tuners/adb.py",
+    "redzone/tuners/screen_prompts.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/control.py",
+    "scripts/session_drill.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[sync hardening, item 4] Session safety: what is this stick's session doing, is its buffer still true, and what is the ONE safe thing to do about it.",
    "serves": [
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -4451,6 +4477,7 @@
     "redzone/control.py",
     "redzone/tuners/prime_pause.py",
     "redzone/tuners/yttv_label.py",
+    "scripts/session_drill.py",
     "scripts/yttv_scrub_try.py"
    ],
    "owner": "SWITCHING",
@@ -5993,6 +6020,21 @@
     "untagged"
    ]
   },
+  "scripts/session_drill.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/tuners/adb.py",
+    "redzone/tuners/session_guard.py",
+    "redzone/tuners/yttv_seek.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Session drill (sync hardening item 4): the real yttv_seek.enter_buffer against the Nov 6 post-tune banner, with and without the session guard's banner wait,...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/stick_cec.py": {
    "contracts": [],
    "inputs": [
@@ -6328,10 +6370,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 346,
+  "modules": 348,
   "orphans": 14,
-  "unowned": 181,
-  "untagged": 286
+  "unowned": 182,
+  "untagged": 287
  },
  "version": 1
 }

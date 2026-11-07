@@ -110,7 +110,7 @@ def test_payment_screen_is_never_pressed():
 
 def test_yttv_profile_picker_restarted_the_player():
     v = sg.classify(S(state="none", rows=rows("Who's watching?", "Nick", "Serge")))
-    assert v.kind == sg.PROFILE and v.action == sg.CLEAR_PROFILE and v.buffer == "lost"
+    assert v.kind == sg.YTTV_PICKER and v.action == sg.CLEAR_PROFILE and v.buffer == "lost"
 
 
 def test_fire_os_profile_picker_after_wake_is_not_ours():
@@ -309,7 +309,7 @@ def test_snapshot_reads_adb_facts_and_presses_nothing():
 
 
 @pytest.mark.parametrize("kind", [sg.ADB_DROP, sg.REBOOT, sg.APP_CRASH, sg.CRASH_DIALOG, sg.HOME, sg.FIRE_OS_PROFILE,
-                                  sg.ACCOUNT, sg.PROFILE, sg.STILL_WATCHING, sg.AUTOPLAY_PROMPT, sg.PLAYER_ERR,
+                                  sg.ACCOUNT, sg.YTTV_PICKER, sg.STILL_WATCHING, sg.AUTOPLAY_PROMPT, sg.PLAYER_ERR,
                                   sg.PRIME_DETAIL_PAGE, sg.LABEL_RESET, sg.UI_UNKNOWN, sg.WRONG_APP, sg.NOT_PLAYING])
 def test_every_failure_kind_has_a_runbook_entry(kind):
     from pathlib import Path
@@ -324,7 +324,7 @@ from tests.test_control import two  # noqa: E402,F401  (fixture)
 
 
 def _guard_on(c, **extra):
-    c.cfg.defaults.setdefault("session_guard", dict(sg.DEFAULTS))
+    c.cfg.defaults.setdefault("session_guard", dict(sg.GUARD_DEFAULTS))
     c.cfg.update({"session_guard": {"enabled": True, **extra}})
 
 
@@ -413,3 +413,15 @@ def test_settle_banner_stops_at_the_cap():
             asyncio.sleep = real
     v = asyncio.run(go())
     assert v.kind == sg.BANNER and t[0] == 30.0
+
+
+def test_press_ask_later_only_on_proof():
+    st = Fake()
+    turn_on = S(rows=rows("Turn on auto-play?", "Turn on", "Ask later", lit="Turn on"))
+    assert asyncio.run(sg.press_ask_later(st, turn_on)) is False and st.keys == []
+    unread = S(rows=rows("Turn on auto-play?", "Turn on", "Ask later"))
+    assert asyncio.run(sg.press_ask_later(st, unread)) is False and st.keys == []
+    other = S(rows=rows("Introducing Multiview", "Ask later", lit="Ask later"))     # not the auto-play prompt
+    assert asyncio.run(sg.press_ask_later(st, other)) is False and st.keys == []
+    ok = S(rows=rows("Turn on auto-play?", "Turn on", "Ask later", lit="Ask later"))
+    assert asyncio.run(sg.press_ask_later(st, ok)) is True and st.keys == ["KEYCODE_DPAD_CENTER"]

@@ -40,9 +40,11 @@ from collections import deque
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Iterable
 
+from redzone.tuners.screen_prompts import PICKER as SP_PICKER, STILL  # one list of prompt words
+
 log = logging.getLogger("redzone.session_guard")
 
-DEFAULTS = {
+GUARD_DEFAULTS = {
     "enabled": False,
     "act": False,
     "banner_s": 28.0,          # Nov 6: the LIVE/title banner sat up 20-25+ s after a tune; wait this long before a scrub
@@ -54,14 +56,13 @@ DEFAULTS = {
     "action_window_s": 600.0,
 }
 
-YTTV = ("youtube.tv", "youtubetv", "youtube.tvunplugged")
-PRIME = ("com.amazon.firebat", "com.amazon.avod", "amazonvideo")
+YTTV_HINTS = ("youtube.tv", "youtubetv", "youtube.tvunplugged")
+PRIME_HINTS = ("com.amazon.firebat", "com.amazon.avod", "amazonvideo")
 # Fire OS's own surfaces: the launcher/home, its profile picker, the screensaver, Alexa's overlay.
 FIRE_OS = ("com.amazon.tv.launcher", "com.amazon.tv.", "com.amazon.firetv.screensaver", "com.amazon.vizzini",
            "com.amazon.tv.profile")
 
-PICKER = ("who's watching", "who is watching", "choose an account", "choose a profile", "choose your profile")
-STILL = ("are you still watching", "still watching?", "still there")
+PICKER_WORDS = SP_PICKER + ("choose your profile",)
 AUTOPLAY = ("auto-play", "autoplay", "auto play")
 ASK_LATER = ("ask later", "ask me later")
 CRASH = ("isn't responding", "is not responding", "has stopped", "keeps stopping", "close app", "app info")
@@ -92,7 +93,7 @@ CRASH_DIALOG = "crash_dialog"
 HOME = "fire_tv_home"
 FIRE_OS_PROFILE = "fire_os_profile"
 ACCOUNT = "account_screen"
-PROFILE = "yttv_profile_picker"
+YTTV_PICKER = "yttv_profile_picker"
 STILL_WATCHING = "still_watching"
 AUTOPLAY_PROMPT = "autoplay_prompt"
 PLAYER_ERR = "player_error"
@@ -122,7 +123,7 @@ ALERT = {CRASH_DIALOG, FIRE_OS_PROFILE, ACCOUNT, UI_UNKNOWN, REBOOT, APP_CRASH} 
 
 def _cfg(cfg, key: str):
     v = cfg.get(f"session_guard.{key}") if cfg is not None and hasattr(cfg, "get") else None
-    return DEFAULTS[key] if v is None else v
+    return GUARD_DEFAULTS[key] if v is None else v
 
 
 def _norm(s: str) -> str:
@@ -192,12 +193,12 @@ def _lines(snap: Snapshot) -> list[str]:
 
 def _is_yttv(pkg: str) -> bool:
     p = (pkg or "").lower()
-    return any(k in p for k in YTTV)
+    return any(k in p for k in YTTV_HINTS)
 
 
 def _is_prime(pkg: str) -> bool:
     p = (pkg or "").lower()
-    return any(k in p for k in PRIME)
+    return any(k in p for k in PRIME_HINTS)
 
 
 def _is_fire_os(pkg: str) -> bool:
@@ -262,7 +263,7 @@ def classify(snap: Snapshot, prev: Snapshot | None = None, cfg=None, *, hidden: 
                            "the app restarted (new process): the player starts again at the live edge")
     # 5. Fire OS surfaces: its own profile picker is never ours to answer
     if _is_fire_os(snap.package):
-        if snap.rows is not None and _has(text, PICKER):
+        if snap.rows is not None and _has(text, PICKER_WORDS):
             return Verdict(FIRE_OS_PROFILE, HOLD, "lost", "Fire OS's own profile picker (not YouTube TV's)")
         return Verdict(HOME, _lost_action(hidden), "lost", f"Fire OS is in front ({snap.package})")
     # 6. account / payment / unavailable
@@ -278,8 +279,8 @@ def classify(snap: Snapshot, prev: Snapshot | None = None, cfg=None, *, hidden: 
     if snap.rows is not None and any(ln in ("unavailable", "not available", "content unavailable") for ln in lines):
         return Verdict(ACCOUNT, HOLD, "lost", "the page says UNAVAILABLE (Nov 7 Prime standby): never pressed")
     # 7. the prompts that cover the picture
-    if snap.rows is not None and _has(text, PICKER):
-        return Verdict(PROFILE, CLEAR_PROFILE, "lost", "YouTube TV's profile picker: the player restarted")
+    if snap.rows is not None and _has(text, PICKER_WORDS):
+        return Verdict(YTTV_PICKER, CLEAR_PROFILE, "lost", "YouTube TV's profile picker: the player restarted")
     if snap.rows is not None and _has(text, STILL):
         return Verdict(STILL_WATCHING, CLEAR_STILL, "unknown",
                        "'Still watching?': the picture is paused behind it, the buffer grew by an unknown amount")
@@ -385,7 +386,7 @@ class SessionGuard:
             snap.pid = snap.pid if snap.pid is not None else old.pid
             snap.package = snap.package or old.package
         self.prev[snap.host] = snap
-        if v.kind in (REBOOT, APP_CRASH, HOME, PROFILE, LABEL_RESET, WRONG_APP, PLAYER_ERR):
+        if v.kind in (REBOOT, APP_CRASH, HOME, YTTV_PICKER, LABEL_RESET, WRONG_APP, PLAYER_ERR):
             self.labels.pop(snap.host, None)   # the old label anchor no longer applies
         elif v.ok and snap.label_s is not None:
             self.labels[snap.host] = (snap.wall, snap.label_s, snap.window)
@@ -568,6 +569,15 @@ async def settle_banner(guard: "SessionGuard", stick, want_pkg: str, since_tune:
         waited += step
         if step <= 0:
             return v
+
+
+async def press_ask_later(stick, snap: Snapshot) -> bool:
+    """The `ask_later` handler: one CENTER, only when this screen read proves 'Ask later' is THE highlighted button
+    of an auto-play prompt. Never navigates (a DPAD step could land on 'Turn on'), never anything else."""
+    if snap.rows is None or not _has(snap.text, AUTOPLAY) or not ask_later_lit(snap):
+        return False
+    r = await stick.key("KEYCODE_DPAD_CENTER")
+    return bool(getattr(r, "ok", False))
 
 
 # --- read-only probe ------------------------------------------------------------------------------------------------
