@@ -1131,3 +1131,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-07 (integrator): **Grader freeze v43: EXP-607 (#386) pins Prime's re-sync prior at its live edge.** T9's
   trace: resync believed Prime 116 s vs true 26 s on 34/36 decisions because _attach_resync pinned every target at the
   buffered lag. Diagnostic of the sim only; NBA stays FAIL on EXP-605's shipped breaches.
+- 2026-11-07 (Nick 05:26Z order; integrator freeze): **Grader freeze v44: EXP-608 (#387) Prime buffered by pause on
+  the hidden stick, ready B + 1 s after its tune; the "Prime can't buffer" replay assumption is withdrawn for it.**
+  Measured once (60 s pause, 4-min hold, stick .150); B90 extrapolated; multiview tiles still 0 live.
