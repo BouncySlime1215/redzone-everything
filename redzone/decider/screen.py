@@ -14,6 +14,7 @@ player's PLAYING state into evidence that the ball is live.
 from __future__ import annotations
 
 import math
+import statistics
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -204,6 +205,9 @@ class DelayBook:
         self.labels: dict[str, tuple[float, float, float]] = {}   # target -> (behind_live_s, sd, ts) off the overlay label
         self.edge_seen: dict[str, tuple[float, float, float]] = {}  # target -> (edge s, sd, ts) tonight at behind 0
         self.on_label_stale = None                                # target -> re-read its label (wired by yttv_seek)
+        # [edge prior, Nick Nov 7] one shared live-edge delay per app (delay.edge_prior, OFF), refreshed by the probe
+        self.edge_prior_cfg = None                                # key -> delay.edge_prior.<key> (engine), else defaults
+        self.edge_reads: dict[str, list[tuple[float, float]]] = {}  # app -> [(ts, delay_s)] from the edge probe
 
     @staticmethod
     def app(target: str) -> str:
@@ -248,7 +252,7 @@ class DelayBook:
         if self.labelled(target):
             return d.mu, d.sigma   # [edge model] D_edge + the label's behind_live: the filter re-syncs around it
         cal = self.calibrated.get(target)
-        if cal is not None:
+        if cal is not None and self.app_edge(self.app(target)) is None:
             # [calib.auto] last nights' measured fresh-tune delay for this channel, plus what this tune is held
             # / rewound behind live. A fresh tune's edge still varies ~4 s between sticks (live lab, Nov 4).
             # The sd arrives floored at calib.sigma_floor_s (calibration.sync_prior).
@@ -295,6 +299,7 @@ class DelayBook:
             d.mu, d.sigma, d.calibrated_at, d.source, d.drift_cap = d.base
             d.base = None
         self._refresh_model(target)
+        self._apply_edge_prior(target)
         if self.sync is None:
             return
         est = self.sync.estimate(target, better_than=d.sigma)
@@ -329,12 +334,17 @@ class DelayBook:
         """D_edge(channel): how far this channel's live edge runs behind real life, with its sd and source.
 
         tonight   this channel measured tonight at the live edge (sync filter / taps / score bug, behind 0)
+        probe / prior  [delay.edge_prior, flag on] the app's one live-edge delay: recent probe reads, else Nick's
+                  Nov 7 measurement (YouTube TV 34.9 s +-0.6)
         calib     last nights' fitted fresh-tune delay for this channel (calib.auto, edge-relative)
         default   delay.edge_model.default[app] (YouTube TV 25 s +-3, Nov 6 research)
         None when nothing is known for the app."""
         seen = self.edge_seen.get(target)
         if seen is not None:
             return seen[0], seen[1], "tonight"
+        pa = self.app_edge(self.app(target))      # [edge prior] the app's shared, probe-measured edge (flag on)
+        if pa is not None:
+            return pa[0], pa[1], pa[2]
         cal = self.calibrated.get(target)
         if cal is not None:
             return float(cal[0]), float(cal[1]), "calib"
@@ -343,6 +353,79 @@ class DelayBook:
         if v is None:
             return None
         return float(v), float(self._ecfg("default_sd_s")), "default"
+
+    # ------------------------------------------------------------------ [edge prior] one live-edge delay per app
+    def _pcfg(self, key: str):
+        """delay.edge_prior.<key> from the live config (engine), else the shipped default."""
+        v = None
+        if self.edge_prior_cfg is not None:
+            try:
+                v = self.edge_prior_cfg(key)
+            except Exception:
+                v = None
+        if v is None:
+            from redzone import config
+            v = config.default(f"delay.edge_prior.{key}")
+        return v
+
+    def _edge_prior(self, app: str) -> tuple[float, float] | None:
+        """(mu, sd) of delay.edge_prior.prior[app] when the flag is on, else None."""
+        if not self._pcfg("enabled"):
+            return None
+        p = (self._pcfg("prior") or {}).get(app)
+        if not isinstance(p, dict) or p.get("mu_s") is None:
+            return None
+        return float(p["mu_s"]), float(p.get("sd_s") or 0.6)
+
+    def app_edge(self, app: str) -> tuple[float, float, str] | None:
+        """[edge prior, Nick Nov 7] How far this app's live edge runs behind, one figure for every channel:
+        the median of the newest probe reads (delay.edge_prior.refresh.keep, younger than max_age_s), else the
+        configured prior. Its sd is the prior's sd or the reads' spread, whichever is wider. None with the flag
+        off or no prior for the app (Prime, ESPN+ keep today's model)."""
+        prior = self._edge_prior(app)
+        if prior is None:
+            return None
+        now = self._clock()
+        max_age = float(self._pcfg("refresh.max_age_s") or 10800)
+        keep = max(1, int(self._pcfg("refresh.keep") or 6))
+        xs = [x for t, x in self.edge_reads.get(app, []) if now - t <= max_age][-keep:]
+        if not xs:
+            return prior[0], prior[1], "prior"
+        spread = statistics.pstdev(xs) if len(xs) > 1 else 0.0
+        return float(statistics.median(xs)), max(prior[1], spread), "probe"
+
+    def add_edge_read(self, app: str, delay_s: float, ts: float | None = None) -> bool:
+        """One edge probe read (yttv_edge_probe): the app's live edge delay right now. A read further than
+        refresh.band_s from the prior is a misread and is dropped (False). Every channel of the app re-prices."""
+        prior = self._edge_prior(app)
+        if prior is None:
+            return False
+        band = float(self._pcfg("refresh.band_s") or 10)
+        if not math.isfinite(delay_s) or abs(float(delay_s) - prior[0]) > band:
+            return False
+        reads = self.edge_reads.setdefault(app, [])
+        reads.append((self._clock() if ts is None else float(ts), float(delay_s)))
+        del reads[:-50]
+        self._refresh_app(app)
+        return True
+
+    def _apply_edge_prior(self, target: str) -> None:
+        """[edge prior] An unmeasured YouTube TV channel (no tap / score bug on it tonight) gets the app's one
+        live-edge delay plus what this tune is behind, in place of other nights' taps (fs1 42 +-8) or the default.
+        Its stated doubt keeps the sync floor (4 s, what the gates were tuned on): the 0.6 s is the edge's spread
+        against the schedule clock, not proof the screen sits within 0.6 s of the feed's play times."""
+        e = self.app_edge(self.app(target))
+        if e is None:
+            return
+        now = self._clock()
+        if any(now - ts <= CROSS_NIGHT_S for ts, _ in self._own(target)):
+            return                                  # tonight's own taps / score bug on this channel win
+        d = self.book[target]
+        floor = self.sync_floor_for(target) if self.sync_floor_for is not None else self._sync_floor
+        d.mu, d.sigma = e[0] + d.behind, max(float(floor), e[1])
+        d.calibrated_at = max((t for t, _ in self.edge_reads.get(self.app(target), [])), default=now) \
+            if e[2] == "probe" else now
+        d.source, d.drift_cap, d.live = f"edge_{e[2]}", 6.0, None
 
     def set_label_behind(self, target: str, behind_s: float, sd: float | None = None,
                          ts: float | None = None) -> Delay:
@@ -374,7 +457,8 @@ class DelayBook:
     def edge_measured(self, target: str) -> bool:
         """This channel's delay was measured, not guessed: a label read, tonight's edge, or a calibrated edge.
         The supervisor's delay_doubt re-anchors such a channel instead of resetting it to the defaults."""
-        return target in self.labels or target in self.edge_seen or target in self.calibrated
+        return target in self.labels or target in self.edge_seen or target in self.calibrated \
+            or self.app_edge(self.app(target)) is not None
 
     def _refresh_edge(self, target: str) -> None:
         d = self.book[target]

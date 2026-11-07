@@ -1288,3 +1288,13 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Select alone from the search page 0/4): **new flag `tuners.yttv_local_search: false`**. On: abc/cbs/fox/nbc tune by search (ABC 11 / CBS 17 /
   FOX 50 / WRAL), accepted only on a media-session subtitle naming the station AND a live playhead (>= 30 min),
   else BACK; fox/cbs ST mirror codes skipped except on Sundays. Off: routing unchanged. Nick flips it.
+- **2026-11-07 (overseer's hidden-stick reads, Nov 7 ~10:55-11:00 ET: YouTube TV live edge on 11 channels, ESPN, ESPN2,
+  FS1, SECN, ACCN, NBA TV, TNT + FOX 50, CBS 17, ABC 11, WRAL by search, 28 reads 34.3-35.5 s, mean 34.9, sd ~0.35;
+  3 empty label reads skipped): new flags `delay.edge_prior.enabled` and `delay.edge_prior.refresh.enabled`, both
+  false.** On: every YouTube TV channel without its own tap / score-bug sample tonight starts at
+  `delay.edge_prior.prior.youtubetv` (mu 34.9, sd 0.6) + behind_live, in place of other nights' per-channel taps
+  (`youtubetv:fs1` 42 +-8), calib.auto and the edge model's 25 s default. The stated doubt keeps the 4 s floor (the
+  gates' tested floor; the probe measures the edge against the EPG schedule clock, not the arena). Refresh: Nick's probe
+  (fresh live edge through another channel, CENTER, RIGHT, one label read, BACK; delay = (capture - EPG start) - label,
+  start = the :00/:30 boundary) on the HIDDEN stick at the live edge only, at most every 30 min; empty reads and reads
+  further than 10 s from the prior are skipped; median of the newest 6 reads, back to the prior after 3 h.
