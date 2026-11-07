@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-20-MIN HOLD PASSED: hidden .181, TNT live game, scrub seek held 67/75/83 s behind live over 20 min, playhead exactly real time between reads; each label read costs about 8 s. Auto-switching back on.
-Next: repeats on other channels and stick .150, then scorebug read from preview. No Library games added.
+Second channel repeat (ESPNU) matched: 67.5 and 75.3 s behind. First scorebug read from a live preview: 7-20 at 9:18, bounding delay at 19-49 s, consistent with about 25 s.
+Findings in docs/sync/2026-11-05-yttv-live-edge-tests.md. Next: HDMI1 stick, flip onto a scrubbed stick, running-clock reads.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
