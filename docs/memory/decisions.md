@@ -1247,3 +1247,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   check covers every LEFT; behind live, or if RIGHT shows no label, the LEFT probe is used as before. Before the
   commit, a knob one whole step short gets one more LEFT (`topup_max: 1`), a re-read and the same check; anything
   else off still fails closed. The watchdog's off-target re-seek (#401) stays as the backstop.
+- 2026-11-07 (overseer's #403 stick run, 0/10 via the watchdog): **`yttv_seek.probe_key` back to LEFT** (8/8 on
+  5f80eb94); RIGHT is opt-in. Mode B: with the RIGHT probe all LEFTs move, landing one step deeper than the shared
+  join predictor (78 vs 64.2), because the LEFT probe at the live edge usually only reveals the label. A fixed press
+  count after a RIGHT probe now sends n-1 LEFTs, the same motion as the LEFT probe. Mode A ("knob moved 0s", 7/10)
+  is not explained yet; its reason now carries both labels for a trace. The top-up fires only for a knob exactly one
+  step short (+-2 s) and only if that extra LEFT moves exactly one step; a 10 s app or a label reset still fails closed.

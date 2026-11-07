@@ -27,7 +27,7 @@ class FakeYTTV:
         self.focus, self.front, self.state, self.step = focus, front, state, step
         self.label0, self.knob, self.after_commit = label0, label0, after_commit
         self.overlay, self.committed_back, self.keys = False, 0.0, []
-        self.lefts, self.lose = 0, set()
+        self.left_n, self.lose = 0, set()
 
     async def shell(self, cmd, timeout=8.0):
         code = cmd.split()[-1]
@@ -40,8 +40,8 @@ class FakeYTTV:
                 self.overlay = False
                 self.state = self.after_commit
         elif code == "KEYCODE_DPAD_LEFT" and self.overlay and self.focus == "bar":
-            self.lefts += 1
-            if self.lefts not in self.lose:                  # a lost press: sent, never landed
+            self.left_n += 1
+            if self.left_n not in self.lose:                  # a lost press: sent, never landed
                 self.knob -= self.step
         elif code == "KEYCODE_DPAD_RIGHT" and self.overlay and self.focus == "bar":
             self.knob = min(self.knob + self.step, self.label0)   # pinned at the live edge
@@ -290,36 +290,55 @@ def test_time_in_the_overlay_is_planned_and_counted():
     assert abs(r.behind_live_s - (s.committed_back + frozen)) < 0.01
 
 
-def test_right_probe_checks_every_left():
-    """At the live edge a RIGHT lands on the bar without moving the pinned knob: all n LEFTs are then checked."""
+RIGHT_PROBE = Cfg({**CFG, "yttv_seek.probe_key": "RIGHT"})
+
+
+def test_left_is_the_default_probe():
     s = FakeYTTV(label0=3600.0)
     r = run(s, 60.0, presses=3)
+    assert r.ok and "KEYCODE_DPAD_RIGHT" not in s.keys and s.keys.count("KEYCODE_DPAD_LEFT") == 3
+
+
+def test_right_probe_moves_like_the_left_probe_for_a_fixed_count():
+    """Nick's #403 run (Nov 7), mode B: with the RIGHT probe all 3 LEFTs moved and it landed one step deeper (78 vs
+    64.2). A fixed count now sends n-1 LEFTs after a RIGHT probe: the same motion as the LEFT probe at the live edge
+    (which only reveals the label), so the shared join predictor holds for both. Every LEFT is still checked."""
+    s = FakeYTTV(label0=3600.0)
+    r = run(s, 60.0, presses=3, cfg=RIGHT_PROBE)
     assert r.ok and s.keys[:2] == ["KEYCODE_DPAD_CENTER", "KEYCODE_DPAD_RIGHT"]
-    assert s.keys.count("KEYCODE_DPAD_LEFT") == 3 and s.committed_back == 45.0
+    assert s.keys.count("KEYCODE_DPAD_LEFT") == 2 and s.committed_back == 30.0 and r.presses == 2
 
 
-@pytest.mark.parametrize("lost", [1, 2, 3])
+@pytest.mark.parametrize("lost", [1, 2])
 def test_lost_press_is_topped_up_before_the_commit(lost):
-    """Nick's canary run 1 (Nov 7, 5f80eb94): espn target 60, 3 presses, landed 52.1 s, one 15 s step short, and the
-    row said ok. Now the knob check sees 30 s of 45 s, presses one more LEFT, re-reads, and commits a full 45 s."""
+    """Nick's canary run 1 (Nov 7, 5f80eb94): espn target 60, 3 presses, landed one 15 s step short, and the row
+    said ok. With the RIGHT probe every LEFT is checked: a lost one is seen, one more LEFT, re-read, then commit."""
     s = FakeYTTV(label0=3600.0)
     s.lose = {lost}
-    r = run(s, 60.0, presses=3)
-    assert r.ok and r.committed and s.committed_back == 45.0, r
-    assert s.keys.count("KEYCODE_DPAD_LEFT") == 4 and r.presses == 4
+    r = run(s, 60.0, presses=3, cfg=RIGHT_PROBE)
+    assert r.ok and r.committed and s.committed_back == 30.0, r
+    assert s.keys.count("KEYCODE_DPAD_LEFT") == 3 and r.presses == 3
     assert any("lost press" in x for x in r.steps)
 
 
-def test_two_lost_presses_fail_closed():
+def test_a_lost_press_after_the_left_probe_is_topped_up_too():
+    s = FakeYTTV(label0=3600.0)
+    s.lose = {3}                                         # the probe and one more land, the last one doesn't
+    r = run(s, 60.0, presses=3)
+    assert r.ok and s.committed_back == 45.0 and any("lost press" in x for x in r.steps), r
+
+
+def test_two_lost_presses_fail_closed_and_say_where_the_knob_was():
     s, log = FakeYTTV(label0=3600.0), []
     s.lose = {1, 2}
-    r = run(s, 60.0, presses=3, relink=relinker(log), cfg=Cfg({**CFG, "yttv_seek.boundary_retries": 0}))
-    assert not r.ok and not r.committed and "knob moved" in r.reason and log == ["relink"]
-    assert s.committed_back == 0.0
+    r = run(s, 60.0, presses=3, relink=relinker(log),
+            cfg=Cfg({**RIGHT_PROBE, "yttv_seek.boundary_retries": 0}))
+    assert not r.ok and not r.committed and "knob moved 0s, not 30s (3600s -> 3600s)" in r.reason
+    assert log == ["relink"] and s.committed_back == 0.0
 
 
 def test_not_at_live_keeps_the_left_probe():
-    """Behind live, a RIGHT would move the knob forward: the LEFT probe (unchecked step) is used, as before."""
+    """Behind live, a RIGHT would move the knob forward: the LEFT probe is used even when RIGHT is configured."""
     s = FakeYTTV(label0=3600.0)
-    r = run(s, 60.0, presses=3, behind_before_s=30.0)
+    r = run(s, 60.0, presses=3, behind_before_s=30.0, cfg=RIGHT_PROBE)
     assert r.ok and "KEYCODE_DPAD_RIGHT" not in s.keys and s.committed_back == 45.0

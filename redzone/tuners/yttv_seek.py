@@ -44,7 +44,7 @@ log = logging.getLogger("redzone.yttv_seek")
 
 YTTV_PKG_HINT = "youtube.tv"
 SCRUB_DEFAULTS = {"enabled": False, "step_s": 15.0, "max_back_s": 150.0, "step_tol_s": 6.0,
-                  "key_gap_s": 0.35, "open_tries": 4, "probe_key": "RIGHT", "topup_max": 1, "boundary_retries": 1, "reopen_wait_s": 1.5, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 1.3}
+                  "key_gap_s": 0.35, "open_tries": 4, "probe_key": "LEFT", "topup_max": 1, "topup_tol_s": 2.0, "boundary_retries": 1, "reopen_wait_s": 1.5, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 1.3}
 
 # The player row under the bar (#356 ROW_BUTTON labels seen so far). Focus on any of these = NOT the bar.
 ROW_BUTTONS = ("hd", "cc", "networks", "multiview", "episodes", "more to watch", "stats", "key plays", "scores",
@@ -334,11 +334,17 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     if not still_hidden():
         return await _fail(res, "stick became visible before the scrub", relink, still_hidden, pressed=True)
     rest = n - probe_moved
+    if fixed_n is not None and probe_moved == 0:
+        # [Nick's #403 stick run, Nov 7] the LEFT probe at the live edge usually only REVEALS the label (no step), so
+        # `presses` LEFT keys move the knob (presses - 1) steps, and the shared join predictor (yttv_lead_s) is fit
+        # to that. With the RIGHT probe every LEFT moves (it landed one step deeper: 78 vs 64.2), so send one fewer
+        # to keep the same motion and the same predictor for both probes.
+        rest = max(0, n - 1)
     if rest > 0 and not await _keys(stick, "KEYCODE_DPAD_LEFT", rest, gap):
-        res.presses = n
+        res.presses = rest + probe_moved
         return await _fail(res, "LEFT not sent", relink, still_hidden, pressed=True)
-    res.presses = n
-    res.steps.append(f"LEFT x{n}")
+    res.presses = rest + probe_moved
+    res.steps.append(f"LEFT x{rest} after the {'RIGHT' if probe_moved == 0 else 'LEFT'} probe")
     await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
     after = await read_overlay(stick)
     want = rest * step
@@ -348,10 +354,13 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     moved = before.scrub_s - after.scrub_s
     # A LEFT that never landed leaves the knob whole steps short: top it up (one LEFT per missing step, at most
     # topup_max), read again, and only then commit. Anything else off: fail closed as before.
+    tight = float(_cfg(cfg, "topup_tol_s"))
     for _ in range(int(_cfg(cfg, "topup_max"))):
-        short = want - moved
-        if short < step - tol or abs(short - step * round(short / step)) > tol:
+        # only a knob exactly ONE step short is a lost press; anything else (a 10 s app, a label reset at a program
+        # boundary, two lost presses) fails closed below, as before
+        if abs((want - moved) - step) > tight:
             break
+        was = moved
         if not still_hidden():
             return await _fail(res, "stick became visible before the top-up", relink, still_hidden, pressed=True)
         if not await _keys(stick, "KEYCODE_DPAD_LEFT", 1, 0.0):
@@ -363,8 +372,13 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
         if after is None or not after.bar_focused or after.scrub_s is None:
             return await _fail(res, "scrub label lost after the top-up", relink, still_hidden, pressed=True)
         moved = before.scrub_s - after.scrub_s
+        if abs((moved - was) - step) > tight:    # the extra LEFT itself must move exactly one step
+            return await _fail(res, f"knob moved {moved:.0f}s, not {want:.0f}s, and the top-up {moved - was:.0f}s "
+                               f"({before.scrub_s:.0f}s -> {after.scrub_s:.0f}s)", relink, still_hidden, pressed=True)
     if abs(moved - want) > tol:
-        return await _fail(res, f"knob moved {moved:.0f}s, not {want:.0f}s", relink, still_hidden, pressed=True)
+        # the labels go in the reason for a trace (Nick's #403 mode A: "knob moved 0s, not 45s" 7 of 10)
+        return await _fail(res, f"knob moved {moved:.0f}s, not {want:.0f}s ({before.scrub_s:.0f}s -> "
+                           f"{after.scrub_s:.0f}s)", relink, still_hidden, pressed=True)
     res.steps.append(f"knob {after.scrub_s:.0f}s (moved {moved:.0f}s)")
     # 4. commit, then it must play again (state only: the position is wrong after a seek)
     if not still_hidden():
