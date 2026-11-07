@@ -1191,3 +1191,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   6/4/3, clock-truth 9/8/9 -> 2/2/0, your-team crunch 100%, switches 1.29x, primary +8.9 [1.5]). Read after the
   verdict, so it decides nothing; the default stays on Nick's RC6.3 card. NBA RC8 still needs: Nick's low_leverage
   call, the shadow run, live drop-and-re-pick past 25 s modelled, and a label-measured #391 landing.
+- **2026-11-07 (Nick's Nov 7 07:33 UTC sync-hardening order, item 4 session safety): new flags
+  `session_guard.enabled` and `session_guard.act`, default false (OFF).** redzone/tuners/session_guard.py classifies
+  each stick session (post-tune banner, YouTube TV / Fire OS profile pickers, Still watching, auto-play prompt, app
+  crash, reboot, adb drop, Prime detail page, program-boundary label reset, unexpected dialog text) and fails closed:
+  no key on an unknown screen, keys only on the hidden stick except prompts that already cover the picture, the
+  auto-play prompt only ever gets "Ask later", no account settings. With `enabled`, the scrub waits out the banner
+  and refuses on a broken session (no key pressed). Runbook: docs/memory/runbooks/stick-session.md. Rule #1 unchanged.

@@ -289,6 +289,9 @@ class Controller:
         # [SYNC A] stick host -> wall time of its last tune command, and -> seconds it plays behind its live
         # edge as MEASURED (sync_edge.py via the probe; `held` is what the app asked for)
         self.tuned_at: dict[str, float] = {}
+        # [session guard, sync hardening item 4] redzone/tuners/session_guard.py: off unless session_guard.enabled
+        from redzone.tuners.session_guard import SessionGuard
+        self.session_guard = SessionGuard(cfg)
         self.behind_live: dict[str, float] = {}
         # ...and -> seconds its picture runs behind REAL LIFE, where the app stamps frames with the wall clock
         # (Prime's epoch positions, overseer Nov 5 3:15 AM)
@@ -1494,6 +1497,7 @@ class Controller:
                 return reset
         self._tuned_on = stick.host
         self.tuned_at[stick.host] = time.time()
+        self.session_guard.note_tune(stick.host)
         res = await tuner.tune(stick, ref, target, **({"may_cut": may_cut} if may_cut is not None else {}))
         if res.ok and getattr(stick, "behind_on", None) not in (None, target):
             stick.behind_on = None   # it plays another channel now; that one starts at its live edge
@@ -3028,9 +3032,12 @@ class Controller:
             return self.hidden is stick and self.hidden_target == target and not self._flipping
 
         res, why = None, ""
+        guard_lost = False
         if time.time() < self._scrub_backoff.get(target, 0.0):
             why = "backoff after a failed scrub"
-        else:
+        elif self.session_guard.enabled:
+            why, guard_lost = await self._session_preflight(stick, target, pkg, still_hidden)
+        if not why:
             try:
                 from redzone.tuners import yttv_seek
                 kw = {"read_behind": self.read_behind} if self.read_behind is not None else {}
@@ -3051,7 +3058,7 @@ class Controller:
                 why = f"crashed: {e}"
         took = round(time.monotonic() - t0, 1)
         if res is None or getattr(res, "presses", 1) or getattr(res, "committed", True) or why.startswith("crashed"):
-            if not why.startswith("backoff"):
+            if not why.startswith(("backoff", "session guard")):   # neither pressed a key
                 stick.behind_on = target   # keys may have moved it: the next tune of target must reset first
         behind = getattr(res, "behind_s", None) if res is not None and getattr(res, "ok", False) else None
         if behind is not None and getattr(res, "measured", True) is False:
@@ -3089,7 +3096,7 @@ class Controller:
         if not still_hidden() and self.hidden is not stick:
             return False   # it's on screen (or gone): never pressed or re-tuned from here
         self._set_held(target, 0.0)
-        if res is not None or stick.tuned is None or stick.tuned.get("target") != target:
+        if res is not None or guard_lost or stick.tuned is None or stick.tuned.get("target") != target:
             # keys were (or may have been) pressed: the position is unknown. A fresh live tune is a known one.
             again = await self._tune(stick, target)
             if not again.ok:
@@ -3097,6 +3104,32 @@ class Controller:
                 return False
         self._set_hidden(target, self._scrub_fallback_live())
         return False
+
+    async def _session_preflight(self, stick: Stick, target: str, pkg: str | None,
+                                 still_hidden: Callable[[], bool]) -> tuple[str, bool]:
+        """[session guard] Before the scrub's first key: wait out the post-tune LIVE/title banner (Nov 6: it looks
+        like the overlay, keys do nothing there, and each blind close may commit a step), then one adb-only look.
+        ("", False) = go. (why, lost) = fail closed with no key pressed; lost = the session itself is gone (crash,
+        reboot, home, wrong app), so the fallback re-tunes instead of trusting the old tune."""
+        from redzone.tuners import session_guard as sg
+        g = self.session_guard
+        at = self.tuned_at.get(stick.host)
+        wait = g.banner_wait(time.time() - at if at else None)
+        if wait > 0:
+            await asyncio.sleep(wait)
+            if not still_hidden():
+                return "session guard: the stick is no longer the hidden one", False
+        try:
+            snap = await sg.snapshot(stick, pkg or "", since_tune_s=None)
+        except Exception as e:   # the guard must never crash the switch path: no evidence = no scrub
+            log.exception("session guard: snapshot on %s", stick.host)
+            return f"session guard: snapshot failed ({e!r})"[:120], False
+        v = g.observe(snap, hidden=True)
+        if v.ok:
+            return "", False
+        self._buffer_log("session_guard", target, stick.host, 0.0, None, guard=v.kind, action=v.action,
+                         buffer=v.buffer)
+        return f"session guard: {v.kind}: {v.reason}"[:160], v.buffer == "lost"
 
     def label_stale(self, target: str) -> bool:
         """[scrub entry] The delay model says this target's label reading went stale (stalls widened it, #376
