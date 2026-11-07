@@ -1087,7 +1087,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `finally`; a read whose frame could not be deleted is discarded. No keys pressed by the reader, no DRM bypass.
   Code: redzone/tuners/yttv_label.py. No live config change; nothing reads the flag on Nick's screen yet.
 - **2026-11-07 (item 4 of Nick's Nov 6 10:15 PM order, scrub entry):** new flags `timing.behind_live_s.scrub_entry`
-  (false, per league via league_overrides) and `scrub_fallback` (keep), plus `scrub_cost_s` 18, `scrub_read_s` 8,
+  (false, per league via league_overrides) and `scrub_fallback` (keep), plus `scrub_cost_s` 28, `scrub_read_s` 8,
   `scrub_over_s` 15, `scrub_retry_s` 120. With it on (and `yttv_seek.enabled`), the hidden stick enters the buffer by
   the overlay scrub (yttv_seek.enter_buffer) before the flip, never by a pause; `held` is the overlay label's reading,
   not media_session; the flip still waits for a dead ball on the delayed picture. A failed scrub re-tunes at the live
@@ -1102,3 +1102,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   bar, so the first LEFT is the probe: no label = close, reopen, retry, fail closed after `open_tries: 4`
   (`reopen_wait_s: 1.5`, `overlay_wait_s` 0.8 -> 1.3). Live 3 of 3 entered at 60 s. A close after an unread probe may
   commit that step, so then behind-live is reported unknown (None) unless the label reader measured it. Still OFF.
+- **2026-11-07 (item 4 follow-up, Nick's live stick notes 04:07Z):** a scrubbed hidden stick is protected from
+  planner/refresh preloads until its flip (only a game opened on the phone replaces it), under `scrub_entry`. New
+  `two_stick.unavailable_backoff_s` (default 0 = the usual 120 s): a standby tune stopped at an account/payment/
+  UNAVAILABLE screen keeps that game off the standby that long (Nick saw the standby pick a Prime game showing
+  UNAVAILABLE). Both off by default.

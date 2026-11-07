@@ -2818,6 +2818,11 @@ class Controller:
         preload gap and replaces a planner preload still loading, never a switch."""
         if not (self.live_control and self.two_stick and target) or self.input_unknown:
             return False   # unknown input: the "hidden" stick may be the one on screen
+        if not user and self._scrub_protected(target):
+            # [scrub entry] Nick's live test (Nov 7): a preload overwrote a scrubbed hidden stick. A scrubbed standby
+            # is kept until it's flipped to (or its anchor expires / its label goes stale); only a game you open on
+            # the phone replaces it.
+            return False
         if self._steal_task and not self._steal_task.done():
             return False   # playbook=TV-04: the "hidden" stick is the game the TV jumped off; keep it
         if replay_id is None and (target == self.on_target or self._live_on_hidden(target)):
@@ -2867,7 +2872,7 @@ class Controller:
                         self._set_hidden(None, False)
                         if res.error.startswith(STICK_HUNG):
                             return   # the stick's fault, not the channel's: the breaker paces retries
-                        self._failed[target] = time.time() + PRELOAD_BACKOFF_S
+                        self._failed[target] = time.time() + self._preload_backoff(res)
                         self._blackout_check(target, res)
                         if self.on_preload_fail:
                             self.on_preload_fail(target, res.error + " | " + "; ".join(res.steps[-3:]),
@@ -2945,6 +2950,21 @@ class Controller:
         the current game ("keep", the default: no picture of unproven delay goes on screen)."""
         return str(self.cfg.get("timing.behind_live_s.scrub_fallback", "keep")) == "live"
 
+    def _preload_backoff(self, res: TuneResult) -> float:
+        """Seconds before a failed standby target is preloaded again. [Nick's live test, Nov 7] the standby kept
+        choosing a Prime game whose page said UNAVAILABLE: with two_stick.unavailable_backoff_s > 0 an
+        account / payment / unavailable screen keeps that target off the standby that long (0 = as before)."""
+        text = (" ".join(res.steps) + " " + res.error).lower()
+        long = float(self.cfg.get("two_stick.unavailable_backoff_s", 0) or 0)
+        return max(PRELOAD_BACKOFF_S, long) if long and "unavailable" in text else PRELOAD_BACKOFF_S
+
+    def _scrub_protected(self, target: str | None = None) -> bool:
+        """[scrub entry] The hidden stick is a ready, scrubbed standby (label-read behind live) of a game other than
+        `target`: nothing but its flip or a fresh redo (label_stale) may replace it."""
+        hid, have = self.hidden, self.hidden_target
+        return bool(hid is not None and have and have != target and self.hidden_ready and self.parked is None
+                    and hid.scrubbed(have) is not None and self._scrub_wanted(have))
+
     def _scrub_cost(self, target: str | None) -> float:
         """Seconds the scrub adds before a flip to `target` (0 = none needed): about 10 s of presses plus one
         label read (Nick, Nov 6), measured once we have scrubs (latency key yttv_scrub, p90)."""
@@ -2955,7 +2975,7 @@ class Controller:
             return 0.0
         samples = sorted(self.latency.samples.get("yttv_scrub") or ())
         p90 = samples[min(len(samples) - 1, math.ceil(len(samples) * .9) - 1)] if samples else 0.0
-        return max(float(self.cfg.get("timing.behind_live_s.scrub_cost_s", 18.0)), p90)
+        return max(float(self.cfg.get("timing.behind_live_s.scrub_cost_s", 28.0)), p90)
 
     async def _scrub_into(self, stick: Stick, target: str, seconds: float) -> bool:
         """[scrub entry] Put the hidden stick's fresh tune of `target` about `seconds` behind live by the overlay
@@ -3451,6 +3471,8 @@ class Controller:
         text = " ".join(res.steps).lower() + res.error.lower()
         if "regional" in text or "blackout" in text or "not available in your location" in text:
             self.note = f"{target} is blacked out here"
+        elif "unavailable" in text:
+            self.note = f"{target} shows UNAVAILABLE here"
 
     def status(self) -> list[dict]:
         out = []
