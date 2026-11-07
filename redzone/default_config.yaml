@@ -567,12 +567,16 @@ yttv_seek:                 # [YTTV scrub buffer, item 1] enter the time-shift bu
   step_s: 15               # one LEFT on the focused bar moves the knob this far back (measured Nov 6)
   max_back_s: 150          # never scrub further (ACC Network stopped near 2.5 min behind)
   step_tol_s: 6            # the knob label must move N x step_s within this, or no commit (4 -> 6: 47/48 live, 1 fail at 40 vs 45)
+  boundary_retries: 1      # a failed knob check (the label resets at a new program) retries once from the live
+                           # edge, only after a re-link to live with nothing committed; then fail closed
   key_gap_s: 0.35          # between LEFT presses
   settle_s: 4              # after the commit the player must report PLAYING within this (its state only)
   poll_s: 0.25             # how often the player is read while it settles
   overlay_wait_s: 1.3      # after CENTER or a LEFT, wait this long before reading the overlay (live Nov 6: 0.8 too short)
   open_tries: 4            # probe LEFT, no scrub label = close, reopen, retry; fail closed after this many (tune banner)
   reopen_wait_s: 1.5       # between closing and reopening the overlay
+  reset_channel: ""        # a stick that may be behind on a channel goes through this one to get back to live (a
+                           # same-channel deep link does not reset it; Nick, Nov 7). "" = any other coded channel
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true

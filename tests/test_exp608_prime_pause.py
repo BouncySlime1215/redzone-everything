@@ -60,3 +60,14 @@ def test_bad_prime_entry():
 def test_run_rejects_pause_with_edge():
     with pytest.raises(ValueError):
         B.run([], Config(), set(), hidden_stick="wait", hs_prime_pause=True, hs_prime_edge=True)
+
+
+def test_measured_pause_cost():
+    s = _stick("pause_measured")
+    assert s.hold_of("prime:x") == pytest.approx(90.0 + 4.3)
+    assert s.hold_of("youtubetv:x") == 22.5
+    assert s.card()["prime_entry"] == "pause_measured"
+    sw = _sw()
+    s.load("g2", "prime:g2", 0.0)
+    s.on_switch(sw, [(sw.t, "g2")], {"g2": "prime:g2"})
+    assert sw.offset == 0.0 and s.buffered == 1

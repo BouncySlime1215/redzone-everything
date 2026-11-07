@@ -1141,8 +1141,27 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-07 (integrator, EXP-607 read): **The EXP-605 resync failure was a sim artifact (resync mid-play 19.0 -> 7.7
   per run with Prime pinned at its edge), but NBA stays FAIL:** clock-truth adds 1-2 on two seeds and the primary CI
   touches 0 on both harnesses. EXP-608 (Prime by pause) is the next read.
+- 2026-11-07 (integrator, EXP-608 read + v45 freeze): **EXP-608 FAILS both leagues; grader freeze v45 registers EXP-609
+  (Prime pause at the measured B + 4.3 s) as the verdict for the Prime-pause model, 608 report-only.** NBA: the main
+  grader's mid-play falls 9.7 -> 3.7 and big seen rises 67 -> 78%, but clock-truth adds entries on every seed and plays
+  missed doubles; the two graders disagree and T9 diffs them, info-only. NFL unchanged in kind (switches 1.72x).
 - 2026-11-07 (integrator, T9 trace of #378 at 8452ba4): **Rule #1 risk on the scrub path: timing.behind_live_s.scrub_entry
   must stay OFF for NBA (and every hold_only league) until EXP-610's live fix lands.** After the scrub the flip never
   checks the destination's delayed picture for a dead ball (NBA isn't cut-timed; the whistle wait runs before the
   22.5 s+ scrub), so live would land later than the sim's already-lenient re-check. EXP-610 pairs the live fix
   (clock-stopped dead ball on the delayed picture, behind the scrub flag) with the same rule in the replay.
+- 2026-11-07 (overseer's 90 s stick test): two scrub fixes, flags still off. (1) A same-channel deep link does NOT
+  bring a stick that is behind back to live (a stick left behind measured 23 s after asking 90). A stick the scrub
+  pressed keys on is marked `behind_on`; the next tune of that same target first tunes another channel
+  (`yttv_seek.reset_channel`, "" = any other coded channel), or fails without claiming a live edge. (2) The picture
+  stands still while the overlay is up (asked 90, 6 LEFTs, 37.6 s -> 130.8 s behind): enter_buffer now plans the
+  LEFTs after the probe from what is left (ask - one step - time in the overlay - one more read) and adds the overlay
+  time to its estimate.
+- 2026-11-07 (Nick ~1:00 AM stick run; integrator): **yttv_seek.boundary_retries: 1 (new, behind yttv_seek.enabled,
+  which stays off).** A knob check that fails because the label reset at a new program ("knob moved 39s, not 60s")
+  retries the scrub once from the live edge, only after a re-link to live with nothing committed; otherwise it fails
+  closed as before. Merged with #385 + #391 so --label gives measured reads.
+- 2026-11-07 (integrator, EXP-609 read): **EXP-609 (Prime pause at the measured B + 4.3 s) FAILS both leagues, as
+  EXP-608; RC8 stays OFF.** NBA's blockers are clock-truth entries the re-check's lenient dead ball lets through, plays
+  missed ~2.3x and (resync) your-team crunch 54.8%; EXP-610 addresses the first. NFL's are switches 1.72x and plays
+  missed ~3x.

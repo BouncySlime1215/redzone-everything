@@ -259,12 +259,20 @@ def _private_dir() -> Path:
 def ocr_png_then_delete(png: bytes, recognize: Recognizer | None = None) -> tuple[list[Obs] | None, bool, str]:
     """Write the PNG to a private temp file, OCR it, delete it in `finally`. Returns
     (observations or None, frame_deleted, error). The bytes are not kept by this function."""
+    obs, _focus, deleted, err = _ocr_frame(png, recognize)
+    return obs, deleted, err
+
+
+def _ocr_frame(png: bytes, recognize: Recognizer | None = None
+               ) -> tuple[list[Obs] | None, list[dict], bool, str]:
+    """ocr_png_then_delete plus the OCR helper's focus boxes (for yttv_seek's focus guard)."""
     if recognize is None:
         from redzone.screen_ocr import recognize as _rec
         recognize = lambda p: _rec(p, timeout=8.0)   # noqa: E731
     d = _private_dir()
     path = d / "f.png"
     obs: list[Obs] | None = None
+    focus: list[dict] = []
     err = ""
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -278,6 +286,8 @@ def ocr_png_then_delete(png: bytes, recognize: Recognizer | None = None) -> tupl
             err = getattr(r, "error", "") or status
         else:
             obs = [Obs(o.text, o.confidence, o.x, o.y, o.width, o.height) for o in r.observations]
+            focus = [{"text": f.text, "x": f.x, "y": f.y, "w": f.width, "h": f.height}
+                     for f in getattr(r, "focus_boxes", ()) or ()]
     except Exception as exc:   # OCR trouble is a failed read, never a crash in a seek
         err = type(exc).__name__
     finally:
@@ -286,7 +296,7 @@ def ocr_png_then_delete(png: bytes, recognize: Recognizer | None = None) -> tupl
         finally:
             shutil.rmtree(d, ignore_errors=True)
     deleted = not path.exists() and not d.exists()
-    return obs, deleted, err
+    return obs, focus, deleted, err
 
 
 async def read_label(stick, *, enabled: bool, knob_offset_s: float = 0.0,
@@ -316,6 +326,166 @@ async def read_label(stick, *, enabled: bool, knob_offset_s: float = 0.0,
     if not deleted:   # never trust a read whose frame we could not remove; make it loud
         r = replace(r, status="ocr_failed", label_s=None, ui_delay_s=None, detail="frame not deleted")
     return r
+
+
+# ------------------------------------------------------------------------- one read after entry (#377 banner)
+@dataclass
+class ProbeResult:
+    behind_live_s: float | None
+    read: LabelRead
+    keys: list[str] = field(default_factory=list)
+    reason: str = ""
+
+
+class LabelProbe:
+    """The overlay label reader wired for the scrub entry (Nick, Nov 6 night: a read costs ~7.5 s, so read ONCE
+    after entry, then trust the playhead).
+
+    * `overlay_reader(stick)` is enter_buffer's read_overlay: ONE screencap feeds both yttv_seek's focus guard
+      (OverlayRead) and this module's label numbers. After `arm(stick)` the first read with the bar focused (the
+      LEFT probe at the live edge, knob one step back) is kept as the stick's at-live anchor.
+    * `__call__(stick)` is enter_buffer's read_behind: the probe sequence with the post-tune banner handling from
+      #377 (CENTER; no scrub label -> LEFT probe; still none -> CENTER close, reopen, retry; fail closed after
+      open_tries), one label read with knob_offset_s = step, then RIGHT + CENTER so the knob goes back to where
+      it was before it commits. behind = behind_from_pair(anchor, read) + (commit wall - screencap wall), since
+      the picture stands still while the overlay is up.
+    * `playhead(stick, now)`: after that, the stick's behind-live without another read: the playhead plays at 1x,
+      so behind only changes when something holds the picture (a later read adds ~read_cost_s).
+
+    Fails closed (None) on: no anchor, a row button focused, the banner never clearing, a label that is not
+    one step behind the knob, or a pair result outside [-5, max]. Frames are read, then deleted (_ocr_frame).
+    """
+
+    def __init__(self, cfg=None, *, recognize: Recognizer | None = None, tz: dt.tzinfo | None = None,
+                 sleep: Callable[[float], Awaitable[None]] | None = None):
+        self.cfg = cfg
+        self.recognize = recognize
+        self.tz = tz
+        self.sleep = sleep or asyncio.sleep
+        self.anchors: dict[str, LabelRead] = {}
+        self.armed: dict[str, float] = {}       # stick -> its behind_live_s when armed (0 = at the live edge)
+        self.held: dict[str, tuple[float, float]] = {}   # stick -> (behind_s, wall) from the last measured read
+
+    def _c(self, key: str, default):
+        v = self.cfg.get(f"timing.behind_live_s.label_{key}") if self.cfg is not None and hasattr(self.cfg, "get") \
+            else None
+        return default if v is None else v
+
+    @staticmethod
+    def _key(stick) -> str:
+        return str(getattr(stick, "host", stick))
+
+    def arm(self, stick, behind_before_s: float = 0.0) -> bool:
+        """The next bar-focused overlay read on this stick is its at-live anchor (call right before enter_buffer
+        on a stick tuned or re-linked to the live edge). Refuses (False, nothing armed) while the stick is marked
+        behind on a target (#391 Stick.behind_on: a same-channel deep link does NOT reset a stick that is behind
+        live, so its "live edge" probe would anchor short: asked 90, read 23). The scrub then runs unmeasured and
+        the caller fails closed."""
+        k = self._key(stick)
+        self.anchors.pop(k, None)
+        self.armed.pop(k, None)
+        if getattr(stick, "behind_on", None):
+            return False
+        self.armed[k] = float(behind_before_s)
+        return True
+
+    async def _frame(self, stick, knob_offset_s: float):
+        from redzone.tuners import yttv_seek
+        w0 = time.time()
+        try:
+            png = await stick.screencap()
+        except (asyncio.TimeoutError, OSError):
+            return None, None
+        wall = (w0 + time.time()) / 2
+        if not png:
+            return None, None
+        obs, focus, deleted, _err = await asyncio.to_thread(_ocr_frame, png, self.recognize)
+        del png
+        if obs is None or not deleted:
+            return None, None
+        ov = yttv_seek.parse_overlay([{"text": o.text, "x": o.x, "y": o.y, "w": o.width, "h": o.height}
+                                      for o in obs], focus)
+        lab = parse_label(obs, wall, knob_offset_s=knob_offset_s, tz=self.tz)
+        return ov, lab
+
+    async def overlay_reader(self, stick):
+        """enter_buffer's read_overlay. Records the at-live anchor on the first bar-focused read after arm()."""
+        step = float(self._c("step_s", 15.0))
+        ov, lab = await self._frame(stick, step)
+        k = self._key(stick)
+        if ov is not None and ov.bar_focused and lab is not None and lab.ok and k in self.armed:
+            # knob is one LEFT behind the playhead; the playhead is `armed` s behind live
+            self.anchors[k] = replace(lab, label_s=lab.label_s + self.armed.pop(k))
+        return ov
+
+    async def _key_press(self, stick, code: str) -> bool:
+        r = await stick.shell(f"input keyevent KEYCODE_{code}", timeout=4)
+        return bool(getattr(r, "ok", False))
+
+    async def probe(self, stick, still_hidden: Callable[[], bool] | None = None) -> ProbeResult:
+        still_hidden = still_hidden or (lambda: True)
+        k = self._key(stick)
+        anchor = self.anchors.get(k)
+        step = float(self._c("step_s", 15.0))
+        wait = float(self._c("overlay_wait_s", 1.3))
+        tries = int(self._c("open_tries", 4))
+        keys: list[str] = []
+        if anchor is None:
+            return ProbeResult(None, LabelRead("no_label"), keys, "no at-live anchor: arm() before enter_buffer")
+
+        async def press(code):
+            if not still_hidden():
+                raise RuntimeError("stick became visible")
+            keys.append(code)
+            if not await self._key_press(stick, code):
+                raise RuntimeError(f"{code} not sent")
+
+        try:
+            await press("DPAD_CENTER")
+            await self.sleep(wait)
+            got = None
+            for _ in range(tries):
+                ov, _lab = await self._frame(stick, step)
+                if ov is not None and ov.row_focused:
+                    return ProbeResult(None, LabelRead("ambiguous"), keys, "focus guard: a row button has focus")
+                if ov is not None and ov.overlay:
+                    await press("DPAD_LEFT")             # the probe: the label shows only once LEFT lands
+                    await self.sleep(wait)
+                    ov2, lab2 = await self._frame(stick, step)
+                    if ov2 is not None and ov2.bar_focused and lab2 is not None and lab2.ok:
+                        got = lab2
+                        break
+                    # banner (keys do nothing there) or a missed read: close, reopen. A close after a LEFT that
+                    # did land may commit one step: the next read's pair counts it, so it is measured, not lost.
+                    await press("DPAD_CENTER")
+                    await self.sleep(wait)
+                await press("DPAD_CENTER")
+                await self.sleep(wait)
+            if got is None:
+                return ProbeResult(None, LabelRead("banner"), keys, "no scrub label after the probe (banner)")
+            await press("DPAD_RIGHT")                    # knob back onto the playhead, then commit there
+            await self.sleep(float(self._c("key_gap_s", 0.35)))
+            await press("DPAD_CENTER")
+            committed_at = time.time()
+        except RuntimeError as e:
+            return ProbeResult(None, LabelRead("no_label"), keys, str(e))
+        b = behind_from_pair(anchor, got, max_s=float(self._c("max_behind_s", MAX_BEHIND_S)))
+        if b is None:
+            return ProbeResult(None, got, keys, "pair out of range or new program")
+        # The picture stands still while the overlay is up (scrub thread, Nov 7): every second between this
+        # screencap and the commit landing adds a second behind. Measured, not a constant.
+        b = round(b + max(0.0, committed_at - got.cap_wall), 2)
+        self.held[k] = (b, got.cap_wall)
+        return ProbeResult(b, got, keys, "measured")
+
+    async def __call__(self, stick) -> float | None:
+        """enter_buffer's read_behind: seconds behind live, measured once after the commit, or None."""
+        return (await self.probe(stick)).behind_live_s
+
+    def playhead(self, stick, now: float | None = None) -> float | None:
+        """Behind-live since the last measured read, trusting the playhead (it plays at 1x after a seek)."""
+        h = self.held.get(self._key(stick))
+        return None if h is None else h[0]
 
 
 # --------------------------------------------------------------------------------------------- CLI

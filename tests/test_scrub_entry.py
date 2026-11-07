@@ -123,7 +123,10 @@ def test_failed_scrub_keeps_the_current_game_and_retunes_at_the_live_edge(scrub,
     out = run(c.execute("youtubetv:espn", may_cut=lambda: True))
     assert not out.ok and out.screen_unchanged and "buffer entry failed" in out.detail
     assert c.main.host == "a:5555"                               # never flipped
-    assert tuner.calls == [("b:5555", "youtubetv:espn")] * 2     # re-tuned to a known position
+    # re-tuned to a known position THROUGH another channel: a same-channel deep link doesn't reset a stick that is
+    # behind (Nick's 90 s run, Nov 7)
+    assert tuner.calls == [("b:5555", "youtubetv:espn"), ("b:5555", "youtubetv:fox"), ("b:5555", "youtubetv:espn")]
+    assert hid.behind_on is None
     assert "youtubetv:espn" not in c.held and not c.hidden_ready
     # backoff: the next try presses nothing on the stick
     out2 = run(c.execute("youtubetv:espn", may_cut=lambda: True))
@@ -279,3 +282,78 @@ def test_unavailable_screen_backoff(scrub):
     c.cfg.update({"two_stick": {"unavailable_backoff_s": 900}})
     assert c._preload_backoff(res) == 900
     assert c._preload_backoff(TuneResult(False, "prime:x", 1.0, [], "video never started")) == ctl.PRELOAD_BACKOFF_S
+
+
+def test_label_probe_is_armed_and_shares_the_overlay_reader(scrub, monkeypatch):
+    """[label reader] with a LabelProbe wired, enter_buffer gets its read_overlay + read_behind and the stick is
+    armed at the live edge first (the probe there becomes the at-live anchor)."""
+    c, tuner, hid, calls, result, behind = scrub
+    seen = {}
+
+    class Probe:
+        armed = []
+
+        def arm(self, stick, behind_before_s=0.0):
+            self.armed.append(stick.host)
+            return not getattr(stick, "behind_on", None)
+
+        async def overlay_reader(self, stick):
+            return None
+
+        async def __call__(self, stick):
+            return 67.0
+    c.label_probe = Probe()
+    mod = sys.modules["redzone.tuners.yttv_seek"]
+    inner = mod.enter_buffer
+
+    async def spy(stick, seconds, **kw):
+        seen.update(kw)
+        return await inner(stick, seconds, **kw)
+    monkeypatch.setattr(mod, "enter_buffer", spy)
+    run(_preload(c, "youtubetv:fox"))
+    assert Probe.armed == ["b:5555"]
+    assert seen["read_overlay"] == c.label_probe.overlay_reader and seen["read_behind"] is c.label_probe
+
+
+
+def test_an_unarmed_probe_lets_the_scrub_run_unmeasured_and_fail_closed(scrub, monkeypatch):
+    """#391: arm() refuses a stick still behind on a target -> no read_behind is passed -> no measured reading."""
+    c, tuner, hid, calls, result, behind = scrub
+    seen = {}
+
+    class Probe:
+        def arm(self, stick, behind_before_s=0.0):
+            return False
+
+        async def overlay_reader(self, stick):
+            return None
+
+        async def __call__(self, stick):
+            raise AssertionError("never read when not armed")
+    c.label_probe = Probe()
+    mod = sys.modules["redzone.tuners.yttv_seek"]
+    inner = mod.enter_buffer
+
+    async def spy(stick, seconds, **kw):
+        seen.update(kw)
+        return await inner(stick, seconds, **kw)
+    monkeypatch.setattr(mod, "enter_buffer", spy)
+    run(_preload(c, "youtubetv:fox"))
+    assert "read_behind" not in seen and "read_overlay" not in seen
+def test_no_other_channel_means_no_live_claim(scrub):
+    """[Nick's 90 s run, Nov 7] With nothing to reset through, the stick is NOT re-tuned 'at live' on the same channel."""
+    c, tuner, hid, calls, result, behind = scrub
+    c.channels.codes = {"espn": c.channels.codes.get("espn", "x")}
+    result["r"] = Res(ok=False, behind_s=None, reason="focus not on the scrub bar")
+    out = run(c.execute("youtubetv:espn", may_cut=lambda: True))
+    assert not out.ok and c.main.host == "a:5555"
+    assert tuner.calls == [("b:5555", "youtubetv:espn")]         # only the first tune: no same-channel "reset"
+    assert hid.behind_on == "youtubetv:espn" and not c.hidden_ready and "youtubetv:espn" not in c.held
+
+
+def test_a_scrubbed_stick_is_marked_behind_and_a_different_channel_clears_it(scrub):
+    c, tuner, hid, calls, result, behind = scrub
+    run(_preload(c, "youtubetv:fox"))
+    assert hid.behind_on == "youtubetv:fox"
+    run(c._tune(hid, "youtubetv:espn"))
+    assert hid.behind_on is None
