@@ -1116,3 +1116,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   switches 1.72x and plays missed 139 -> 424. Next, both registered before they run (coordinator go-ahead): EXP-605
   NBA YouTube TV-only RC8 with Prime at B0 (T9), and EXP-606 NFL B75 dwell grid 35/60/90/120 (integrator). Neither is
   a card until a live stick holds a scrub.
+- 2026-11-07 (integrator, EXP-606 read): **No NFL dwell passes; NFL RC8 stays OFF and no more NFL dwell points on these
+  nights.** D120 gets switches inside 1.5x (1.41x) but resync mid-play rises on every seed, plays missed on entry is
+  ~2.6x the control at every D and your-team crunch is 91%. Plays missed doesn't fall with dwell, so the cost sits in the
+  scrub wait + re-check delaying cuts, not in the switch rate.
