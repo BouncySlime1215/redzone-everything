@@ -473,6 +473,11 @@ tuners:                    # per-app switch paths
   prime_tiles: 3           # games in one Prime multiview (1 main + 2 on the right)
   prime_tile_s: 1.0        # seconds for a tile switch, until data/prime_multiview_keys.json has timings
   prime_tile_p90_s: 2.0    # ...and its deadline bound
+  espnplus_yttv: false     # [Nick, Nov 7] ESPN+ events through YouTube TV (ESPN Unlimited): a proven per-event
+                           # code, else in-app search for a LIVE tile naming both teams, confirmed by the media
+                           # session (redzone/tuners/yttv_event.py). Fails closed per event (old route for 10 min).
+                           # Off until scripts/yttv_espnplus_try.py passes on a stick with a live ESPN+ event
+  espnplus_yttv_miss_s: 600  # an ESPN+ event whose YouTube TV search failed keeps its old route this long
 autofix:                   # the watchdog files problems it can't fix as GitHub issues for Claude (docs/auto-fix.md)
   enabled: true            # kill switch on the Mac side (the repo variable AUTOFIX_ENABLED=false stops the GitHub side)
   max_per_day: 3           # at most this many issues a day

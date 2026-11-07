@@ -1465,6 +1465,8 @@ class Controller:
             if not ref:
                 key = self.channels.yttv_search_key(target)
                 ref = f"search:{key}" if key else ""
+            if not ref:
+                ref = self.channels.yttv_event_ref(target) or ""   # ESPN+ event by search (tuners.espnplus_yttv)
         return app, ref
 
     def _package(self, stick: Stick, target: str) -> str | None:
@@ -1501,11 +1503,15 @@ class Controller:
             # The tune died because the stick hung, not because of the channel: say so, so the
             # target isn't cooled down or marked unplayable for a stick fault.
             res.error = f"{STICK_HUNG}: {res.error}"
+        if not res.ok and ref.startswith("event:") and not res.error.startswith(STICK_HUNG):
+            self.channels.event_missed(target)   # fail closed: this ESPN+ event keeps its old route a while
         if res.ok:
             self._set_held(target, 0.0)   # a fresh tune plays from the live edge
             # A Prime multiview tile switch is ~1 s, not a ~32 s tune: never let it into Prime's median.
-            self.latency.record("prime_tile" if res.path == "tile" else app, res.took)
-            if res.path != "tile" and getattr(stick, "model", None):
+            # An ESPN+ event found by search (~20-40 s) never goes into YouTube TV's deep-link median either.
+            self.latency.record("prime_tile" if res.path == "tile" else "youtubetv_event"
+                                if ref.startswith("event:") else app, res.took)
+            if res.path != "tile" and not ref.startswith("event:") and getattr(stick, "model", None):
                 # Per stick model too: the live lab (Nov 4) had a hidden-stick tune to PLAYING at p50
                 # 2.33 s on the 4K Plus vs 3.74 s on the 4K 2023, so one median misprices one of them.
                 self.latency.record(f"{app}@{stick.model}", res.took)

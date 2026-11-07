@@ -364,6 +364,26 @@ def _cant_open(out: str) -> bool:
     return "unable to resolve intent" in low or ("error:" in low and "does not exist" in low)
 
 
+def _ocr_observer(stick: Stick):
+    """observe() for the YouTube TV search walks: one screencap, Vision OCR, the PNG deleted at once
+    (text and boxes only are kept)."""
+    import tempfile
+    from redzone.screen_ocr import recognize
+    from redzone.tuners.prime_search import CapturedScreen
+    seq = [0]
+
+    async def observe():
+        seq[0] += 1
+        png = await stick.screencap(timeout=15)
+        with tempfile.TemporaryDirectory(prefix="rz-yts-") as d:
+            path = f"{d}/s.png"
+            with open(path, "wb") as f:
+                f.write(png or b"")
+            result = await asyncio.to_thread(recognize, path, timeout=8.0)
+        return CapturedScreen(result, seq[0], time.monotonic())
+    return observe
+
+
 class YouTubeTVTuner(Tuner):
     app = "youtubetv"
     role = "youtubetv"
@@ -376,15 +396,45 @@ class YouTubeTVTuner(Tuner):
     async def tune(self, stick: Stick, ref: str, target: str, may_cut=None) -> TuneResult:
         if ref.startswith("search:"):
             return await self._tune_by_search(stick, ref.split(":", 1)[1], target, may_cut)
+        if ref.startswith("event:"):
+            return await self._tune_event(stick, ref, target, may_cut)
         return await super().tune(stick, ref, target, may_cut)
+
+    async def _tune_event(self, stick: Stick, ref: str, target: str, may_cut=None) -> TuneResult:
+        """An ESPN+ event through YouTube TV (tuners.espnplus_yttv): in-app search for the matchup, a
+        LIVE tile naming both teams, confirmed by the media session naming both teams. Fails closed:
+        any doubt = a failed tune and the event keeps its old route (Control marks it missed)."""
+        from redzone.tuners.yttv_event import EventSpec, hunt_event
+        t0 = time.monotonic()
+        steps: list[str] = []
+        spec = EventSpec.from_ref(ref)
+        pkg = stick.packages.get(self.role)
+        if spec is None or not pkg:
+            return TuneResult(False, target, 0.0, steps, "event search: bad event or no YouTube TV app",
+                              screen_changed=False)
+        before = await stick.playback(pkg)
+        if stick.still_on(target, before):
+            steps.append("already on it (the stick is still playing it, uninterrupted)")
+            return TuneResult(True, target, time.monotonic() - t0, steps)
+        try:
+            require_cut(may_cut, steps, mutating=True)
+        except CutWindowClosed as exc:
+            return TuneResult(False, target, time.monotonic() - t0, exc.steps, str(exc))
+        hunt = await hunt_event(stick, _ocr_observer(stick), spec,
+                                profile=getattr(self, "preferred_profile", "") or "")
+        steps += [f"{x['action']}: {x['detail'][:60]}" for x in hunt.steps[-6:]]
+        if hunt.status != "confirmed":
+            return TuneResult(False, target, time.monotonic() - t0, steps, f"event search: {hunt.reason}")
+        pb = await stick.playback(pkg)
+        if playback_ready(pb):
+            stick.remember(target, pb)
+        steps.append(f"playing by search: {hunt.description[:80]}")
+        return TuneResult(True, target, time.monotonic() - t0, steps)
 
     async def _tune_by_search(self, stick: Stick, key: str, target: str, may_cut=None) -> TuneResult:
         """A channel with no watch code (NBCSN, NHL Network, the local NBC): in-app search, select its
         tile (or its network page -> Live -> the live tile), confirmed by the media session naming
         the channel. Every key goes through the cut window like a deep link would."""
-        import tempfile
-        from redzone.screen_ocr import recognize
-        from redzone.tuners.prime_search import CapturedScreen
         from redzone.tuners.yttv_search import hunt_channel
         t0 = time.monotonic()
         steps: list[str] = []
@@ -399,20 +449,8 @@ class YouTubeTVTuner(Tuner):
             require_cut(may_cut, steps, mutating=True)
         except CutWindowClosed as exc:
             return TuneResult(False, target, time.monotonic() - t0, exc.steps, str(exc))
-        seq = [0]
-
-        async def observe():
-            seq[0] += 1
-            png = await stick.screencap(timeout=15)
-            with tempfile.TemporaryDirectory(prefix="rz-yts-") as d:
-                path = f"{d}/s.png"
-                with open(path, "wb") as f:
-                    f.write(png or b"")
-                result = await asyncio.to_thread(recognize, path, timeout=8.0)
-            return CapturedScreen(result, seq[0], time.monotonic())
-
         from redzone.channels import SEARCH_QUERY
-        hunt = await hunt_channel(stick, observe, key=key, table=_yttv_table(), query=SEARCH_QUERY.get(key, ""),
+        hunt = await hunt_channel(stick, _ocr_observer(stick), key=key, table=_yttv_table(), query=SEARCH_QUERY.get(key, ""),
                                   profile=getattr(self, "preferred_profile", "") or "", collect_codes=False)
         steps += [f"{x['action']}: {x['detail'][:60]}" for x in hunt.steps[-6:]]
         if hunt.status != "confirmed":
