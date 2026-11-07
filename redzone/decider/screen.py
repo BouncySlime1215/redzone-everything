@@ -90,6 +90,11 @@ BOUNDARY_MIN_SAMPLES = 2
 # the ~2 s capture gap, so stronger than a tap: this many agreeing samples (pooled with any taps)
 # lower the floor to SCREEN_SIGMA_S and settle the app on their own.
 SCREEN_SIGMA_S = 4.0
+# [edge model, Nick's Nov 6 order item 3, flag delay.edge_model.enabled, OFF] On a YouTube TV stick that was
+# scrubbed back (yttv_seek enter_buffer), the screen delay is D_edge(channel) + behind_live, where behind_live
+# is read off YouTube TV's own overlay time label. media_session's position is wrong after a seek and the old
+# pause "hold" never held (Nov 6 stick tests), so neither may set behind_live on a seeked tune. Every number
+# (edge default 25 s +-3, label sd, edge_max_sd_s) lives in delay.edge_model in default_config.yaml.
 
 
 @dataclass
@@ -194,6 +199,11 @@ class DelayBook:
         self.cal: NoiseCal | None = None                         # [self-calibrating doubt] see attach_cal
         self._fresh: set[str] = set()                            # tuned, no anchor yet since
         self.calibrated: dict[str, tuple[float, float]] = {}     # [calib.auto] target -> (fresh-tune delay, sd)
+        # [edge model] delay = D_edge(channel) + behind_live (label), config delay.edge_model
+        self.edge_cfg = None                                      # key -> delay.edge_model.<key> (engine), else defaults
+        self.labels: dict[str, tuple[float, float, float]] = {}   # target -> (behind_live_s, sd, ts) off the overlay label
+        self.edge_seen: dict[str, tuple[float, float, float]] = {}  # target -> (edge s, sd, ts) tonight at behind 0
+        self.on_label_stale = None                                # target -> re-read its label (wired by yttv_seek)
 
     @staticmethod
     def app(target: str) -> str:
@@ -235,6 +245,8 @@ class DelayBook:
 
     def _sync_prior(self, target: str) -> tuple[float, float]:
         d = self.get(target)
+        if self.labelled(target):
+            return d.mu, d.sigma   # [edge model] D_edge + the label's behind_live: the filter re-syncs around it
         cal = self.calibrated.get(target)
         if cal is not None:
             # [calib.auto] last nights' measured fresh-tune delay for this channel, plus what this tune is held
@@ -274,8 +286,12 @@ class DelayBook:
         return bool(self.sync.measure(target, z, kind, t, sd)) if self.sync is not None else False
 
     def _refresh(self, target: str) -> None:
+        self._refresh_base(target)
+        self._refresh_edge(target)
+
+    def _refresh_base(self, target: str) -> None:
         d = self.book[target]
-        if d.base is not None:                 # undo the sync overlay: the model recomputes from its base
+        if d.base is not None:                 # undo the sync / edge overlay: the model recomputes from its base
             d.mu, d.sigma, d.calibrated_at, d.source, d.drift_cap = d.base
             d.base = None
         self._refresh_model(target)
@@ -289,6 +305,127 @@ class DelayBook:
         floor = self.sync_floor_for(target) if self.sync_floor_for is not None else self._sync_floor
         d.mu, d.sigma, d.calibrated_at = est[0], max(floor, est[1]), f.updated
         d.source, d.drift_cap = "sync", SETTLED_DRIFT_S
+
+    # ------------------------------------------------------------------ [edge model] D_edge + behind_live
+    def _ecfg(self, key: str):
+        """delay.edge_model.<key> from the live config (engine), else the shipped default."""
+        v = None
+        if self.edge_cfg is not None:
+            try:
+                v = self.edge_cfg(key)
+            except Exception:
+                v = None
+        if v is None:
+            from redzone import config
+            v = config.default(f"delay.edge_model.{key}")
+        return v
+
+    @property
+    def edge_model(self) -> bool:
+        """delay.edge_model.enabled (OFF in the shipped config): a seeked tune's delay is D_edge + label."""
+        return bool(self._ecfg("enabled"))
+
+    def edge(self, target: str) -> tuple[float, float, str] | None:
+        """D_edge(channel): how far this channel's live edge runs behind real life, with its sd and source.
+
+        tonight   this channel measured tonight at the live edge (sync filter / taps / score bug, behind 0)
+        calib     last nights' fitted fresh-tune delay for this channel (calib.auto, edge-relative)
+        default   delay.edge_model.default[app] (YouTube TV 25 s +-3, Nov 6 research)
+        None when nothing is known for the app."""
+        seen = self.edge_seen.get(target)
+        if seen is not None:
+            return seen[0], seen[1], "tonight"
+        cal = self.calibrated.get(target)
+        if cal is not None:
+            return float(cal[0]), float(cal[1]), "calib"
+        defaults = self._ecfg("default") or {}
+        v = defaults.get(self.app(target))
+        if v is None:
+            return None
+        return float(v), float(self._ecfg("default_sd_s")), "default"
+
+    def set_label_behind(self, target: str, behind_s: float, sd: float | None = None,
+                         ts: float | None = None) -> Delay:
+        """behind_live read off YouTube TV's overlay time label for the tune now on this target (yttv_seek /
+        the label reader). It stays this tune's behind_live until the next fresh tune (clear_label) or the
+        next label read; media_session and the pause-hold timing no longer move it."""
+        behind_s = max(0.0, float(behind_s))
+        sd = float(self._ecfg("label_sd_s")) if sd is None else max(0.1, float(sd))
+        prev = self.labels.get(target)
+        self.labels[target] = (behind_s, sd, self._clock() if ts is None else float(ts))
+        d = self.get(target)
+        self._refresh(target)
+        if self.edge_model and self.sync is not None and (prev is None or abs(prev[0] - behind_s) > 2.0):
+            # the picture moved: the filter re-syncs (its prior is now edge + label) instead of averaging
+            # the scrubbed tune's anchors into the at-the-edge estimate
+            self.sync.tuned(target, new_stream=False)
+        return d
+
+    def clear_label(self, target: str) -> None:
+        """A fresh tune (deep link to the live edge): the label read belonged to the old tune."""
+        if self.labels.pop(target, None) is not None and target in self.book:
+            self.book.pop(target, None)   # rebuilt at behind 0 from the channel's samples / filter
+            self.get(target)
+
+    def labelled(self, target: str) -> bool:
+        """The edge model owns this target's delay: flag on and a label read for this tune."""
+        return self.edge_model and target in self.labels
+
+    def edge_measured(self, target: str) -> bool:
+        """This channel's delay was measured, not guessed: a label read, tonight's edge, or a calibrated edge.
+        The supervisor's delay_doubt re-anchors such a channel instead of resetting it to the defaults."""
+        return target in self.labels or target in self.edge_seen or target in self.calibrated
+
+    def _refresh_edge(self, target: str) -> None:
+        d = self.book[target]
+        if not self.edge_model:
+            return
+        lab = self.labels.get(target)
+        if lab is None:
+            # remember tonight's edge: a tune at the live edge, measured (not a default), and sure enough
+            if d.behind == 0.0 and not (self.held or {}).get(target) and d.source in ("sync", "tap", "screen") \
+                    and d.sigma <= float(self._ecfg("edge_max_sd_s")):
+                self.edge_seen[target] = (float(d.mu), float(d.sigma), float(d.calibrated_at or self._clock()))
+            return
+        e = self.edge(target)
+        if e is None:
+            return
+        behind, lsd, ts = lab
+        if d.base is None:
+            d.base = (d.mu, d.sigma, d.calibrated_at, d.source, d.drift_cap)
+        floor = self.sync_floor_for(target) if self.sync_floor_for is not None else self._sync_floor
+        d.behind = behind
+        d.mu = e[0] + behind
+        d.sigma = max(float(floor), math.hypot(e[1], lsd))
+        d.calibrated_at = ts
+        d.source, d.drift_cap = f"edge+label:{e[2]}", SETTLED_DRIFT_S
+
+    def reanchor(self, target: str) -> Delay | None:
+        """[delay_doubt, edge model] Rebuild a measured channel's delay from its edge + behind_live, keeping
+        the tune's behind_live (a reset that drops it would put a 60 s-behind picture 60 s "early")."""
+        if target not in self.book or not self.edge_measured(target):
+            return None
+        d = self.book[target]
+        behind = d.behind
+        lab = self.labels.get(target)
+        e = self.edge(target)
+        if e is None:
+            return None
+        self.book.pop(target, None)
+        nd = self.get(target)          # rebuilds from samples; a labelled target gets edge + label in _refresh
+        if lab is not None and self.on_label_stale is not None:
+            try:
+                self.on_label_stale(target)   # stalls widened the label read: ask for a fresh one (yttv_seek)
+            except Exception:
+                pass
+        if lab is None:
+            if nd.base is None:
+                nd.base = (nd.mu, nd.sigma, nd.calibrated_at, nd.source, nd.drift_cap)
+            nd.behind = behind
+            nd.mu = e[0] + behind
+            nd.sigma = max(float(self._sync_floor), e[1] + (0.0 if e[2] == "tonight" else SHARED_MARGIN_S))
+            nd.calibrated_at, nd.source, nd.drift_cap = self._clock(), f"edge:{e[2]}", 6.0
+        return nd
 
     def _refresh_model(self, target: str) -> None:
         if self.model == "channel" and not self._own(target):
@@ -496,6 +633,10 @@ class DelayBook:
         or 0 again (a fresh tune, a jump back to live). known_sd: the move was MEASURED (a hold or a
         stall timed on the stick's clock): the sync filter shifts by it instead of re-syncing."""
         d = self.get(target)
+        if self.labelled(target):
+            # [edge model] the overlay label measured this tune's behind_live; the hold timing does not move it
+            self._refresh(target)
+            return
         behind_s = max(0.0, behind_s)
         delta = behind_s - d.behind
         d.mu += delta
@@ -511,6 +652,14 @@ class DelayBook:
     def buffered(self, target: str) -> None:
         """The stream stalled: it's now further behind, and we're less sure by how much."""
         d = self.get(target)
+        if self.labelled(target):
+            # [edge model] the label read is stale by the stall: behind +3 s, its doubt +5 s, until re-read
+            b, sd, ts = self.labels[target]
+            self.labels[target] = (b + 3.0, sd + 5.0, ts)
+            self._refresh(target)
+            if self.sync is not None:
+                self.sync.tuned(target, new_stream=False)
+            return
         d.mu += 3.0
         d.sigma += 5.0
         if d.base is not None:

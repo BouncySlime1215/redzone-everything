@@ -1060,3 +1060,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Registered after EXP-603's interim NBA FAIL and a fit-night smoke (disclosed in the prereg). Known optimism: the
   re-check judges dead balls with the grader's dead_at on delivered plays, not the engine's may_cut, and skips the
   leave check; so a pass is a model pass that the shadow run must confirm before any card.
+- **2026-11-07 (Nick's Nov 6 10:15 PM order, item 3): new flag `delay.edge_model.enabled`, default false (OFF).**
+  With it on, a YouTube TV tune scrubbed back (yttv_seek) has delay = D_edge(channel) + behind_live, behind_live read
+  off the overlay time label (`Engine.label_behind`); D_edge = tonight's at-the-edge estimate, else calib.auto, else
+  `delay.edge_model.default` (youtubetv 25 s, sd 3, Nov 6 research). media_session's position (wrong after a seek)
+  and the pause-hold timing no longer move a labelled tune, and sync B never re-links it off media_session. The
+  supervisor's delay_doubt re-anchors a measured channel on its edge + behind_live instead of resetting it to
+  `delay.default` (that reset dropped a scrubbed tune's 60 s behind_live). Interval floor stays 4 s (Rule #1).

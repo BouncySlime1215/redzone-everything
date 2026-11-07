@@ -356,3 +356,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   close"). Separately `_crunch_go` returned True whenever the current game wasn't in crunch, so your team late and
   close lost to any neutral crunch. Lesson: every path that leaves a game (return, crunch hop, chase) has to ask the
   same "is this your team's endgame?" question; guarding only the "better game" path left three doors open.
+- 2026-11-07 (edge model): delay_doubt's reset popped the channel's Delay, and with it `behind` (what the tune is held
+  behind live). On a stick scrubbed 60 s back that turns the believed delay 60 s too short: every cut would plan the
+  dead ball a minute early. Lesson: a "reset to safe defaults" must keep what was MEASURED about this tune (its
+  behind_live), and only throw away what was guessed.

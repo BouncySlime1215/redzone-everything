@@ -26,6 +26,8 @@ Rules (name: what it notices -> what it does):
                     down -> start the adb server. Never presses a key.
   delay_doubt       A channel's delay uncertainty stays wide for 15 min -> rebuild it from its
                     samples, or fall back to the safe defaults (config delay.default/sigma_default).
+                    With delay.edge_model.enabled a MEASURED channel (label read, tonight's edge,
+                    calibrated edge) is re-anchored on D_edge + behind_live instead, never reset.
   finished_hold     "Watch this" / lock / focus left on a game that ended -> hand back to autopilot.
   log_growth        Logs, JSONL files, the image cache and the database WAL kept under their caps.
 
@@ -827,6 +829,19 @@ class Supervisor:
                 continue
             held = self._held(f"delay_doubt:{target}", sig > cap, now)
             if held < float(self.opt("doubt_s")):
+                continue
+
+            if getattr(delays, "edge_model", False) and delays.edge_measured(target):
+                # [edge model, Nick Nov 6 item 3] a measured channel is re-anchored on its edge + behind_live,
+                # never reset to the defaults (that dropped a scrubbed tune's 60 s behind_live)
+                def reanchor(target=target, old=(d.mu, sig)):
+                    nd = delays.reanchor(target)
+                    if nd is None:
+                        return False, "no edge to re-anchor on"
+                    return True, (f"{old[0]:.0f}±{old[1]:.0f}s -> {nd.mu:.0f}±{nd.sigma:.0f}s "
+                                  f"(re-anchored: edge + behind {nd.behind:.0f}s, {nd.source})")
+                if await self.fix("delay_doubt", target, "re-anchor measured delay", reanchor):
+                    self.since.pop(f"delay_doubt:{target}", None)
                 continue
 
             def reset(target=target, old=(d.mu, sig)):

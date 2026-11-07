@@ -207,6 +207,9 @@ class SyncProbe:
         self.edge = sync_edge.EdgeTracker()
         self.delay_of: Callable[[str], tuple[float, float] | None] = lambda target: None   # engine: sync filter
         self.edge_rows = 0
+        # [edge model] target -> behind_live_s read off the overlay label, or None (engine: DelayBook, flag on only).
+        # media_session's position is wrong after a seek: a labelled tune hands on the label, never forces live
+        self.label_of: Callable[[str], float | None] = lambda target: None
         # [SYNC B] (target, row): a stick plays behind its live edge without the app asking for it; the engine
         # re-links it to live (flags sync.edge.force_live / force_live_visible, off)
         self.on_force_live: Callable[[str, dict], bool] | None = None
@@ -439,6 +442,16 @@ class SyncProbe:
             if row is None:
                 continue
             rows.append(row)
+            try:
+                lab = self.label_of(target)
+            except Exception:
+                lab = None
+            if lab is not None:
+                row["pos_after_seek"] = True   # media_session's figure logged for the record only
+                row["label_behind_s"] = round(float(lab), 2)
+                if isinstance(live, dict):
+                    live[stick.host] = float(lab)
+                continue
             if isinstance(live, dict) and row.get("behind_live_s") is not None:
                 live[stick.host] = row["behind_live_s"]
             real = getattr(c, "behind_real", None)
