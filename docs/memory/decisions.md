@@ -1174,3 +1174,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   d936ff31).** Nick's stick run at 28286690: asked 90, landed 91.3 / 91.5 s in 17.5-28 s, 3 of 3 ok (one "probe close
   may have committed"). Those landings were estimated from the knob, not label-read; the label-measured landing waits
   on a run with #385 + #391 together (b490ab86 / d936ff31).
+- 2026-11-07 (integrator, EXP-610 diagnostic, report-only, not a verdict): **the EXP-610 resync failure is the known NBA
+  leave-gate blocker.** Trace: on 20261024 a GS@PHX Q1 leave gate held 930 s while WSH played 2:09 -> 0:02 of Q4.
+  The resync arm re-run with decider.leave.low_leverage=[nba] on both arms holds every gate (dev mid-play 10/9/11 ->
+  6/4/3, clock-truth 9/8/9 -> 2/2/0, your-team crunch 100%, switches 1.29x, primary +8.9 [1.5]). Read after the
+  verdict, so it decides nothing; the default stays on Nick's RC6.3 card. NBA RC8 still needs: Nick's low_leverage
+  call, the shadow run, live drop-and-re-pick past 25 s modelled, and a label-measured #391 landing.
