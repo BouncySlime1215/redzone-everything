@@ -586,6 +586,7 @@
     "redzone/control.py",
     "redzone/crunch.py",
     "redzone/decider/decider.py",
+    "redzone/decider/screen.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
     "redzone/lab/backtest.py",
@@ -602,6 +603,7 @@
     "redzone/standby.py",
     "redzone/supervisor.py",
     "redzone/sync_probe.py",
+    "redzone/tuners/adb.py",
     "redzone/web/phone_v2.py",
     "redzone/web/server.py",
     "scripts/backtest.py",
@@ -1206,6 +1208,7 @@
     "redzone/tuners/adb.py",
     "redzone/tuners/prime_multiview.py",
     "redzone/tuners/tuners.py",
+    "redzone/tuners/yttv_seek.py",
     "redzone/tv.py",
     "uses:flip_bound",
     "uses:seek_model"
@@ -1469,6 +1472,7 @@
   "redzone/decider/screen.py": {
    "contracts": [],
    "inputs": [
+    "redzone/config.py",
     "redzone/decider/cuts.py",
     "redzone/decider/delaymodel.py",
     "redzone/decider/sync.py",
@@ -1965,6 +1969,7 @@
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
     "scripts/noggin_selfplay.py",
+    "scripts/scrub_flip_replay.py",
     "scripts/train_noggin_pick.py"
    ],
    "owner": "INTEGRATION",
@@ -3737,7 +3742,9 @@
     "redzone/tuners/adb.py",
     "redzone/tuners/screen_prompts.py",
     "redzone/tuners/tuners.py",
+    "redzone/tuners/yttv_label.py",
     "redzone/tuners/yttv_search.py",
+    "redzone/tuners/yttv_seek.py",
     "scripts/find_yttv_code.py",
     "scripts/multiview_probe.py",
     "scripts/prime_search_trial.py"
@@ -4115,6 +4122,7 @@
   "redzone/tuners/adb.py": {
    "contracts": [],
    "inputs": [
+    "redzone/config.py",
     "redzone/platform/breaker.py",
     "redzone/screen_ocr.py"
    ],
@@ -4133,6 +4141,7 @@
     "redzone/tuners/providers.py",
     "redzone/tuners/screen_prompts.py",
     "redzone/tuners/tuners.py",
+    "redzone/tuners/yttv_label.py",
     "redzone/tuners/yttv_search.py",
     "redzone/tvsetup.py",
     "scripts/doctor.py",
@@ -4338,6 +4347,23 @@
     "STK-04"
    ]
   },
+  "redzone/tuners/yttv_label.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/screen_ocr.py",
+    "redzone/tuners/adb.py"
+   ],
+   "kind": "module",
+   "outputs": [],
+   "owner": "SWITCHING",
+   "role": "[YTTV scrub buffer, item 2] Read YouTube TV's overlay time label -> numbers only.",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
   "redzone/tuners/yttv_search.py": {
    "contracts": [],
    "inputs": [
@@ -4357,6 +4383,24 @@
    ],
    "owner": "SWITCHING",
    "role": "Bounded YouTube TV library inspection using observed menu geometry.",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/yttv_seek.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/screen_ocr.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/control.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[YTTV scrub buffer, item 1] Put a YouTube TV stick a set time behind live by scrubbing the player overlay.",
    "serves": [
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -5824,6 +5868,19 @@
     "untagged"
    ]
   },
+  "scripts/scrub_flip_replay.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/backtest.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[scrub entry, item 4] REPORT ONLY, not a grader: the EXP-601 replay with the hidden stick buffered by the overlay scrub (control._scrub_into) instead of a pa...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/service.py": {
    "contracts": [],
    "inputs": [
@@ -6174,10 +6231,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 338,
-  "orphans": 14,
-  "unowned": 176,
-  "untagged": 282
+  "modules": 341,
+  "orphans": 15,
+  "unowned": 177,
+  "untagged": 283
  },
  "version": 1
 }
