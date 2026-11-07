@@ -109,13 +109,13 @@ def test_not_hidden_presses_nothing():
     assert not r.ok and s.keys == []
 
 
-@pytest.mark.parametrize("focus,why", [("row", "row button"), ("none", "overlay not up")])
+@pytest.mark.parametrize("focus,why", [("row", "row button"), ("none", "no scrub label")])
 def test_focus_guard_fails_closed_before_any_left(focus, why):
     """#356: LEFT with unknown focus seeked a stick 60 s. No LEFT unless the bar provably has focus."""
     s, log = FakeYTTV(focus=focus), []
     r = run(s, relink=relinker(log))
     assert not r.ok and why in r.reason, r
-    assert "KEYCODE_DPAD_LEFT" not in s.keys and not r.committed
+    assert not r.committed and s.committed_back == 0 and (focus == "none" or "KEYCODE_DPAD_LEFT" not in s.keys) and not r.committed
     assert log == ["relink"] and r.relinked is True        # the overlay was opened: re-link to live
 
 
@@ -125,7 +125,7 @@ def test_unreadable_overlay_fails_closed():
     async def blind(_s):
         return None
     r = run(s, read_overlay=blind, relink=relinker(log))
-    assert not r.ok and "unreadable" in r.reason and "KEYCODE_DPAD_LEFT" not in s.keys and log == ["relink"]
+    assert not r.ok and "no scrub label" in r.reason and "KEYCODE_DPAD_LEFT" not in s.keys and log == ["relink"]
 
 
 def test_knob_that_moved_the_wrong_amount_is_not_committed():
@@ -181,17 +181,16 @@ def test_parse_overlay_rules():
     assert ys.mmss("12:75") is None and ys.mmss("1:05") == 65
 
 
-def test_live_banner_after_a_tune_is_closed_before_any_left():
-    """Live, Nov 6: for ~20 s after a tune CENTER shows a LIVE/title banner, not the player overlay; LEFT does nothing."""
+def test_live_banner_after_a_tune_is_closed_before_the_scrub():
+    """Live, Nov 6: after a tune a LIVE/title banner looks like the overlay but keys do nothing; no label = reopen."""
     s = FakeYTTV()
     base, seen = reader(s), []
 
     async def read(st):
         seen.append(1)
-        if len(seen) == 1:                                 # the banner: row text, no CC button
-            return ys.parse_overlay([{"text": "Networks", "x": .3, "y": .9}])
+        if len(seen) <= 2:                                 # banner: open read + the probe read, no scrub label
+            return ys.parse_overlay([{"text": "cc", "x": .2, "y": .9}, {"text": "Networks", "x": .3, "y": .9}])
         return await base(st)
 
     r = run(s, 60.0, read_overlay=read)
     assert r.ok and r.committed and r.presses == 4, r
-    assert s.keys[:3] == ["KEYCODE_DPAD_CENTER"] * 3
