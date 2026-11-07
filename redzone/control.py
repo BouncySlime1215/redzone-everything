@@ -1644,6 +1644,9 @@ class Controller:
         """[replay on the scrub, Nick Nov 7] Park the HIDDEN stick park_lead_s before the snap by the label-measured
         overlay scrub (redzone/tuners/replay_park.py). False = keep the current game (fails closed)."""
         from redzone.tuners import replay_park
+        backoff = self.__dict__.setdefault("_replay_scrub_backoff", {})
+        if time.time() < backoff.get(target, 0.0):
+            return False   # a failed replay scrub isn't retried for replay.scrub_retry_s (no key storms)
         if self._task is asyncio.current_task():
             self.stage["stage"] = "rewinding"
         probe = self.label_probe
@@ -1662,6 +1665,8 @@ class Controller:
         self._last_seek_sent = r.lefts
         if not r.ok:
             log.info("replay scrub %s on %s: %s", target, stick.host, r.reason)
+            # [CI night, Nov 7] without this the planner re-parked the same replay every ~5 s: a key storm
+            backoff[target] = time.time() + float(self.cfg.get("replay.scrub_retry_s", 120.0))
             return False
         self.latency.record("seek", r.took_s)
         log.info("replay scrub %s on %s: %s", target, stick.host, r.steps[-1] if r.steps else r.reason)

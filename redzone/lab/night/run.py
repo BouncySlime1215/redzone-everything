@@ -253,6 +253,9 @@ class Night:
             "reel": {"enabled": False},
             "autonomy": {"enabled": False},
             "plan": {"verify": False},
+            # the house models MEDIA_REWIND, not YouTube TV's overlay scrub (its player pauses on CENTER and its video
+            # is DRM-black, so a label read can't succeed): the night keeps the key path for catch-up replays
+            "replay": {"yttv_seek": "keys"},
         }
         for k, v in (self.cfg_set or {}).items():
             if k.startswith("league_overrides.") and k.count(".") >= 2:   # league_overrides.<lg>.<flat dotted key>,

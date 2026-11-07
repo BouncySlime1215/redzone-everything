@@ -634,6 +634,7 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   scrub_slack_s: 4         # playing (not frozen) time in a scrub: one more LEFT's worth of room is planned for it
   park_wait_max_s: 40      # a scrub landing more than this before the park point fails closed (holds the stick)
   park_max_age_s: 90       # a YouTube TV park older than this is never rolled (a 120 s pause reset the position, Nov 6)
+  scrub_retry_s: 120       # a failed replay scrub on a channel isn't tried again for this long (no key storms)
   yttv_max_lefts: 8        # never more LEFTs than this (8 = 120 s of knob): a deeper catch-up is not seeked
   yours_first: true        # your team's missed big plays: replayed before other games' and over ordinary live play
   apps: [youtubetv]        # apps where rewinding live TV works
