@@ -3291,10 +3291,14 @@ class Controller:
                 return self.hidden is hid and self.hidden_target == t and not self._flipping
 
             async def relink() -> bool:
-                # behind_on = t makes _tune go through another channel first (#391: a same-channel deep link
-                # does not reset the stick), so the label is read at a fresh live edge, as in Nick's method
-                hid.behind_on = t
-                return bool((await self._tune(hid, t)).ok) and still_hidden()
+                # through another channel first (#391: a same-channel deep link does not reset the stick), so the
+                # label is read at a fresh live edge, as in Nick's method. [Nick's 61fdcc84 run, Nov 7: 2/12 tunes
+                # back right after the reset said "video never started"] a relink_gap_s pause between the two.
+                tuner = TUNERS.get("youtubetv")
+                if tuner is None or await self._reset_through_other(hid, t, tuner) is not None or not still_hidden():
+                    return False
+                await asyncio.sleep(float(self.cfg.get("delay.edge_prior.refresh.relink_gap_s", 3.0) or 0.0))
+                return still_hidden() and bool((await self._tune(hid, t)).ok) and still_hidden()
             try:
                 r = await ep.measure(hid, relink=relink, still_hidden=still_hidden, channel=t.split(":", 1)[1])
             except Exception:

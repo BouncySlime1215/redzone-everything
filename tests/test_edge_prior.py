@@ -255,6 +255,7 @@ async def _preload(c, target):
 
 def test_tick_reads_the_hidden_stick_through_a_fresh_edge_and_stays_ready(two):  # noqa: F811
     c, tuner = two
+    c.cfg.update({"delay": {"edge_prior": {"refresh": {"relink_gap_s": 0}}}})
     run(_preload(c, "youtubetv:fox"))
     assert c.hidden_ready and c.hidden_target == "youtubetv:fox"
     got = []
@@ -278,8 +279,27 @@ def test_tick_never_touches_a_buffered_standby_or_the_visible_stick(two):  # noq
     assert tuner.calls == [] and c.edge_probe.calls == []
 
 
+def test_tick_waits_between_the_reset_tune_and_the_tune_back(two, monkeypatch):  # noqa: F811
+    """Nick's 61fdcc84 run: 2/12 tunes back right after the reset said 'video never started'."""
+    import redzone.control as ctl
+    c, tuner = two
+    run(_preload(c, "youtubetv:fox"))
+    slept, real = [], asyncio.sleep
+
+    async def sleep(s):
+        slept.append((s, [x[1] for x in tuner.calls]))
+        await real(0)
+    monkeypatch.setattr(ctl.asyncio, "sleep", sleep)
+    c.edge_probe = TickProbe()
+    tuner.calls.clear()
+    run(c._edge_probe_tick())
+    assert (3.0, ["youtubetv:espn"]) in slept           # after the reset tune, before the tune back
+    assert [x[1] for x in tuner.calls] == ["youtubetv:espn", "youtubetv:fox"]
+
+
 def test_tick_skips_a_failed_read_and_drops_ready_on_a_failed_tune(two):  # noqa: F811
     c, tuner = two
+    c.cfg.update({"delay": {"edge_prior": {"refresh": {"relink_gap_s": 0}}}})
     run(_preload(c, "youtubetv:fox"))
     got = []
     c.on_edge_read = lambda *a: got.append(a)

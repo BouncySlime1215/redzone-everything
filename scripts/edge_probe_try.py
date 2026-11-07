@@ -40,10 +40,12 @@ async def main(host: str, channels: list[str], reset: str, repeat: int, gap_s: f
         other = (reset.lower().replace(" ", "") or next((k for k in sorted(cm.codes) if k != ch), ""))
 
         async def relink(ch=ch, other=other) -> bool:
-            for c in (other, ch):
+            for i, c in enumerate((other, ch)):
                 code = cm.yttv_code(f"youtubetv:{c}")
                 if not c or not code:
                     return False
+                if i:   # [Nick's 61fdcc84 run: 2/12 "video never started" on the quick tune back] a short gap
+                    await asyncio.sleep(float(probe._c("relink_gap_s", 3.0)))
                 r = await tuner.tune(stick, code, f"youtubetv:{c}")
                 if not r.ok:
                     print(json.dumps({"relink": c, "ok": False, "error": r.error}))
