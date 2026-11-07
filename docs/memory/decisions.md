@@ -1067,3 +1067,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   and the pause-hold timing no longer move a labelled tune, and sync B never re-links it off media_session. The
   supervisor's delay_doubt re-anchors a measured channel on its edge + behind_live instead of resetting it to
   `delay.default` (that reset dropped a scrubbed tune's 60 s behind_live). Interval floor stays 4 s (Rule #1).
+- **2026-11-06 22:15 ET (Nick, scrub-buffer order item 2): new flag `timing.behind_live_s.label_reader`, default
+  false.** YouTube TV's overlay time label is the behind-live truth meter after a scrub seek (media_session is wrong
+  after a seek). Reader: screencap -> private temp file -> local Vision OCR -> numbers only, file deleted in a
+  `finally`; a read whose frame could not be deleted is discarded. No keys pressed by the reader, no DRM bypass.
+  Code: redzone/tuners/yttv_label.py. No live config change; nothing reads the flag on Nick's screen yet.
