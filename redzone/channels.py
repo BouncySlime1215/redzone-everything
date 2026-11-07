@@ -84,6 +84,10 @@ class ChannelMap:
         self.overrides: dict[str, str] = {}    # game_id -> target
         self.team_rules: dict[str, str] = {}   # "nfl:WSH" -> target (sticky preferences)
         self.prime_gti: dict[str, str] = {}    # game_id -> Prime GTI
+        # tuners.espn_links (set by the engine): ESPN app event links count as tunable. Off: 0 of 15
+        # tries opened on the Fire TV ESPN app (Nov 2-5, "unable to resolve Intent" for the
+        # www.espn.com/watch/player link), and each one cost a 3-21 s failed tune.
+        self.espn_links = False
         self.st_slots: dict[str, str] = {}     # game_id -> Sunday Ticket slot code
         self.espn_ids: dict[str, str] = {}     # game_id -> ESPN watch id (ESPN+ events)
         self.st_codes: list[str] = []          # YouTube TV codes of "NFL Sunday Ticket 1..16" (fixed)
@@ -201,7 +205,8 @@ class ChannelMap:
         if g.game_id in self.st_slots:
             return Where(f"youtubetv:ev:{self.st_slots[g.game_id]}", "ESPN+ · YouTube TV", "sure", True)
         if g.game_id in self.espn_ids:
-            return Where(f"espn:{self.espn_ids[g.game_id]}", "ESPN+ · ESPN app", "likely", True)
+            t = f"espn:{self.espn_ids[g.game_id]}"
+            return Where(t, "ESPN+ · ESPN app", "likely", self._tunable(t))
         return Where("youtubetv:espnplus", "ESPN+ (event link not found yet)", "likely", False)
 
     def apply_links(self, g: GameState, found: dict, my_teams: set[str]) -> None:
@@ -254,7 +259,7 @@ class ChannelMap:
         if app == "prime":
             return rest.startswith("amzn1.")
         if app == "espn":
-            return bool(rest)
+            return self.espn_links and bool(rest)
         return False
 
     def yttv_search_key(self, target: str) -> str | None:

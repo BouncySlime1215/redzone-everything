@@ -951,6 +951,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   agreement with the oracle >= 65% in the worst league; PENDING until a card carries watch_value. A 0-1 calibration
   value is read as a fraction and scaled to points (errs toward FAIL). `scripts/sync_truth_wv.py` (#353, lane 2) is an
   offline ledger input, not a gate, and is not frozen. Grader freeze v33.
+- 2026-11-06 (YTTV switching owner thread, Nick's 3:14 AM nudge: "failing ESPN app links (ANA@EDM, NSH@COL)"):
+  new default `tuners.espn_links: false`. ESPN app event links no longer count as tunable, because 0 of 15 tries
+  opened on the Fire TV ESPN app from Nov 2 to Nov 5 (the www.espn.com/watch/player link gets "unable to resolve
+  Intent" on com.espn.gtv). Each try cost a 3 to 21 s failed tune, and on Nov 5 that was the night's first pick
+  (ANA@EDM). Turn it back on once a link format is verified on the stick in a no-game window.
 - 2026-11-06 (lane 4, Nick via the overseer 3:14 AM ET: "fix deploy test timing"): `scripts/deploy.py` runs its test step at
   `nice -n 10` by default instead of `taskpolicy -b`. Reason: on the Mac the suite took 30 min at nice 10 but timed out at
   60 min under taskpolicy -b (efficiency cores). `test_priority: background` in deploy/deploy.yaml restores taskpolicy -b;

@@ -765,6 +765,8 @@ def test_nhl_network_without_a_code_uses_espn_plus_and_prime_channels_are_not_su
     g = game("BOS", "VGK", league=League.NHL, gid="g5", broadcasts=["NHL Net", "NESN"])
     assert cm.where(g).target == "youtubetv:nhlnetwork"     # nothing better known yet
     cm.espn_ids[g.game_id] = "abc"
+    assert cm.where(g).target == "youtubetv:nhlnetwork"     # ESPN app links off (tuners.espn_links)
+    cm.espn_links = True
     assert cm.where(g).target == "espn:abc"
     cm.codes["nhlnetwork"] = "CODE"
     assert cm.where(g).target == "youtubetv:nhlnetwork"

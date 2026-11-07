@@ -72,6 +72,7 @@ class Engine:
         self.cfg = cfg or Config()
         self.store = store or Store()
         self.channels = ChannelMap()
+        self.channels.espn_links = bool(self.cfg.get("tuners.espn_links", False))
         self.fetcher = Fetcher()
         # [NHL primary] api-web's live play-by-play owns NHL stoppages while it's fresh.
         self._nhl_primary = bool(for_league(self.cfg, "sources.nhl_primary", "nhl", False))
