@@ -546,7 +546,18 @@ class ChannelHunt:
 # Channel-page search tune (Nov 7, hidden stick): search -> 3 s -> DOWN -> 1.5 s -> Select tuned 4/4 locals
 # (Select alone from the search page 0/4 by hand); Select at the starting focus is kept as the fallback
 # (it worked once in the --blind hunt, dce27c18, after a reopened search).
-CHANNEL_PAGE_PATHS = (("KEYCODE_DPAD_DOWN",), ())
+# Nov 7 12:23 (live app, UCLA@MINN on FOX 50): DURING A LIVE GAME the page differs: focus starts on the header
+# search icon, DOWN 1 is 'Top picks' (recorded newscasts), DOWN 2 is 'On now & upcoming' whose first tile is the
+# LIVE game; Select opens a 'How would you like to begin watching?' sheet with 'Join live' focused (above 'Watch
+# in multiview'), CENTER plays the game. ABC 11 tuned live with 1 DOWN (12:29), so 1 DOWN stays first (FOX's
+# 1 DOWN lands on a Top picks recording, dropped in ~5 s), then 2, then 3, then Select at the start. Every
+# path is checked by the media session; OCR row titles can't tell the layouts apart (both show 'Top picks').
+_D = "KEYCODE_DPAD_DOWN"
+CHANNEL_PAGE_PATHS = ((_D,), (_D, _D), (_D, _D, _D), ())
+JOIN_LIVE_RE = re.compile(r"\bjoin live\b")
+BEGIN_SHEET_RE = re.compile(r"how would you like to begin watching")
+CHANNEL_PAGE_SHEET_S = 1.5
+CHANNEL_PAGE_RECORDING_S = 5.0
 # A live YouTube TV channel's playhead is its stream clock (ESPN ~46,800 s on Nov 6); a recording starts near 0.
 LIVE_MIN_MS = 30 * 60 * 1000
 CHANNEL_PAGE_DOWN_S = 3.0
@@ -799,11 +810,13 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
             await sleep(1.0)
         return None
 
-    async def subtitle_confirmed(before, seconds=CHANNEL_PAGE_WAIT_S):
-        """Only the subtitle counts (the channel field, 'ABC 11 Eyewitness News at 9AM, ABC 11'), and it
-        must contain the query itself ('ABC 11', not 'ABC News Live'); the session must have changed
-        and the playhead must be live. Returns (evidence or None, why not)."""
-        t0, why = clock(), "nothing played"
+    async def subtitle_confirmed(before, joined=False, seconds=CHANNEL_PAGE_WAIT_S):
+        """Only the subtitle counts (the channel field, 'UCLA at Minnesota, FOX 50'), and it must contain
+        the query itself ('ABC 11', not 'ABC News Live'); the session must have changed. Live: a stream-clock
+        playhead (>= LIVE_MIN_MS), or 'Join live' was pressed on this attempt and it is playing (right after
+        Join live the position reads 0, Nov 7). A same-station recording (Top picks) is dropped after
+        CHANNEL_PAGE_RECORDING_S. Returns (evidence or None, why not)."""
+        t0, why, rec_at = clock(), "nothing played", None
         while clock() - t0 < seconds:
             ev = await stickio.read_evidence(stick, pkg, with_screen=False)
             record("media", f"{ev.summary()} pos={ev.position}")
@@ -811,11 +824,35 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
                     and ev.subtitle and names_channel(ev.subtitle, key, table) and _contains(ev.subtitle, query)):
                 if ev.position is not None and ev.position >= LIVE_MIN_MS:
                     return ev, ""
+                if joined and ev.state == "playing":
+                    return ev, ""
                 why = f"{ev.meta_text!r} at {ev.position} ms is a recording, not live"
+                rec_at = rec_at if rec_at is not None else clock()
+                if not joined and clock() - rec_at >= CHANNEL_PAGE_RECORDING_S:
+                    return None, why
             elif ev.meta_text and ev.meta_text != getattr(before, "meta_text", None):
                 why = f"plays {ev.meta_text!r}"
             await sleep(1.0)
         return None, why
+
+    async def join_live_sheet() -> bool:
+        """After Select: the 'How would you like to begin watching?' sheet opens with 'Join live' focused.
+        CENTER once on it; anything else (no sheet, unreadable video frame) presses nothing. Never multiview."""
+        await sleep(CHANNEL_PAGE_SHEET_S)
+        try:
+            frame = await read()
+        except RuntimeError as exc:          # playing video is DRM-black: no sheet to answer
+            record("channel_page", f"no sheet read ({exc})")
+            return False
+        t = normalize_text(frame.text)
+        if not (BEGIN_SHEET_RE.search(t) and JOIN_LIVE_RE.search(t)):
+            return False
+        focus = unique_focus(frame)
+        if focus is not None and "multiview" in normalize_text(focus_text(frame, focus)):
+            raise RuntimeError("begin-watching sheet has 'Watch in multiview' focused; not pressing it")
+        await press("KEYCODE_DPAD_CENTER")
+        record("channel_page", "begin-watching sheet: Join live")
+        return True
 
     async def channel_page_select(before):
         misses = []
@@ -833,9 +870,10 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
             await press("KEYCODE_DPAD_CENTER")
             label = "+".join(c.replace("KEYCODE_DPAD_", "") for c in path) or "start"
             record("channel_page", f"ring unread: {label} -> Select")
-            ev, why = await subtitle_confirmed(before)
+            joined = await join_live_sheet()
+            ev, why = await subtitle_confirmed(before, joined=joined)
             if ev is not None:
-                hunt.tile = f"(channel page: {label})"
+                hunt.tile = f"(channel page: {label}{' + Join live' if joined else ''})"
                 return ev
             misses.append(f"{label}: {why}")
             record("channel_page", f"miss {misses[-1]}; BACK")
