@@ -521,6 +521,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         calibrate_targets: bool = False,
         hidden_stick: str | None = None, hold_overrun: float = 1.0, behind_live_s: float | None = None,
         hs_entry: str = "hold", hs_recheck: bool = False, hs_prime_edge: bool = False,
+        hs_resync_prime_edge: bool = False,
         on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
@@ -612,10 +613,18 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             d.sigma = sigma
     sync = None
     anchors = anchors and bool(cfg.get("sync.break_anchor.enabled", False))
+
+    def _pin_edge(gid: str) -> float:
+        """[EXP-607] With hs_resync_prime_edge, the re-sync prior of a Prime target is its live edge, as the
+        app's own book starts it (EXP-605 prime_b); off, every pin is lag_total (EXP-605 byte for byte)."""
+        if not hs_resync_prime_edge:
+            return 0.0
+        tg = (targets or {}).get(gid, f"youtubetv:{gid}") if calibrate_targets else f"youtubetv:{gid}"
+        return prime_b if tg.startswith("prime:") else 0.0
     if resync or anchors:
         sync = _attach_resync(delays, cfg, pinned=None if channel_spread > 0 else
                               {((targets or {}).get(r.gid, f"youtubetv:{r.gid}") if calibrate_targets
-                                                          else f"youtubetv:{r.gid}"): (lag_total, sigma, t0)
+                                                          else f"youtubetv:{r.gid}"): (lag_total - _pin_edge(r.gid), sigma, t0)
                                                          for r in replays})
         tgt_of = {r.gid: (targets or {}).get(r.gid, f"youtubetv:{r.gid}") for r in replays}
         noise = random.Random(seed * 7_000_003 + 17)
