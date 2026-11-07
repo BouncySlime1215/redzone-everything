@@ -1266,7 +1266,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   up ~1.4-1.8 s; 15 n + 19.2 drifted -3.9 .. +4.9 s with depth (the T120 off_target). Calibration converts old rows.
 - 2026-11-07 (overseer's hidden-stick check before college football: channels.json fox/cbs are the Sunday Ticket
   mirror codes, 'SIGN OFF | NFL ST - FOX'; 'NBC' search never started; ABC had no route; no local leaks a provable
-  watch code; station-name search -> channel page -> Select at start played FOX 50, CBS 17, WRAL, ABC 11 live in
-  12-15 s): **new flag `tuners.yttv_local_search: false`**. On: abc/cbs/fox/nbc tune by search (ABC 11 / CBS 17 /
+  watch code; station-name search -> channel page -> DOWN -> Select played FOX 50, CBS 17, WRAL, ABC 11 live, 4/4;
+  Select alone from the search page 0/4): **new flag `tuners.yttv_local_search: false`**. On: abc/cbs/fox/nbc tune by search (ABC 11 / CBS 17 /
   FOX 50 / WRAL), accepted only on a media-session subtitle naming the station AND a live playhead (>= 30 min),
   else BACK; fox/cbs ST mirror codes skipped except on Sundays. Off: routing unchanged. Nick flips it.

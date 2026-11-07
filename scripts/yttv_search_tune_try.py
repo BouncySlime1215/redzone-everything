@@ -4,8 +4,8 @@ YouTubeTVTuner.tune). Reads data/channels.json, writes nothing (no channels.json
 
     .venv/bin/python scripts/yttv_search_tune_try.py <hidden stick ip[:port]> abc,cbs,fox,nbc
 
-Per station: search (WRAL / ABC 11 / CBS 17 / FOX 50) -> channel page -> Select at the starting focus,
-else reopen + DOWN + Select; accepted only on a media-session subtitle naming the station AND a live
+Per station: search (WRAL / ABC 11 / CBS 17 / FOX 50) -> channel page -> DOWN -> Select, else reopen
++ Select at the starting focus; accepted only on a media-session subtitle naming the station AND a live
 playhead, else BACK. Run it only on the stick that is NOT on screen. The stick address is never printed.
 """
 import asyncio

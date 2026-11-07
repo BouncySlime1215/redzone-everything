@@ -53,23 +53,22 @@ def key_times(h):
     return {s["detail"]: s["at_s"] for s in h.steps if s["action"] == "key"}
 
 
-async def test_select_at_start_confirmed_by_subtitle_and_live_playhead():
+async def test_down_select_confirmed_by_subtitle_and_live_playhead():
     stick, h = await hunt(copy.deepcopy(FX))
     assert h.status == "confirmed", h.reason
-    assert keys(stick) == ["KEYCODE_DPAD_CENTER"]
+    assert keys(stick) == ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER"]
     assert "ABC 11" in h.description
-    assert key_times(h)["KEYCODE_DPAD_CENTER"] >= 3.0          # >= 3 s after the search link
+    t = [s["at_s"] for s in h.steps if s["action"] == "key"]
+    assert t[0] >= 3.0 and t[1] - t[0] >= 1.5          # >= 3 s after the link, >= 1.5 s after DOWN
 
 
-async def test_recording_at_start_backs_out_then_down_select():
+async def test_recording_after_down_backs_out_then_select_at_start():
     fx = copy.deepcopy(FX)
-    fx["scenes"]["channel_page"]["keys"]["KEYCODE_DPAD_CENTER"] = "play:Abc11Rec001"
+    fx["scenes"]["on_now"]["keys"]["KEYCODE_DPAD_CENTER"] = "play:Abc11Rec001"
     stick, h = await hunt(fx)
     assert h.status == "confirmed", h.reason
-    assert keys(stick) == ["KEYCODE_DPAD_CENTER", "KEYCODE_BACK", "KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER"]
+    assert keys(stick) == ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER", "KEYCODE_BACK", "KEYCODE_DPAD_CENTER"]
     assert sum(c.startswith("view ") and "/search" in c for c in stick.calls) == 2
-    downs = [s["at_s"] for s in h.steps if s["action"] == "key"]
-    assert downs[3] - downs[2] >= 1.5                            # Select >= 1.5 s after DOWN
 
 
 async def test_title_only_mention_is_refused_and_backs_out():
