@@ -1380,6 +1380,7 @@
     "redzone/lab/night/run.py",
     "redzone/lab/tune.py",
     "redzone/supervisor.py",
+    "scripts/exp607_trace_prime_belief.py",
     "scripts/fault_drill.py"
    ],
    "owner": "DECISION",
@@ -1966,6 +1967,7 @@
     "scripts/eval.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
+    "scripts/exp607_trace_prime_belief.py",
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
     "scripts/noggin_selfplay.py",
@@ -5160,6 +5162,20 @@
     "untagged"
    ]
   },
+  "scripts/exp607_trace_prime_belief.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/decider/decider.py",
+    "redzone/lab/backtest.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-607, info only] Trace believed vs true delay for Prime targets at each switch decision (EXP-605 resync).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/export_decision_records.py": {
    "contracts": [],
    "inputs": [
@@ -6247,10 +6263,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 342,
+  "modules": 343,
   "orphans": 15,
-  "unowned": 178,
-  "untagged": 284
+  "unowned": 179,
+  "untagged": 285
  },
  "version": 1
 }
