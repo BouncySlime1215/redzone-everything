@@ -1235,8 +1235,10 @@
     "redzone/tuners/adb.py",
     "redzone/tuners/join_watchdog.py",
     "redzone/tuners/prime_multiview.py",
+    "redzone/tuners/replay_park.py",
     "redzone/tuners/session_guard.py",
     "redzone/tuners/tuners.py",
+    "redzone/tuners/yttv_label.py",
     "redzone/tuners/yttv_seek.py",
     "redzone/tv.py",
     "uses:flip_bound",
@@ -4258,6 +4260,7 @@
     "scripts/prime_pause_try.py",
     "scripts/prime_search_trial.py",
     "scripts/providers_check.py",
+    "scripts/replay_park_try.py",
     "scripts/rz.py",
     "scripts/screen_lab.py",
     "scripts/session_drill.py",
@@ -4484,6 +4487,25 @@
     "STK-04"
    ]
   },
+  "redzone/tuners/replay_park.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/tuners/yttv_seek.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/control.py",
+    "scripts/replay_park_try.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[replay on the scrub, Nick Nov 7 1:02 PM ET] Park a HIDDEN YouTube TV stick just before a big play's snap.",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
   "redzone/tuners/screen_prompts.py": {
    "contracts": [],
    "inputs": [
@@ -4579,7 +4601,9 @@
    "kind": "module",
    "outputs": [
     "redzone/canary.py",
+    "redzone/control.py",
     "redzone/engine.py",
+    "scripts/replay_park_try.py",
     "scripts/watchdog_try.py",
     "scripts/yttv_scrub_try.py"
    ],
@@ -4628,6 +4652,7 @@
     "redzone/control.py",
     "redzone/tuners/join.py",
     "redzone/tuners/prime_pause.py",
+    "redzone/tuners/replay_park.py",
     "redzone/tuners/yttv_label.py",
     "scripts/session_drill.py",
     "scripts/yttv_scrub_try.py"
@@ -6105,6 +6130,21 @@
     "untagged"
    ]
   },
+  "scripts/replay_park_try.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/tuners/adb.py",
+    "redzone/tuners/replay_park.py",
+    "redzone/tuners/yttv_label.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Park the HIDDEN YouTube TV stick just before a big play's snap (redzone/tuners/replay_park.py), then PLAY on Enter.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/retrosheet_plays.py": {
    "contracts": [],
    "inputs": [
@@ -6596,10 +6636,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 360,
+  "modules": 362,
   "orphans": 14,
-  "unowned": 189,
-  "untagged": 296
+  "unowned": 190,
+  "untagged": 297
  },
  "version": 1
 }
