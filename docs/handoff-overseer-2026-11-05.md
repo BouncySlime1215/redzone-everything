@@ -128,3 +128,14 @@ watches. Weekly usage hard stop 88% (now 63%). Repo is PUBLIC: no raw ESPN/web d
 ### Readiness tables
 Coordinator posts at 12, 3, 6 PM (it said it sends them to Nick directly). Overseer: every :07/:37 check usage + coordinator + Colab,
 push STATUS, keep the 88% stop in mind.
+
+## Update Nov 7, 3:15 AM: YouTube TV and Prime can run behind live
+
+Nick's plan: (1) finish hardware: flip, ad breaks, eyes on the picture; (2) wire join, verify, fallback into the app and shadow on real games; (3) the brain, heavily trained; (4) settings. Goal now: join a chosen spot accurately. Plays seen is the model's job later.
+
+- **YouTube TV:** overlay scrub (CENTER, LEFT x N at 15 s, CENTER). 71 of 72 across 8 channels, both sticks; 31-min live hold. Join error about -3 s, +-3 s; targets in 15 s steps. Pause does not hold. Rewind keys don't seek. media_session is wrong after a seek; the overlay label is the truth. Same-channel deep link does not return to live; go through another channel.
+- **Prime:** MEDIA_PAUSE then MEDIA_PLAY holds; lands within 1-2 s; timecode is the truth. Rewind overshoots. Detail page needs a second press to start.
+- **Delay:** about 25 s +-3 on NBA TV, FS1, ESPN2, from the label vs scheduled start.
+- **Mac:** dev build b490ab86 deployed Nov 7 2:34 AM with Nick's OK, healthy, flags off. Auto-switching is PAUSED for dev: resume when Nick wants the show back. No Library games added.
+- **Scripts:** overseer scratchpad `sync/` (ytlib.py, acc1.py, rel1.py, soak1.py, prime*.py). Threads can't reach the TV: run their stick commands and return numbers. Spec: docs/sync/2026-11-06-yttv-scrub-buffer-spec.md.
+- **Replay grades still fail;** NBA with Prime pause improved mid-play 10 to 3.3. Flip onto a buffered stick still unproven. Work loop cron every 5 min, session-only.
