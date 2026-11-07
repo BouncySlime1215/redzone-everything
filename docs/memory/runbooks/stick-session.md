@@ -31,7 +31,7 @@ python -m redzone.tuners.session_guard <stick>:5555 --pkg prime --looks 3 --gap 
 | `autoplay_prompt` | YouTube TV asks about auto-play | Nick's rule, Nov 7: only "Ask later" | "auto-play" words | `ask_later` only when "Ask later" is THE highlighted line; otherwise `hold` | unknown |
 | `player_error` | "Something went wrong" / playback error | general | OCR words | `relink_live` / `restore_target` | lost |
 | `prime_detail_page` | Prime shows the title page, not the player | Nov 7: the first CENTER only wakes the nav (draft #390, DOWN vs RIGHT pending Nick) | Prime package, not playing, ≥ 2 detail words (Watch Live, Start Over, ...) | `prime_start` (the #390 tuner path) / `hold` | lost |
-| `post_tune_banner` | LIVE/title banner sits up 20-25+ s after a tune, looks like the overlay, keys do nothing | Nov 6 live scrub runs | < `banner_s` (28 s) since the tune and no scrub label read | `wait` the rest of the window (max 30 s) before the scrub's first key | valid if playing |
+| `post_tune_banner` | LIVE/title banner sits up 20-25+ s after a tune, looks like the overlay, keys do nothing | Nov 6 live scrub runs | < `banner_s` (28 s) since the tune and UI text on screen with no scrub label (or the screen unread) | `wait` and look again every 2 s (max 30 s) before the scrub's first key; `python scripts/session_drill.py` | valid if playing |
 | `label_reset` | overlay label restarts at a new program | Nov 7 ~1:00 AM: "knob moved 39s, not 60s" at a boundary | label < expected − 20 s, label > expected + 45 s, or the program window changed | `reanchor_label` (no keys; yttv_seek's boundary retry does the re-scrub) | unknown |
 | `ui_unknown` | a prompt or layout we have no rule for | #356 (Nov 5-6): LEFT x9 with focus unknown seeked a stick 60 s | short button-like lines (Got it, Try it, Not now, ...) or expected overlay parts missing | `hold` + alert, never pressed; the log keeps a hash, not the words | unknown |
 | `wrong_app` | another app in front | Nov 6: keys meant for YouTube TV landed in Prime | foreground package ≠ the session's app | `relink_live` / `restore_target` | lost |
@@ -39,8 +39,9 @@ python -m redzone.tuners.session_guard <stick>:5555 --pkg prime --looks 3 --gap 
 
 ## What runs where today
 
-- `session_guard.enabled`: before every scrub (`Controller._scrub_into`), the guard waits out the post-tune banner and
-  takes one adb-only look. Any verdict other than `ok` refuses the scrub with no key pressed and logs
+- `session_guard.enabled`: before every scrub (`Controller._scrub_into`), the guard looks at the screen (no key; the
+  video is DRM-black, so any UI text right after a tune is the banner), waits while it is up (2 s polls, at most
+  30 s; the whole window when the screen can't be read), and checks the session's adb facts. Any verdict other than `ok` refuses the scrub with no key pressed and logs
   `session_guard` to `data/buffer.jsonl`; a `lost` session is re-tuned at the live edge instead of reused.
 - `session_guard.act`: allows `SessionGuard.recover()` to run the actions above through the caller's handlers.
   Nothing calls `recover()` yet; the fallback ladder (item 2) and join watchdog (item 1) are its callers.

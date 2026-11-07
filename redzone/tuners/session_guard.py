@@ -310,7 +310,9 @@ def classify(snap: Snapshot, prev: Snapshot | None = None, cfg=None, *, hidden: 
     # 11. the post-tune LIVE/title banner (Nov 6): looks like the overlay, keys do nothing on it
     banner_s = float(_cfg(cfg, "banner_s"))
     if _is_yttv(snap.package or snap.want_pkg) and snap.since_tune_s is not None and snap.since_tune_s < banner_s:
-        if snap.rows is None or not any(_MMSS.match(ln) for ln in lines):
+        # Screen read and nothing drawn (the video is DRM-black, no UI): the banner is gone, go now. Unread: assume it
+        # is up for the whole window. Text but no scrub label: the banner (or an overlay) is still up.
+        if snap.rows is None or (lines and not any(_MMSS.match(ln) for ln in lines)):
             return Verdict(BANNER, WAIT, "valid" if snap.state == "playing" else "unknown",
                            "inside the post-tune banner window: scrub keys would do nothing",
                            wait_s=round(min(banner_s - snap.since_tune_s, float(_cfg(cfg, "banner_wait_max_s"))), 1))
@@ -387,7 +389,7 @@ class SessionGuard:
             self.labels.pop(snap.host, None)   # the old label anchor no longer applies
         elif v.ok and snap.label_s is not None:
             self.labels[snap.host] = (snap.wall, snap.label_s, snap.window)
-        if not v.ok:
+        if not v.ok and v.kind != BANNER:   # a banner is expected after every tune: polled, not an event
             self._log(snap.host, v, hidden, "observe" if not self.acting else "")
         return v
 
@@ -545,6 +547,27 @@ def ask_later_lit(snap: Snapshot) -> bool:
     """True only if the screen was read with pixels and 'Ask later' is THE highlighted line (CENTER is then safe)."""
     lit_rows = [r for r in snap.rows or [] if r.lit]
     return len(lit_rows) == 1 and _has(_norm(lit_rows[0].text), ASK_LATER)
+
+
+async def settle_banner(guard: "SessionGuard", stick, want_pkg: str, since_tune: Callable[[], float | None], *,
+                        still_hidden: Callable[[], bool] = lambda: True, poll_s: float = 2.0,
+                        look: Callable[..., Any] | None = None) -> Verdict:
+    """Before a scrub's first key: look at the screen (no key), and while the post-tune banner is up, wait and look
+    again, never past banner_wait_max_s. Returns the verdict of the last look (adb facts + screen), which the caller
+    must see `ok` before pressing anything. When the screen can't be read (OCR off), the whole window is waited."""
+    look = look or snapshot
+    waited, cap = 0.0, float(_cfg(guard.cfg, "banner_wait_max_s"))
+    while True:
+        snap = await look(stick, want_pkg, since_tune_s=since_tune(), read_screen=True)
+        v = guard.observe(snap, hidden=True)
+        if v.kind != BANNER or waited >= cap or not still_hidden():
+            return v
+        step = v.wait_s if snap.rows is None else min(poll_s, v.wait_s)
+        step = max(0.0, min(step, cap - waited))
+        await asyncio.sleep(step)
+        waited += step
+        if step <= 0:
+            return v
 
 
 # --- read-only probe ------------------------------------------------------------------------------------------------

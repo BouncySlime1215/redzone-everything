@@ -331,6 +331,7 @@ def _guard_on(c, **extra):
 def test_scrub_waits_out_the_banner_then_scrubs(scrub, monkeypatch):   # noqa: F811
     c, tuner, hid, calls, result, behind = scrub
     _guard_on(c)
+    hid.packages = {"youtubetv": YT, "prime": PRIME}          # the real package: the banner rule is YouTube TV's
     slept = []
     real = asyncio.sleep
 
@@ -369,3 +370,46 @@ def test_scrub_unchanged_with_the_guard_off(scrub):   # noqa: F811
 async def _preload(c, target):
     assert c.preload(target)
     await c._preload_task
+
+
+def test_settle_banner_polls_until_the_screen_is_clear_and_never_presses():
+    t = [5.0]
+    st = Fake()
+    real = asyncio.sleep
+
+    async def look(_s, pkg, since_tune_s=None, read_screen=False, **kw):
+        t[0] += 2.0
+        up = t[0] < 25.0                                     # Nov 6: banner up ~25 s after the tune
+        return S(wall=t[0], since_tune_s=since_tune_s, rows=rows("LIVE", "CC") if up else [])
+
+    async def go():
+        async def vs(s, *a, **k):
+            t[0] += s
+            await real(0)
+        asyncio.sleep = vs
+        try:
+            return await sg.settle_banner(sg.SessionGuard(ON), st, YT, lambda: t[0], look=look)
+        finally:
+            asyncio.sleep = real
+    v = asyncio.run(go())
+    assert v.ok and 25.0 <= t[0] < 30.0 and st.keys == []
+
+
+def test_settle_banner_stops_at_the_cap():
+    t = [0.0]
+    real = asyncio.sleep
+
+    async def look(_s, pkg, since_tune_s=None, read_screen=False, **kw):
+        return S(since_tune_s=0.0, rows=rows("LIVE", "CC"))   # never clears
+
+    async def go():
+        async def vs(s, *a, **k):
+            t[0] += s
+            await real(0)
+        asyncio.sleep = vs
+        try:
+            return await sg.settle_banner(sg.SessionGuard(ON), Fake(), YT, lambda: 0.0, look=look)
+        finally:
+            asyncio.sleep = real
+    v = asyncio.run(go())
+    assert v.kind == sg.BANNER and t[0] == 30.0

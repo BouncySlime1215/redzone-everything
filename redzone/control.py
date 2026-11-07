@@ -3107,25 +3107,25 @@ class Controller:
 
     async def _session_preflight(self, stick: Stick, target: str, pkg: str | None,
                                  still_hidden: Callable[[], bool]) -> tuple[str, bool]:
-        """[session guard] Before the scrub's first key: wait out the post-tune LIVE/title banner (Nov 6: it looks
-        like the overlay, keys do nothing there, and each blind close may commit a step), then one adb-only look.
+        """[session guard] Before the scrub's first key: look at the screen (no key) and wait while the post-tune
+        LIVE/title banner is up (Nov 6: it looks like the overlay, keys do nothing there, the probe burns its tries),
+        polling every 2 s, at most banner_wait_max_s; the last look (adb facts + screen) must be ok.
         ("", False) = go. (why, lost) = fail closed with no key pressed; lost = the session itself is gone (crash,
         reboot, home, wrong app), so the fallback re-tunes instead of trusting the old tune."""
         from redzone.tuners import session_guard as sg
         g = self.session_guard
-        at = self.tuned_at.get(stick.host)
-        wait = g.banner_wait(time.time() - at if at else None)
-        if wait > 0:
-            await asyncio.sleep(wait)
-            if not still_hidden():
-                return "session guard: the stick is no longer the hidden one", False
+
+        def since_tune() -> float | None:
+            at = self.tuned_at.get(stick.host)
+            return time.time() - at if at else None
         try:
-            snap = await sg.snapshot(stick, pkg or "", since_tune_s=None)
+            v = await sg.settle_banner(g, stick, pkg or "", since_tune, still_hidden=still_hidden)
         except Exception as e:   # the guard must never crash the switch path: no evidence = no scrub
-            log.exception("session guard: snapshot on %s", stick.host)
-            return f"session guard: snapshot failed ({e!r})"[:120], False
-        v = g.observe(snap, hidden=True)
-        if v.ok:
+            log.exception("session guard: look at %s", stick.host)
+            return f"session guard: look failed ({e!r})"[:120], False
+        if not still_hidden():
+            return "session guard: the stick is no longer the hidden one", False
+        if v.ok or v.kind == sg.BANNER:   # past the wait cap: the scrub's own LEFT probe still guards focus
             return "", False
         self._buffer_log("session_guard", target, stick.host, 0.0, None, guard=v.kind, action=v.action,
                          buffer=v.buffer)
