@@ -552,6 +552,18 @@ LIVE_MIN_MS = 30 * 60 * 1000
 CHANNEL_PAGE_DOWN_S = 3.0
 CHANNEL_PAGE_SELECT_S = 1.5
 CHANNEL_PAGE_WAIT_S = 15.0
+# Nov 7 11:00:00 (Nick, raw recipe with no checks): at a program change the channel page's live tile shifted
+# and DOWN -> Select landed on 'Jaguars at Ravens, NFL Network'. Near :00/:30 (wall clock, local time),
+# let the page settle a little longer before any key; the subtitle station check stays mandatory regardless.
+CHANNEL_PAGE_BOUNDARY_WINDOW_S = 90.0
+CHANNEL_PAGE_BOUNDARY_SETTLE_S = 3.0
+
+
+def near_program_change(wall_s: float, window_s: float = CHANNEL_PAGE_BOUNDARY_WINDOW_S) -> bool:
+    """Within window_s of a :00 or :30 boundary (either side), local time."""
+    lt = time.localtime(wall_s)
+    into = (lt.tm_min % 30) * 60 + lt.tm_sec + (wall_s % 1)
+    return into <= window_s or 1800 - into <= window_s
 
 
 _PKG_RE = re.compile(r"\b(com\.[\w.]*youtube[\w.]*)")
@@ -652,7 +664,7 @@ def step_toward(focus, target) -> str:
 
 
 async def hunt_channel(stick, observe, *, key: str, table, query: str = "", profile: str = "",
-                       sleep=asyncio.sleep, clock=time.monotonic, max_moves: int = 14,
+                       sleep=asyncio.sleep, clock=time.monotonic, wall=time.time, max_moves: int = 14,
                        budget_s: float = HUNT_BUDGET_S, lounge=None, collect_codes: bool = True,
                        channel_page: bool = False) -> ChannelHunt:
     """Search YouTube TV for one channel, select its live tile, confirm it plays, collect code candidates.
@@ -665,7 +677,8 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
     the focus ring there. Then, per path in CHANNEL_PAGE_PATHS (DOWN, Select; else reopen the
     search and Select at the starting focus): accept only when the media session's SUBTITLE contains the
     query ('..., ABC 11') AND the playhead is live (>= LIVE_MIN_MS, a recording starts near 0);
-    a miss presses BACK. Waits: >= 3 s after the search link, >= 1.5 s after DOWN.
+    a miss presses BACK. Waits: >= 3 s after the search link (+3 s within 90 s of :00/:30, when
+    the live tile can shift), >= 1.5 s after DOWN. The station check is never skipped.
     """
     from redzone.discovery import stickio
     from redzone.discovery.yttv import judge
@@ -809,7 +822,11 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
         for i, path in enumerate(CHANNEL_PAGE_PATHS):
             if i:
                 await open_search()                # focus resets on a fresh search link
-            await sleep(max(0.0, CHANNEL_PAGE_DOWN_S - (clock() - search_at)))
+            settle = CHANNEL_PAGE_DOWN_S
+            if near_program_change(wall()):
+                settle += CHANNEL_PAGE_BOUNDARY_SETTLE_S
+                record("channel_page", f"near a :00/:30 program change: +{CHANNEL_PAGE_BOUNDARY_SETTLE_S:.0f} s settle")
+            await sleep(max(0.0, settle - (clock() - search_at)))
             for code in path:
                 await press(code)
                 await sleep(CHANNEL_PAGE_SELECT_S)
