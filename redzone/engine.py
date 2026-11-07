@@ -172,6 +172,8 @@ class Engine:
         self.tap_bug = TapBug(data_dir.parent / "tap_bug.jsonl" if data_dir else None)
         # [time-shift buffer SHADOW, Nick 9:10 AM Nov 5] an editor decider B s behind live, logged only
         self._bug_log_path = data_dir.parent / "scorebug_reads.jsonl" if data_dir else None
+        # [jump mode] every jump with its reason: ids, numbers and short codes (data/jumps.jsonl)
+        self._jump_log_path = data_dir.parent / "jumps.jsonl" if data_dir else None
         from redzone.buffer_shadow import BufferShadow
         self.buffer_shadow = BufferShadow(self.cfg, self.decider, self._shadow_behind,
                                           data_dir.parent / "buffer_shadow.jsonl" if data_dir else None,
@@ -749,6 +751,10 @@ class Engine:
         last_push = 0.0
         while True:
             try:
+                self._apply_live_settings()
+            except Exception:
+                log.exception("could not apply live settings")
+            try:
                 self._mic_calibrate()
                 changed = self.decide()
             except Exception:
@@ -767,6 +773,21 @@ class Engine:
                 # A phone-view bug is not a switching error: it must not put the TV in safe mode.
                 log.exception("broadcast failed")
             await self._next_tick(DECIDE_EVERY_S)
+
+    def _apply_live_settings(self) -> bool:
+        """[tuners.yttv_local_search_live] Settings that otherwise apply only at startup, re-read each
+        decide tick so a POST /api/settings (or Undo) takes effect without a restart. Gate off (default):
+        nothing changes. Only between ticks: a tune already running resolved its ref (Control._ref) at
+        its start and keeps it. Returns whether anything changed."""
+        if not self.cfg.get("tuners.yttv_local_search_live", False):
+            return False
+        want = bool(self.cfg.get("tuners.yttv_local_search", False))
+        if self.channels.local_search == want:
+            return False
+        log.info("settings: tuners.yttv_local_search %s -> %s (applied live, no restart)",
+                 self.channels.local_search, want)
+        self.channels.local_search = want
+        return True
 
     async def _next_tick(self, seconds: float) -> None:
         """Sleep until the next decision, or less when pushed data just arrived: a big play
@@ -1560,6 +1581,8 @@ class Engine:
                 trace.emit(self.trace_sink, detail["trace"])
             except Exception:   # a trace must never cost the switch its row
                 log.exception("switch trace failed")
+            if d.kind == "jump":
+                self._log_jump(d, before, target, out, cmd_ts)
             self.store.switch(ts=cmd_ts, frm=before, to_game=d.target, target=target, kind=d.kind, reason=d.reason,
                               event_ts=event_ts, cmd_ts=cmd_ts, confirmed_ts=out.confirmed_at, ok=out.ok,
                               dry_run=out.dry_run, detail=detail)
@@ -1588,6 +1611,19 @@ class Engine:
                     and self._tap_lands_dead(d, target)
             if time.time() < d.at + float(getattr(d, "defer_s", 0.0) or 0.0):
                 return False   # [EXP-803 A1] the break's tail: cut at the planned moment, not before
+            if d.kind == "jump":
+                # [jump mode] rule #1 at the flip: the target's picture must come up on a dead ball; leaving
+                # uses the rotation's own gate (play-by-play dead windows, low-leverage leaves), not the
+                # 'data covers the screen' window that almost never opens on the game on screen
+                now = time.time()
+                cost = self.control.deadline_cost(target)
+                g = self.merger.games.get(d.target or "")
+                if not g or g.phase != Phase.LIVE or self.feeds.stale(g.game_id) \
+                        or getattr(self.where.get(g.game_id), "target", None) != target:
+                    return False
+                return self.decider.jump_lands_dead(
+                    d.target, cands.get(d.target), now, cost) and self.decider.jump_may_leave(
+                    before, cands, now, float(self.cfg.get("jump_mode.flip_s", 3.2)))
             return self._entry_valid(d, target) and (time.time() >= replay_exit if replay_exit is not None
                                                      else self.safe_to_leave(before, required_s=8.0)) \
                 and self._flip_lands_whistle(d, target)
@@ -1806,10 +1842,43 @@ class Engine:
             return
         if self._peeking():
             return   # a game you opened on the phone is on the hidden stick: keep it there for now
+        if self.decider.jump_on() and not self.decider.replaying and self._jump_standby(cands):
+            return
         self._plan_prime_multiview(cands)
         pick = self.planner.plan(self._standby_options(cands, redzone), self.control.standby)
         if pick:
             self.control.preload(pick.target, back_s=pick.back_s, replay_id=pick.replay_id)
+
+    def _jump_standby(self, cands: dict) -> bool:
+        """[jump mode] The hidden stick keeps re-tuning to the rotation's next game (Decider.jump_next).
+        False: the rotation has nothing to tune (no other game), so the normal standby plan runs."""
+        u = self.decider.user
+        if u.locked_game or u.focus_mode != FocusMode.AUTOPILOT:
+            return False
+        if self.cfg.get("jump_mode.replays", True) and self._replay_standby(cands) is not None:
+            return False   # a big-play catch-up is queued: the normal plan parks it on the hidden stick (replay_park)
+        gid = self.decider.jump_next(cands, standby=self.control.standby[0])
+        target = cands[gid].target if gid in cands else None
+        if not target:
+            return False
+        self.control.preload(target)
+        return True
+
+    def _log_jump(self, d, before: str | None, target: str | None, out, cmd_ts: float) -> None:
+        """One row per jump: who, why, and what it cost. No raw text (the repo is public)."""
+        if self._jump_log_path is None or not self.cfg.get("jump_mode.log", True):
+            return
+        rec = {"ts": round(cmd_ts, 2), "from": before, "to": d.target, "app": (target or "").split(":", 1)[0],
+               "ok": bool(out.ok), "dry_run": bool(out.dry_run), "took_s": round(out.took or 0.0, 2),
+               "waited_s": round(out.waited or 0.0, 1), "path": out.path, **(d.jump or {})}
+        if not out.ok:
+            rec["fail"] = "cancelled" if out.detail.startswith("switch cancelled") else "no_safe_moment" \
+                if "no safe moment" in out.detail else "other"
+        try:
+            with self._jump_log_path.open("a") as fh:
+                fh.write(json.dumps(rec) + "\n")
+        except OSError:
+            pass
 
     def _plan_prime_multiview(self, cands: dict) -> None:
         """tuners.prime_multiview: the top eligible Prime NBA games share one multiview (~1 s between

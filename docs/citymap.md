@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**362 modules**, 297 untagged, 190 unowned, 14 orphans (no importer).
+**363 modules**, 298 untagged, 191 unowned, 14 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -223,7 +223,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (190)
+## unowned (191)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -361,6 +361,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/green_summaries.py` (entry) | [EXP-102] Green moment source: nflverse NFL and NBA.com cdn NBA play-by-play -> ESPN-summary-shaped archives, so the reasoner moment builder (agent/kaggle/bu... | noggin.factory, sources.espn -> - | untagged |
 | `scripts/hold_left_probe.py` (entry) | [STK-07 rig check] Hold the left game, then go back to it: does it play on from the dead ball we left? | channels, config, control -> - | STK-07 |
 | `scripts/join_try.py` (entry) | Run one join (redzone/tuners/join.py) on the HIDDEN stick and print its row (also appended to data/joins.jsonl). | tuners.adb, tuners.join -> - | untagged |
+| `scripts/jump_try.py` (entry) | Jump mode on the real TV: turn it on / off through the running app's settings API (undoable), and watch what it does from data/jumps.jsonl (one row per jump:... | - -> - | untagged |
 | `scripts/kaggle_noggin_factory.py` (entry) | no docstring | noggin.factory -> - | untagged |
 | `scripts/kaggle_pbp_crew.py` (entry) | no docstring | - -> - | untagged |
 | `scripts/label_leak_check.py` (entry) | Context-only label leak check (grader freeze v17; Nick, Nov 5 1:50 AM). | agent.distill.evaluate -> - | untagged |
@@ -418,7 +419,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 | `scripts/yttv_search_tune_try.py` (entry) | Tune the LOCAL stations by YouTube TV search on the HIDDEN stick, through the app's own routing and tuner as if tuners.yttv_local_search were on (ChannelMap.... | channels, tuners.adb, tuners.tuners -> - | untagged |
 
-## Untagged (297)
+## Untagged (298)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -653,6 +654,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/grading_check.py`
 - `scripts/green_summaries.py`
 - `scripts/join_try.py`
+- `scripts/jump_try.py`
 - `scripts/kaggle_noggin_factory.py`
 - `scripts/kaggle_pbp_crew.py`
 - `scripts/label_leak_check.py`

@@ -282,3 +282,34 @@ def test_real_preflight_names_the_missing_file_and_codes(tmp_path, monkeypatch):
     cfgp.write_text(json.dumps({"codes": {"espn": "abc"}}))
     env = cn.real_env(Cfg({}), tmp_path, "http://127.0.0.1:1")
     assert env.missing_codes(["fs1", "espn"]) == "no YouTube TV watch code for fs1 in data/channels.json"
+
+
+def test_relink_gap_waits_between_tune_away_and_tune(tmp_path):
+    """tuners.relink_gap_s (Nick Nov 7: back-to-back tunes failed 1/10, a 3 s gap fixed the delay probe)."""
+    w = World([state()], join=join_result())
+    order = []
+    env = w.env(tmp_path)
+    tune = env.tune
+
+    async def tune_logged(stick, channel):
+        order.append(("tune", channel))
+        return await tune(stick, channel)
+
+    async def sleep(s):
+        order.append(("sleep", s))
+    env.tune, env.sleep = tune_logged, sleep
+    r = asyncio.run(cn.Canary(Cfg({**CFG, "tuners.relink_gap_s": 3.0}), env).run())
+    assert r.status == "PASS"
+    assert order[:3] == [("tune", "fs1"), ("sleep", 3.0), ("tune", "espn")]
+
+
+def test_relink_gap_off_by_default(tmp_path):
+    w = World([state()], join=join_result())
+    env = w.env(tmp_path)
+    slept = []
+
+    async def sleep(s):
+        slept.append(s)
+    env.sleep = sleep
+    asyncio.run(cn.Canary(Cfg(CFG), env).run())
+    assert 3.0 not in slept and all(s == 0.0 for s in slept)

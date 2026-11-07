@@ -1317,3 +1317,54 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Rule #1 note: the last two loosen calibration guards (more switches land on a less certain delay); they are Nick's
   call for today and are not graded. Code follow-ups (hotfix/local-search-joinlive): YouTube TV edge prior 34.9 s on,
   stale data after a period end / 0:00 / scoring play counts as a break, the FOX fix.
+- 2026-11-07 (Nick, live CFB 1:10 PM: 'fix the jump logic... maybe the games identify safe points to jump'): default_config.yaml defined decider.leave twice; YAML kept only the second block, so decider.leave.dead_windows and decider.leave.tune_s never existed at runtime and the play-by-play dead-window leave path (cuts.DeadTracker) could not be turned on. Merged into one block; defaults unchanged (dead_windows [], tune_s 6). Nick's Mac turns dead_windows on at runtime for cfb, nfl, nhl, nba, cbb so autopilot leaves between plays. Rule #1 (joins) unchanged.
+- 2026-11-07 (Nick via the overseer, after RC6.3.2's deploy at 14:49 ET: the full suite at 3 workers pushed the Mac's
+  load to 18-21 and starved the app during live games): **during games, never run the full test suite on the Mac.**
+  Run it elsewhere (CI, the integrator's cloud run) and deploy a commit that already passed there. The 1:10-2:50 PM
+  stall was mostly the Mac in clamshell sleep on battery (~56 of 88 min dead, sticks dropped on every wake).
+- **2026-11-07 12:40 ET HOTFIX (Nick's live "no switches": CBSSN sigma 15 > decider.uncalibrated_sigma_s 8 kept the leave
+  gate shut, "delay not calibrated yet"): new setting `delay.edge_prior.enabled`, default false; Nick turns it on
+  at runtime (/api/settings, undoable).** On: every YouTube TV channel without its own tap / score-bug sample tonight
+  starts at `delay.edge_prior.prior.youtubetv` (34.9 s; Nick's hidden-stick probe, 28 reads on 11 channels, 34.3-35.5,
+  reruns 34.96 / 35.09) with stated doubt 4 s growing at most `drift_cap_s` 2 s (stays under 8 all night). Prior only;
+  the probe refresh is PR #408 (integration/next, off).
+- 2026-11-07 (Nick 12:40 PM live report: UNC@CONN stuck in the end-of-Q1 ads, leave gate said "no fresh data for
+  103-128s" and "delay not calibrated yet"): **new `decider.leave.quiet_break` (enabled: true, floor_s
+  {period_end: 120, score: 40})**. When the newest entry on a game is a period end / 0:00 clock, or a score in a
+  stop-start sport, and nothing newer has arrived, the leave gate treats it as an official stoppage: leavable from
+  seen + mu + 2 sigma + 3 s to seen + floor + mu - 2 sigma - tune_s, ahead of the stale-data and uncalibrated rules.
+  enabled: false = old behavior; read every poll, so a settings change applies to games already on. Opt-in
+  `near_end_clock_s` (0 = off) guesses the clock ran out when the last play left <= N s before a quarter break
+  (not Q4) and the feed has been silent near_end_quiet_s; today's UNC@CONN data stopped at 0:22 of Q1 with no
+  period end, so only this opt-in would have fired there.
+- 2026-11-07 (Nick 12:40 PM, runtime via /api/settings on the Mac, undoable; recorded here at his request):
+  decider.switch_margin 10 -> 4, decider.return_tolerance 5 -> 2, decider.break_destination_min 25 -> 10,
+  score.personal.my_team 25 -> 10, decider.uncalibrated_sigma_s 8 -> 25, decider.sticky_visit_needs_calibration
+  true -> false. Live settings only; the tree defaults are unchanged.
+- **2026-11-07 13:10 ET, Nick ("should be 4-5 switches every minute", "i want real redzone autopilot"): JUMP MODE,
+  new group `jump_mode`, `enabled` default false; Nick turns it on at runtime (/api/settings, undoable).** A rotation
+  over every live tunable game in `jump_mode.leagues` (cfb, nfl): at each dead ball on screen it flips to the game whose
+  snap is coming or that just had a big play; a game gives the screen up after `max_plays` 2 (crunch time and a scoring
+  drive inside the 20 keep it). Leaves use the play-by-play dead window or the normal gate (incl. low_leverage); joins
+  must land on a proven dead ball (re-checked at the flip). Every jump to data/jumps.jsonl. Also: the duplicate
+  `decider.leave` block merged (dead_windows / tune_s were silently dropped by YAML; defaults unchanged).
+- 2026-11-07 (Nick 11:50 local: the app's tuner back to back, espn2 -> fs1/accn with no gap, failed 1/10 "video never
+  started" and was slow 2/10; a 3 s gap fixed the delay probe, #408 9/9): new shared `tuners.relink_gap_s`, **0 (off)**.
+  When set, it waits between the reset tune and the tune back in control's reset through another channel (scrub
+  fallback, watchdog re-seek), and between the canary's tune_away and tune. scripts/watchdog_try.py takes --gap=S.
+- 2026-11-07 (overseer's FOX 50 joins just after kickoff: label 5 s at the live edge, 'knob moved 5s, not 30s
+  (5s -> 0s)'; another run label 52 s went fine): **`yttv_seek.program_start_guard: true`** (flag `yttv_seek.enabled`
+  still off). The scrub bar starts at the program start, so when the LEFTs need more than the label the scrub fails
+  closed before pressing any (back to live), with `room_s` (the label) in the result and the join row. No boundary
+  retry for it. Capping the target at room - 15 instead is left to the planner (not done here).
+- 2026-11-07 (Nick, 12:08 PM ET "You can deploy whatever"; overseer's suggestion (a)): **new deploy gate option
+  `scripts/deploy.py deploy --if-paused` (deploy.yaml `if_paused`, default false = gate unchanged).** With it, live
+  games and games starting soon don't defer the switch while `/api/state` reports `mode.paused: true` (the phone's
+  Pause; only a literal true counts, and a "Watch this" hold is not a pause). The journal logs a `paused_gate` row
+  naming the live game it let through. Snapshot, 10-min health watch and auto-rollback run as usual. Reason: a paused
+  app switches nothing, so a restart moves nothing under its control, and the pause survives the restart; today's
+  RC6.3.1 deploy had to bypass busy() by hand.
+- **2026-11-07** New gate `tuners.yttv_local_search_live` (default **false**; `tuners.yttv_local_search` default
+  unchanged, false). On: the engine re-reads `tuners.yttv_local_search` every decide tick, so a POST /api/settings
+  change or Undo applies within ~0.5 s with no service restart (a tune in flight keeps its ref). Reason: turning the
+  locals flag on for RC6.3.1 needed a restart mid-game-day (overseer suggestion b). PR #412.

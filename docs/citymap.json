@@ -5643,6 +5643,17 @@
     "untagged"
    ]
   },
+  "scripts/jump_try.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Jump mode on the real TV: turn it on / off through the running app's settings API (undoable), and watch what it does from data/jumps.jsonl (one row per jump:...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/kaggle_noggin_factory.py": {
    "contracts": [],
    "inputs": [
@@ -6636,10 +6647,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 362,
+  "modules": 363,
   "orphans": 14,
-  "unowned": 190,
-  "untagged": 297
+  "unowned": 191,
+  "untagged": 298
  },
  "version": 1
 }
