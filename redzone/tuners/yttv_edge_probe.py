@@ -4,7 +4,8 @@ Nick's method (hidden stick, Nov 7 ~10:55 ET, 17 reads on 7 channels, 34.3-35.5 
   1. a fresh live edge: tune another channel, then back (a same-channel deep link does not reset a stick that is
      behind, #391), so the playhead is AT the live edge;
   2. CENTER (overlay up), RIGHT (at the live edge the knob can't move, it only lands focus on the bar so the time
-     label shows; Nick, Nov 7: RIGHT 8/8 left the knob where it was);
+     label shows; Nick, Nov 7: RIGHT 8/8 left the knob where it was). No label after RIGHT (FOX 50's 4K-capable game
+     feed, 3/3 at noon Nov 7): one LEFT, which at the live edge also leaves the knob (LEFT 6/6) and shows the label;
   3. one screencap -> local OCR -> the PNG deleted at once (yttv_label.read_label); only the label's seconds leave;
   4. BACK closes the overlay (BACK does not commit).
   delay = (capture wall - EPG program start) - label, with the start = the :00/:30 boundary (the EPG window when
@@ -35,6 +36,10 @@ from redzone.tuners import yttv_label
 
 log = logging.getLogger("redzone.yttv_edge_probe")
 
+# a RIGHT read that came back with no label (the overlay, banner or bar was up but no MM:SS) gets one LEFT probe;
+# capture / OCR failures don't (another key wouldn't help)
+LEFT_FALLBACK_ON = ("no_label", "no_overlay", "banner", "ambiguous", "low_confidence")
+
 
 @dataclass
 class EdgeRead:
@@ -46,6 +51,7 @@ class EdgeRead:
     label_s: float | None = None      # playhead seconds since the program start, at the live edge
     prog_start: float | None = None   # epoch of the program start used (EPG window, else the :00/:30 boundary)
     start_from: str = ""              # epg | boundary
+    probe: str = ""                   # RIGHT | LEFT (the key that showed the label)
     cap_wall: float = 0.0
     elapsed_s: float = 0.0            # the whole probe, tune included
     keys: list[str] = field(default_factory=list)
@@ -159,7 +165,7 @@ class EdgeProbe:
         await self.sleep(float(self._c("after_tune_s", 2.0)))
         wait = float(self._c("overlay_wait_s", 1.3))
         keys: list[str] = []
-        read = None
+        read, probe = None, ""
         try:
             await self._press(stick, "DPAD_CENTER", still_hidden, keys)
             await self.sleep(wait)
@@ -167,6 +173,17 @@ class EdgeProbe:
             await self.sleep(wait)
             read = await yttv_label.read_label(stick, enabled=True, knob_offset_s=0.0, recognize=self.recognize,
                                                tz=self.tz)
+            probe = "RIGHT"
+            if not read.ok and read.status in LEFT_FALLBACK_ON:
+                # [Nick's noon run, Nov 7: FOX 50's 4K-capable game feed showed NO label after RIGHT, 3/3] LEFT shows it.
+                # At the live edge a LEFT probe doesn't move the knob either (12f405ab: LEFT 6/6 landed like RIGHT),
+                # so the label is still the live edge (left_offset_s 0); BACK below closes without a commit.
+                await self._press(stick, "DPAD_LEFT", still_hidden, keys)
+                await self.sleep(wait)
+                read = await yttv_label.read_label(stick, enabled=True,
+                                                   knob_offset_s=float(self._c("left_offset_s", 0.0)),
+                                                   recognize=self.recognize, tz=self.tz)
+                probe = "LEFT"
         except RuntimeError as e:
             return EdgeRead("keys_failed", app, channel, keys=keys, detail=str(e))
         finally:
@@ -184,10 +201,10 @@ class EdgeProbe:
                                        boundary_s=float(self._c("boundary_s", 1800)))
         if delay is None:
             return EdgeRead("no_boundary", app, channel, label_s=read.label_s, prog_start=start, start_from=src,
-                            cap_wall=read.cap_wall, keys=keys,
+                            probe=probe, cap_wall=read.cap_wall, keys=keys,
                             detail="program did not start on the :00/:30 boundary (or a misread): skipped")
         return EdgeRead("ok", app, channel, delay_s=delay, label_s=read.label_s, prog_start=start, start_from=src,
-                        cap_wall=read.cap_wall, keys=keys)
+                        probe=probe, cap_wall=read.cap_wall, keys=keys)
 
     def _log(self, r: EdgeRead) -> None:
         if self.log_path is None:

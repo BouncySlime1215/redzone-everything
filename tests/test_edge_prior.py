@@ -189,7 +189,30 @@ def test_empty_label_is_skipped_and_still_closes_the_overlay(tmp_path):
     stick = FakeStick(label="")
     r = run(probe(stick, tmp_path).measure(stick, relink=None, still_hidden=lambda: True))
     assert not r.ok and r.delay_s is None and r.status in ("no_overlay", "no_label")
-    assert stick.keys[-1] == "BACK"
+    assert stick.keys == ["DPAD_CENTER", "DPAD_RIGHT", "DPAD_LEFT", "BACK"]   # one LEFT fallback, then skipped
+
+
+def test_no_label_after_right_falls_back_to_one_left(tmp_path, monkeypatch):
+    """Nick's noon run, Nov 7: FOX 50's 4K-capable game feed showed no label after RIGHT (3/3); LEFT shows it."""
+    stick = FakeStick("1:54:25")
+    rec = recognizer(stick)
+
+    def fox(path):                     # the label shows only once a LEFT has landed
+        return rec(path) if "DPAD_LEFT" in stick.keys else SimpleNamespace(status="ok", observations=[], focus_boxes=())
+    p = ep.EdgeProbe(None, clock=FakeClock(T0), recognize=fox, sleep=_nosleep, log_path=tmp_path / "e.jsonl")
+    start = T0 - (T0 % 1800)
+    monkeypatch.setattr(ep.yttv_label.time, "time", lambda: start + 6865 + 35.1)
+    r = run(p.measure(stick, relink=None, still_hidden=lambda: True, channel="fox"))
+    assert r.ok and r.probe == "LEFT" and r.delay_s == pytest.approx(35.1)
+    assert stick.keys == ["DPAD_CENTER", "DPAD_RIGHT", "DPAD_LEFT", "BACK"]     # BACK: no commit
+
+
+def test_right_label_needs_no_left(tmp_path, monkeypatch):
+    stick = FakeStick("1:54:25")
+    start = T0 - (T0 % 1800)
+    monkeypatch.setattr(ep.yttv_label.time, "time", lambda: start + 6865 + 35.0)
+    r = run(probe(stick, tmp_path).measure(stick, relink=None, still_hidden=lambda: True))
+    assert r.probe == "RIGHT" and "DPAD_LEFT" not in stick.keys
 
 
 def test_failed_tune_presses_nothing(tmp_path):

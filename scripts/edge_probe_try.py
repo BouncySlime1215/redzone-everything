@@ -54,7 +54,7 @@ async def main(host: str, channels: list[str], reset: str, repeat: int, gap_s: f
         for i in range(max(1, repeat)):
             r = await probe.measure(stick, relink=relink, still_hidden=lambda: True, channel=ch)
             print(json.dumps({"channel": ch, "status": r.status, "delay_s": r.delay_s, "label_s": r.label_s,
-                              "start_from": r.start_from, "took_s": r.elapsed_s, "keys": r.keys, "detail": r.detail}))
+                              "start_from": r.start_from, "probe": r.probe, "took_s": r.elapsed_s, "keys": r.keys, "detail": r.detail}))
             if r.ok:
                 delays.append(float(r.delay_s))
             if gap_s and i < repeat - 1:
