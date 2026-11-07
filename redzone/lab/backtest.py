@@ -325,6 +325,11 @@ HS_SCRUB = {"keys_s": 10.0, "read_s": 8.0, "step_s": 15.0, "land_s": 15.0}
 # costs 7.5 s and adds 7.5 s (31-min ESPN soak: 82, 89, ... 119 s at 5-min reads, no snap). Read once, then trust.
 HS_SCRUB_MEASURED = {"keys_s": 15.0, "read_s": 7.5}
 HS_ENTRIES = ("hold", "scrub", "scrub_measured")
+# [EXP-608] Nick's Nov 7 05:26Z stick run (live Prime POR@LAL, stick .150): MEDIA_PAUSE 60 s then MEDIA_PLAY put the
+# picture 67.7 s behind (from 6.6 at the edge, so +61.1 s) and Prime's own timecode held it for the full 4 min checked
+# (02:20:54 -> 02:24:44 over 230 s wall). So Prime CAN buffer: pause B s, resume. Cost = the hold time (B) + resume;
+# the 1.1 s overshoot is left out (lands within the 3 s sync noise). Rewind (continuous, 214/665 s) is not used.
+HS_PRIME_ENTRIES = ("edge", "pause")
 HS_NO_BUFFER = ("replay", "resume", "skip")   # catch-up footage needs no hold (as live)
 
 
@@ -342,7 +347,7 @@ class HiddenStick:
                  offset -= B, so Rule #1 is graded where the picture really is."""
 
     def __init__(self, arm: str, behind: float, hold_overrun: float, cfg, clock, seed: int, my_teams: dict,
-                 entry: str = "hold"):
+                 entry: str = "hold", prime_entry: str = "edge"):
         if arm not in ("wait", "live_edge"):
             raise ValueError(f"hidden_stick must be None, 'wait' or 'live_edge', not {arm!r}")
         if entry not in HS_ENTRIES:
@@ -351,7 +356,10 @@ class HiddenStick:
             n = (behind - HS_SCRUB["land_s"]) / HS_SCRUB["step_s"]
             if n < 1 or abs(n - round(n)) > 1e-9:
                 raise ValueError(f"[EXP-603] a scrub lands at 15 N + 15 s behind live (75, 90, ...), not {behind:g}")
+        if prime_entry not in HS_PRIME_ENTRIES:
+            raise ValueError(f"prime entry must be one of {HS_PRIME_ENTRIES}, not {prime_entry!r}")
         self.entry = entry
+        self.prime_entry = prime_entry   # [EXP-608] edge: Prime airs at its live edge (B = 0); pause: holds B
         self.true_sync = False         # [EXP-605] a re-sync reading sees an edge-aired picture at the edge
         self.recheck = None            # [EXP-604] (by_id, lag_belief, feed_lag, tune_s) when the re-check is on
         self.rechecked = self.recheck_late = self.recheck_none = 0
@@ -379,6 +387,8 @@ class HiddenStick:
         """Seconds from tuned to ready: Prime holds nothing; a hold pauses B * overrun s (+ resume); a scrub
         [EXP-603] costs its keys plus one label read, whatever B."""
         prime = (target or "").startswith("prime:")
+        if prime and self.prime_entry == "pause":
+            return self.B + HS_PREREG["resume"]   # [EXP-608] MEDIA_PAUSE B s, MEDIA_PLAY
         if self.entry == "scrub":
             return 0.0 if prime else HS_SCRUB["keys_s"] + HS_SCRUB["read_s"]
         if self.entry == "scrub_measured":
@@ -423,7 +433,7 @@ class HiddenStick:
         same = sw.to == self.gid
         ready = same and cut >= self.ready_at
         wait = 0.0
-        live_edge = prime
+        live_edge = prime and self.prime_entry == "edge"
         if not ready:
             if self.arm == "wait":
                 if not same:
@@ -497,7 +507,8 @@ class HiddenStick:
         return 0.0
 
     def card(self) -> dict:
-        return {"arm": self.arm, "entry": self.entry, "behind_live_s": self.B, "hold_overrun": self.overrun, "switches": self.n,
+        return {"arm": self.arm, "entry": self.entry, **({"prime_entry": "pause"} if self.prime_entry == "pause" else {}),
+                "behind_live_s": self.B, "hold_overrun": self.overrun, "switches": self.n,
                 "buffered": self.buffered, "buffered_pct": round(100.0 * self.buffered / self.n, 1) if self.n else None,
                 "waits": len(self.waits), "wait_s": round(sum(self.waits), 1),
                 "wait_p50_s": round(sorted(self.waits)[len(self.waits) // 2], 1) if self.waits else 0.0,
@@ -521,7 +532,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         calibrate_targets: bool = False,
         hidden_stick: str | None = None, hold_overrun: float = 1.0, behind_live_s: float | None = None,
         hs_entry: str = "hold", hs_recheck: bool = False, hs_prime_edge: bool = False,
-        hs_resync_prime_edge: bool = False,
+        hs_resync_prime_edge: bool = False, hs_prime_pause: bool = False,
         on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
@@ -591,6 +602,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     apps = {"youtubetv"} | ({t.split(":", 1)[0] for t in (targets or {}).values()} if calibrate_targets else set())
     # [EXP-605] hs_prime_edge: Prime can't scrub, so the app plans Prime at its live edge (belief lag_total - B);
     # its picture airs at the edge too (HiddenStick offsets it), so belief and truth agree for Prime.
+    if hs_prime_pause and (hs_prime_edge or hs_resync_prime_edge):
+        raise ValueError("[EXP-608] hs_prime_pause buffers Prime like YouTube TV: it can't also plan Prime at its edge")
     prime_b = float(behind_live_s or 0.0) if (hs_prime_edge and hidden_stick is not None) else 0.0
     delays = DelayBook({a: lag_total - (prime_b if a == "prime" else 0.0) for a in sorted(apps)},
                        sigma_default=sigma_book,
@@ -641,7 +654,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             from redzone.lab.evaldata import config_behind_live
             behind_live_s = config_behind_live(cfg, replays[0].league.value)
         stick = HiddenStick(hidden_stick, float(behind_live_s or 0.0), hold_overrun, cfg, clock, seed,
-                            {lg: set(my_teams) for lg in League}, entry=hs_entry)
+                            {lg: set(my_teams) for lg in League}, entry=hs_entry,
+                            prime_entry="pause" if hs_prime_pause else "edge")
         stick.true_sync = hs_prime_edge
         if hs_recheck:
             if hidden_stick != "wait":
