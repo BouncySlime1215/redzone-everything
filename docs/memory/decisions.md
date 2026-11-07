@@ -1111,3 +1111,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   mid-play ~10 -> ~24 per run, ~21 of them Prime switches at B = 0 (registered pessimism; YouTube TV only ~2-3, at or
   below the control). NFL: 45 -> 71 (live edge), 43 -> 96 (wait) shipped, and switches 1.72x (4.6 -> 7.9 per hour), a
   guardrail breach by itself. S2 (+-3.4 s) moves nothing material. EXP-604 (#378's re-check) is the next read.
+- 2026-11-07 (integrator, EXP-604 read): **EXP-604 FAILS in both leagues; RC8 stays OFF.** NBA: every added mid-play
+  entry is a Prime switch at B = 0; YouTube TV-only mid-play is lower than the control (2.0 -> 1.3 shipped). NFL:
+  switches 1.72x and plays missed 139 -> 424. Next, both registered before they run (coordinator go-ahead): EXP-605
+  NBA YouTube TV-only RC8 with Prime at B0 (T9), and EXP-606 NFL B75 dwell grid 35/60/90/120 (integrator). Neither is
+  a card until a live stick holds a scrub.
