@@ -132,8 +132,11 @@ Do not claim unattended hardware readiness from the software tests alone.
 `scripts/deploy.py deploy` updates the checkout the login service runs from, without a
 person watching. It fetches `integration/release`, runs the test suite on that commit in a
 separate worktree (`data/deploy/stage`) at low priority (`nice -n 10`; `test_priority: background` in
-deploy/deploy.yaml uses `taskpolicy -b`, about 2x slower; `--test-timeout MIN` overrides the 60 min limit), and only
-then waits for a quiet moment: no game live and none starting within 15 minutes. It saves
+deploy/deploy.yaml uses `taskpolicy -b`, about 2x slower; `--test-timeout MIN` overrides the 60 min limit). The
+suite runs on pytest-xdist workers, one test file per worker (`test_workers`, default auto: half the cores, at most 4;
+`--test-workers 1` runs it serially), so it takes minutes instead of ~30 min. Without pytest-xdist in `.venv` it runs
+serially as before. Its output goes to `data/deploy/tests.log`; on a timeout the whole process group is killed and the
+message says how many tests had finished. Only then it waits for a quiet moment: no game live and none starting within 15 minutes. It saves
 `data/config.yaml` and `agent/model/` (content-addressed under `data/deploy/store`), checks
 out the new commit detached, restarts this job and the watchdog, and watches health for
 10 minutes against the old version's last 10 minutes of log. A crash loop, a dead API,

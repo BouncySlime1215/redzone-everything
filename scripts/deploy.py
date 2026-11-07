@@ -15,7 +15,10 @@ Deploy steps, in order. Nothing on the running checkout changes before step 5.
     Untracked files (data/, agent/model/, .venv-agent/, local docs) never block a deploy.
  4. Run the test suite on the new commit in a separate worktree (data/deploy/stage), at background
     priority (`nice -n 10`; `test_priority: background` uses `taskpolicy -b` on the Mac, which is about
-    2x slower: it timed out at 60 min where nice 10 took 30 min, Nov 5). Fail -> stop, nothing touched.
+    2x slower: it timed out at 60 min where nice 10 took 30 min, Nov 5). The suite runs on several
+    workers (pytest-xdist, one test file per worker, `test_workers`) when the venv has it, else serially.
+    Output goes to data/deploy/tests.log; a timeout kills the whole process group and names the
+    progress it reached. Fail -> stop, nothing touched.
  5. Wait until no game is live and none starts inside the watch window (or give up, exit 2).
  6. Save config + models (content-addressed, deduplicated), check out the new commit (detached),
     restart the launchd service, then the watchdog so it runs the new code too. A local untracked
@@ -77,7 +80,8 @@ class Settings:
     baseline_s: float = 600.0         # old version's log window to compare against
     test_timeout_s: float = 3600.0   # nice 10 on the Mac: ~30 min (Nov 5); --test-timeout MIN overrides
     test_priority: str = "nice"       # "nice": nice -n 10; "background": taskpolicy -b (efficiency cores, ~2x slower)
-    test_args: list[str] = field(default_factory=lambda: ["-q", "-x", "-p", "no:cacheprovider"])
+    test_workers: int = 0             # pytest-xdist workers: 0 = auto (half the cores, at most 4); 1 = serial
+    test_args: list[str] = field(default_factory=lambda: ["-q", "-x", "-p", "no:cacheprovider", "--durations=10"])
     deselect: list[str] = field(default_factory=list)   # known Mac/hardware-only tests to skip
     live_wait_s: float = 0.0          # 0: defer at once if a game is live; else poll this long
     live_poll_s: float = 300.0
@@ -112,6 +116,8 @@ class Settings:
             if isinstance(v, bool) != isinstance(cur, bool) or not (isinstance(v, type(cur)) or numeric_ok):
                 raise ValueError(f"{path}: {k} should be {type(cur).__name__}, got {v!r}")
             setattr(s, k, type(cur)(v) if isinstance(cur, float) else v)
+        if s.test_workers < 0:
+            raise ValueError(f"{path}: test_workers must be >= 0 (0 = auto)")
         if s.watch_s < s.sample_s or s.sample_s <= 0:
             raise ValueError(f"{path}: watch_s must be >= sample_s > 0")
         for pat in s.ignore:
@@ -124,6 +130,46 @@ class Settings:
             if p.is_absolute() or ".." in p.parts:
                 raise ValueError(f"{path}: managed path {m!r} must be inside the checkout")
         return s
+
+
+def _kill_group(p: subprocess.Popen, grace_s: float = 10.0) -> None:
+    """SIGTERM the process group of `p`, then SIGKILL whatever is left after `grace_s`."""
+    import signal
+    for sig, wait in ((signal.SIGTERM, grace_s), (signal.SIGKILL, 5.0)):
+        try:
+            os.killpg(p.pid, sig)
+        except (ProcessLookupError, PermissionError):
+            pass
+        try:
+            p.wait(timeout=wait)
+            break
+        except subprocess.TimeoutExpired:
+            continue
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(p.pid, signal.SIGKILL)   # the leader exited but a worker may still be alive
+
+
+_RESULTS = re.compile(r"^([.FEsxX]+)\s*(?:\[\s*\d+%\])?\s*$")
+
+
+def _progress(log: Path) -> str:
+    """How far a `pytest -q` run got, from its progress lines: "412 tests done (62%)", or "" if none yet."""
+    try:
+        lines = log.read_text(errors="replace").splitlines()
+    except OSError:
+        return ""
+    done = sum(len(m.group(1)) for ln in lines if (m := _RESULTS.match(ln)))
+    marks = [m for ln in lines for m in re.findall(r"\[\s*(\d+)%\]", ln)]
+    if not done:
+        return ""
+    return f"{done} test{'s' if done != 1 else ''} done" + (f" ({marks[-1]}%)" if marks else "")
+
+
+def _tail(log: Path, n: int = 15) -> str:
+    try:
+        return "\n".join(log.read_text(errors="replace").strip().splitlines()[-n:])
+    except OSError:
+        return ""
 
 
 # ---- the outside world (faked in tests) -----------------------------------------------------------
@@ -153,6 +199,32 @@ class System:
         if mode == "background" and sys.platform == "darwin" and shutil.which("taskpolicy"):
             return ["taskpolicy", "-b", *args]
         return ["nice", "-n", "10", *args] if shutil.which("nice") else args
+
+    def has_module(self, python: str, module: str) -> bool:
+        """Whether `python` (the venv the suite runs in) can import `module`."""
+        try:
+            return subprocess.run([python, "-c", f"import {module}"], capture_output=True,
+                                  timeout=60).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+
+    def cpu_count(self) -> int:
+        return os.cpu_count() or 1
+
+    def run_logged(self, args: list[str], cwd: Path, timeout: float, log: Path,
+                   env: dict | None = None) -> int:
+        """Run `args` with stdout+stderr going to `log` (no pipe to fill), in its own process group.
+        On timeout the whole group is killed, so pytest-xdist workers and anything a test started
+        don't keep running on the Mac after the deploy gave up; then TimeoutExpired is raised."""
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("w") as fh:
+            p = subprocess.Popen(args, cwd=cwd, stdout=fh, stderr=subprocess.STDOUT, text=True,
+                                 env={**os.environ, **env} if env else None, start_new_session=True)
+            try:
+                return p.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                _kill_group(p)
+                raise
 
     def fetch_state(self, api: str, timeout: float = 6.0) -> dict | None:
         try:
@@ -584,23 +656,44 @@ class Deployer:
         self.sys.git("worktree", "add", "--detach", str(stage), commit, timeout=600)
         try:
             py = self.root / ".venv/bin/python"
-            cmd = [str(py) if py.exists() else sys.executable, "-m", "pytest", *self.s.test_args]
+            python = str(py) if py.exists() else sys.executable
+            cmd = [python, "-m", "pytest", *self.s.test_args]
             for d in self.s.deselect:
                 cmd += ["--deselect", d]
-            self.journal("tests", msg=f"running on {commit[:9]} at low priority ({self.s.test_priority})")
+            workers = self.test_workers(python)
+            if workers > 1:
+                # One test file per worker: the e2e nights build module-scoped fixtures (~3 min each),
+                # which would be rebuilt on every worker if their tests were spread out.
+                cmd += ["-n", str(workers), "--dist", "loadfile"]
+            how = f"{self.s.test_priority} priority, " + (f"{workers} workers" if workers > 1 else "serial")
+            self.journal("tests", msg=f"running on {commit[:9]} at low priority ({how})")
+            log = self.dir / "tests.log"
             try:
                 # Background priority (efficiency cores) makes wall-clock speed budgets meaningless,
                 # so tests skip their speed asserts (tests/conftest.py assert_speed) but keep the rest.
-                r = self.sys.run(self.sys.low_priority(cmd, self.s.test_priority), cwd=stage, timeout=self.s.test_timeout_s, check=False,
-                                 env={"RZ_TESTS_LOW_PRIORITY": "1"})
+                rc = self.sys.run_logged(self.sys.low_priority(cmd, self.s.test_priority), cwd=stage,
+                                         timeout=self.s.test_timeout_s, log=log,
+                                         env={"RZ_TESTS_LOW_PRIORITY": "1", "PYTHONUNBUFFERED": "1"})
             except subprocess.TimeoutExpired:
-                return False, (f"tests timed out after {int(self.s.test_timeout_s)} s at {self.s.test_priority} "
-                               "priority; rerun with --test-timeout MIN (nothing was touched)")
-            tail = "\n".join((r.stdout or r.stderr).strip().splitlines()[-15:])
-            return r.returncode == 0, tail
+                got = _progress(log)
+                return False, (f"tests timed out after {self.s.test_timeout_s / 60:g} min ({how})"
+                               + (f", {got}" if got else "") + f"; the suite was stopped. See {log}. "
+                               "Rerun with --test-timeout MIN (nothing was touched)")
+            return rc == 0, _tail(log)
         finally:
             self.sys.git("worktree", "remove", "--force", str(stage), check=False)
             shutil.rmtree(stage, ignore_errors=True)
+
+    def test_workers(self, python: str) -> int:
+        """How many pytest-xdist workers the deploy suite runs on. `test_workers: 0` is auto: half the
+        cores, at most 4, so at nice 10 the live app keeps the rest. 1, or a venv without
+        pytest-xdist, runs the suite serially as before."""
+        n = self.s.test_workers or min(4, max(1, self.sys.cpu_count() // 2))
+        if n > 1 and not self.sys.has_module(python, "xdist"):
+            self.journal("tests", msg="pytest-xdist is not in the venv: running serially "
+                                      "(pip install -r requirements.txt to get the parallel suite)")
+            return 1
+        return n
 
     def wait_idle(self) -> str:
         """"" when it's safe to restart; otherwise why not (after waiting up to live_wait_s)."""
@@ -903,6 +996,8 @@ def main(argv: list[str] | None = None, system: System | None = None, root: Path
     d.add_argument("--at-break", action="store_true",
                    help="switch while games are live if the game on screen is at halftime/intermission")
     d.add_argument("--test-timeout", type=float, metavar="MIN", help="test step timeout in minutes (default 60)")
+    d.add_argument("--test-workers", type=int, metavar="N",
+                   help="pytest-xdist workers for the test step (default auto: half the cores, max 4; 1 = serial)")
     d.add_argument("--deps-ok", action="store_true", help="requirements.txt changed and you installed them")
     d.add_argument("--skip-tests", action="store_true", help=argparse.SUPPRESS)
     r = sub.add_parser("rollback")
@@ -922,6 +1017,8 @@ def main(argv: list[str] | None = None, system: System | None = None, root: Path
             s.live_wait_s = max(0.0, a.wait * 60)
         if getattr(a, "test_timeout", None) is not None:
             s.test_timeout_s = max(60.0, a.test_timeout * 60)
+        if getattr(a, "test_workers", None) is not None:
+            s.test_workers = max(0, a.test_workers)
         if getattr(a, "at_break", False):
             s.at_break = True
             s.live_poll_s = min(s.live_poll_s, 30.0)   # a halftime is short: look every 30 s
