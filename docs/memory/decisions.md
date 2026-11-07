@@ -1137,3 +1137,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-07 (integrator, EXP-607 read): **The EXP-605 resync failure was a sim artifact (resync mid-play 19.0 -> 7.7
   per run with Prime pinned at its edge), but NBA stays FAIL:** clock-truth adds 1-2 on two seeds and the primary CI
   touches 0 on both harnesses. EXP-608 (Prime by pause) is the next read.
+- 2026-11-07 (integrator, EXP-608 read + v45 freeze): **EXP-608 FAILS both leagues; grader freeze v45 registers EXP-609
+  (Prime pause at the measured B + 4.3 s) as the verdict for the Prime-pause model, 608 report-only.** NBA: the main
+  grader's mid-play falls 9.7 -> 3.7 and big seen rises 67 -> 78%, but clock-truth adds entries on every seed and plays
+  missed doubles; the two graders disagree and T9 diffs them, info-only. NFL unchanged in kind (switches 1.72x).
