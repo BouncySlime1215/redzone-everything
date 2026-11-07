@@ -321,7 +321,10 @@ HS_PREREG = {"tune_mu": math.log(21.61), "tune_sigma": 0.4424, "tune_clip": (5.0
 # LEFT, RIGHT, CENTER) takes ~8 s and adds ~8 s of delay. Measured TNT: N=4 read 67 s behind, 75 s after that read.
 # So a scrub with one read airs 15 N + 15 s behind (N=4 -> 75, N=5 -> 90) and is ready keys + read after the tune.
 HS_SCRUB = {"keys_s": 10.0, "read_s": 8.0, "step_s": 15.0, "land_s": 15.0}
-HS_ENTRIES = ("hold", "scrub")
+# [EXP-605] Nick's Nov 7 stick runs (integration/next 8d765bf5): enter_buffer 2/2 at 15 s each; one label read
+# costs 7.5 s and adds 7.5 s (31-min ESPN soak: 82, 89, ... 119 s at 5-min reads, no snap). Read once, then trust.
+HS_SCRUB_MEASURED = {"keys_s": 15.0, "read_s": 7.5}
+HS_ENTRIES = ("hold", "scrub", "scrub_measured")
 HS_NO_BUFFER = ("replay", "resume", "skip")   # catch-up footage needs no hold (as live)
 
 
@@ -344,11 +347,12 @@ class HiddenStick:
             raise ValueError(f"hidden_stick must be None, 'wait' or 'live_edge', not {arm!r}")
         if entry not in HS_ENTRIES:
             raise ValueError(f"hidden-stick entry must be one of {HS_ENTRIES}, not {entry!r}")
-        if entry == "scrub":
+        if entry in ("scrub", "scrub_measured"):
             n = (behind - HS_SCRUB["land_s"]) / HS_SCRUB["step_s"]
             if n < 1 or abs(n - round(n)) > 1e-9:
                 raise ValueError(f"[EXP-603] a scrub lands at 15 N + 15 s behind live (75, 90, ...), not {behind:g}")
         self.entry = entry
+        self.true_sync = False         # [EXP-605] a re-sync reading sees an edge-aired picture at the edge
         self.recheck = None            # [EXP-604] (by_id, lag_belief, feed_lag, tune_s) when the re-check is on
         self.rechecked = self.recheck_late = self.recheck_none = 0
         self.recheck_s: list[float] = []
@@ -377,6 +381,8 @@ class HiddenStick:
         prime = (target or "").startswith("prime:")
         if self.entry == "scrub":
             return 0.0 if prime else HS_SCRUB["keys_s"] + HS_SCRUB["read_s"]
+        if self.entry == "scrub_measured":
+            return 0.0 if prime else HS_SCRUB_MEASURED["keys_s"] + HS_SCRUB_MEASURED["read_s"]
         return (0.0 if prime else self.B * self.overrun) + HS_PREREG["resume"]   # EXP-601 exactly as frozen
 
     def load(self, gid: str, target: str, now: float) -> None:
@@ -445,6 +451,8 @@ class HiddenStick:
                     wait += more
         if live_edge:
             sw.offset -= self.B
+            if self.true_sync:
+                sw.hs_edge = self.B
             self.unbuffered_t.append(sw.t)
             self.at_edge.add(sw.to)
         else:
@@ -512,7 +520,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         feed_lag_model: str | None = None,
         calibrate_targets: bool = False,
         hidden_stick: str | None = None, hold_overrun: float = 1.0, behind_live_s: float | None = None,
-        hs_entry: str = "hold", hs_recheck: bool = False,
+        hs_entry: str = "hold", hs_recheck: bool = False, hs_prime_edge: bool = False,
         on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
@@ -580,7 +588,11 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     # 60 s time-shift buffer. On only with --behind-live for now: turning it on for today's NBA card
     # moves it a lot (big seen 92.0 -> 77.0) for a reason not yet understood (docs/timing.md).
     apps = {"youtubetv"} | ({t.split(":", 1)[0] for t in (targets or {}).values()} if calibrate_targets else set())
-    delays = DelayBook({a: lag_total for a in sorted(apps)}, sigma_default=sigma_book,
+    # [EXP-605] hs_prime_edge: Prime can't scrub, so the app plans Prime at its live edge (belief lag_total - B);
+    # its picture airs at the edge too (HiddenStick offsets it), so belief and truth agree for Prime.
+    prime_b = float(behind_live_s or 0.0) if (hs_prime_edge and hidden_stick is not None) else 0.0
+    delays = DelayBook({a: lag_total - (prime_b if a == "prime" else 0.0) for a in sorted(apps)},
+                       sigma_default=sigma_book,
                        clock=clock, model=model)
     scorer = DriveScorer(cfg, clock=clock)
     dec = Decider(cfg, delays, clock=clock)
@@ -621,6 +633,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             behind_live_s = config_behind_live(cfg, replays[0].league.value)
         stick = HiddenStick(hidden_stick, float(behind_live_s or 0.0), hold_overrun, cfg, clock, seed,
                             {lg: set(my_teams) for lg in League}, entry=hs_entry)
+        stick.true_sync = hs_prime_edge
         if hs_recheck:
             if hidden_stick != "wait":
                 raise ValueError("[EXP-604] hs_recheck models the wait arm's post-scrub re-check only")
@@ -763,7 +776,8 @@ def _resync_tick(delays: DelayBook, sync, decision, switches: list, tgt_of: dict
         return
     target = tgt_of[last.to]
     d = delays.get(target)
-    sync.measure(target, lag_of(lag_true, last.to) + d.behind + noise.gauss(0, RESYNC_SD_S),
+    edge = getattr(last, "hs_edge", 0.0) or 0.0   # [EXP-605] this picture aired at its live edge, B s sooner
+    sync.measure(target, lag_of(lag_true, last.to) - edge + d.behind + noise.gauss(0, RESYNC_SD_S),
                  "clock", t=now, sd=RESYNC_SD_S)
 
 
