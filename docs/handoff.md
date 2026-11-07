@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-BIG: YouTube TV Key plays tab lists a game's plays with game clock and plays them on demand ('11 of 12 key plays'), code-readable. May deliver every key moment of a game on demand. Panel Scores tab too coarse for delay; thumbnails lag. Delay still about 25 s +-3.
+Overseer ran PR 377 and 375 on the real stick; both failed first, both fixed and pushed. enter_buffer 3/3 live at 60 s (about 15 s with the tune banner up), label reader reads with confidence 1.0. Key plays reel runs about 10 s per play and returns to live in 0.4 s.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
