@@ -1056,3 +1056,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   hidden-stick model (#374).** Measured only (a60c9cbd scrub spec): ready keys 10 s + read 8 s after the tune, lands
   15 N + 15 s behind live (B75 measured, B90 extrapolated). Both arms must pass. A pass is not a flip card: RC8 waits on
   a live stick test of a held scrub, per Nick.
+- 2026-11-07 (integrator): **Grader freeze v41: EXP-604 post-scrub re-check (#380), verdict arm wait + re-check.**
+  Registered after EXP-603's interim NBA FAIL and a fit-night smoke (disclosed in the prereg). Known optimism: the
+  re-check judges dead balls with the grader's dead_at on delivered plays, not the engine's may_cut, and skips the
+  leave check; so a pass is a model pass that the shadow run must confirm before any card.
