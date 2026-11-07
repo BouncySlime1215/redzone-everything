@@ -4152,7 +4152,8 @@
     "scripts/prime_search_trial.py",
     "scripts/providers_check.py",
     "scripts/rz.py",
-    "scripts/screen_lab.py"
+    "scripts/screen_lab.py",
+    "scripts/yttv_scrub_try.py"
    ],
    "owner": "SWITCHING",
    "role": "Talk to a Fire TV stick over the network with the adb command-line tool.",
@@ -4397,7 +4398,8 @@
    ],
    "kind": "module",
    "outputs": [
-    "redzone/control.py"
+    "redzone/control.py",
+    "scripts/yttv_scrub_try.py"
    ],
    "owner": "SWITCHING",
    "role": "[YTTV scrub buffer, item 1] Put a YouTube TV stick a set time behind live by scrubbing the player overlay.",
@@ -6225,16 +6227,30 @@
    "serves": [
     "untagged"
    ]
+  },
+  "scripts/yttv_scrub_try.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/tuners/adb.py",
+    "redzone/tuners/yttv_seek.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377).",
+   "serves": [
+    "untagged"
+   ]
   }
  },
  "pages": {
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 341,
+  "modules": 342,
   "orphans": 15,
-  "unowned": 177,
-  "untagged": 283
+  "unowned": 178,
+  "untagged": 284
  },
  "version": 1
 }

@@ -62,6 +62,10 @@ def scrub(two, monkeypatch):   # noqa: F811
     mod = types.ModuleType("redzone.tuners.yttv_seek")
     mod.enter_buffer = enter_buffer
     monkeypatch.setitem(sys.modules, "redzone.tuners.yttv_seek", mod)
+    # `from redzone.tuners import yttv_seek` reads the package attribute first: once the real module was imported
+    # (tests/test_yttv_seek.py in the same worker), sys.modules alone doesn't swap it
+    import redzone.tuners as _tuners
+    monkeypatch.setattr(_tuners, "yttv_seek", mod, raising=False)
     return c, tuner, hid, calls, result, behind
 
 
@@ -156,6 +160,8 @@ def test_a_stick_that_turned_visible_is_never_retuned(scrub):
 def test_missing_seek_helper_fails_closed_without_presses(scrub, monkeypatch):
     c, tuner, hid, calls, result, behind = scrub
     monkeypatch.setitem(sys.modules, "redzone.tuners.yttv_seek", None)   # import raises ImportError
+    import redzone.tuners as _tuners
+    monkeypatch.delattr(_tuners, "yttv_seek", raising=False)
     run(_preload(c, "youtubetv:fox"))
     assert not c.hidden_ready and not any("DPAD" in x for x in hid.log)
     assert tuner.calls == [("b:5555", "youtubetv:fox")]          # still on its own live tune: no re-tune

@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**341 modules**, 283 untagged, 177 unowned, 15 orphans (no importer).
+**342 modules**, 284 untagged, 178 unowned, 15 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -86,7 +86,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/discovery/yttv.py` | YouTube TV channel codes with zero pasting: a researched default table, self-verification on a Fire TV stick, and an in-app search fallback. | channels, discovery.lounge, discovery.search, discovery.stickio, sources.eventlinks, tuners.adb -> autonomy, discovery.search, lab.night.run, tuners.tuners, tuners.yttv_search, scripts.find_yttv_code | untagged |
 | `redzone/standby.py` | Hot standby: what the hidden stick should be playing, so the next switch is a 1-2s input flip. | config, crunch, models -> demo.engine, engine, lab.backtest | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-05, STK-06 |
 | `redzone/tuners/__init__.py` (package) | no docstring | - -> - | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tuners/adb.py` | Talk to a Fire TV stick over the network with the adb command-line tool. | config, platform.breaker, screen_ocr -> autonomy, control, discovery.stickio, discovery.yttv, lab.night.house, platform.faults +19 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04, STK-05 |
+| `redzone/tuners/adb.py` | Talk to a Fire TV stick over the network with the adb command-line tool. | config, platform.breaker, screen_ocr -> autonomy, control, discovery.stickio, discovery.yttv, lab.night.house, platform.faults +20 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04, STK-05 |
 | `redzone/tuners/identity.py` | Conservative matchup evidence from fresh provider metadata. | - -> - | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/multiview.py` | YouTube TV multiview as a switch path (SWITCHING). | decider.core -> scripts.multiview_probe | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/prime_multiview.py` | Prime Video NBA multiview as a switch path (SWITCHING). | - -> control, engine, lab.prime_mv_fake, tuners.tuners, scripts.prime_multiview_grade, scripts.prime_multiview_probe | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
@@ -97,7 +97,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/tuners/tuners.py` | Tuners: one class per streaming app. | channels, discovery.providers, discovery.yttv, screen_ocr, tuners.adb, tuners.prime_multiview +4 -> autonomy, control, discovery.runtime, platform.faults, tuners.providers, tuners.yttv_search +5 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_label.py` | [YTTV scrub buffer, item 2] Read YouTube TV's overlay time label -> numbers only. | screen_ocr, tuners.adb -> - | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_search.py` | Bounded YouTube TV library inspection using observed menu geometry. | discovery.providers, discovery.stickio, discovery.yttv, screen_ocr, tuners.adb, tuners.prime_search +2 -> tuners.tuners, scripts.find_yttv_code | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tuners/yttv_seek.py` | [YTTV scrub buffer, item 1] Put a YouTube TV stick a set time behind live by scrubbing the player overlay. | screen_ocr -> control | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
+| `redzone/tuners/yttv_seek.py` | [YTTV scrub buffer, item 1] Put a YouTube TV stick a set time behind live by scrubbing the player overlay. | screen_ocr -> control, scripts.yttv_scrub_try | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tv.py` | Samsung TV: switch HDMI inputs (two-stick mode) and duck the volume (announcer). | platform.breaker -> control, fantasy, lab.night.run, tvsetup, scripts.fault_drill, scripts.tv_local_probe | Switch time p95 (SmartThings input change), TV-01, TV-02 |
 | `redzone/tvsetup.py` | One-time TV setup for instant switching (scripts/tv_setup.py is the command; this is the logic, with every network/device touch in one `Home` object that tes... | autonomy, network, tuners.adb, tv -> scripts.stick_cec, scripts.tv_setup | untagged |
 | `scripts/find_yttv_code.py` (entry) | Find the YouTube TV watch code (tv.youtube.com/watch/<code>) of a channel we lack, on a SPARE stick. | channels, config, discovery.lounge, discovery.yttv, recorded, screen_ocr +3 -> - | untagged |
@@ -215,7 +215,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (177)
+## unowned (178)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -396,8 +396,9 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/world_model_pilot.py` (entry) | World model pilot (EXP-100): event tokens -> a small transformer -> held-out-night grades, end to end. | noggin.factory -> - | untagged |
 | `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
 | `scripts/wv_aux_label.py` (entry) | Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804). | - -> scripts.attention_labels | untagged |
+| `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_seek -> - | untagged |
 
-## Untagged (283)
+## Untagged (284)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -682,6 +683,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/world_model_pilot.py`
 - `scripts/worth_line.py`
 - `scripts/wv_aux_label.py`
+- `scripts/yttv_scrub_try.py`
 
 ## Orphans (no importer) (15)
 
