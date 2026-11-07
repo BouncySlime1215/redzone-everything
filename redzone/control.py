@@ -1471,6 +1471,10 @@ class Controller:
         if not res.ok:
             return TuneResult(False, target, res.took, list(res.steps), f"reset through {other_t} failed: {res.error}")
         stick.behind_on = None
+        gap = float(self.cfg.get("tuners.relink_gap_s", 0) or 0)
+        if gap > 0:
+            # [Nick Nov 7] a tune right after another failed 1/10 ("video never started"); a short gap fixed it
+            await asyncio.sleep(gap)
         return None
 
     def _ref(self, target: str) -> tuple[str, str]:
