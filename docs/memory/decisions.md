@@ -1191,6 +1191,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   6/4/3, clock-truth 9/8/9 -> 2/2/0, your-team crunch 100%, switches 1.29x, primary +8.9 [1.5]). Read after the
   verdict, so it decides nothing; the default stays on Nick's RC6.3 card. NBA RC8 still needs: Nick's low_leverage
   call, the shadow run, live drop-and-re-pick past 25 s modelled, and a label-measured #391 landing.
+- 2026-11-07 (Nick's goal via the overseer, 2:07 AM ET: "join a chosen spot accurately; the model handles which plays
+  later"): new `join.*` group, **enabled false**. `redzone/tuners/join.py` takes a target behind_live, plans it, runs it
+  on the hidden stick, and logs target, predicted landing, measured landing and both errors to data/joins.jsonl.
+  YouTube TV: n = round((T - 10) / 15) LEFTs (fixed, passed to enter_buffer as `presses`), predicted 15 n + 11.7 s
+  (9 label-measured runs landed T - 3.3 s on average, +-3 s); targets are 15 s steps and the overlay is never held
+  to hit one in between (that measured +2..+10 s and one -18.7 s). Prime: pause for the gap (prime_pause), +-1-2 s.
 - 2026-11-07 (Nick's sync order item 2, fallback ladder thread): **fallback_ladder.enabled: false (new).** Per stick,
   a join that can't be made as planned climbs buffered (measured only) -> live edge on the same stick -> other stick
   in place (other_stick_apps [youtubetv]) -> hold, each step in data/ladder.jsonl and on the phone; a rung that failed

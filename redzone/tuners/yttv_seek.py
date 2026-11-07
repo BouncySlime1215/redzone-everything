@@ -182,8 +182,11 @@ async def enter_buffer(stick, seconds: float, *, cfg=None, pkg: str | None = Non
                        read_behind: Callable[[Any], Awaitable[float | None]] | None = None,
                        relink: Callable[[], Awaitable[bool]] | None = None,
                        behind_before_s: float = 0.0,
-                       clock: Callable[[], float] | None = None) -> BufferResult:
-    """Scrub a hidden YouTube TV stick `seconds` behind where it plays now. See the module docstring. Never raises."""
+                       clock: Callable[[], float] | None = None,
+                       presses: int | None = None) -> BufferResult:
+    """Scrub a hidden YouTube TV stick `seconds` behind where it plays now. See the module docstring. Never raises.
+    presses: send exactly this many LEFTs (the probe included, capped by max_back_s) instead of planning them from the
+    time in the overlay: the join API's measured n = round((T - 10) / 15) (redzone/tuners/join.py)."""
     clock = clock or time.monotonic
     t0 = clock()
     res = BufferResult(ok=False, asked_s=round(float(seconds), 2))
@@ -191,7 +194,7 @@ async def enter_buffer(stick, seconds: float, *, cfg=None, pkg: str | None = Non
     still_hidden = still_hidden or (lambda: True)
     try:
         await _enter(stick, float(seconds), cfg, pkg, still_hidden, read_overlay, read_behind, relink,
-                     float(behind_before_s), res, clock)
+                     float(behind_before_s), res, clock, presses)
         # [program boundary, Nick Nov 7 ~1:00 AM] the overlay label resets at a new program, so the knob check can read
         # "moved 39s, not 60s" with nothing wrong. That already failed closed; once the stick is re-linked to the live
         # edge (a known position, nothing committed), try the scrub again from the edge, at most boundary_retries times.
@@ -203,7 +206,7 @@ async def enter_buffer(stick, seconds: float, *, cfg=None, pkg: str | None = Non
             prior = list(res.steps)
             res.ok, res.reason, res.presses, res.relinked, res.steps = False, "", 0, None, []
             await _enter(stick, float(seconds), cfg, pkg, still_hidden, read_overlay, read_behind, relink,
-                         0.0, res, clock)
+                         0.0, res, clock, presses)
             res.steps = prior + ["retry from the live edge (program boundary?)"] + res.steps
     except Exception as e:   # never raise into the switch path: report, and leave the stick re-linked if we can
         log.warning("enter_buffer failed: %r", e)
@@ -243,10 +246,12 @@ async def _keys(stick, code: str, n: int, gap: float) -> bool:
 
 
 async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behind, relink, behind_before, res,
-                 clock=time.monotonic):
+                 clock=time.monotonic, fixed_n=None):
     step = float(_cfg(cfg, "step_s"))
     gap = float(_cfg(cfg, "key_gap_s"))
     n = int(round(min(max(0.0, seconds), float(_cfg(cfg, "max_back_s"))) / step))
+    if fixed_n is not None:
+        n = max(0, min(int(fixed_n), int(float(_cfg(cfg, "max_back_s")) // step)))
     if n <= 0:
         res.ok, res.reason, res.behind_live_s = True, "nothing to move", behind_before
         return
@@ -302,7 +307,8 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     # Plan the rest so that LEFTs + time in the overlay land on the target: the probe gave one step, the overlay
     # has been up (now - t_open), and the check read still to come costs about what the probe read did.
     left_s = seconds - step - (clock() - t_open) - read_cost - float(_cfg(cfg, "overlay_wait_s"))
-    n = 1 + max(0, min(n - 1, int(round(left_s / (step + gap)))))
+    if fixed_n is None:
+        n = 1 + max(0, min(n - 1, int(round(left_s / (step + gap)))))
     res.steps.append(f"plan: {n} LEFT(s) ({clock() - t_open:.1f}s in the overlay so far)")
     # 3. the other LEFTs, then the label must have moved back that many steps
     if not still_hidden():

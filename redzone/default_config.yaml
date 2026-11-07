@@ -606,6 +606,17 @@ prime_pause:               # [Prime buffer] enter the time-shift buffer on a HID
   gain_tol_s: 3            # the timecode gain must match the held wall time within this, else fail closed
   band_y_min: 0.55         # the timecode is read only below this fraction of the screen height (not the scorebug)
 
+join:                      # [Join API] put a HIDDEN stick a chosen time behind live, predict, measure, log the error
+                           # (redzone/tuners/join.py; overseer's 9 label-measured runs, Nov 7). OFF: the caller checks it.
+  enabled: false
+  yttv_step_s: 15          # one LEFT = 15 s: YouTube TV targets are steps of 15 s (never hold the overlay in between)
+  yttv_n_offset_s: 10      # n = round((T - before - 10) / 15) LEFTs (Nick's measured rule)
+  yttv_lead_s: 11.7        # predicted landing = before + 15 n + this (9 runs: T - 3.3 s on average)
+  yttv_err_s: 3            # expected +- error of a YouTube TV join
+  prime_bias_s: 0          # predicted landing = before + hold + this (Prime pause, ~1-2 s accurate)
+  prime_err_s: 2           # expected +- error of a Prime join
+  max_s: 150               # never join further behind live
+
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true
   yours_first: true        # your team's missed big plays: replayed before other games' and over ordinary live play
