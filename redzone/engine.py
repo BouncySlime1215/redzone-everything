@@ -61,6 +61,11 @@ def _fastcast_ended(task: asyncio.Task) -> None:
         log.error("Fastcast client stopped: %r (polling carries on)", e, exc_info=e)
 
 
+def _short_why(detail: str) -> str:
+    """The first clause of a switch outcome, short enough for a status line."""
+    return detail.split(";", 1)[0].strip()[:80] or "switch failed"
+
+
 class Engine:
     def __init__(self, cfg: Config | None = None, store: Store | None = None):
         self.cfg = cfg or Config()
@@ -1392,6 +1397,7 @@ class Engine:
         # was invisible in the DB because the reason text stayed the same.
         gate = str(getattr(d, "gate", "") or "")
         changed = d.reason != self._last_logged_reason or d.action != "stay" or gate != self._last_logged_gate
+        self._lock_expired()
         if changed:
             self.store.decision(d)
             self._last_logged_reason = d.reason
@@ -1522,6 +1528,8 @@ class Engine:
                         self.decider.user.manual_until = time.time() + self.cfg.get("decider.manual_pause_s")
                 else:
                     self.decider.reject(d)
+                    if not out.dry_run and not cancelled and not out.detail.startswith(NOT_THE_TARGETS_FAULT):
+                        self.decider.lock_failed(d, _short_why(out.detail))   # [lock wait] (flag off: no-op)
                     # Playback can be unknown after a failed launch. Hold for
                     # recovery instead of making new decisions from a fiction.
                     if out.screen_unchanged:
@@ -2167,6 +2175,22 @@ class Engine:
         """Your second "Go now" tap on the held game: it cuts at once, even mid-play (Nick, Nov 5)."""
         h = self.hold
         return bool(h and d.kind == "user" and d.action == "switch" and d.target == h["game_id"] and h.get("force"))
+
+    def _lock_expired(self) -> None:
+        """[lock wait] The decider gave up on a locked game it couldn't reach: drop the lock (and the
+        hold) and say why, instead of re-trying it forever with the lock still on."""
+        dec = self.decider
+        gid, dec.lock_expired = dec.lock_expired, None
+        if not gid or dec.user.locked_game != gid:
+            return
+        why = dec.lock_why
+        dec._lock_reset()
+        if self.hold and self.hold["game_id"] == gid:
+            self._release_hold("")
+        else:
+            dec.user.locked_game = None
+        self.toast(f"Couldn't get to {self._name(gid)} ({why}) — back on autopilot", "error")
+        log.warning("lock on %s given up: %s", gid, why)
 
     def _hold_waits(self, d: Decision) -> bool:
         """A switch to the held game honors the never-cut-mid-play rule unless you forced it."""

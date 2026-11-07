@@ -1087,3 +1087,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   not media_session; the flip still waits for a dead ball on the delayed picture. A failed scrub re-tunes at the live
   edge and keeps the current game. Ships OFF: a flip onto a scrubbed stick with a person watching is not yet proven
   (spec "Still to prove"). No live config change. Rule #1 unchanged.
+- 2026-11-07 (PR #381, item 6 of Nick's Nov 6 order): new default `decider.lock_wait` {enabled: false, retry_s: 20,
+  max_s: 90}. A locked/held game we can't reach (no channel, or a tune that failed) says why, retries after retry_s,
+  and after max_s the lock and hold are dropped with a toast. Off by default: Nick flips it. Nov 6: a hold on the ACC
+  Network game sat 96 s and 261 s on "switch: you locked this game" (617 instant "no channel" attempts). Rule #1 unchanged.
