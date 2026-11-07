@@ -11,6 +11,7 @@ Short, do-this-now steps. Each one links to the full doc. Run everything from th
 | Start or check a Kaggle training run | [kaggle-run.md](kaggle-run.md) |
 | Set up TV-side input switching | [tv-setup.md](tv-setup.md) |
 | A stick looks offline | [stick-offline.md](stick-offline.md) |
+| A join didn't land where we wanted (buffer, live, other stick, hold) | [sync-fallback.md](sync-fallback.md) |
 | Weekly usage is near the cap | [usage-pause.md](usage-pause.md) |
 
 ## Memory hook

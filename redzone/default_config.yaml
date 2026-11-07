@@ -579,6 +579,19 @@ yttv_seek:                 # [YTTV scrub buffer, item 1] enter the time-shift bu
   reset_channel: ""        # a stick that may be behind on a channel goes through this one to get back to live (a
                            # same-channel deep link does not reset it; Nick, Nov 7). "" = any other coded channel
 
+fallback_ladder:           # [Nick's Nov 7 sync order, item 2] when a join can't be made as planned, climb down per stick:
+                           # buffered (measured) -> live edge (same stick, known position) -> other stick (tunes in place
+                           # at a dead ball) -> hold the current game. Each step in data/ladder.jsonl and on the phone.
+                           # Every flip still waits for a safe moment (Rule #1). OFF until a hidden-stick night.
+  enabled: false
+  other_stick_apps: [youtubetv]   # apps the visible stick may tune in place as a fallback (a Prime tune is ~32 s on screen)
+  skip_after: 2            # a rung that failed this many times on one stick inside window_s...
+  window_s: 600
+  cooldown_s: 300          # ...is skipped on that stick this long (no key storms on a path broken tonight)
+  skip_rungs: []           # rungs never tried (e.g. [live]: the report-only replay shows the live rung adds NFL
+                           # mid-play entries at a 10% scrub failure rate; scripts/ladder_replay.py)
+  budget_s: 90             # rungs that would start after this many seconds of climbing are skipped (-> hold)
+
 prime_pause:               # [Prime buffer] enter the time-shift buffer on a HIDDEN Prime Video stick by pausing it
                            # (overseer Nov 7: 60 s pause = +61 s on Prime's timecode, held 4 min, no snap; YouTube TV
                            # pause does not hold, so it scrubs: yttv_seek). Never MEDIA_REWIND (continuous on Prime).

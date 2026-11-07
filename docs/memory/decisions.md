@@ -1191,3 +1191,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   6/4/3, clock-truth 9/8/9 -> 2/2/0, your-team crunch 100%, switches 1.29x, primary +8.9 [1.5]). Read after the
   verdict, so it decides nothing; the default stays on Nick's RC6.3 card. NBA RC8 still needs: Nick's low_leverage
   call, the shadow run, live drop-and-re-pick past 25 s modelled, and a label-measured #391 landing.
+- 2026-11-07 (Nick's sync order item 2, fallback ladder thread): **fallback_ladder.enabled: false (new).** Per stick,
+  a join that can't be made as planned climbs buffered (measured only) -> live edge on the same stick -> other stick
+  in place (other_stick_apps [youtubetv]) -> hold, each step in data/ladder.jsonl and on the phone; a rung that failed
+  2x in 10 min on a stick is skipped there 5 min. Every flip still waits for may_cut. Off until a hidden-stick night.
