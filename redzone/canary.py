@@ -277,6 +277,9 @@ class Canary:
                 why = "" if ok else (getattr(r, "error", "") or "; ".join(getattr(r, "steps", [])[-3:]) or "tune failed")
                 if not self._add(name, ok, f"{channel}: {why}" if why else channel, t0):
                     return
+                gap = float((cfg.get("tuners.relink_gap_s", 0) if hasattr(cfg, "get") else 0) or 0)
+                if name == "tune_away" and gap > 0:
+                    await env.sleep(gap)   # [Nick Nov 7] back-to-back tunes failed 1/10; a short gap fixed it
             if not self._guard("tune"):
                 return
             on = await env.playing(stick)

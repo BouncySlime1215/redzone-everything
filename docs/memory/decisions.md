@@ -1335,3 +1335,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   drive inside the 20 keep it). Leaves use the play-by-play dead window or the normal gate (incl. low_leverage); joins
   must land on a proven dead ball (re-checked at the flip). Every jump to data/jumps.jsonl. Also: the duplicate
   `decider.leave` block merged (dead_windows / tune_s were silently dropped by YAML; defaults unchanged).
+- 2026-11-07 (Nick 11:50 local: the app's tuner back to back, espn2 -> fs1/accn with no gap, failed 1/10 "video never
+  started" and was slow 2/10; a 3 s gap fixed the delay probe, #408 9/9): new shared `tuners.relink_gap_s`, **0 (off)**.
+  When set, it waits between the reset tune and the tune back in control's reset through another channel (scrub
+  fallback, watchdog re-seek), and between the canary's tune_away and tune. scripts/watchdog_try.py takes --gap=S.
