@@ -373,6 +373,7 @@ class _Run:
 
     async def to_tab(self, r: PanelRead) -> PanelRead:
         self.res.stage = "tab"
+        up_used, rights = False, 0
         for _ in range(int(_cfg(self.cfg, "tab_tries"))):
             if r.on_key_plays and r.rows:
                 self.mark("tab_s")
@@ -382,6 +383,12 @@ class _Run:
             elif r.focus_kind == "tab":
                 order = list(TABS)
                 await self.key("DPAD_RIGHT" if order.index(r.focus_text) < 2 else "DPAD_LEFT")
+            elif r.panel and not up_used:
+                up_used = True                       # live Nov 6: the panel opens with a card focused; UP reaches the tabs
+                await self.key("DPAD_UP")
+            elif r.panel and up_used and not r.focus_text and rights < 2:
+                rights += 1                          # live Nov 6: OCR can't see focus on the tabs; RIGHT only changes tab,
+                await self.key("DPAD_RIGHT")         # it selects nothing, and rows must appear before anything is picked
             else:
                 raise _Closed(f"focus is not on a tab ({r.focus_kind or 'unknown'}: {r.focus_text[:30]!r})")
             nr = await self.read()
