@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Dev build b490ab86 deployed to the Mac by Nick's OK: 3323 tests passed side run, health watch result in deploy.jsonl. New features flagged off. Next: flip test.
+3-hour YouTube TV hold PASSED. Jump rate 16/16, about 17 s to ready a hidden stick on a new game. Next: watchdog then canary stick tests on integration/next 01faee1a. Usage 90%. Auto-switching paused for dev.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
