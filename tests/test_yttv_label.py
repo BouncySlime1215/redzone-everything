@@ -174,4 +174,4 @@ def test_flag_ships_off():
     d = yaml.safe_load((Path(L.__file__).resolve().parents[1] / "default_config.yaml").read_text())
     assert d["timing"]["behind_live_s"]["label_reader"] is False
     assert L.enabled(SimpleNamespace(get=lambda k, default=None: d["timing"]["behind_live_s"]["label_reader"]
-                                     if k == L.FLAG else default)) is False
+                                     if k == L.LABEL_READER_FLAG else default)) is False

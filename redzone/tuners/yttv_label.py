@@ -40,7 +40,7 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Awaitable, Callable, Iterable
 
-FLAG = "timing.behind_live_s.label_reader"
+LABEL_READER_FLAG = "timing.behind_live_s.label_reader"
 
 # Overlay geometry (normalized, top-left; 1920x1080 screencaps Nov 5, ESPN, both sticks; ui_common.py):
 # bar y ~0.815, x ~0.05..0.95; label sits just above the knob; window '2:30 AM - 3:00 AM' at (0.81, 0.72).
@@ -92,7 +92,7 @@ class LabelRead:
 
 def enabled(cfg) -> bool:
     try:
-        return bool(cfg.get(FLAG, False))
+        return bool(cfg.get(LABEL_READER_FLAG, False))
     except Exception:
         return False
 
