@@ -50,6 +50,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from redzone.tuners.join import _default_log as _join_log   # one data/joins.jsonl for join, watchdog, drift
+
 log = logging.getLogger("redzone.join_watchdog")
 
 WATCHDOG_DEFAULTS = {
@@ -72,7 +74,6 @@ DRIFT_DEFAULTS = {
     "read_cost_s": {"youtubetv": 7.5, "prime": 8.0},    # wall time of one read (budget)
     "read_adds_s": {"youtubetv": 7.5, "prime": 0.0},    # ...and how much it pushes the picture back (frozen overlay)
 }
-STATES = ("buffered", "live", "unknown")
 
 
 def _app(app: str) -> str:
@@ -153,7 +154,7 @@ def verify(app: str, target_s: float, measured_s: float | None, predicted_s: flo
 
 @dataclass
 class Outcome:
-    state: str                         # buffered | live | unknown (STATES): what the phone may say
+    state: str                         # buffered | live | unknown: what the phone may say
     behind_s: float | None             # the READ seconds behind live when buffered; 0.0 live; None unknown
     target_s: float
     attempts: int = 0
@@ -166,17 +167,12 @@ class Outcome:
         return self.state == "buffered"
 
 
-def _default_log() -> Path:
-    from redzone.config import DATA
-    return DATA / "joins.jsonl"
-
-
 def log_row(row: dict, path: Path | str | None = None) -> None:
     """One row to data/joins.jsonl (or `path`); path "" = don't log (tests, dry runs)."""
     if path == "":
         return
     try:
-        p = Path(path) if path is not None else _default_log()
+        p = Path(path) if path is not None else _join_log()
         p.parent.mkdir(parents=True, exist_ok=True)
         with p.open("a") as f:
             f.write(json.dumps({"ts": round(time.time(), 1), **row}) + "\n")
