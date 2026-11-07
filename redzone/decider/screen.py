@@ -726,6 +726,26 @@ def _is_game_end(kind: str) -> bool:
     return "game" in k and "end" in k
 
 
+def _entry_label(p, league: League) -> str:
+    """[quiet break] What a play-by-play entry says about the moment right after it, for a feed that
+    then goes quiet: "period_end" (end of a quarter/half/period, or the clock read 0:00), "score"
+    (a scoring play in a stop-start sport: try/kickoff/ad follow), else ""."""
+    k = f"{p.kind or ''} {getattr(p, 'type_text', '') or ''}".lower().replace("_", " ")
+    if "end" in k and "game" not in k and any(w in k for w in ("period", "quarter", "half", "regulation", "inning")):
+        return "period_end"
+    if "halftime" in k or "intermission" in k:
+        return "period_end"
+    clock = getattr(p, "clock", None)
+    if clock is not None and clock <= 0.0 and getattr(p, "period", None) is not None:
+        return "period_end"
+    if p.scoring and league not in CONTINUOUS:
+        return "score"
+    if clock is not None and getattr(p, "period", None) is not None and league not in CONTINUOUS \
+            and (p.period or 0) < 4:
+        return f"near_end:{float(clock):.0f}"   # only used when quiet_break.near_end_clock_s is on
+    return ""
+
+
 @dataclass
 class Event:
     seen: float      # when it happened (the LATEST it could have, if unsure)
@@ -773,6 +793,10 @@ class Timeline:
         self.break_kind = ""                  # ESPN kind of the play that started the current break
         self.period_timeouts: int | None = None  # timeouts this period so far; None = joined mid-period
         self.live = None                      # [noggin PICK] pick.LiveGame when noggin.pick is on (or shadow)
+        # [quiet break] decider.leave.quiet_break (set per league by the decider; None = off) and the
+        # newest entry this game's data has logged (any kind, markers included): see quiet_break().
+        self.quiet_cfg: dict | None = None
+        self.last_entry: Event | None = None
 
     def lag_est(self) -> float:
         """How far behind real life this game's feed runs (recent worst case)."""
@@ -828,6 +852,11 @@ class Timeline:
                 self.scores.append(Event(hi, "score", (p.text or p.kind)[:80], pid=p.id, play_kind=p.kind,
                                          spread=hi - lo, score=tuple(sc)))
         for p in new:
+            lo, hi = _bounds(p, now, prev_fresh)
+            if not (first_poll and _t(p, now) < now - FIRST_POLL_RECENT_S) and (
+                    self.last_entry is None or hi >= self.last_entry.seen):
+                self.last_entry = Event(hi, "entry", _entry_label(p, self.league), p.scoring, p.id, p.kind,
+                                        hi - lo)
             if p.wallclock and getattr(p, "clock", None) is not None and getattr(p, "period", None) is not None:
                 self.clocks.append((p.wallclock, p.period, p.clock))
             self._seen_ids.append(p.id)
@@ -922,6 +951,52 @@ def _stoppage_reached(tl: Timeline, start: Event, mu: float, margin: float) -> f
     return reached
 
 
+QUIET_KINDS = ("period_end", "score")
+
+
+def quiet_break(tl: Timeline, mu: float, margin: float, now: float, tune_s: float) -> Gate | None:
+    """[quiet break, Nick Nov 7 12:40] The data on this game went quiet right after an entry that
+    starts a dead spell: a period end / 0:00 clock, or a score in a stop-start sport. During the ad that
+    follows, the feed logs nothing, so the stale-data and uncalibrated-delay rules below blocked leaving
+    exactly when it was safest. Treat that entry as an official stoppage: it is on screen once it has
+    surely aired (seen + mu + margin) and stays a break for floor_s[kind] after it (the same
+    start + floor + mu - margin - tune_s rule as an official break with no restart in the data).
+    Only while it is still the newest entry and no stoppage/restart was logged after it."""
+    cfg = tl.quiet_cfg
+    e = tl.last_entry
+    if not cfg or not cfg.get("enabled") or e is None or not e.label:
+        return None
+    kind, start = e.label, e
+    if kind.startswith("near_end:"):
+        # Opt-in (near_end_clock_s, 0 = off): the last entry left <= N s on the clock before a quarter
+        # break and nothing at all has arrived for quiet_s. GUESS that the clock ran out: the period
+        # can't have ended before seen + clock left (the clock never runs faster than real time).
+        # Risk: a feed that is merely slow while plays run looks the same.
+        left = float(kind.split(":", 1)[1])
+        if left > float(cfg.get("near_end_clock_s", 0) or 0) or tl.fresh_at is None \
+                or now - tl.fresh_at < float(cfg.get("near_end_quiet_s", 60) or 60):
+            return None
+        kind = "period_end"
+        start = Event(e.seen + left + PLAY_LEN_S.get(tl.league, 0.0), "entry", kind, spread=e.spread)
+    if kind not in QUIET_KINDS:
+        return None
+    floor = float((cfg.get("floor_s") or {}).get(kind, 0.0) or 0.0)
+    if floor <= 0.0:
+        return None
+    # Anything the timeline logged after this entry (a play, a stoppage, a restart) means it's not the
+    # last word: the normal rules apply.
+    if any(x.seen > e.seen for x in tl.events) or any(x.seen > e.seen for x in tl.scores if x.pid != e.pid):
+        return None
+    if now < start.seen + mu + margin + AFTER_PLAY_BUFFER_S:
+        return None     # not surely on screen yet
+    if now > start.lo + floor + mu - margin - tune_s:
+        return None     # the break may have ended on screen
+    what = {"period_end": "end of period", "score": "after a score"}[kind]
+    if e.label.startswith("near_end:"):
+        what = f"clock likely ran out ({e.label.split(':')[1]} s left, data quiet)"
+    return Gate(True, f"quiet break on screen: {what}", kind == "period_end")
+
+
 def leave_gate(tl: Timeline, delay: Delay, now: float, uncalibrated_sigma: float,
                tune_s: float = 6.0) -> Gate:
     """Is it safe to cut away from this game *as your screen shows it right now*?"""
@@ -978,6 +1053,9 @@ def leave_gate(tl: Timeline, delay: Delay, now: float, uncalibrated_sigma: float
     if in_break:
         real = start.label in {b.value for b in REAL_BREAKS}
         return Gate(True, "break on screen" if real else "whistle on screen", real)
+    quiet = quiet_break(tl, mu, margin, now, tune_s)
+    if quiet is not None:
+        return quiet
 
     # 2. Continuous-play sports, or we don't trust our delay: only breaks are safe.
     if tl.league in CONTINUOUS:

@@ -1159,3 +1159,16 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Select alone from the search page 0/4): **new flag `tuners.yttv_local_search: false`**. On: abc/cbs/fox/nbc tune by search (ABC 11 / CBS 17 /
   FOX 50 / WRAL), accepted only on a media-session subtitle naming the station AND a live playhead (>= 30 min),
   else BACK; fox/cbs ST mirror codes skipped except on Sundays. Off: routing unchanged. Nick flips it.
+- 2026-11-07 (Nick 12:40 PM live report: UNC@CONN stuck in the end-of-Q1 ads, leave gate said "no fresh data for
+  103-128s" and "delay not calibrated yet"): **new `decider.leave.quiet_break` (enabled: true, floor_s
+  {period_end: 120, score: 40})**. When the newest entry on a game is a period end / 0:00 clock, or a score in a
+  stop-start sport, and nothing newer has arrived, the leave gate treats it as an official stoppage: leavable from
+  seen + mu + 2 sigma + 3 s to seen + floor + mu - 2 sigma - tune_s, ahead of the stale-data and uncalibrated rules.
+  enabled: false = old behavior; read every poll, so a settings change applies to games already on. Opt-in
+  `near_end_clock_s` (0 = off) guesses the clock ran out when the last play left <= N s before a quarter break
+  (not Q4) and the feed has been silent near_end_quiet_s; today's UNC@CONN data stopped at 0:22 of Q1 with no
+  period end, so only this opt-in would have fired there.
+- 2026-11-07 (Nick 12:40 PM, runtime via /api/settings on the Mac, undoable; recorded here at his request):
+  decider.switch_margin 10 -> 4, decider.return_tolerance 5 -> 2, decider.break_destination_min 25 -> 10,
+  score.personal.my_team 25 -> 10, decider.uncalibrated_sigma_s 8 -> 25, decider.sticky_visit_needs_calibration
+  true -> false. Live settings only; the tree defaults are unchanged.
