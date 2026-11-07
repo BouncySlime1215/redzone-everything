@@ -48,7 +48,7 @@ def on_page(monkeypatch):
 
 
 def prime(**kw):
-    return quick(PrimeTuner, page_wait_s=0.01, WAKE_SETTLE_S=0.01, confirm_timeout=0.2, **kw)
+    return quick(PrimeTuner, page_wait_s=0.01, PANEL_BLIND_S=0.01, confirm_timeout=0.2, **kw)
 
 
 async def test_off_by_default_and_the_bug_it_fixes(on_page):

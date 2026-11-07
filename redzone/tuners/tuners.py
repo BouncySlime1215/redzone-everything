@@ -482,7 +482,6 @@ class PrimeTuner(Tuner):
     wake_nav_fix = False
     wake_move_key = "KEYCODE_DPAD_DOWN"   # tuners.prime_wake_move_key; set from Nick's stick run
     WAKE_MOVE_KEYS = ("KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_RIGHT", "KEYCODE_DPAD_UP", "KEYCODE_DPAD_LEFT")
-    WAKE_SETTLE_S = 1.5      # after the first CENTER: did it start (or open the panel) by itself?
 
     async def _wake_move_start(self, stick: Stick, pkg: str, steps: list[str], watch: NewStream,
                                may_cut=None) -> bool:
@@ -494,7 +493,7 @@ class PrimeTuner(Tuner):
         if self.wake_move_key not in self.WAKE_MOVE_KEYS:
             steps.append(f"wake-nav: move key {self.wake_move_key!r} not allowed; no move")
             return False
-        if await self._watch_for(stick, pkg, watch, self.WAKE_SETTLE_S):
+        if await self._watch_for(stick, pkg, watch, self.PANEL_BLIND_S):   # did press 1 start it?
             return False   # the first press started it: the next pass confirms it
         if (await stick.playback(pkg)).get("state") in LOADING or not await self._on_detail_page(stick):
             return False
