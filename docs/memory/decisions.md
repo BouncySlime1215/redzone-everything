@@ -1161,3 +1161,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   EXP-608; RC8 stays OFF.** NBA's blockers are clock-truth entries the re-check's lenient dead ball lets through, plays
   missed ~2.3x and (resync) your-team crunch 54.8%; EXP-610 addresses the first. NFL's are switches 1.72x and plays
   missed ~3x.
+- 2026-11-07 (T9, EXP-610, #392): new default `decider.entry.whistle_band_s: 3`. It is read only on the scrub path
+  (`timing.behind_live_s.scrub_entry`, off), where a basketball flip in `decider.entry.hold_only` now also needs a
+  clock-stopped dead ball on the delayed picture for +- this many s (redzone/decider/whistle.py). Reason: the Nov 7
+  Rule #1 finding that the scrub-path flip never checked the destination's picture. No live behaviour changes while
+  the scrub flag is off.

@@ -111,7 +111,10 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
                     help="[EXP-609] --hs-prime-pause with the measured cost (B + 4.3 s, Nick's #389 run)")
     ap.add_argument("--hs-prime-edge", action="store_true",
                     help="[EXP-605] with --hidden-stick: the app plans Prime targets at their live edge (no buffer)")
-    ap.add_argument("--hs-entry", choices=("hold", "scrub", "scrub_measured"), default="hold",
+    ap.add_argument("--hs-recheck-whistle", action="store_true",
+                    help="[EXP-610] with --hs-recheck: basketball's re-check needs a clock-stopped dead ball "
+                         "(redzone/decider/whistle.py, as the live flip on the scrub path)")
+    ap.add_argument("--hs-entry", choices=("hold", "scrub", "scrub_measured", "scrub_90_measured"), default="hold",
                     help="[EXP-603] how the hidden stick gets behind live, with --hidden-stick: hold (pause B s, "
                          "EXP-601) or scrub (overlay scrub + one label read, ~18 s; B must be 75 or 90)")
     ap.add_argument("--hs-recheck", action="store_true",
@@ -136,6 +139,7 @@ def knobs(a: argparse.Namespace) -> dict:
                     "hs_entry": getattr(a, "hs_entry", "hold"), "hs_recheck": getattr(a, "hs_recheck", False),
                     "hs_prime_edge": getattr(a, "hs_prime_edge", False),
                     "hs_resync_prime_edge": getattr(a, "hs_resync_prime_edge", False),
+                    "hs_recheck_rule": "whistle" if getattr(a, "hs_recheck_whistle", False) else "dev_dead",
                     "hs_prime_pause": ("measured" if getattr(a, "hs_prime_pause_measured", False)
                                        else getattr(a, "hs_prime_pause", False)),
                     "behind_live_s": float(getattr(a, "behind_live", None) or 0.0)}
