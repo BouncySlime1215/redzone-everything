@@ -41,7 +41,7 @@ log = logging.getLogger("redzone.yttv_seek")
 
 YTTV_PKG_HINT = "youtube.tv"
 SCRUB_DEFAULTS = {"enabled": False, "step_s": 15.0, "max_back_s": 150.0, "step_tol_s": 4.0,
-                  "key_gap_s": 0.35, "open_tries": 4, "reopen_wait_s": 1.5, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 0.8}
+                  "key_gap_s": 0.35, "open_tries": 4, "reopen_wait_s": 1.5, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 1.3}
 
 # The player row under the bar (#356 ROW_BUTTON labels seen so far). Focus on any of these = NOT the bar.
 ROW_BUTTONS = ("hd", "cc", "networks", "multiview", "episodes", "more to watch", "stats", "key plays", "scores",
@@ -249,34 +249,32 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     # Live finding (Nov 6): at the live edge the overlay shows NO scrub label until the first LEFT, so the first
     # press is the probe. It only moves an uncommitted knob, and it is pressed only with the overlay up and no row
     # button focused. The label it reveals must then be there, or we fail closed before any commit.
-    # Live finding (Nov 6): for ~20 s after a tune a LIVE/title banner sits up instead of the player overlay. Keys
-    # do nothing there, and only the player overlay has the CC button. Close and reopen until it is that overlay.
-    opened = await read_overlay(stick)
-    for _ in range(int(_cfg(cfg, "open_tries"))):
-        if opened is None or "cc" in opened.buttons:
-            break
+    # Live findings (Nov 6): after a tune a LIVE/title banner can sit up for 25+ s and looks like the overlay (it even
+    # has the CC button), but keys do nothing there. The scrub label appears only after a LEFT lands on the bar, so
+    # LEFT is the probe: no label means nothing moved, so close, reopen and probe again. Fail closed after open_tries.
+    before = None
+    for attempt in range(int(_cfg(cfg, "open_tries"))):
+        opened = await read_overlay(stick)
+        if opened is not None and opened.row_focused:
+            return await _fail(res, "focus guard: a row button has focus", relink, still_hidden, pressed=True)
         if not still_hidden():
             return await _fail(res, "stick became visible before the scrub", relink, still_hidden, pressed=True)
-        await _keys(stick, "KEYCODE_DPAD_CENTER", 1, 0.0)
-        await asyncio.sleep(float(_cfg(cfg, "reopen_wait_s")))
+        if opened is not None and opened.overlay:
+            if not await _keys(stick, "KEYCODE_DPAD_LEFT", 1, 0.0):
+                return await _fail(res, "LEFT not sent", relink, still_hidden, pressed=True)
+            res.presses = 1
+            await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
+            before = await read_overlay(stick)
+            if before is not None and before.bar_focused:
+                break
+            before = None
+            res.presses = 0
+            await _keys(stick, "KEYCODE_DPAD_CENTER", 1, 0.0)
+            await asyncio.sleep(float(_cfg(cfg, "reopen_wait_s")))
         await _keys(stick, "KEYCODE_DPAD_CENTER", 1, 0.0)
         await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
-        opened = await read_overlay(stick)
-    if opened is None or "cc" not in opened.buttons or opened.row_focused:
-        why = "overlay unreadable" if opened is None else (
-            "a row button has focus" if opened.row_focused else "overlay not up")
-        return await _fail(res, f"focus guard: {why}", relink, still_hidden, pressed=True)
-    if not still_hidden():
-        return await _fail(res, "stick became visible before the scrub", relink, still_hidden, pressed=True)
-    if not await _keys(stick, "KEYCODE_DPAD_LEFT", 1, 0.0):
-        return await _fail(res, "LEFT not sent", relink, still_hidden, pressed=True)
-    res.presses = 1
-    await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
-    before = await read_overlay(stick)
-    if before is None or not before.bar_focused:
-        why = "overlay unreadable" if before is None else (
-            "a row button has focus" if before.row_focused else "no scrub label after the first LEFT")
-        return await _fail(res, f"focus guard: {why}", relink, still_hidden, pressed=True)
+    if before is None:
+        return await _fail(res, "focus guard: no scrub label after the LEFT", relink, still_hidden, pressed=True)
     res.steps.append(f"bar focused at {before.scrub_s:.0f}s")
     # 3. the other LEFTs, then the label must have moved back that many steps
     if not still_hidden():
