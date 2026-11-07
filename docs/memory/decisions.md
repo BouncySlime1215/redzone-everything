@@ -1230,3 +1230,14 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   the 25 s dead-ball re-check on the live rung (scripts/ladder_replay.py, B75 scrub_measured, fit, seeds 0-2): NFL
   mid-play keep -> ladder 59.3 -> 61.0 (10% scrub failures), 66.0 -> 68.7 (25%); NBA 24.67 both. A failed buffered
   entry holds; the live and other-stick rungs stay off until a grader shows 0 added.
+- 2026-11-07 (Nick's watchdog stick test FAIL, 11:35Z: hidden stick, NBA TV, target 75, planned 71.7, read 79.52): new
+  `join.yttv_read_s` 7.5 (in join.plan_join, the ONE place: predicted = before + 15 n + lead + read; the canary and
+  the watchdog both read predicted_s; JoinPlan.read_s goes into each join row). The label probe's reading includes its
+  own ~7.5 s frozen overlay (Nick's 4 runs: measured - predicted +5.9, +6.5, +6.5, +7.8 without it). join_calib takes it
+  off youtubetv rows logged without read_s. The watchdog moves only the TARGET by read_s. Margins stay 6 s. Flags off.
+  Open: landings run ~+4.7 s over the target (Nick's 3 reruns) -> a later lead trim.
+- 2026-11-07 (Nick's canary run 1, 11:50Z: 3 presses, landed 52.12 vs predicted 64.2, row said ok: true): a join
+  row's `ok` now means the READ landing passed the watchdog verdict (join_watchdog.verify, same 6 s margin either
+  way); a new `verdict` field says why. Off target -> ok false, reason names "a lost press?" when one 15 s step short.
+  The watchdog still re-seeks such a READ landing once (it is a measurement, not a failed join), and join_calib keeps
+  it as a measurement (its gross filter decides). The pre-commit knob guard is the seek thread's. Flags off.

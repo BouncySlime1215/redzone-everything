@@ -16,9 +16,10 @@ CHANNELS = ["nbatv", "espn", "fs1", "accn"]
 
 def row(target, error, channel="espn", stick="stickB", app="youtubetv", ok=True, measured=True, ts=None, **kw):
     p = jn.plan_join(app, target)
-    m = round(target + error, 2) if measured else None
+    # Nick's 9 runs were read without the probe's own freeze; a probe reading today carries it (join.yttv_read_s)
+    m = round(target + error + p.read_s, 2) if measured else None
     r = {"ts": ts, "app": app, "method": p.method, "target_s": target, "presses": p.presses, "hold_s": p.hold_s,
-         "predicted_s": p.predicted_s, "ok": ok, "measured_s": m if ok else None,
+         "predicted_s": p.predicted_s, "read_s": p.read_s, "ok": ok, "measured_s": m if ok else None,
          "error_s": round(m - target, 2) if (ok and m is not None) else None,
          "pred_error_s": round(m - p.predicted_s, 2) if (ok and m is not None) else None,
          "channel": channel, "stick": stick}
@@ -35,7 +36,7 @@ def test_nicks_nine_runs_keep_the_shipped_lead_and_say_plus_minus_three():
     b = c.bias("youtubetv")
     assert b.source == "app" and b.n == 9 and b.value == pytest.approx(11.7, abs=0.15)
     assert 1.0 <= b.err_s <= 3.0 and not c.alerts()
-    assert c.stats("youtubetv").mean_error_s == pytest.approx(-3.27, abs=0.01)
+    assert c.stats("youtubetv").mean_error_s == pytest.approx(-3.27 + 7.5, abs=0.01)   # vs target, read included
 
 
 def test_calibration_off_plans_exactly_nicks_rule():
@@ -138,7 +139,7 @@ def test_join_uses_the_calibration_and_logs_what_it_used(tmp_path):
     s = FakeYTTV(label0=3600.0)
 
     async def label(_s):
-        return 57.4
+        return 64.9   # landed 57.4 + the label read's own 7.5 s
     cfg = Cfg({**CFG, "join.calib.enabled": True})
     r = asyncio.run(jn.join(s, "youtubetv", 60, cfg=cfg, pkg=YT, read_overlay=reader(s), read_behind=label,
                             log_path=log, label="stickB", channel="espn", source="canary"))
@@ -150,7 +151,7 @@ def test_join_uses_the_calibration_and_logs_what_it_used(tmp_path):
 def test_join_with_calibration_off_is_unchanged(tmp_path):
     s = FakeYTTV(label0=3600.0)
     r = asyncio.run(jn.join(s, "youtubetv", 60, cfg=CFG, pkg=YT, read_overlay=reader(s), log_path=tmp_path / "j"))
-    assert r.plan.bias_source == "shipped" and r.plan.presses == 3 and r.plan.predicted_s == 56.7
+    assert r.plan.bias_source == "shipped" and r.plan.presses == 3 and r.plan.predicted_s == 64.2
 
 
 def test_a_broken_calibration_file_never_blocks_a_join(tmp_path):
@@ -160,3 +161,16 @@ def test_a_broken_calibration_file_never_blocks_a_join(tmp_path):
     r = asyncio.run(jn.join(s, "youtubetv", 60, cfg=Cfg({**CFG, "join.calib.enabled": True}), pkg=YT,
                             read_overlay=reader(s), log_path=log))
     assert r.plan.presses == 3
+
+
+def test_rows_from_before_the_read_cost_are_corrected_not_learned_twice():
+    """Nick's Nov 7 canary + watchdog rows (no read_s): measured - predicted +5.9, +6.5, +6.5, +7.8 with the read left
+    out of the plan. They must calibrate to about the shipped lead, not 11.7 + 6.7."""
+    rows = []
+    for t, pe in ((60, 5.93), (60, 6.45), (60, 6.48), (75, 7.82)):
+        p = jn.plan_join("youtubetv", t)
+        old_pred = p.predicted_s - p.read_s
+        rows.append({"app": "youtubetv", "method": "scrub", "ok": True, "target_s": t, "presses": p.presses,
+                     "predicted_s": old_pred, "measured_s": round(old_pred + pe, 2), "pred_error_s": pe,
+                     "bias_used_s": 11.7, "channel": "espn", "stick": "stickB"})
+    assert [round(jc.observation(r), 2) for r in rows] == [10.13, 10.65, 10.68, 12.02]

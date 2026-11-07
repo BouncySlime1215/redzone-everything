@@ -90,14 +90,23 @@ def safe_name(s) -> str:
 def observation(row: dict, cfg=None) -> float | None:
     """The lead (YouTube TV) / bias (Prime) a measured row saw, or None when the row measured nothing."""
     app = str(row.get("app") or "").split(":", 1)[0]
-    if app not in SHIPPED or not row.get("ok") or row.get("measured_s") is None or row.get("pred_error_s") is None:
+    # an off-target READ landing is ok=False since #401 (lost press guard) but still a measurement: the gross filter
+    # below decides whether it is used
+    read_ok = row.get("ok") or row.get("verdict") in ("off_target", "out_of_range")
+    if app not in SHIPPED or not read_ok or row.get("measured_s") is None or row.get("pred_error_s") is None:
         return None
     if row.get("method") not in ("scrub", "pause"):
         return None
     used = row.get("bias_used_s")
     if used is None:   # rows logged before calibration existed used the shipped value
         used = shipped(app, cfg)[0]
-    return float(row["pred_error_s"]) + float(used)
+    lead = float(row["pred_error_s"]) + float(used)
+    if app == "youtubetv" and row.get("method") == "scrub" and row.get("read_s") is None:
+        # rows logged before join.yttv_read_s: their prediction left the label read's own ~7.5 s out, so their
+        # error carries it. Take it off, or the lead learns the read and the plan (which now adds it) counts it twice.
+        from redzone.tuners.join import _cfg as _jcfg
+        lead -= float(_jcfg(cfg, "yttv_read_s"))
+    return lead
 
 
 @dataclass
@@ -189,7 +198,7 @@ class JoinCalib:
         rows = self._by.get(key, [])
         meas, errs, abs_pred = [], [], []
         for r in rows:
-            if not r.get("ok"):
+            if not r.get("ok") and r.get("verdict") not in ("off_target", "out_of_range"):
                 ks.failed += 1
                 continue
             o = observation(r, self.cfg)

@@ -19,8 +19,9 @@ OVERSEER_9 = [(60, 55.7), (60, 56.1), (75, 69.7), (75, 73.4), (90, 85.4), (90, 8
 # ------------------------------------------------------------------------------------------------- verify
 @pytest.mark.parametrize("target,measured", OVERSEER_9)
 def test_the_nine_measured_joins_all_verify(target, measured):
-    pred = jn.plan_join("youtubetv", target).predicted_s
-    v = jw.verify("youtubetv:espn", target, measured, pred)
+    p = jn.plan_join("youtubetv", target)
+    # read by hand (no probe freeze); a probe reading of the same landing carries the read's own 7.5 s
+    v = jw.verify("youtubetv:espn", target, measured + p.read_s, p.predicted_s, read_adds_s=p.read_s)
     assert v.status == "verified" and v.buffered and v.action == "accept"
 
 
@@ -93,21 +94,21 @@ def _relinker(ok=True):
 
 
 def test_watched_join_accepts_a_verified_landing_and_logs_a_row(tmp_path):
-    jf, calls = _fake_join([57.4])
+    jf, calls = _fake_join([64.9])          # a label-probe reading: lands 57.4, + the read's own 7.5 s
     rl, n = _relinker()
     p = tmp_path / "joins.jsonl"
     out = run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, log_path=p, label="stickB",
                               channel="espn"))
-    assert out.state == "buffered" and out.behind_s == 57.4 and out.attempts == 1 and not n
+    assert out.state == "buffered" and out.behind_s == 64.9 and out.attempts == 1 and not n
     row = json.loads(p.read_text().splitlines()[-1])
     assert row["kind"] == "watchdog" and row["state"] == "buffered" and row["stick"] == "stickB"
 
 
 def test_watched_join_reseeks_once_from_live_then_accepts(tmp_path):
-    jf, calls = _fake_join([130.8, 88.0])
+    jf, calls = _fake_join([130.8, 95.5])
     rl, n = _relinker()
     out = run(jw.watched_join(object(), "youtubetv", 90, relink=rl, join_fn=jf, log_path=""))
-    assert out.state == "buffered" and out.behind_s == 88.0 and out.attempts == 2 and len(n) == 1
+    assert out.state == "buffered" and out.behind_s == 95.5 and out.attempts == 2 and len(n) == 1
     assert calls == [0.0, 0.0]          # the re-seek starts from the live edge
 
 
@@ -152,16 +153,16 @@ def test_a_crashing_join_never_claims_a_buffer():
 
 
 def test_watched_join_drives_the_real_join_api(tmp_path):
-    """End to end on the scrub fake: the real join() + the label reader, verified at 57.4 for target 60."""
+    """End to end on the scrub fake: the real join() + the label reader, verified at 64.9 (57.4 + the read)."""
     from tests.test_yttv_seek import CFG, YT, FakeYTTV, reader
     s = FakeYTTV(label0=3600.0)
 
     async def label(_s):
-        return 57.4
+        return 64.9
     rl, _ = _relinker()
     out = run(jw.watched_join(s, "youtubetv", 60, relink=rl, cfg=CFG, pkg=YT, read_overlay=reader(s),
                               read_behind=label, log_path=tmp_path / "j.jsonl"))
-    assert out.state == "buffered" and out.behind_s == 57.4
+    assert out.state == "buffered" and out.behind_s == 64.9
 
 
 # ------------------------------------------------------------------------------------------- drift monitor
@@ -323,3 +324,106 @@ def test_control_drift_tick_rereads_the_hidden_stick_and_reenters_on_drift(scrub
     rows = [json.loads(x) for x in (tmp_path / "joins.jsonl").read_text().splitlines()]
     assert [r["action"] for r in rows] == ["ok", "reenter"]
     assert all("5555" not in json.dumps(r) for r in rows)          # no address in the log
+
+
+# ------------------------------------------------------------------- Nick's stick test, Nov 7 11:35Z (FAIL)
+def test_nicks_nbatv_run_counts_the_reads_own_seven_and_a_half_seconds():
+    """Hidden stick, NBA TV, target 75: planned 71.7, read 79.52 (off 7.82). The label probe's reading includes its own ~7.5 s
+    freeze, so that is a good join, not a re-seek."""
+    old = jw.verify("youtubetv", 75, 79.52, 71.7)
+    assert old.status == "off_target"                                   # what the stick test hit
+    p = jn.plan_join("youtubetv", 75)
+    assert p.read_s == 7.5 and p.predicted_s == pytest.approx(79.2)     # the read now lives in the plan
+    v = jw.verify("youtubetv", 75, 79.52, p.predicted_s, read_adds_s=p.read_s)
+    assert v.buffered and v.off_pred_s == 0.32 and v.off_target_s == -2.98 and v.measured_s == 79.52
+
+
+@pytest.mark.parametrize("measured", [62.63, 63.15, 63.18])
+def test_nicks_three_canary_joins_verify_with_the_read_in_the_plan(measured):
+    """Canary, espn, target 60 (Nov 7 11:40Z): 62.63 / 63.15 / 63.18 vs 56.7 without the read (+5.9..+6.5)."""
+    p = jn.plan_join("youtubetv", 60)
+    assert p.predicted_s == pytest.approx(64.2)
+    v = jw.verify("youtubetv", 60, measured, p.predicted_s, read_adds_s=p.read_s)
+    assert v.buffered and abs(v.off_pred_s) < 2
+
+
+def test_watched_join_takes_the_read_cost_from_the_plan_once():
+    jf, _ = _fake_join([79.52])
+    rl, n = _relinker()
+    out = run(jw.watched_join(object(), "youtubetv", 75, relink=rl, join_fn=jf, log_path=""))
+    assert out.state == "buffered" and out.behind_s == 79.52 and not n
+
+    async def calibrated(stick, app, target_s, *, behind_before_s=0.0, **kw):
+        plan = jn.plan_join(app, target_s, behind_before_s)
+        plan.predicted_s, plan.bias_source = 79.0, "channel"           # a calibrated lead (+ the read, in the plan)
+        return NS(ok=True, measured_s=79.52, plan=plan)
+    out = run(jw.watched_join(object(), "youtubetv", 75, relink=rl, join_fn=calibrated, log_path=""))
+    assert out.state == "buffered" and not n                             # not counted twice
+
+
+def test_prime_reads_add_nothing():
+    p = jn.plan_join("prime:x", 60.0)
+    assert p.read_s == 0.0
+    v = jw.verify("prime:x", 60.0, 60.5, p.predicted_s, read_adds_s=p.read_s)
+    assert v.buffered and v.off_pred_s == 0.5
+
+
+def test_joins_log_follows_rz_joins_log(monkeypatch, tmp_path):
+    """The run from a scratch worktree logged into that worktree's data/: RZ_JOINS_LOG points it anywhere."""
+    monkeypatch.setenv("RZ_JOINS_LOG", str(tmp_path / "j.jsonl"))
+    jw.log_row({"kind": "watchdog", "state": "live"})
+    assert json.loads((tmp_path / "j.jsonl").read_text())["state"] == "live"
+
+
+# --------------------------------------------------- Nick's canary run 1, Nov 7 11:50Z: a LOST PRESS (52.12 vs 64.2)
+def test_a_lost_press_is_not_ok_in_the_join_row(tmp_path):
+    """3 presses sent, one lost: landed a 15 s step short and the row said ok: true. Now ok is the READ verdict."""
+    from tests.test_yttv_seek import CFG, YT, FakeYTTV, reader
+    s = FakeYTTV(label0=3600.0)
+
+    async def label(_s):
+        return 52.12
+    log = tmp_path / "joins.jsonl"
+    r = run(jn.join(s, "youtubetv", 60, cfg=CFG, pkg=YT, read_overlay=reader(s), read_behind=label, log_path=log))
+    assert not r.ok and r.verdict == "off_target" and "lost press" in r.reason and r.measured_s == 52.12
+    row = json.loads(log.read_text().splitlines()[-1])
+    assert row["ok"] is False and row["verdict"] == "off_target" and row["pred_error_s"] == pytest.approx(-12.08)
+
+
+def test_a_good_join_row_is_still_ok_and_verified(tmp_path):
+    from tests.test_yttv_seek import CFG, YT, FakeYTTV, reader
+    s = FakeYTTV(label0=3600.0)
+
+    async def label(_s):
+        return 63.21
+    r = run(jn.join(s, "youtubetv", 60, cfg=CFG, pkg=YT, read_overlay=reader(s), read_behind=label,
+                    log_path=tmp_path / "j"))
+    assert r.ok and r.verdict == "verified"
+
+
+def test_the_watchdog_reseeks_a_lost_press_then_accepts():
+    """The join reports ok=False (verdict off_target) for 52.12; the watchdog still treats it as READ and re-seeks
+    from the live edge once, instead of falling straight back to live."""
+    seq = iter([52.12, 63.21])
+    calls = []
+
+    async def join_fn(stick, app, target_s, *, behind_before_s=0.0, **kw):
+        calls.append(behind_before_s)
+        m = next(seq)
+        plan = jn.plan_join(app, target_s, behind_before_s)
+        v = jw.verify(app, target_s, m, plan.predicted_s, read_adds_s=plan.read_s)
+        return NS(ok=v.buffered, measured_s=m, plan=plan, verdict=v.status)
+    rl, n = _relinker()
+    out = run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=join_fn, log_path=""))
+    assert out.state == "buffered" and out.behind_s == 63.21 and out.attempts == 2 and len(n) == 1
+    assert [v["status"] for v in out.verdicts] == ["off_target", "verified"]
+
+
+def test_calibration_keeps_an_off_target_read_as_a_measurement_not_a_failure():
+    from redzone.tuners import join_calib as jc
+    p = jn.plan_join("youtubetv", 60)
+    row = {"app": "youtubetv", "method": "scrub", "ok": False, "verdict": "off_target", "measured_s": 52.12,
+           "predicted_s": p.predicted_s, "pred_error_s": -12.08, "bias_used_s": 11.7, "read_s": 7.5,
+           "channel": "espn", "stick": "stickB", "target_s": 60, "error_s": -7.88}
+    st = jc.JoinCalib([row]).stats("youtubetv")
+    assert st.failed == 0 and st.gross == 1          # counted as gross (|err| > 12), never used, not a failed join

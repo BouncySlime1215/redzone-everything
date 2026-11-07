@@ -30,7 +30,7 @@ most 30 s of reads per stick per hour (`join.drift.budget_s_per_h`).
 3. Many `unknown` drift reads: the label reader is failing (banner, OCR). Run
    `python scripts/yttv_scrub_try.py <hidden stick> 60 --label --again=300` on the HIDDEN stick.
 4. A stick stuck "behind" on a channel (every re-seek reads short): tune another channel, then back (#391).
-5. To test on hardware: `python scripts/watchdog_try.py <hidden stick> youtubetv 75 espn --drift-min=20`
+5. To test on hardware: `RZ_JOINS_LOG=$PWD/data/joins.jsonl python scripts/watchdog_try.py <hidden stick> youtubetv 75 nbatv --reset=espn --drift-min=20`
    (hidden stick only, no game you're watching on it).
 
 ## Tests

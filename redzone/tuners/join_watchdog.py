@@ -120,11 +120,16 @@ class Verdict:
 
 
 def verify(app: str, target_s: float, measured_s: float | None, predicted_s: float | None = None, *,
-           join_ok: bool = True, visible: bool = False, reseeks_left: int = 0, cfg=None) -> Verdict:
+           join_ok: bool = True, visible: bool = False, reseeks_left: int = 0, cfg=None,
+           read_adds_s: float = 0.0) -> Verdict:
     """Is the stick where we meant it to be? Pure: no stick, no clock. See the module docstring.
-    predicted_s None (control's scrub entry plans its own presses): only the target band applies."""
+    predicted_s None (control's scrub entry plans its own presses): only the target band applies.
+    read_adds_s: how far the measuring read itself pushed the stick back (the YouTube TV label probe freezes the
+    picture ~7.5 s and its reading INCLUDES that: Nick's Nov 7 run, planned 71.7 without it, read 79.52). The TARGET
+    is moved by it before comparing; predicted_s already includes it (join.plan_join, JoinPlan.read_s)."""
     a = _app(app)
-    pred = float(predicted_s) if predicted_s is not None else float(target_s)
+    adds = float(read_adds_s or 0.0)
+    pred = float(predicted_s) if predicted_s is not None else float(target_s) + adds
     v = Verdict("unmeasured", "fallback", a, round(float(target_s), 2), round(pred, 2),
                 None if measured_s is None else round(float(measured_s), 2))
     if visible:
@@ -137,14 +142,14 @@ def verify(app: str, target_s: float, measured_s: float | None, predicted_s: flo
         v.reason = "no reading (label / timecode): an estimate is never shown as buffered"
         return v
     m = float(measured_s)
-    v.off_pred_s, v.off_target_s = round(m - pred, 2), round(m - float(target_s), 2)
+    v.off_pred_s, v.off_target_s = round(m - pred, 2), round(m - float(target_s) - adds, 2)
     if m <= float(wcfg(cfg, "min_behind_s")) or m > float(wcfg(cfg, "max_s")) + float(wcfg(cfg, "over_s")):
         v.status = "out_of_range"
         v.reason = f"read {m:.1f}s behind live: the live edge or a runaway, not a buffer"
     elif (predicted_s is not None and abs(m - pred) > float(wcfg(cfg, "margin_s", a))) \
-            or abs(m - float(target_s)) > float(wcfg(cfg, "target_band_s", a)):
+            or abs(m - float(target_s) - adds) > float(wcfg(cfg, "target_band_s", a)):
         v.status = "off_target"
-        v.reason = f"landed {m:.1f}s, planned {pred:.1f}s (target {float(target_s):.0f}s)"
+        v.reason = f"landed {m:.1f}s, planned {pred:.1f}s with the read (target {float(target_s):.0f}s)"
     else:
         v.status, v.action, v.reason = "verified", "accept", f"landed {m:.1f}s (planned {pred:.1f}s)"
         return v
@@ -205,8 +210,14 @@ async def watched_join(stick, app: str, target_s: float, *, relink: Callable[[],
             r = await join_fn(stick, app, target_s, cfg=cfg, still_hidden=still_hidden, behind_before_s=before,
                               log_path=log_path, label=label, channel=channel, clock=clock, **join_kw)
             plan = getattr(r, "plan", None)
+            # the measuring read's own cost is in plan.predicted_s (join.yttv_read_s, the one place it lives): only
+            # the TARGET is moved by it here
             v = verify(a, target_s, getattr(r, "measured_s", None), getattr(plan, "predicted_s", None),
-                       join_ok=bool(getattr(r, "ok", False)), visible=not still_hidden(),
+                       read_adds_s=float(getattr(plan, "read_s", 0.0) or 0.0),
+                       # a join that READ an off-target landing is ok=False (join.py) but measured: re-seek it
+                       join_ok=bool(getattr(r, "ok", False)) or getattr(r, "verdict", "") in ("off_target",
+                                                                                            "out_of_range"),
+                       visible=not still_hidden(),
                        reseeks_left=max_re - (out.attempts - 1), cfg=cfg)
             out.verdicts.append(asdict(v))
             if v.action == "accept":
