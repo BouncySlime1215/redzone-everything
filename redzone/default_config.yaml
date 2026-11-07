@@ -753,6 +753,18 @@ canary:                    # [item 8, Nov 7] daily pre-game self-test on the HID
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true
+  yttv_seek: scrub         # [Nick, Nov 7] a YouTube TV catch-up is seeked on the HIDDEN stick by the overlay scrub
+                           # (yttv_seek.enter_buffer, knob-checked), its landing READ on the label (LabelProbe), then
+                           # it plays up to park_lead_s before the snap and pauses there; the flip un-pauses it. The
+                           # viewer never sees a rewind. "keys" = the old seek_key presses (their 20 s shell timeout
+                           # failed every YouTube TV replay: 'replay seek failed', 20-24 s each)
+  back_lead_s: 3           # a replay's back_s already starts this long before the snap (Missed.back_s)
+  park_lead_s: 1.5         # ...the scrubbed stick is paused this long before the snap (Nick: land 1-2 s before it)
+  scrub_slack_s: 4         # playing (not frozen) time in a scrub: one more LEFT's worth of room is planned for it
+  park_wait_max_s: 40      # a scrub landing more than this before the park point fails closed (holds the stick)
+  park_max_age_s: 90       # a YouTube TV park older than this is never rolled (a 120 s pause reset the position, Nov 6)
+  scrub_retry_s: 120       # a failed replay scrub on a channel isn't tried again for this long (no key storms)
+  yttv_max_lefts: 8        # never more LEFTs than this (8 = 120 s of knob): a deeper catch-up is not seeked
   yours_first: true        # your team's missed big plays: replayed before other games' and over ordinary live play
   apps: [youtubetv]        # apps where rewinding live TV works
   max_age_s: 1800          # don't replay anything older than this

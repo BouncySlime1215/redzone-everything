@@ -15,6 +15,14 @@ from redzone.tuners.tuners import NewStream, PrimeTuner, YouTubeTVTuner
 YT, PRIME = "yttv.pkg", "prime.pkg"
 
 
+
+@pytest.fixture(autouse=True)
+def _replay_keys(request):
+    """These cases cover the KEY rewind mechanics (seek_key presses, wake press, drift re-seek). YouTube TV catch-up
+    now seeks by the overlay scrub (replay.yttv_seek: scrub, Nick Nov 7); tests/test_replay_scrub.py covers that."""
+    if "cfg" in request.fixturenames:
+        request.getfixturevalue("cfg").update({"replay": {"yttv_seek": "keys"}})
+
 class ScriptedStick(Stick):
     """A stick that answers from a script. After a deep link, each "playing yet?" check takes the
     next report from `after` (the last one repeats). Everything sent is kept in `cmds`."""
