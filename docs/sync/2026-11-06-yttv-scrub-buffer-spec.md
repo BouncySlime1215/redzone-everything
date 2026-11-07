@@ -31,3 +31,12 @@ Evidence: [live-edge tests](2026-11-05-yttv-live-edge-tests.md), Nov 6 update. N
 - Back limit per channel, return to live, and session timeouts over a full night.
 
 Frames: read, then delete. YouTube TV video stays black; no DRM bypass.
+
+## Update, 10:50 PM: Scores & stats panel and Key plays
+
+- **Open it:** `DPAD_UP`, then `DPAD_CENTER`. Tabs: Scores, Stats, Key plays. Text is crisp and OCR-readable.
+- **Scores tab:** score and game clock for many games at once. It refreshes in lumps about every 30 s, 50-89 s after ESPN wall times, so it is too coarse for a 1-2 s delay. Not yet tested whether it follows the playhead.
+- **Stats tab:** the current game's score, period and clock.
+- **Key plays tab:** a list of plays with game clock, plus a filter by team and player. Selecting a play plays it, then moves on ("11 of 12 key plays"). First use shows "Auto-play key plays?": choose Ask Later, no settings change.
+- **Why it matters:** this may give every key moment of a game on demand, on the stick, with no feed timing at all. It fits Nick's "follow every game, get all the key moments". Needs testing: how fast a jump is, how it returns to live, how soon a play appears after it happens, which channels support it.
+- **Delay:** preview thumbnails lag their labels (score anchors disagree, 32-62 and 54-78 s), so don't use them for delay. Best honest delay is still about 25 s +-3.
