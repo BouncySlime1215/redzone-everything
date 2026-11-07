@@ -12,6 +12,8 @@ Short, do-this-now steps. Each one links to the full doc. Run everything from th
 | Set up TV-side input switching | [tv-setup.md](tv-setup.md) |
 | A stick looks offline | [stick-offline.md](stick-offline.md) |
 | Weekly usage is near the cap | [usage-pause.md](usage-pause.md) |
+| The daily hidden-stick canary failed or warned | [canary.md](canary.md) |
+| Joins land off target / a SHIFT alert | [join-calibration.md](join-calibration.md) |
 
 ## Memory hook
 

@@ -602,6 +602,33 @@ join:                      # [Join API] put a HIDDEN stick a chosen time behind 
   prime_bias_s: 0          # predicted landing = before + hold + this (Prime pause, ~1-2 s accurate)
   prime_err_s: 2           # expected +- error of a Prime join
   max_s: 150               # never join further behind live
+  calib:                   # [item 5, Nov 7] self-calibration per channel and stick (redzone/tuners/join_calib.py). OFF
+    enabled: false         # on: each plan uses the calibrated lead (YouTube TV) / bias (Prime) from data/joins.jsonl
+    window: 20             # newest measured joins per key (app -> app:channel -> app:channel:stick)
+    max_age_days: 21       # older joins ignored
+    prior_n: 4             # pseudo-joins of the parent's value (one join moves a new channel 1/5 of the way)
+    gross_s: 12            # |measured - predicted| above this: counted and reported, never used
+    clip_k: 2              # each residual clipped to parent +- 2 x expected error
+    shift_n: 3             # newest 3 joins all off the same side by > shift_s -> SHIFT alert (canary + night report)
+    shift_s: 5
+    max_shift_s: {youtubetv: 5, prime: 3}   # calibrated value stays within shipped +- this (11.7 +- 5, 0 +- 3)
+    err_min_s: 1
+    err_max_s: 6
+    edge_prior_s: 25.9     # D_edge of an on-time YouTube TV channel (Nov 7), stats only
+    edge_min_s: 15
+    edge_max_s: 45
+    use_canary: true       # the daily canary's joins count (real joins on the hidden stick)
+
+canary:                    # [item 8, Nov 7] daily pre-game self-test on the HIDDEN stick (scripts/canary.py). Manual /
+                           # launchd (deploy/com.redzone.canary.plist.template, not installed); fails loud to the phone
+  soon_s: 5400             # refuse when any game is live or starts within 90 min
+  channel: espn            # YouTube TV channel tuned for the test (any channel with a watch code works)
+  away_channel: fs1        # tuned first so the canary channel's tune is fresh at the live edge (#391: same-channel
+                           # deep link does not reset a stick that is behind live)
+  target_s: 60             # the join it asks for: 3 LEFTs, predicted 56.7 s
+  tol_s: 6                 # |measured - predicted| must be within this (2 x the YouTube TV +-3 s)
+  settle_s: 8              # after the tune, before the join
+  prime: false             # also test a Prime pause (needs a playing Prime title: off pre-game)
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true

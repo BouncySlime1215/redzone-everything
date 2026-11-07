@@ -1193,3 +1193,13 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   YouTube TV: n = round((T - 10) / 15) LEFTs (fixed, passed to enter_buffer as `presses`), predicted 15 n + 11.7 s
   (9 label-measured runs landed T - 3.3 s on average, +-3 s); targets are 15 s steps and the overlay is never held
   to hit one in between (that measured +2..+10 s and one -18.7 s). Prime: pause for the gap (prime_pause), +-1-2 s.
+- 2026-11-07 (Nick's 2:33 AM ET sync order, items 5, 8, 9): new `join.calib.*` group, **enabled false**, and a new
+  `canary.*` group (a manual / launchd script, nothing runs it by itself). Calibration: per app, app:channel and
+  app:channel:stick, the YouTube TV scrub lead (shipped 11.7 s) and the Prime pause bias (shipped 0) are re-estimated
+  from measured rows of data/joins.jsonl (label / timecode only, never an estimate or media_session): last 20 rows,
+  rows off by > 12 s counted not used, residuals clipped to +-2x the expected error, shrunk toward the parent with
+  4 pseudo-rows, clamped to shipped +-5 s (YouTube TV) / +-3 s (Prime); a SHIFT alert when the newest 3 all land > 5 s
+  off the same side. At the shipped lead the plan is exactly Nick's n = round((T - 10) / 15). Canary: daily on the
+  HIDDEN stick only, never with a game live or within 90 min, tunes away then ESPN, joins 60 s with the label reader,
+  must land within 6 s of the predicted 56.7 s, then puts the stick back on live; FAIL / WARN go to the phone loud.
+  Why: Nick's order "self-calibration ... with bounds" and "a daily stick self-test before games that fails loud".
