@@ -1137,6 +1137,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-07 (integrator, EXP-607 read): **The EXP-605 resync failure was a sim artifact (resync mid-play 19.0 -> 7.7
   per run with Prime pinned at its edge), but NBA stays FAIL:** clock-truth adds 1-2 on two seeds and the primary CI
   touches 0 on both harnesses. EXP-608 (Prime by pause) is the next read.
+- 2026-11-07 (integrator, EXP-608 read + v45 freeze): **EXP-608 FAILS both leagues; grader freeze v45 registers EXP-609
+  (Prime pause at the measured B + 4.3 s) as the verdict for the Prime-pause model, 608 report-only.** NBA: the main
+  grader's mid-play falls 9.7 -> 3.7 and big seen rises 67 -> 78%, but clock-truth adds entries on every seed and plays
+  missed doubles; the two graders disagree and T9 diffs them, info-only. NFL unchanged in kind (switches 1.72x).
 - 2026-11-07 (integrator, T9 trace of #378 at 8452ba4): **Rule #1 risk on the scrub path: timing.behind_live_s.scrub_entry
   must stay OFF for NBA (and every hold_only league) until EXP-610's live fix lands.** After the scrub the flip never
   checks the destination's delayed picture for a dead ball (NBA isn't cut-timed; the whistle wait runs before the
@@ -1153,3 +1157,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   which stays off).** A knob check that fails because the label reset at a new program ("knob moved 39s, not 60s")
   retries the scrub once from the live edge, only after a re-link to live with nothing committed; otherwise it fails
   closed as before. Merged with #385 + #391 so --label gives measured reads.
+- 2026-11-07 (integrator, EXP-609 read): **EXP-609 (Prime pause at the measured B + 4.3 s) FAILS both leagues, as
+  EXP-608; RC8 stays OFF.** NBA's blockers are clock-truth entries the re-check's lenient dead ball lets through, plays
+  missed ~2.3x and (resync) your-team crunch 54.8%; EXP-610 addresses the first. NFL's are switches 1.72x and plays
+  missed ~3x.

@@ -329,7 +329,10 @@ HS_ENTRIES = ("hold", "scrub", "scrub_measured")
 # picture 67.7 s behind (from 6.6 at the edge, so +61.1 s) and Prime's own timecode held it for the full 4 min checked
 # (02:20:54 -> 02:24:44 over 230 s wall). So Prime CAN buffer: pause B s, resume. Cost = the hold time (B) + resume;
 # the 1.1 s overshoot is left out (lands within the 3 s sync noise). Rewind (continuous, 214/665 s) is not used.
-HS_PRIME_ENTRIES = ("edge", "pause")
+# [EXP-609] Nick's Nov 7 05:45Z repeats: pauses of 30/60/90 s landed +31/+61.6/+91.3 s and then held real time; the
+# #389 tool on live Prime gained 63.6 s (timecode) and took 67.9 s. So getting B behind costs B + 4.3 s of stick time.
+HS_PRIME_PAUSE_MEASURED = {"overhead_s": 67.9 - 63.6}
+HS_PRIME_ENTRIES = ("edge", "pause", "pause_measured")
 HS_NO_BUFFER = ("replay", "resume", "skip")   # catch-up footage needs no hold (as live)
 
 
@@ -389,6 +392,8 @@ class HiddenStick:
         prime = (target or "").startswith("prime:")
         if prime and self.prime_entry == "pause":
             return self.B + HS_PREREG["resume"]   # [EXP-608] MEDIA_PAUSE B s, MEDIA_PLAY
+        if prime and self.prime_entry == "pause_measured":
+            return self.B + HS_PRIME_PAUSE_MEASURED["overhead_s"]   # [EXP-609] #389 measured: 67.9 s for 63.6 s
         if self.entry == "scrub":
             return 0.0 if prime else HS_SCRUB["keys_s"] + HS_SCRUB["read_s"]
         if self.entry == "scrub_measured":
@@ -507,7 +512,8 @@ class HiddenStick:
         return 0.0
 
     def card(self) -> dict:
-        return {"arm": self.arm, "entry": self.entry, **({"prime_entry": "pause"} if self.prime_entry == "pause" else {}),
+        return {"arm": self.arm, "entry": self.entry,
+                **({"prime_entry": self.prime_entry} if self.prime_entry != "edge" else {}),
                 "behind_live_s": self.B, "hold_overrun": self.overrun, "switches": self.n,
                 "buffered": self.buffered, "buffered_pct": round(100.0 * self.buffered / self.n, 1) if self.n else None,
                 "waits": len(self.waits), "wait_s": round(sum(self.waits), 1),
@@ -532,7 +538,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         calibrate_targets: bool = False,
         hidden_stick: str | None = None, hold_overrun: float = 1.0, behind_live_s: float | None = None,
         hs_entry: str = "hold", hs_recheck: bool = False, hs_prime_edge: bool = False,
-        hs_resync_prime_edge: bool = False, hs_prime_pause: bool = False,
+        hs_resync_prime_edge: bool = False, hs_prime_pause: bool | str = False,
         on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
@@ -655,7 +661,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             behind_live_s = config_behind_live(cfg, replays[0].league.value)
         stick = HiddenStick(hidden_stick, float(behind_live_s or 0.0), hold_overrun, cfg, clock, seed,
                             {lg: set(my_teams) for lg in League}, entry=hs_entry,
-                            prime_entry="pause" if hs_prime_pause else "edge")
+                            prime_entry=("pause_measured" if hs_prime_pause == "measured" else "pause")
+                            if hs_prime_pause else "edge")
         stick.true_sync = hs_prime_edge
         if hs_recheck:
             if hidden_stick != "wait":
