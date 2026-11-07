@@ -1060,3 +1060,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   unless the knob label moved N x step_s +- step_tol_s; on any doubt it re-links to live. Behind-live comes from
   the label reader (item 2) or the knob estimate, never media_session (wrong after a seek). Frames are deleted
   as soon as they are read. The switch path that calls it is item 4's.
+- 2026-11-07 (integrator, Nick's Nov 6 10:15 PM order item 5): **Grader freeze v40: EXP-603 overlay-scrub entry in the
+  hidden-stick model (#374).** Measured only (a60c9cbd scrub spec): ready keys 10 s + read 8 s after the tune, lands
+  15 N + 15 s behind live (B75 measured, B90 extrapolated). Both arms must pass. A pass is not a flip card: RC8 waits on
+  a live stick test of a held scrub, per Nick.
