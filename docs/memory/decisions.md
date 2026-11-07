@@ -1161,3 +1161,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   EXP-608; RC8 stays OFF.** NBA's blockers are clock-truth entries the re-check's lenient dead ball lets through, plays
   missed ~2.3x and (resync) your-team crunch 54.8%; EXP-610 addresses the first. NFL's are switches 1.72x and plays
   missed ~3x.
+- 2026-11-07 (integrator): **Grader freeze v46: EXP-610 (#392). Live: on the scrub path only, a basketball flip in a
+  hold_only league waits for a clock-stopped dead ball on the delayed picture (decider.entry.whistle_band_s: 3);
+  sim: the re-check uses the same rule, worst measured 90 s scrub 37.6 s.** scrub_entry stays off; the scrub's
+  landing overshoot (130.8 s for 90 asked, Nick 05:54Z) waits on the SEEK_TO fix and is not covered by a pass.

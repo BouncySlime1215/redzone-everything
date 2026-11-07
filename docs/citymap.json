@@ -1533,6 +1533,26 @@
     "Your-team crunch live"
    ]
   },
+  "redzone/decider/whistle.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py",
+    "redzone/lab/backtest.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-610] A basketball clock-stopped dead ball, judged from play-by-play (wall time, period, game clock, type).",
+   "serves": [
+    "Crunch live, NBA",
+    "Crunch live, NFL",
+    "Crunch live, NHL",
+    "Entries at a possession start (dead ball, no play missed)",
+    "Landings in dead time",
+    "Mid-play entries (per 100 landings)",
+    "Your-team crunch live"
+   ]
+  },
   "redzone/demo/__init__.py": {
    "contracts": [],
    "inputs": [],
@@ -1752,6 +1772,7 @@
     "redzone/decider/decider.py",
     "redzone/decider/screen.py",
     "redzone/decider/sync.py",
+    "redzone/decider/whistle.py",
     "redzone/discovery/runtime.py",
     "redzone/fantasy.py",
     "redzone/governor.py",
@@ -1931,6 +1952,7 @@
     "redzone/contracts/switching.py",
     "redzone/decider/decider.py",
     "redzone/decider/screen.py",
+    "redzone/decider/whistle.py",
     "redzone/grading.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/evaldata.py",
@@ -6270,9 +6292,9 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 343,
+  "modules": 344,
   "orphans": 14,
-  "unowned": 179,
+  "unowned": 180,
   "untagged": 285
  },
  "version": 1
