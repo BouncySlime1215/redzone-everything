@@ -553,7 +553,8 @@
     "scripts/multiview_probe.py",
     "scripts/plan_tonight.py",
     "scripts/rz.py",
-    "scripts/tv_practice.py"
+    "scripts/tv_practice.py",
+    "scripts/watchdog_try.py"
    ],
    "owner": "SWITCHING",
    "role": "Where can you actually watch a game?",
@@ -1207,6 +1208,7 @@
     "redzone/config.py",
     "redzone/contracts/switching.py",
     "redzone/tuners/adb.py",
+    "redzone/tuners/join_watchdog.py",
     "redzone/tuners/prime_multiview.py",
     "redzone/tuners/tuners.py",
     "redzone/tuners/yttv_seek.py",
@@ -4182,6 +4184,7 @@
     "scripts/providers_check.py",
     "scripts/rz.py",
     "scripts/screen_lab.py",
+    "scripts/watchdog_try.py",
     "scripts/yttv_scrub_try.py"
    ],
    "owner": "SWITCHING",
@@ -4217,10 +4220,30 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/tuners/join_watchdog.py",
     "scripts/join_try.py"
    ],
    "owner": "SWITCHING",
    "role": "[Join API] Put a HIDDEN stick a chosen time behind live, say where it should land, measure where it did, log both.",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/join_watchdog.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/tuners/join.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/control.py",
+    "scripts/watchdog_try.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[Join watchdog + drift monitor] Nick's Nov 7 sync order, items (1) and (3).",
    "serves": [
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -4406,7 +4429,8 @@
     "scripts/prime_flip_probe.py",
     "scripts/prime_multiview_probe.py",
     "scripts/providers_check.py",
-    "scripts/rz.py"
+    "scripts/rz.py",
+    "scripts/watchdog_try.py"
    ],
    "owner": "SWITCHING",
    "role": "Tuners: one class per streaming app.",
@@ -4427,6 +4451,7 @@
    "kind": "module",
    "outputs": [
     "redzone/engine.py",
+    "scripts/watchdog_try.py",
     "scripts/yttv_scrub_try.py"
    ],
    "owner": "SWITCHING",
@@ -6307,6 +6332,23 @@
     "untagged"
    ]
   },
+  "scripts/watchdog_try.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/tuners/adb.py",
+    "redzone/tuners/join_watchdog.py",
+    "redzone/tuners/tuners.py",
+    "redzone/tuners/yttv_label.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Run one WATCHED join (join -> read -> verify -> re-seek once -> fall back to live) on the HIDDEN stick, then optionally watch it for drift.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/world_model_pilot.py": {
    "contracts": [],
    "inputs": [
@@ -6366,10 +6408,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 348,
+  "modules": 350,
   "orphans": 14,
-  "unowned": 182,
-  "untagged": 287
+  "unowned": 183,
+  "untagged": 288
  },
  "version": 1
 }
