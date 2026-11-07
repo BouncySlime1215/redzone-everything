@@ -575,7 +575,8 @@
     "scripts/plan_tonight.py",
     "scripts/rz.py",
     "scripts/tv_practice.py",
-    "scripts/watchdog_try.py"
+    "scripts/watchdog_try.py",
+    "scripts/yttv_search_tune_try.py"
    ],
    "owner": "SWITCHING",
    "role": "Where can you actually watch a game?",
@@ -4261,7 +4262,8 @@
     "scripts/screen_lab.py",
     "scripts/session_drill.py",
     "scripts/watchdog_try.py",
-    "scripts/yttv_scrub_try.py"
+    "scripts/yttv_scrub_try.py",
+    "scripts/yttv_search_tune_try.py"
    ],
    "owner": "SWITCHING",
    "role": "Talk to a Fire TV stick over the network with the adb command-line tool.",
@@ -4555,7 +4557,8 @@
     "scripts/prime_multiview_probe.py",
     "scripts/providers_check.py",
     "scripts/rz.py",
-    "scripts/watchdog_try.py"
+    "scripts/watchdog_try.py",
+    "scripts/yttv_search_tune_try.py"
    ],
    "owner": "SWITCHING",
    "role": "Tuners: one class per streaming app.",
@@ -6572,16 +6575,31 @@
    "serves": [
     "untagged"
    ]
+  },
+  "scripts/yttv_search_tune_try.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/tuners/adb.py",
+    "redzone/tuners/tuners.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Tune the LOCAL stations by YouTube TV search on the HIDDEN stick, through the app's own routing and tuner as if tuners.yttv_local_search were on (ChannelMap....",
+   "serves": [
+    "untagged"
+   ]
   }
  },
  "pages": {
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 359,
+  "modules": 360,
   "orphans": 14,
-  "unowned": 188,
-  "untagged": 295
+  "unowned": 189,
+  "untagged": 296
  },
  "version": 1
 }
