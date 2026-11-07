@@ -1230,6 +1230,7 @@
     "redzone/channels.py",
     "redzone/config.py",
     "redzone/contracts/switching.py",
+    "redzone/fallback_ladder.py",
     "redzone/tuners/adb.py",
     "redzone/tuners/join_watchdog.py",
     "redzone/tuners/prime_multiview.py",
@@ -1864,6 +1865,19 @@
     "STK-06"
    ]
   },
+  "redzone/fallback_ladder.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/control.py"
+   ],
+   "owner": "unowned",
+   "role": "Per-stick fallback ladder (Nick's Nov 7 sync order, item 2).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/fantasy.py": {
    "contracts": [],
    "inputs": [
@@ -2019,6 +2033,7 @@
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/exp607_trace_prime_belief.py",
+    "scripts/ladder_replay.py",
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
     "scripts/noggin_selfplay.py",
@@ -5634,6 +5649,19 @@
     "untagged"
    ]
   },
+  "scripts/ladder_replay.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/backtest.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[fallback ladder, item 2] REPORT ONLY, not a grader: what the ladder changes when a YouTube TV buffer entry fails.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/leak_check.py": {
    "contracts": [],
    "inputs": [
@@ -6546,10 +6574,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 357,
+  "modules": 359,
   "orphans": 14,
-  "unowned": 186,
-  "untagged": 293
+  "unowned": 188,
+  "untagged": 295
  },
  "version": 1
 }

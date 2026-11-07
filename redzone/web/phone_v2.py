@@ -1013,6 +1013,16 @@ def clash_alert(slate: dict, now: float, ahead: float = ALERT_AHEAD_S) -> dict |
     return None
 
 
+def ladder_line(control, now: float) -> dict | None:
+    """[fallback ladder] The last join that fell back (15 min), e.g. "Stick on HDMI2: buffered failed (no label
+    read) -> live edge ok", and rungs cooling on a stick. None with the flag off. Display only."""
+    lad = getattr(control, "ladder", None)
+    if lad is None or not lad.enabled:
+        return None
+    v = lad.phone_view(now)
+    return v if (v["last"] or v["cooling"]) else None
+
+
 def router(engine) -> APIRouter:
     r = APIRouter(prefix="/api/v2")
 
@@ -1305,7 +1315,8 @@ def router(engine) -> APIRouter:
         return {"enabled": True, "now": now,
                 "view": held_view(gid, c.hidden_ready, float(c.held.get(t, 0.0)) if t else 0.0,
                                   dec.home_break_visit, dec.home_return_at, list(dec.queue), dec.current,
-                                  engine._name, now, spoiler_safe=bool(engine.cfg.get("phone.catchup_view")))}
+                                  engine._name, now, spoiler_safe=bool(engine.cfg.get("phone.catchup_view"))),
+                "ladder": ladder_line(c, now)}
 
     @r.get("/ledger")
     async def ledger():

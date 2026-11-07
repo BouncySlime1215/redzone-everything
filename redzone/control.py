@@ -58,6 +58,7 @@ from typing import Any, Callable
 
 from redzone import config
 from redzone.channels import ChannelMap
+from redzone.fallback_ladder import FallbackLadder, Step as LadderStep
 from redzone.tuners.adb import STICK_HUNG, Stick, adb_available, playback_ready, same_stream
 from redzone.tuners import join_watchdog as jw
 from redzone.tuners import prime_multiview as pmv
@@ -311,7 +312,12 @@ class Controller:
         self.dead_ball: Callable[[str], bool] = lambda target: True   # [STK-06] engine: is target's game dead now?
         self._buffer_bad: dict[str, float] = {}                      # target -> when its hold went bad
         self._scrub_backoff: dict[str, float] = {}                   # [scrub entry] target -> no scrub before this
+        self._scrub_why: dict[str, str] = {}                         # [fallback ladder] target -> last scrub failure
         self.buffer_log_path: Path | None = None
+        # [fallback ladder, Nick's Nov 7 sync order item 2] buffered -> live -> other stick -> hold, per stick, every
+        # step logged (data/ladder.jsonl) and on the phone. Flag fallback_ladder.enabled, off.
+        self.ladder = FallbackLadder(cfg, None, label=self._stick_label)
+        self._ladder_pending = None   # a climb that handed this switch to the other stick (settled in _execute)
         self.on_behind: Callable[[str, float, float], None] | None = None   # (target, new s, old s)
         # [SYNC 1] stick host -> ((target, stick `updated` ms), first monotonic seen): how long a stick
         # has provably played its stream with no state change (_note_steady).
@@ -1966,13 +1972,23 @@ class Controller:
         # Recheck after waiting for the controller lock and after a failed
         # HDMI attempt: the safe gap may have closed during those operations.
         self._mark("safe_start")
+        pending, self._ladder_pending = self._ladder_pending, None
         if await self._wait_safe(may_cut) is None:
+            if pending is not None:
+                self.ladder.record(pending.host, target, "hold", False, "no safe moment for the other stick",
+                                   reason="other_stick settled")
             return Outcome(False, target, time.time() - t0,
                            "no safe moment to cut — kept the current game", False, screen_unchanged=True)
         self._mark("safe_done")
         if not self.live_control:
             return Outcome(False, target, 0.0, "TV control was disabled", True)
-        return await self._execute_one(target, replay_back_s, t0, back_at)
+        out = await self._execute_one(target, replay_back_s, t0, back_at)
+        if pending is not None and self.main is not None:
+            # [fallback ladder] the other stick's in-place tune is the rung's real result: one more row
+            self.ladder.record(self.main.host, target, "other_stick", out.ok, "" if out.ok else out.detail[:80],
+                               reason="other_stick settled")
+            out.detail += "; fallback: other stick"
+        return out
 
     async def _execute_tile(self, mv: PrimeMultiviewTuner, target: str, may_cut, t0: float) -> Outcome | None:
         """The game is a tile of the Prime multiview on screen: at a safe moment, make it main
@@ -2071,6 +2087,20 @@ class Controller:
             if not res.ok:
                 self._set_hidden(None, False)
                 self._blackout_check(target, res)
+                if self.ladder.enabled and not replay:
+                    # [fallback ladder] the standby couldn't tune it at all: the other stick (in place, at a safe
+                    # moment) if allowed for this app, else hold. The failed live tune is logged as the live step.
+                    err = res.error
+
+                    async def failed_live() -> LadderStep:
+                        return LadderStep(False, err[:80])
+                    steps = self._ladder_steps(hid, target, 0.0, flip=True)
+                    steps["live"] = failed_live
+                    climb = await self.ladder.climb(hid.host, target, steps, start="live", reason="standby tune failed")
+                    self._note("ladder", climb.rung)
+                    if climb.rung == "other_stick" and visible_untouched:
+                        self._ladder_pending = climb
+                        return None
                 return Outcome(False, target, time.time() - t0, res.error, False, path=path,
                                screen_unchanged=visible_untouched)
             self._set_hidden(target, True)
@@ -2087,7 +2117,21 @@ class Controller:
             # dead ball on that delayed picture (the engine's may_cut reads the delay book, which _set_held
             # shifted by the measured label). Never a flip to a stream whose offset we didn't read.
             b = self._buffer_for(hid, target, TuneResult(True, target, 0.0, [], ""))
-            if b > 0:
+            if b > 0 and self.ladder.enabled:
+                # [fallback ladder] buffered -> live (same stick, known position) -> other stick -> hold
+                self._mark("scrub_start")
+                climb = await self.ladder.climb(hid.host, target, self._ladder_steps(hid, target, b, flip=True),
+                                                reason="join")
+                self._mark("scrub_done")
+                self._note("scrub", self.held.get(target) if climb.rung == "buffered" else "failed")
+                self._note("ladder", climb.rung)
+                if climb.rung == "other_stick":
+                    self._ladder_pending = climb
+                    return None   # _execute tunes the visible stick in place at a safe moment (one-stick path)
+                if climb.rung == "hold":
+                    return Outcome(False, target, time.time() - t0, "buffer entry failed; kept the current game",
+                                   False, path=path, screen_unchanged=visible_untouched)
+            elif b > 0:
                 self._mark("scrub_start")
                 ok = await self._scrub_into(hid, target, b)
                 self._mark("scrub_done")
@@ -2927,7 +2971,12 @@ class Controller:
                     if hold and self._scrub_wanted(target):
                         # [scrub entry] the overlay scrub, off screen, before anything can flip to it; a pause
                         # doesn't hold on YouTube TV (Nick, Nov 6). Fails closed at the live edge or not ready.
-                        await self._scrub_into(hid, target, hold)   # sets the hidden stick's state itself
+                        if self.ladder.enabled:
+                            # [fallback ladder] buffered -> live standby -> (no other stick for a preload) -> not ready
+                            await self.ladder.climb(hid.host, target, self._ladder_steps(hid, target, hold, flip=False),
+                                                    reason="preload")
+                        else:
+                            await self._scrub_into(hid, target, hold)   # sets the hidden stick's state itself
                         hold = 0.0
                     if hold:
                         self._set_hidden(target, False)   # not flippable until it's held
@@ -2939,9 +2988,11 @@ class Controller:
                         return
                 self._verified_at = time.time()
             if replay_id is None and hold:
-                await self._hold(hid, target, hold)
+                held_ok = await self._hold(hid, target, hold)
                 if self.hidden is hid and self.hidden_target == target:
                     self._set_hidden(target, True)
+                if self.ladder.enabled:
+                    await self._ladder_note_pause(hid, target, held_ok)
         except asyncio.CancelledError:
             self._set_hidden(None, False)   # stopped mid-tune: we don't know what it's showing
             raise
@@ -3114,6 +3165,7 @@ class Controller:
         if not why:
             why = "the stick is no longer the hidden one"
         self._buffer_log("scrub_failed", target, stick.host, 0.0, None, took=took, why=why[:120])
+        self._scrub_why[target] = why[:60]
         log.warning("scrub: %s on %s failed (%s): fail closed", target, stick.host, why)
         if not why.startswith("backoff"):
             self._scrub_backoff[target] = time.time() + float(self.cfg.get("timing.behind_live_s.scrub_retry_s", 120.0))
@@ -3228,6 +3280,140 @@ class Controller:
         self._buffer_log("session_guard", target, stick.host, 0.0, None, guard=v.kind, action=v.action,
                          buffer=v.buffer)
         return f"session guard: {v.kind}: {v.reason}"[:160], v.buffer == "lost"
+
+    # --- [fallback ladder] Nick's Nov 7 sync order, item 2 (redzone/fallback_ladder.py) ---------------------------
+
+    def _stick_label(self, host: str) -> str:
+        """What the phone and the logs call a stick: its HDMI input, never its address (the repo is public)."""
+        h = self.hdmi.get(host)
+        if h:
+            return f"Stick on {h}"
+        for i, s in enumerate(self.sticks):
+            if s.host == host:
+                return f"Stick {i + 1}"
+        return "stick"
+
+    def _other_stick_ok(self, target: str) -> bool:
+        """The other-stick rung (the visible stick tunes the target in place at a dead ball) is only for apps whose
+        in-app tune is short: a Prime tune is ~32 s of spinner on screen (fallback_ladder.other_stick_apps)."""
+        app = target.split(":", 1)[0]
+        apps = self.cfg.get("fallback_ladder.other_stick_apps", None)
+        apps = ("youtubetv",) if apps is None else tuple(apps)
+        main = self.main
+        return bool(app in apps and main is not None and self._plays(main, target) and self.can_tune(target))
+
+    def _ladder_steps(self, hid: Stick, target: str, seconds: float, flip: bool) -> dict:
+        """The rung callables for the HIDDEN stick, before any flip (called with the control lock held).
+        buffered = the measured overlay scrub (_scrub_into; never trusted without a label reading), live = the same
+        stick re-tuned at the live edge (through another channel if it was behind: #391) and made a ready standby,
+        other_stick = hand the switch to the visible stick (flip=True only; the caller returns None), hold = keep."""
+        steps: dict = {}
+
+        async def buffered() -> LadderStep:
+            ok = await self._scrub_into(hid, target, seconds)
+            b = self.held.get(target) if ok else None
+            return LadderStep(bool(ok and b), "" if ok else self._last_scrub_why(target), behind_s=b, measured=bool(ok))
+
+        async def live() -> LadderStep:
+            if self.hidden is not hid or self.hidden_target not in (None, target):
+                return LadderStep(False, "the stick is no longer the hidden one")
+            self._set_held(target, 0.0)
+            fresh = self.hidden_target == target and self.parked is None and hid.behind_on != target and \
+                (hid.tuned or {}).get("target") == target and hid.scrubbed(target) is None
+            if not fresh:   # _scrub_into's fail-closed re-tune already put it at a known live position
+                res = await self._tune(hid, target)
+                if not res.ok:
+                    self._set_hidden(None, False)
+                    return LadderStep(False, res.error[:80])
+            pb = await hid.playback(self._package(hid, target))
+            if pb.get("state") != "playing" or not playback_ready(pb):
+                self._set_hidden(None, False)
+                return LadderStep(False, f"not playing at the live edge ({pb.get('state')})")
+            self._set_hidden(target, True)
+            return LadderStep(True, "")
+
+        async def other() -> LadderStep:
+            if not self._other_stick_ok(target):
+                return LadderStep(False, "not for this app" if self.main is not None else "no visible stick")
+            return LadderStep(True, "visible stick tunes it in place at a dead ball", host=self.main.host)
+
+        if seconds > 0:
+            steps["buffered"] = buffered
+        steps["live"] = live
+        if flip:
+            steps["other_stick"] = other
+        return steps
+
+    async def _ladder_note_pause(self, hid: Stick, target: str, held_ok: bool) -> None:
+        """[fallback ladder] The pause buffer (_hold: Prime, or a league on the pause path) already fails to the live
+        edge by itself; log its outcome on the same ladder (buffered measured on the stick clock, else live)."""
+        b = self.held.get(target) if held_ok else None
+
+        async def buffered() -> LadderStep:
+            return LadderStep(bool(held_ok and b), "" if held_ok else "pause did not hold", behind_s=b,
+                              measured=bool(held_ok))
+
+        async def live() -> LadderStep:
+            ok = self._live_on_hidden(target) and not self.held.get(target)
+            return LadderStep(ok, "" if ok else "standby lost")
+        await self.ladder.climb(hid.host, target, {"buffered": buffered, "live": live}, reason="preload pause")
+
+    def _last_scrub_why(self, target: str) -> str:
+        """Why the last scrub of `target` failed (its data/buffer.jsonl row reason, kept in memory)."""
+        return self._scrub_why.get(target, "buffer entry failed")
+
+    async def ladder_descend(self, target: str, from_rung: str, why: str,
+                             may_cut: Callable[[], bool] | None = None):
+        """[fallback ladder] For the join watchdog (item 1): `from_rung` didn't hold for `target` (the position read
+        after entry is off target by more than its margin and its re-seek didn't fix it). Climbs from the rung below.
+
+        Target on the HIDDEN stick (verify before the flip): live = re-tune that stick at the live edge as a ready
+        standby; hold = drop it from ready. Target ON SCREEN: never pressed except at a safe moment (Rule #1):
+        live = at a dead ball, re-tune the visible stick at the live edge; other_stick = re-tune the hidden stick
+        at live as a standby (the next dead-ball flip takes it); hold = keep the picture but stop calling it
+        buffered (held = 0, the phone and delay book no longer claim a delay we can't read). None = flag off."""
+        if not self.ladder.enabled or not target:
+            return None
+        async with self._lock:
+            hid, main = self.hidden, self.main
+            if hid is not None and self.hidden_target == target:
+                steps = self._ladder_steps(hid, target, 0.0, flip=False)
+
+                async def hold_hidden() -> LadderStep:
+                    self._set_held(target, 0.0)
+                    self._set_hidden(None, False)
+                    return LadderStep(True, "standby dropped")
+                steps["hold"] = hold_hidden
+                return await self.ladder.descend(hid.host, target, steps, from_rung, why)
+            if main is None or self.on_target != target:
+                return None
+            steps = {}
+
+            async def live_visible() -> LadderStep:
+                if await self._wait_safe(may_cut) is None:
+                    return LadderStep(False, "no safe moment")
+                self._set_held(target, 0.0)
+                res = await self._tune(main, target, may_cut)
+                return LadderStep(bool(res.ok), "" if res.ok else res.error[:80])
+
+            async def other_visible() -> LadderStep:
+                if hid is None or not self._plays(hid, target):
+                    return LadderStep(False, "no standby stick for it")
+                res = await self._tune(hid, target)
+                if not res.ok:
+                    self._set_hidden(None, False)
+                    return LadderStep(False, res.error[:80])
+                self._set_hidden(target, True)
+                return LadderStep(True, "standby at the live edge; flips at the next dead ball", host=hid.host)
+
+            async def hold_visible() -> LadderStep:
+                self._set_held(target, 0.0)
+                return LadderStep(True, "kept; no longer shown as buffered")
+            steps["live"] = live_visible
+            if self.two_stick:
+                steps["other_stick"] = other_visible
+            steps["hold"] = hold_visible
+            return await self.ladder.descend(main.host, target, steps, from_rung, why)
 
     def label_stale(self, target: str) -> bool:
         """[scrub entry] The delay model says this target's label reading went stale (stalls widened it, #376

@@ -163,6 +163,9 @@ class Engine:
         # [buffer.watchdog STK-06] a lost hold is rebuilt only while that game is in a dead ball
         self.control.dead_ball = self._target_dead
         self.control.buffer_log_path = data_dir.parent / "buffer.jsonl" if data_dir else None
+        # [fallback ladder] every climb (buffered -> live -> other stick -> hold), one row each: data/ladder.jsonl
+        self.control.ladder.log_path = data_dir.parent / "ladder.jsonl" if data_dir else None
+        self.control.ladder.steps_path = data_dir.parent / "fallbacks.jsonl" if data_dir else None
         # [EXP-741 E] a waiting tap's Prime score-bug clock reads, numbers only: data/tap_bug.jsonl
         from redzone.screen.tap_bug import TapBug
         self.tap_bug = TapBug(data_dir.parent / "tap_bug.jsonl" if data_dir else None)
