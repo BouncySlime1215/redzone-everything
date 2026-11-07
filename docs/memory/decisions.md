@@ -1128,3 +1128,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   two seeds and the primary CI touches 0. On resync, Prime entries double (54 vs 23 over 3 seeds) for a reason not yet
   shown; T9's guess is the re-sync prior pulling Prime's belief back to the buffered lag. A diagnosis is info-only;
   any grader change from it is a new EXP, registered before it runs. No card until a live stick holds a scrub.
+- 2026-11-07 (integrator): **Grader freeze v43: EXP-607 (#386) pins Prime's re-sync prior at its live edge.** T9's
+  trace: resync believed Prime 116 s vs true 26 s on 34/36 decisions because _attach_resync pinned every target at the
+  buffered lag. Diagnostic of the sim only; NBA stays FAIL on EXP-605's shipped breaches.
