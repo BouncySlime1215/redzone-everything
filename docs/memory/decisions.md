@@ -1132,3 +1132,17 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   TNT, NBA TV, BTN, ACCN, FS1, ESPN2 and TBS (about 15 s each); the one failure failed closed on "knob moved 40s, not
   45s", one second outside the old tolerance. 6 is still well under one 15 s step, so a missed or extra LEFT is caught.
   Flag stays off.
+- 2026-11-07 (integrator): **Grader freeze v43: EXP-607 (#386) pins Prime's re-sync prior at its live edge.** T9's
+  trace: resync believed Prime 116 s vs true 26 s on 34/36 decisions because _attach_resync pinned every target at the
+  buffered lag. Diagnostic of the sim only; NBA stays FAIL on EXP-605's shipped breaches.
+- 2026-11-07 (Nick 05:26Z order; integrator freeze): **Grader freeze v44: EXP-608 (#387) Prime buffered by pause on
+  the hidden stick, ready B + 1 s after its tune; the "Prime can't buffer" replay assumption is withdrawn for it.**
+  Measured once (60 s pause, 4-min hold, stick .150); B90 extrapolated; multiview tiles still 0 live.
+- 2026-11-07 (integrator, EXP-607 read): **The EXP-605 resync failure was a sim artifact (resync mid-play 19.0 -> 7.7
+  per run with Prime pinned at its edge), but NBA stays FAIL:** clock-truth adds 1-2 on two seeds and the primary CI
+  touches 0 on both harnesses. EXP-608 (Prime by pause) is the next read.
+- 2026-11-07 (integrator, T9 trace of #378 at 8452ba4): **Rule #1 risk on the scrub path: timing.behind_live_s.scrub_entry
+  must stay OFF for NBA (and every hold_only league) until EXP-610's live fix lands.** After the scrub the flip never
+  checks the destination's delayed picture for a dead ball (NBA isn't cut-timed; the whistle wait runs before the
+  22.5 s+ scrub), so live would land later than the sim's already-lenient re-check. EXP-610 pairs the live fix
+  (clock-stopped dead ball on the delayed picture, behind the scrub flag) with the same rule in the replay.

@@ -36,3 +36,10 @@ def test_recheck_needs_wait_arm():
     from redzone.lab.backtest import run
     with pytest.raises(ValueError):
         run([], Config(), set(), hidden_stick="live_edge", behind_live_s=75.0, hs_entry="scrub", hs_recheck=True)
+
+
+def test_resync_prime_edge_flag_exists():
+    import inspect
+
+    from redzone.lab.backtest import run
+    assert inspect.signature(run).parameters["hs_resync_prime_edge"].default is False

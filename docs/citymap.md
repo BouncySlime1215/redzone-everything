@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**342 modules**, 284 untagged, 178 unowned, 15 orphans (no importer).
+**343 modules**, 285 untagged, 179 unowned, 15 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -16,7 +16,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/bets.py` | How much is a bet sweating right now? | models -> engine | untagged |
 | `redzone/decider/core.py` | The decision core: ONE expected-value function that every action is chosen by. | models -> contracts, contracts.guard, contracts.legacy, contracts.switching, contracts.views, decider.decider +1 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/cuts.py` | Cut timing: WHEN to leave a game and WHEN to come into one. | models -> decider.decider, decider.screen, noggin.features, scripts.train_noggin_timing | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
-| `redzone/decider/decider.py` | The switch decider: a producer that never cuts you off mid-play. | config, contracts.switching, decider.break_tail, decider.core, decider.cuts, decider.playbooks +9 -> buffer_shadow, contracts.legacy, demo.engine, engine, lab.backtest, lab.night.run +3 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), GAME-01, GAME-04, GAME-05, GAME-09, Landings in dead time, Mid-play entries (per 100 landings), SAFE-01, SAFE-09, Your-team crunch live |
+| `redzone/decider/decider.py` | The switch decider: a producer that never cuts you off mid-play. | config, contracts.switching, decider.break_tail, decider.core, decider.cuts, decider.playbooks +9 -> buffer_shadow, contracts.legacy, demo.engine, engine, lab.backtest, lab.night.run +4 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), GAME-01, GAME-04, GAME-05, GAME-09, Landings in dead time, Mid-play entries (per 100 landings), SAFE-01, SAFE-09, Your-team crunch live |
 | `redzone/decider/screen.py` | What's on your screen right now, estimated from the data and the stream delay. | config, decider.cuts, decider.delaymodel, decider.sync, models -> decider.decider, demo.engine, engine, grading, lab.backtest, lab.cutgrade +6 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/fantasy.py` | ESPN Fantasy Football: boost games where your (or your opponent's) starters are about to score. | models, tv -> engine | untagged |
 | `redzone/plan.py` | Tonight's plan: every game on today's slate, where it will be watched, and whether that was checked on the hidden stick before it started. | channels, models -> engine, lab.night.run, scripts.plan_tonight | League order respected (no lower-league non-crunch over a higher-league crunch) |
@@ -201,7 +201,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/demo/download.py` | Fetch one day's finished games (scoreboard + play-by-play) into data/demo/<day>/<league>/. | - -> demo.__main__ | untagged |
 | `redzone/demo/engine.py` | The real Engine, replaying a past day on a simulated clock. | channels, config, control, crunch, decider.decider, decider.screen +10 -> demo.__main__ | untagged |
 | `redzone/engine.py` | The producer loop: poll every feed -> merge -> score -> decide -> act -> tell the phone. | bets, buffer_rc8, buffer_shadow, calibration, channels, commands +47 -> __main__, demo.engine, lab.night.run, web.server, scripts.fault_drill, scripts.perf_probe | BTN-04, BTN-05, FEED-01, SAFE-01, SAFE-03, STK-06 |
-| `redzone/lab/backtest.py` | Replay a real slate of past games through the scorer and decider, then grade it. | channels, config, contracts.switching, decider.decider, decider.screen, grading +14 -> agent.kaggle.build_moments_kaggle, demo.engine, lab.cutgrade, lab.night.run, lab.optimize, lab.oracle +18 | untagged |
+| `redzone/lab/backtest.py` | Replay a real slate of past games through the scorer and decider, then grade it. | channels, config, contracts.switching, decider.decider, decider.screen, grading +14 -> agent.kaggle.build_moments_kaggle, demo.engine, lab.cutgrade, lab.night.run, lab.optimize, lab.oracle +19 | untagged |
 | `redzone/lab/cutgrade.py` | Cut-timing scorecard: WHERE in each game we left, and WHERE we landed. | decider.screen, grading, lab.backtest, models, sources.espn -> lab.backtest, lab.oracle, lab.sportsgrade, scripts.buffer_shadow_grade, scripts.entry_autopsy, scripts.eval +2 | untagged |
 | `redzone/lab/datasets.py` | Training datasets: per-league game-state snapshots with break / key-moment / hotness labels. | - -> lab.brain3data, lab.brainfit, lab.breakblend, lab.sportsdata, scripts.build_training, scripts.train_brain | untagged |
 | `redzone/lab/optimize.py` | Training lab: search decider settings against real past slates. | config, lab.backtest, models -> lab.tune, scripts.eval | untagged |
@@ -215,7 +215,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (178)
+## unowned (179)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -336,6 +336,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/exp022_tpp.py` (entry) | [EXP-022] The event-token world model read as a timing point process vs Noggin Timing v1's trees, on green data. | noggin.factory, noggin.features, noggin.timing, noggin.timing_fit -> - | untagged |
 | `scripts/exp023_belief.py` (entry) | [EXP-023] Belief tracker vs the DelayBook baseline, on DEV nights only (docs/prereg/exp-023.md). | channels, config, lab.backtest, lab.evaldata, lab.splits, lab.sportsgrade +4 -> - | untagged |
 | `scripts/exp1722_read.py` (entry) | EXP-1722 read (NBA only, v3 NEW fit nights, judge = crew H v3 recap set; harness = acceptance_1721 with data paths changed; the v2 reward now comes from redz... | lab.oracle, lab.oracle_v2, lab.sportsgrade, models -> - | untagged |
+| `scripts/exp607_trace_prime_belief.py` (entry) | [EXP-607, info only] Trace believed vs true delay for Prime targets at each switch decision (EXP-605 resync). | decider.decider, lab.backtest -> - | untagged |
 | `scripts/export_reasoner_llm.py` (entry) | Export briefs + hindsight targets for the game-reasoner language model (LoRA on the shared base). | lab.reasoner_data, reasoner.reasoner -> - | untagged |
 | `scripts/family_holm.py` (entry) | Family-wise correction for experiments that share dev nights (PROPOSAL, test writers, EXP-722). | - -> - | untagged |
 | `scripts/fast_feed_race.py` (entry) | [tracker item 5] The feed lag race: fast league feeds (fast_feeds.jsonl) vs ESPN (plays.jsonl), per league. | - -> - | untagged |
@@ -398,7 +399,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/wv_aux_label.py` (entry) | Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804). | - -> scripts.attention_labels | untagged |
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_seek -> - | untagged |
 
-## Untagged (284)
+## Untagged (285)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -615,6 +616,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/exp022_tpp.py`
 - `scripts/exp023_belief.py`
 - `scripts/exp1722_read.py`
+- `scripts/exp607_trace_prime_belief.py`
 - `scripts/export_reasoner_llm.py`
 - `scripts/family_holm.py`
 - `scripts/fast_feed_race.py`
