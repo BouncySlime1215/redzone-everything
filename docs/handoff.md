@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick approved Library adds for the DVR test. HARD RULE: remove every added game when the test ends; log adds and removals. None added yet, both sticks in use for tonight's show.
+Minimal sweep: auto-switching on, wall power. Plan: HDMI1 scrub check and DVR test after games, then RC6.3 if Nick says yes.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
