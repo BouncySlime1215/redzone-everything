@@ -17,6 +17,8 @@ enter_buffer(stick, seconds, ...) therefore:
   2b. the probe that puts focus on the bar and shows the label: at the live edge a RIGHT (probe_key, default) or a
      LEFT; neither moves the knob there (Nick, Nov 7: RIGHT 8/8, LEFT 6/6, same landings), so the label it shows is
      the start point. Behind live only a LEFT probe is used, and it is assumed to move one step;
+  2c. the bar starts at the PROGRAM start (FOX 50 just after kickoff: label 5 s): LEFTs needing more than the label
+      fail closed before any is pressed (program_start_guard), with room_s = the label;
   3. LEFT x N, then reads again: the scrub label must have moved back N x step_s (+- step_tol_s). Exactly one step
      short = a lost press: one more LEFT (topup_max), which must move one step. Otherwise: fail closed. A fixed
      `presses` count (the join plan's n) sends n - 1 LEFTs after the probe, the motion its predictor is fit to;
@@ -48,7 +50,8 @@ log = logging.getLogger("redzone.yttv_seek")
 
 YTTV_PKG_HINT = "youtube.tv"
 SCRUB_DEFAULTS = {"enabled": False, "step_s": 15.0, "max_back_s": 150.0, "step_tol_s": 6.0,
-                  "key_gap_s": 0.35, "open_tries": 4, "probe_key": "RIGHT", "topup_max": 1, "topup_tol_s": 2.0, "boundary_retries": 1, "reopen_wait_s": 1.5, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 1.3}
+                  "key_gap_s": 0.35, "open_tries": 4, "probe_key": "RIGHT", "topup_max": 1, "topup_tol_s": 2.0, "boundary_retries": 1, "reopen_wait_s": 1.5, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 1.3,
+                  "program_start_guard": True}
 
 # The player row under the bar (#356 ROW_BUTTON labels seen so far). Focus on any of these = NOT the bar.
 ROW_BUTTONS = ("hd", "cc", "networks", "multiview", "episodes", "more to watch", "stats", "key plays", "scores",
@@ -166,6 +169,7 @@ class BufferResult:
     steps: list[str] = field(default_factory=list)
     took_s: float = 0.0
     retries: int = 0                    # program-boundary retries from the live edge (boundary_retries)
+    room_s: float | None = None         # the label where the bar was focused: how far back the bar can go (FOX, Nov 7)
 
     @property
     def behind_s(self) -> float | None:
@@ -346,6 +350,16 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
         # A fixed count n is the join plan's presses = k + 1 (k = JoinPlan.lefts, fit on real LEFTs after the probe,
         # Nick's depth sweep Nov 7): (n - 1) LEFTs whichever probe ran (at live neither probe moves the knob).
         rest = max(0, n - 1)
+    # [Nick's FOX 50 joins, Nov 7 ~12:05 ET, right after kickoff] the bar starts at the PROGRAM start: label 5 s at
+    # the live edge, 'knob moved 5s, not 30s (5s -> 0s)'. The scrub can't go back further than the label, so when
+    # the LEFTs need more than that, fail closed now (nothing seeks; the stick goes back to live) and say how much
+    # room there was (room_s) so a caller can aim shallower or try later. Not a "knob moved" reason: a retry from
+    # the edge a few seconds later has the same problem.
+    res.room_s = round(float(before.scrub_s), 1)
+    need = rest * step
+    if bool(_cfg(cfg, "program_start_guard")) and rest > 0 and need > before.scrub_s + float(_cfg(cfg, "topup_tol_s")):
+        return await _fail(res, f"program start: the bar has {before.scrub_s:.0f}s, the scrub needs {need:.0f}s",
+                           relink, still_hidden, pressed=True)
     if rest > 0 and not await _keys(stick, "KEYCODE_DPAD_LEFT", rest, gap):
         res.presses = rest + int(left_probe)
         return await _fail(res, "LEFT not sent", relink, still_hidden, pressed=True)

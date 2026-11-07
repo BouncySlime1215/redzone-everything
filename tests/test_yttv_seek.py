@@ -45,7 +45,7 @@ class FakeYTTV:
                 return RunResult(True, "", 0.01)
             self.left_n += 1
             if self.left_n not in self.lose:                  # a lost press: sent, never landed
-                self.knob -= self.step
+                self.knob = max(0.0, self.knob - self.step)   # the bar starts at the program start
         elif code == "KEYCODE_DPAD_RIGHT" and self.overlay and self.focus == "bar":
             self.knob = min(self.knob + self.step, self.label0)   # pinned at the live edge
             self.revealed = True
@@ -355,3 +355,32 @@ def test_not_at_live_keeps_the_left_probe():
     s.reveal_only = False                                 # behind live the LEFT probe is assumed to move a step
     r = run(s, 60.0, presses=3, behind_before_s=30.0, cfg=RIGHT_PROBE)
     assert r.ok and "KEYCODE_DPAD_RIGHT" not in s.keys and s.committed_back == 45.0
+
+
+# ------------------------------------------- Nick's FOX 50 joins right after kickoff (Nov 7 ~12:05 ET): program start
+def test_a_scrub_deeper_than_the_program_fails_closed_before_any_left():
+    """Label 5 s at the live edge, a 60 s join (2 LEFTs = 30 s): used to press both and fail 'knob moved 5s, not 30s
+    (5s -> 0s)'. Now: no LEFT, fail closed, relinked, and the room is reported."""
+    s = FakeYTTV(label0=5.0)
+    rl = []
+
+    async def relink():
+        rl.append(1)
+        return True
+    r = asyncio.run(ys.enter_buffer(s, 60, cfg=CFG, pkg=YT, read_overlay=reader(s), relink=relink, presses=3))
+    assert not r.ok and r.reason.startswith("program start: the bar has 5s, the scrub needs 30s")
+    assert s.keys.count("KEYCODE_DPAD_LEFT") == 0 and r.room_s == 5.0 and r.relinked is True and rl
+    assert r.retries == 0                     # not a "knob moved" reason: no boundary retry from the edge
+
+
+def test_a_program_with_enough_room_scrubs_as_before():
+    s = FakeYTTV(label0=52.0)                 # Nick's third FOX run: label 52 s, 2 LEFTs fit
+    r = asyncio.run(ys.enter_buffer(s, 60, cfg=CFG, pkg=YT, read_overlay=reader(s), presses=3))
+    assert r.ok and s.committed_back == 30.0 and r.room_s == 52.0
+
+
+def test_the_program_start_guard_can_be_turned_off():
+    s = FakeYTTV(label0=5.0)
+    cfg = Cfg({**CFG, "yttv_seek.program_start_guard": False, "yttv_seek.boundary_retries": 0})
+    r = asyncio.run(ys.enter_buffer(s, 60, cfg=cfg, pkg=YT, read_overlay=reader(s), presses=3))
+    assert not r.ok and r.reason.startswith("knob moved 5s, not 30s")
