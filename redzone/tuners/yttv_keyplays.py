@@ -48,7 +48,8 @@ log = logging.getLogger("redzone.yttv_keyplays")
 YTTV_PKG_HINT = "youtube.tv"
 KEYPLAYS_DEFAULTS = {"enabled": False, "open_tries": 3, "open_wait_s": 1.2, "reopen_wait_s": 6.0, "read_wait_s": 0.9,
             "tab_tries": 4, "row_fix_tries": 3, "scroll_max": 20, "prompt_tries": 6, "clock_tol_s": 20.0,
-            "settle_s": 6.0, "poll_s": 0.25, "relink_settle_s": 6.0, "key_gap_s": 0.35}
+            "settle_s": 6.0, "poll_s": 0.25, "relink_settle_s": 6.0, "key_gap_s": 0.35,
+                     "fast_tabs": True, "fast_tab_reads": 2, "hidden_center_by_position": True}
 
 TABS = ("scores", "stats", "key plays")
 CATCH_UP = "catch up via key plays"
@@ -134,6 +135,8 @@ class PanelRead:
     n_text: int = 0
     unavailable: bool = False  # 'Key plays currently unavailable' (ESPN, Nov 7)
     hidden_n: int | None = None  # 'N hidden key plays' (spoiler mode, Big Ten Network, Nov 7): no rows to pick
+    catch_up_y: float | None = None
+    hidden_y: float | None = None
 
     @property
     def panel(self) -> bool:
@@ -180,6 +183,7 @@ def parse_panel(obs: list[dict], focus: list[dict] | None = None) -> PanelRead:
             r.tabs_y = o["y"] if r.tabs_y is None else min(r.tabs_y, o["y"])
         if CATCH_UP in t:
             r.catch_up = True
+            r.catch_up_y = o["y"] if r.catch_up_y is None else min(r.catch_up_y, o["y"])
         if _PROMPT.search(o["text"]):
             r.prompt = True
         m = _REEL.search(o["text"])
@@ -190,6 +194,7 @@ def parse_panel(obs: list[dict], focus: list[dict] | None = None) -> PanelRead:
         h = _KP_HIDDEN.search(o["text"])
         if h:
             r.hidden_n = int(h.group(1))
+            r.hidden_y = o["y"]
     if r.prompt:
         r.prompt_buttons = [_norm(o["text"]) for o in items
                             if _norm(o["text"]) in (ASK_LATER, "not now", "no thanks", "turn on", "yes", "no", "on", "off")]
@@ -327,6 +332,8 @@ class _Run:
         self.read_fn = read or ocr_panel
         self.relink, self.clock, self.res = relink, clock, res
         self.t0 = clock()
+        self.fast_used = False
+        self.positional = False
 
     def mark(self, name: str) -> None:
         self.res.timings[name] = self.clock() - self.t0
@@ -346,8 +353,12 @@ class _Run:
     async def read(self, wait: bool = True) -> PanelRead | None:
         if wait:
             await asyncio.sleep(float(_cfg(self.cfg, "read_wait_s")))
+        t = self.clock()
         r = await self.read_fn(self.stick)
-        self.res.steps.append("read " + ("unreadable" if r is None else
+        took = self.clock() - t
+        self.res.timings["reads_s"] = self.res.timings.get("reads_s", 0.0) + took
+        self.res.timings["reads_n"] = self.res.timings.get("reads_n", 0) + 1
+        self.res.steps.append(f"read {took:.1f}s " + ("unreadable" if r is None else
                                          f"tabs={','.join(r.tabs) or '-'} rows={len(r.rows)} focus={r.focus_kind}:"
                                          f"{r.focus_text[:30]!r}{' PROMPT' if r.prompt else ''}"
                                          f"{' reel=%d/%d' % r.reel if r.reel else ''}"))
@@ -372,6 +383,16 @@ class _Run:
             await self.key("DPAD_UP")
             await asyncio.sleep(float(_cfg(self.cfg, "open_wait_s")))
             await self.key("DPAD_CENTER")
+            if _cfg(self.cfg, "fast_tabs"):
+                # Speed (Nov 7: open 6 s + tab 16 s, every read ~5 s): the live path is known (the panel opens with a
+                # card focused; UP reaches the tabs; Key plays is the rightmost tab), so send UP, RIGHT, RIGHT without
+                # reads between. Navigation keys only: nothing is selected; extra RIGHTs stay on the rightmost tab.
+                # One read then must show Key plays content, else fail closed (to_tab re-reads, presses nothing).
+                await asyncio.sleep(float(_cfg(self.cfg, "open_wait_s")))
+                await self.key("DPAD_UP")
+                await asyncio.sleep(float(_cfg(self.cfg, "key_gap_s")))
+                await self.key("DPAD_RIGHT", 2)
+                self.fast_used = True
             r = await self.read()
             if r is not None and r.prompt:
                 r = await self.answer_prompt(r)
@@ -408,6 +429,16 @@ class _Run:
 
     async def to_tab(self, r: PanelRead) -> PanelRead:
         self.res.stage = "tab"
+        if self.fast_used:
+            for _ in range(int(_cfg(self.cfg, "fast_tab_reads"))):
+                if r is not None and r.on_key_plays:
+                    return self._on_tab(r)
+                r = await self.read()
+                if r is not None and r.prompt:
+                    r = await self.answer_prompt(r)
+            if r is not None and r.on_key_plays:
+                return self._on_tab(r)
+            raise _Closed("Key plays content not seen after UP, RIGHT, RIGHT (nothing selected)")
         up_used, rights = False, 0
         for _ in range(int(_cfg(self.cfg, "tab_tries"))):
             if r.on_key_plays:
@@ -447,6 +478,16 @@ class _Run:
     async def focus_catch_up(self, r: PanelRead) -> PanelRead:
         """Focus 'Catch up via key plays': DOWN off the tab bar, verified by the focus box. Nothing else is selected."""
         self.res.stage = "focus"
+        if (r.focus_kind == "" and r.mode == "hidden" and not r.rows and _cfg(self.cfg, "hidden_center_by_position")
+                and r.catch_up_y is not None and (r.hidden_y is None or r.catch_up_y < r.hidden_y)):
+            # Nov 7, BTN: OCR can't see focus on Catch up. In spoiler mode Catch up is the first item under the tabs,
+            # so one DOWN off the tab bar lands on it by position (overseer's call). The select is then proven by the
+            # reel's '1 of N key plays' label in play(); anything else fails closed (re-link to live).
+            await self.key("DPAD_DOWN")
+            self.positional = True
+            self.mark("focus_s")
+            self.res.chosen = {"catch_up": True, "hidden_n": r.hidden_n, "by_position": True}
+            return r
         for _ in range(int(_cfg(self.cfg, "row_fix_tries")) + 1):
             if r.focus_kind == "catch_up":
                 self.mark("focus_s")
@@ -550,10 +591,18 @@ class _Run:
             raise _Closed("reel not playing after the select")
         self.mark("playing_s")
         r2 = r if (r is not None and r.reel) else await self.read()
+        if r2 is not None and r2.prompt:
+            r2 = await self.answer_prompt(r2)
         if r2 is not None and r2.reel:
             self.res.reel = r2.reel
-        if r2 is not None and r2.prompt:
-            await self.answer_prompt(r2)
+        if self.positional:
+            # a select by position counts only if the reel says it started at 1 of N (N = the hidden count)
+            if self.res.reel is None:
+                r3 = await self.read()
+                self.res.reel = r3.reel if r3 is not None else None
+            n = self.res.chosen.get("hidden_n") if self.res.chosen else None
+            if self.res.reel is None or self.res.reel[0] != 1 or (n is not None and self.res.reel[1] != n):
+                raise _Closed(f"Catch up by position not confirmed (reel {self.res.reel}, want 1 of {n})")
 
     async def fail_closed(self) -> None:
         if self.relink is None or not self.still_hidden():

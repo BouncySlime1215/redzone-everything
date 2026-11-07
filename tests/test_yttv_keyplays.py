@@ -285,7 +285,7 @@ def test_banner_swallows_first_open_then_retries():
     s = FakePanel(banner=2)
     res = go(kp.read_key_plays(s, cfg=cfg(), read=reader(s), relink=relinker(s)))
     assert res.ok, res.steps
-    assert s.keys[:4] == ["DPAD_UP", "DPAD_CENTER", "DPAD_UP", "DPAD_CENTER"]
+    assert s.keys[:2] == ["DPAD_UP", "DPAD_CENTER"] and s.keys.count("DPAD_CENTER") == 2   # opened on the 2nd try
 
 
 def test_becoming_visible_stops_keys_and_does_not_relink():
@@ -385,8 +385,69 @@ def test_spoiler_mode_catch_up_from_start():
     assert s.reel_at == 0 and res.reel == (1, 8) and res.prompt_answer == "ask later" and not s.setting_changed
 
 
-def test_catch_up_needs_visible_focus_on_the_button():
+def test_no_visible_focus_anywhere_never_answers_the_prompt():
     s = FakePanel(kp_mode="hidden", **LIVE)
     s.focus_visible = False
     res = go(kp.catch_up(s, kp.Want(from_start=True), cfg=cfg(), read=reader(s), relink=relinker(s)))
+    assert not res.ok and "Ask later" in res.reason and not s.setting_changed and s.relinks == 1
+
+
+class NoCatchFocus(FakePanel):
+    """BTN, Nov 7: focus on the tabs and on Catch up is invisible to OCR; the prompt's focus is visible."""
+    def render(self):
+        obs, focus = super().render()
+        if self.state == "panel" and self.pos in ("tab", "catch"):
+            focus = []
+        return obs, focus
+
+
+def test_spoiler_mode_catch_up_by_position_confirmed_by_reel():
+    s = NoCatchFocus(kp_mode="hidden", hidden_n=14, **LIVE)
+    res = go(kp.catch_up(s, kp.Want(from_start=True), cfg=cfg(), read=reader(s), relink=relinker(s)))
+    assert res.ok, res.steps
+    assert res.chosen["by_position"] and res.reel == (1, 14) and s.reel_at == 0
+    assert res.prompt_answer == "ask later" and not s.setting_changed and s.relinks == 0
+
+
+def test_by_position_off_fails_closed():
+    s = NoCatchFocus(kp_mode="hidden", **LIVE)
+    res = go(kp.catch_up(s, kp.Want(from_start=True), cfg=cfg(hidden_center_by_position=False), read=reader(s),
+                         relink=relinker(s)))
     assert not res.ok and s.reel_at is None and s.relinks == 1
+
+
+class WrongItemFirst(NoCatchFocus):
+    """The DOWN lands on something else: the CENTER starts no reel."""
+    def _press(self, k):
+        if self.state == "panel" and self.pos == "catch" and k == "DPAD_CENTER":
+            self.keys.append(k)
+            return
+        super()._press(k)
+
+
+def test_by_position_without_reel_fails_closed():
+    s = WrongItemFirst(kp_mode="hidden", first_use=False, **LIVE)
+    res = go(kp.catch_up(s, kp.Want(from_start=True), cfg=cfg(), read=reader(s), relink=relinker(s)))
+    assert not res.ok and "not confirmed" in res.reason and s.relinks == 1
+
+
+def test_fast_tabs_reads_once_to_reach_the_tab():
+    s = FakePanel(**LIVE)
+    res = go(kp.read_key_plays(s, cfg=cfg(), read=reader(s), relink=relinker(s)))
+    assert res.ok and res.timings["reads_n"] == 1
+    assert s.keys == ["DPAD_UP", "DPAD_CENTER", "DPAD_UP", "DPAD_RIGHT", "DPAD_RIGHT"]
+
+
+def test_fast_tabs_without_key_plays_content_fails_closed_without_select():
+    s = FakePanel(**LIVE)
+    s.open_on_card = True
+    orig = s._press
+
+    def no_up(k):                      # UP doesn't reach the tabs: RIGHTs move between cards
+        if s.state == "panel" and s.pos == "card" and k == "DPAD_UP":
+            s.keys.append(k)
+            return
+        orig(k)
+    s._press = no_up
+    res = go(kp.read_key_plays(s, cfg=cfg(), read=reader(s), relink=relinker(s)))
+    assert not res.ok and "not seen" in res.reason and not s.card_selected and s.relinks == 1

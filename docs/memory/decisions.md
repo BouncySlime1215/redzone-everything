@@ -1064,3 +1064,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   hidden stick (overseer's Nov 7 finding: UP+CENTER panel, ~10 s per play, deep link back to live ~0.4 s). Off and not
   wired into the switch path until a stick run confirms the panel layout; the auto-play prompt is only ever answered
   Ask later. No live default changes.
+- 2026-11-07 (item 8, #382, overseer's stick runs): **`yttv_keyplays.fast_tabs` and `hidden_center_by_position`
+  (block still `enabled: false`).** BTN spoiler mode failed closed because OCR can't see focus on Catch up; the
+  overseer's call: one DOWN reaches it by position, proven by the reel's '1 of N'. Open 6 s + tab 16 s was too slow,
+  so the tabs are reached with UP, RIGHT, RIGHT and one read (navigation keys only).

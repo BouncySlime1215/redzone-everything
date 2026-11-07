@@ -572,6 +572,11 @@ yttv_keyplays:             # [YTTV key plays, item 8] catch up on a missed play 
   poll_s: 0.25
   relink_settle_s: 6       # deep link back to live must be PLAYING within this
   key_gap_s: 0.35
+  fast_tabs: true          # UP, CENTER, UP, RIGHT, RIGHT with one read (navigation only); live open 6 s + tab 16 s was
+                           # too slow (Nov 7). No Key plays content after it = fail closed
+  fast_tab_reads: 2        # re-reads (no keys) for the Key plays content to show
+  hidden_center_by_position: true  # spoiler mode: OCR can't see focus on Catch up; one DOWN reaches it by position,
+                                   # the select must show the reel at '1 of N key plays' or it fails closed
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true
