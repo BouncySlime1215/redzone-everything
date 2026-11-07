@@ -452,15 +452,18 @@ def test_reprobe_is_off_by_default_and_falls_back_as_before():
     assert out.state == "live" and out.reprobes == 0 and not n and len(relinks) == 1
 
 
-def test_reprobe_saves_the_join_when_the_second_read_lands():
-    """Plan 64.2 (one read); the re-probe adds another ~7.5 s: 63.0 + 7.5 = 70.5 vs 71.7 -> verified."""
-    jf, reader, n = _unread_then(70.5)
+@pytest.mark.parametrize("reading", [65.83, 55.44, 70.5])
+def test_reprobe_judges_on_the_target_band_only(reading):
+    """Nick's #404 run (Nov 7 13:19Z): ESPN 65.83 and ESPN2 55.44 after an empty first read (55.44 was thrown away
+    against the plan's 64.2 and re-seeked, 35 s lost). The empty read may not have frozen the picture, so the plan is
+    unknown: the target band (60 + half a read, +- 10.5) judges it. A double freeze (~71.7) still passes."""
+    jf, reader, n = _unread_then(reading)
     rl, relinks = _relinker()
     out = run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, read_behind=reader, log_path="",
                               cfg={"join.watchdog.reprobe_unmeasured": True}))
-    assert out.state == "buffered" and out.behind_s == 70.5 and out.reprobes == 1 and len(n) == 1 and not relinks
+    assert out.state == "buffered" and out.behind_s == reading and out.reprobes == 1 and len(n) == 1 and not relinks
     assert [v["status"] for v in out.verdicts] == ["unmeasured", "verified"]
-    assert out.verdicts[-1]["predicted_s"] == pytest.approx(71.7) and out.verdicts[-1]["reason"].startswith("re-probe")
+    assert out.verdicts[-1]["reason"].startswith("re-probe")
 
 
 def test_reprobe_reads_only_once_then_falls_back():
@@ -472,7 +475,7 @@ def test_reprobe_reads_only_once_then_falls_back():
 
 
 def test_reprobe_off_target_still_reseeks():
-    jf, reader, n = _unread_then(90.0)
+    jf, reader, n = _unread_then(78.0)      # past 60 + 3.75 + 10.5
     rl, relinks = _relinker()
     out = run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, read_behind=reader, log_path="",
                               cfg={"join.watchdog.reprobe_unmeasured": True}))

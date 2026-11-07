@@ -228,8 +228,10 @@ async def watched_join(stick, app: str, target_s: float, *, relink: Callable[[],
             reader = join_kw.get("read_behind")
             if v.status == "unmeasured" and bool(wcfg(cfg, "reprobe_unmeasured")) and bool(getattr(r, "ok", False)) \
                     and reader is not None and plan is not None and not out.reprobes and still_hidden():
-                # the join committed but its one label read came back empty: read once more (it adds its own freeze,
-                # so the plan moves by one more read_s and the target by both reads)
+                # the join committed but its one label read came back empty: read once more. Whether that empty read
+                # froze the picture is unknown (Nick's #404 run, Nov 7 13:19Z: ESPN 65.83 and ESPN2 55.44 for target
+                # 60, plan 64.2 with one read), so the plan is not used: the TARGET band alone judges it, centred
+                # half a read deep (one read certain, the other unknown).
                 out.reprobes += 1
                 try:
                     again = await reader(stick)
@@ -237,8 +239,7 @@ async def watched_join(stick, app: str, target_s: float, *, relink: Callable[[],
                     log.warning("re-probe failed: %r", e)
                     again = None
                 rs = float(getattr(plan, "read_s", 0.0) or 0.0)
-                pred = getattr(plan, "predicted_s", None)
-                v = verify(a, target_s, again, None if pred is None else float(pred) + rs, read_adds_s=2 * rs,
+                v = verify(a, target_s, again, None, read_adds_s=rs / 2.0,
                            visible=not still_hidden(), reseeks_left=max_re - (out.attempts - 1), cfg=cfg)
                 v.reason = f"re-probe: {v.reason}"
                 out.verdicts.append(asdict(v))

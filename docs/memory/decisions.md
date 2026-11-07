@@ -1243,5 +1243,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   it as a measurement (its gross filter decides). The pre-commit knob guard is the seek thread's. Flags off.
 - 2026-11-07 (Nick's cross-channel run 13:02Z: 25/26 joins verified at 61.2-67.5 s for target 60, the 1 miss an empty
   post-commit label read): new `join.watchdog.reprobe_unmeasured`, **false**. On, an unmeasured COMMITTED join reads the
-  label once more before falling back to live; that read adds its own ~7.5 s, so the plan moves by one more read_s and
-  the target by both. One re-probe per join, never on a failed join or a visible stick.
+  label once more before falling back to live. One re-probe per join, never on a failed join or a visible stick.
+  Nick's #404 run 13:19Z (12/12 buffered, but ESPN2 re-probe 55.44 re-seeked to 88 s): the re-probe is judged on the
+  target band only (target + half a read_s, +-10.5 s for YTTV), not the plan margin, because the empty first read's
+  freeze may or may not have pushed the stick back. 55.44 and 65.83 for target 60 both pass. Flag still off.
