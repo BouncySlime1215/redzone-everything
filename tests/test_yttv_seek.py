@@ -27,6 +27,7 @@ class FakeYTTV:
         self.focus, self.front, self.state, self.step = focus, front, state, step
         self.label0, self.knob, self.after_commit = label0, label0, after_commit
         self.overlay, self.committed_back, self.keys = False, 0.0, []
+        self.lefts, self.lose = 0, set()
 
     async def shell(self, cmd, timeout=8.0):
         code = cmd.split()[-1]
@@ -39,7 +40,11 @@ class FakeYTTV:
                 self.overlay = False
                 self.state = self.after_commit
         elif code == "KEYCODE_DPAD_LEFT" and self.overlay and self.focus == "bar":
-            self.knob -= self.step
+            self.lefts += 1
+            if self.lefts not in self.lose:                  # a lost press: sent, never landed
+                self.knob -= self.step
+        elif code == "KEYCODE_DPAD_RIGHT" and self.overlay and self.focus == "bar":
+            self.knob = min(self.knob + self.step, self.label0)   # pinned at the live edge
         return RunResult(True, "", 0.01)
 
     async def foreground(self):
@@ -132,7 +137,7 @@ def test_unreadable_overlay_fails_closed():
 def test_knob_that_moved_the_wrong_amount_is_not_committed():
     s, log = FakeYTTV(step=10.0), []                      # an app that steps 10 s, not 15
     r = run(s, 60.0, relink=relinker(log), cfg=Cfg({**CFG, "yttv_seek.boundary_retries": 0}))
-    assert not r.ok and "knob moved 30s" in r.reason
+    assert not r.ok and "knob moved" in r.reason
     assert s.keys.count("KEYCODE_DPAD_CENTER") == 1 and not r.committed and log == ["relink"]
 
 
@@ -232,6 +237,9 @@ def test_live_banner_after_a_tune_is_closed_before_the_scrub():
     assert r.ok and r.committed and r.presses == 4, r
 
 
+LEFT_PROBE = Cfg({**CFG, "yttv_seek.probe_key": "LEFT"})
+
+
 def _misses_probe_once(s):
     base, seen = reader(s), []
 
@@ -244,7 +252,7 @@ def _misses_probe_once(s):
 def test_a_blind_probe_close_makes_the_delay_unknown():
     """The CENTER that closes an unread probe can commit that LEFT: the stick ends 75 s back, not the 60 s estimate."""
     s = FakeYTTV()
-    r = run(s, 60.0, read_overlay=_misses_probe_once(s))
+    r = run(s, 60.0, read_overlay=_misses_probe_once(s), cfg=LEFT_PROBE)
     assert s.committed_back == 75.0
     assert r.ok and r.committed and r.behind_live_s is None and r.behind_s is None and "unknown" in r.reason
 
@@ -254,7 +262,7 @@ def test_a_blind_probe_close_is_fine_with_a_label_read():
 
     async def label(_s):
         return 75.2
-    r = run(s, 60.0, read_overlay=_misses_probe_once(s), read_behind=label)
+    r = run(s, 60.0, read_overlay=_misses_probe_once(s), read_behind=label, cfg=LEFT_PROBE)
     assert r.ok and r.measured and r.behind_s == 75.2
 
 
@@ -280,3 +288,38 @@ def test_time_in_the_overlay_is_planned_and_counted():
     assert r.ok and r.presses == 4, r                     # not 6: 4 x 15 + 24 s in the overlay = 84, nearest to 90
     assert abs((s.committed_back + frozen) - 90.0) <= 7.5
     assert abs(r.behind_live_s - (s.committed_back + frozen)) < 0.01
+
+
+def test_right_probe_checks_every_left():
+    """At the live edge a RIGHT lands on the bar without moving the pinned knob: all n LEFTs are then checked."""
+    s = FakeYTTV(label0=3600.0)
+    r = run(s, 60.0, presses=3)
+    assert r.ok and s.keys[:2] == ["KEYCODE_DPAD_CENTER", "KEYCODE_DPAD_RIGHT"]
+    assert s.keys.count("KEYCODE_DPAD_LEFT") == 3 and s.committed_back == 45.0
+
+
+@pytest.mark.parametrize("lost", [1, 2, 3])
+def test_lost_press_is_topped_up_before_the_commit(lost):
+    """Nick's canary run 1 (Nov 7, 5f80eb94): espn target 60, 3 presses, landed 52.1 s, one 15 s step short, and the
+    row said ok. Now the knob check sees 30 s of 45 s, presses one more LEFT, re-reads, and commits a full 45 s."""
+    s = FakeYTTV(label0=3600.0)
+    s.lose = {lost}
+    r = run(s, 60.0, presses=3)
+    assert r.ok and r.committed and s.committed_back == 45.0, r
+    assert s.keys.count("KEYCODE_DPAD_LEFT") == 4 and r.presses == 4
+    assert any("lost press" in x for x in r.steps)
+
+
+def test_two_lost_presses_fail_closed():
+    s, log = FakeYTTV(label0=3600.0), []
+    s.lose = {1, 2}
+    r = run(s, 60.0, presses=3, relink=relinker(log), cfg=Cfg({**CFG, "yttv_seek.boundary_retries": 0}))
+    assert not r.ok and not r.committed and "knob moved" in r.reason and log == ["relink"]
+    assert s.committed_back == 0.0
+
+
+def test_not_at_live_keeps_the_left_probe():
+    """Behind live, a RIGHT would move the knob forward: the LEFT probe (unchecked step) is used, as before."""
+    s = FakeYTTV(label0=3600.0)
+    r = run(s, 60.0, presses=3, behind_before_s=30.0)
+    assert r.ok and "KEYCODE_DPAD_RIGHT" not in s.keys and s.committed_back == 45.0

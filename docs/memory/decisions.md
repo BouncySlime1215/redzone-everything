@@ -1241,3 +1241,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   way); a new `verdict` field says why. Off target -> ok false, reason names "a lost press?" when one 15 s step short.
   The watchdog still re-seeks such a READ landing once (it is a measurement, not a failed join), and join_calib keeps
   it as a measurement (its gross filter decides). The pre-commit knob guard is the seek thread's. Flags off.
+- 2026-11-07 (overseer's canary on 5f80eb94, run 1: espn target 60, 3 presses, landed 52.12 vs 64.2 predicted, one
+  15 s step short, row said ok): lost-press guard in `yttv_seek` (flag still off). At the live edge the probe is now
+  a RIGHT (`probe_key: RIGHT`), which shows the scrub label without moving the knob (pinned at live), so the knob
+  check covers every LEFT; behind live, or if RIGHT shows no label, the LEFT probe is used as before. Before the
+  commit, a knob one whole step short gets one more LEFT (`topup_max: 1`), a re-read and the same check; anything
+  else off still fails closed. The watchdog's off-target re-seek (#401) stays as the backstop.
