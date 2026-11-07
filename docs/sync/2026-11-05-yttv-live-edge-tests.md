@@ -108,3 +108,25 @@ the probe must also log `/proc/uptime` (or the extrapolated value).**
   3. The Broadcast Delay setting (Default vs Decreased, ~9-10 s per reports) likely explains the ~10 s landing gap
      between the two sticks; set both the same (Decreased) before tonight, with Nick's OK.
 - Mac cost: one muted 1080p tab ≈ light; pause it when not measuring.
+
+## Update Nov 6, 9:40 PM: overlay scrub holds a buffer; media_session lies after a seek
+
+Hidden stick (HDMI2), auto-switching paused during tests and resumed after. Numbers only; no frames kept.
+
+- **Meter trap.** E stays flat when media_session stops updating, so a flat E proves nothing. Always log `updated` age. The Nov 6 afternoon "79.7 s hold" is withdrawn.
+- **Pause does not hold.** Pauses of 30, 60, 75 and 90 s were back near live about 20-30 s after resume, also with auto-switching off for 60 s. A 120 s pause reset position to 0.
+- **Rewind keys do nothing.** MEDIA_REWIND, SKIP_BACKWARD and bare DPAD_LEFT did not seek.
+- **Overlay scrub works.** DPAD_CENTER opens the overlay, each DPAD_LEFT moves 15 s, DPAD_CENTER commits. About 5 s to go 60 s behind.
+- **After a seek, media_session position crawls (about +0.3 s per 20 s). That is a reporting quirk, not a stall.** Decoder bitrate logs stay at the live rate, and the overlay time label advances in real time.
+- **Truth meter: the overlay time label vs wall clock.** Each read costs about 8 s of extra delay.
+
+| Run | Channel | Behind live |
+|---|---|---|
+| 5 min | TNT | 67, 74, 83 s |
+| 20 min | TNT | 67 at 1.3 min, 75 at 10.3 min, 83 at 20.3 min; exact real time between reads |
+| 2.7 min | ESPNU | 67.5, 75.3 s (run ended early: a safety timer resumed the app) |
+
+- **Scrub previews** show picture and scorebug once behind live; near live they are blank.
+- **First real-game anchor.** ESPNU preview at MTSU@KU showed 7-20 at 9:18 of the 1st, a dead ball. That bounds the delay at 19-49 s against ESPN wallclocks, consistent with about 25 s. Needs a running-clock read for 1-2 s precision. Assumes one LEFT = 15 s.
+
+Not yet tested: the HDMI1 stick, more channels, a human looking at the picture, flipping onto a scrubbed stick, catching up to live, ad behavior measured directly.
