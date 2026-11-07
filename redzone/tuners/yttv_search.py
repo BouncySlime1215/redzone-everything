@@ -637,9 +637,10 @@ _REAL_PURCHASE_RE = re.compile(r"payment method|confirm (?:your )?purchase|compl
 
 def purchase_dialog(frame) -> bool:
     """A screen where OK might buy or rent. Nov 7 (FOX 50 live): the channel/search page's Top picks row
-    can hold a rental TILE ('Tower of Power ..., $ Rent or buy'); that browse page is not a purchase
-    screen. It still is when the focused element itself offers a price/rent/buy, or a real checkout
-    phrase shows. Every other screen with purchase words stays a stop, as before."""
+    can hold a rental TILE ('Tower of Power ..., $ Rent or buy'); a page with tile rows ('Top picks',
+    'On now & upcoming') is not a purchase screen. It is when the focused element offers a
+    price/rent/buy, or a real checkout phrase shows (the focused tile and any sheet/dialog are what get checked, not the whole page).
+    Every other screen with purchase words stays a stop, as before."""
     text = getattr(frame, "text", "") or ""
     if not is_purchase_screen(text):
         return False
@@ -647,8 +648,7 @@ def purchase_dialog(frame) -> bool:
     if focus is not None and is_purchase_screen(focus_text(frame, focus)):
         return True
     t = normalize_text(text)
-    nav = sum(w in t.split() for w in ("home", "live", "library"))
-    if _BROWSE_ROWS_RE.search(t) and nav >= 2:
+    if _BROWSE_ROWS_RE.search(t):        # tile rows on screen: a browse page, not a rent/buy dialog
         return bool(_REAL_PURCHASE_RE.search(t))
     return True
 

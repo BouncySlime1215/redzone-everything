@@ -272,3 +272,13 @@ async def test_priced_tile_opening_a_rent_page_is_never_pressed_on():
     assert keys(stick) == ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER", "KEYCODE_BACK",
                            "KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER", "KEYCODE_DPAD_CENTER"]
     assert any("rent/buy" in s["detail"] for s in h.steps)
+
+
+def test_nicks_fox50_page_text_is_not_a_purchase_screen():
+    text = ("FOX 50 | Top picks | WRAL News Saturday Morning on Fox 50 | Tower of Power: 50 Years of Funk & Soul | "
+            "2018 | $ Rent or buy | On now & upcoming | UCLA at Minnesota | LIVE")
+    boxes = [[t.strip(), .05, .1 + i * .05, .2, .03] for i, t in enumerate(text.split("|"))]
+    assert not purchase_dialog(_frame(boxes))
+    rental = next(b for b in boxes if b[0] == "$ Rent or buy")
+    assert purchase_dialog(_frame(boxes, focus=[rental[1] - .01, rental[2] - .01, .22, .04,
+                                                "neutral_rectangle_border"]))   # never OK on a priced tile
