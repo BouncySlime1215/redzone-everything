@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Minimal sweep: auto-switching on, wall power. Plan: HDMI1 scrub check and DVR test after games, then RC6.3 if Nick says yes.
+Minimal sweep: auto-switching on, wall power. Tests wait for games to wind down.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
