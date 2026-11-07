@@ -88,6 +88,7 @@ class ChannelMap:
         self.espn_ids: dict[str, str] = {}     # game_id -> ESPN watch id (ESPN+ events)
         self.st_codes: list[str] = []          # YouTube TV codes of "NFL Sunday Ticket 1..16" (fixed)
         self.link_notes: dict[str, str] = {}   # game_id -> "blacked out here" etc.
+        self.local_search = False   # tuners.yttv_local_search (engine sets it): locals by search, see LOCAL_SEARCH_QUERY
         self.load()
 
     def load(self) -> None:
@@ -250,20 +251,37 @@ class ChannelMap:
         if app == "youtubetv":
             if rest.startswith(("st:", "ev:")):
                 return True
-            return rest in self.codes or rest in SEARCH_CHANNELS
+            return bool(self._code(rest)) or self._searchable(rest)
         if app == "prime":
             return rest.startswith("amzn1.")
         if app == "espn":
             return bool(rest)
         return False
 
+    def _code(self, key: str) -> str | None:
+        """The channel's watch code, except (local search on, not a Sunday) a Sunday Ticket mirror code
+        sitting under a local station's key: it plays 'SIGN OFF | NFL ST - FOX', not FOX 50 (Nov 7)."""
+        code = self.codes.get(key)
+        if (code and self.local_search and key in LOCAL_SEARCH_QUERY and code in self.st_codes
+                and datetime.now().weekday() != 6):
+            return None
+        return code
+
+    def _searchable(self, key: str) -> bool:
+        return key in SEARCH_CHANNELS or (self.local_search and key in LOCAL_SEARCH_QUERY)
+
     def yttv_search_key(self, target: str) -> str | None:
         """A YouTube TV channel we have no watch code for but can reach by in-app search
-        (SEARCH_CHANNELS): its channel key, else None."""
+        (SEARCH_CHANNELS, or the locals with tuners.yttv_local_search on): its channel key, else None."""
         app, _, rest = target.partition(":")
-        if app != "youtubetv" or rest.startswith(("st:", "ev:")) or rest in self.codes:
+        if app != "youtubetv" or rest.startswith(("st:", "ev:")) or self._code(rest):
             return None
-        return rest if rest in SEARCH_CHANNELS else None
+        return rest if self._searchable(rest) else None
+
+    def search_ref(self, key: str) -> str:
+        """The tuner ref for a search tune: 'search:local:<key>' (channel-page hunt, the station's own
+        query) for a local with the flag on, else 'search:<key>'."""
+        return f"search:local:{key}" if self.local_search and key in LOCAL_SEARCH_QUERY else f"search:{key}"
 
     def yttv_code(self, target: str) -> str | None:
         app, _, rest = target.partition(":")
@@ -271,7 +289,7 @@ class ChannelMap:
             return None
         if rest.startswith(("st:", "ev:")):
             return rest[3:]
-        return self.codes.get(rest)
+        return self._code(rest)
 
 
 # YouTube TV channels with no known watch code that tune by in-app search instead (~15-20 s):
@@ -281,6 +299,12 @@ class ChannelMap:
 # news, while "NBC" opens the NBC network page whose Live row is the local station, Nov 3).
 SEARCH_QUERY = {"nbc": "NBC"}
 SEARCH_CHANNELS = frozenset({"nbcsn", "nbc"})   # both proven on the stick (Nov 3). Not yet: NHL Network (not in this lineup: Sports Plus add-on)
+# The four LOCAL stations by search, behind tuners.yttv_local_search (off until Nick flips it). Nov 7 on
+# the hidden stick: none has a provable watch code; channels.json fox/cbs are the Sunday Ticket mirrors
+# ('SIGN OFF | NFL ST - FOX'), and 'NBC' search never started. Each station's own search opens its channel
+# page; Select at the starting focus played it live in 12-15 s (FOX 50, CBS 17, WRAL, ABC 11). OCR can't
+# read the focus ring there, so these tune with hunt_channel(channel_page=True).
+LOCAL_SEARCH_QUERY = {"nbc": "WRAL", "abc": "ABC 11", "cbs": "CBS 17", "fox": "FOX 50"}
 
 YTTV_LINK = re.compile(r"tv\.youtube\.com/watch/([A-Za-z0-9_-]{11})")
 
