@@ -66,6 +66,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "score.personal.my_team_league": (0.0, 1.5),
     "score": (-100, 100),
     "decider": (0, 1000),
+    "jump_mode": (0, 600),
     "tuners.prime_tiles": (1, 3),
     "tuners": (0, 10),
     "two_stick.min_gain": (0, 100),

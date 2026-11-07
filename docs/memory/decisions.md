@@ -1172,3 +1172,23 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   by the label probe, then it plays to `park_lead_s` 1.5 s before the snap and pauses; the flip un-pauses it.
   Never rewound on screen (a single-stick replay is refused). No label probe / no read / past the snap -> kept the
   current game. yttv_seek.py ported from integration/next (#403 RIGHT probe, lost-press guard). "keys" = old path.
+- 2026-11-07 (Nick 12:40 PM live report: UNC@CONN stuck in the end-of-Q1 ads, leave gate said "no fresh data for
+  103-128s" and "delay not calibrated yet"): **new `decider.leave.quiet_break` (enabled: true, floor_s
+  {period_end: 120, score: 40})**. When the newest entry on a game is a period end / 0:00 clock, or a score in a
+  stop-start sport, and nothing newer has arrived, the leave gate treats it as an official stoppage: leavable from
+  seen + mu + 2 sigma + 3 s to seen + floor + mu - 2 sigma - tune_s, ahead of the stale-data and uncalibrated rules.
+  enabled: false = old behavior; read every poll, so a settings change applies to games already on. Opt-in
+  `near_end_clock_s` (0 = off) guesses the clock ran out when the last play left <= N s before a quarter break
+  (not Q4) and the feed has been silent near_end_quiet_s; today's UNC@CONN data stopped at 0:22 of Q1 with no
+  period end, so only this opt-in would have fired there.
+- 2026-11-07 (Nick 12:40 PM, runtime via /api/settings on the Mac, undoable; recorded here at his request):
+  decider.switch_margin 10 -> 4, decider.return_tolerance 5 -> 2, decider.break_destination_min 25 -> 10,
+  score.personal.my_team 25 -> 10, decider.uncalibrated_sigma_s 8 -> 25, decider.sticky_visit_needs_calibration
+  true -> false. Live settings only; the tree defaults are unchanged.
+- **2026-11-07 13:10 ET, Nick ("should be 4-5 switches every minute", "i want real redzone autopilot"): JUMP MODE,
+  new group `jump_mode`, `enabled` default false; Nick turns it on at runtime (/api/settings, undoable).** A rotation
+  over every live tunable game in `jump_mode.leagues` (cfb, nfl): at each dead ball on screen it flips to the game whose
+  snap is coming or that just had a big play; a game gives the screen up after `max_plays` 2 (crunch time and a scoring
+  drive inside the 20 keep it). Leaves use the play-by-play dead window or the normal gate (incl. low_leverage); joins
+  must land on a proven dead ball (re-checked at the flip). Every jump to data/jumps.jsonl. Also: the duplicate
+  `decider.leave` block merged (dead_windows / tune_s were silently dropped by YAML; defaults unchanged).
