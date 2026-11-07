@@ -88,8 +88,9 @@ class ChannelMap:
         self.espn_ids: dict[str, str] = {}     # game_id -> ESPN watch id (ESPN+ events)
         # tuners.espnplus_yttv (set by the engine): ESPN+ events through YouTube TV (ESPN Unlimited).
         # A proven per-event watch code wins; else the event is tuned by in-app search. A search that
-        # fails marks the event missed for EVENT_MISS_S, and it keeps its old route (fail closed).
+        # fails marks the event missed for event_miss_s, and it keeps its old route (fail closed).
         self.espnplus_yttv = False
+        self.event_miss_s = 600.0              # tuners.espnplus_yttv_miss_s: a missed event keeps its old route this long
         self.yttv_events: dict[str, str] = {}  # game_id -> proven YouTube TV watch code of the ESPN+ event
         self.yttv_event_miss: dict[str, float] = {}   # game_id -> when its search last failed (not saved)
         self._event_specs: dict = {}           # game_id -> yttv_event.EventSpec (not saved)
@@ -224,7 +225,7 @@ class ChannelMap:
         code = self.yttv_events.get(g.game_id)
         if code:
             return Where(f"youtubetv:ev:{code}", "ESPN+ · YouTube TV", "sure", True)
-        if time.time() - self.yttv_event_miss.get(g.game_id, 0.0) < EVENT_MISS_S:
+        if time.time() - self.yttv_event_miss.get(g.game_id, 0.0) < self.event_miss_s:
             return None
         from redzone.tuners.yttv_event import event_spec
         spec = event_spec(g.game_id, g.home.name or "", g.away.name or "")
@@ -234,7 +235,7 @@ class ChannelMap:
         return Where(f"youtubetv:evq:{g.game_id}", "ESPN+ · YouTube TV (by search)", "likely", True)
 
     def event_missed(self, target: str) -> None:
-        """A search tune of this ESPN+ event failed: back to its old route for EVENT_MISS_S."""
+        """A search tune of this ESPN+ event failed: back to its old route for event_miss_s."""
         app, _, rest = target.partition(":")
         if app == "youtubetv" and rest.startswith("evq:"):
             self.yttv_event_miss[rest[4:]] = time.time()
@@ -325,7 +326,6 @@ class ChannelMap:
 # What to type for each (the channel table's own search name where it works; "WRAL" finds WRAL
 # news, while "NBC" opens the NBC network page whose Live row is the local station, Nov 3).
 SEARCH_QUERY = {"nbc": "NBC"}
-EVENT_MISS_S = 600.0   # an ESPN+ event whose YouTube TV search failed keeps its old route this long
 SEARCH_CHANNELS = frozenset({"nbcsn", "nbc"})   # both proven on the stick (Nov 3). Not yet: NHL Network (not in this lineup: Sports Plus add-on)
 
 YTTV_LINK = re.compile(r"tv\.youtube\.com/watch/([A-Za-z0-9_-]{11})")

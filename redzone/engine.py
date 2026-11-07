@@ -81,6 +81,7 @@ class Engine:
         self._nhl_logged: dict[str, dict[str, float]] = {}
         # [Nick, Nov 7] ESPN+ events through YouTube TV (ESPN Unlimited), by in-app search; off by default.
         self.channels.espnplus_yttv = bool(self.cfg.get("tuners.espnplus_yttv", False))
+        self.channels.event_miss_s = float(self.cfg.get("tuners.espnplus_yttv_miss_s", 600))
         # [NBA primary] the same for NBA's liveData play-by-play (real event times, ~4-12 s published).
         self._nba_primary = bool(self.cfg.get("sources.nba_primary", False))
         self._nba_shadow = not self._nba_primary and bool(self.cfg.get("sources.nba_shadow", True))

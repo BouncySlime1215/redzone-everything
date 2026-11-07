@@ -477,6 +477,7 @@ tuners:                    # per-app switch paths
                            # code, else in-app search for a LIVE tile naming both teams, confirmed by the media
                            # session (redzone/tuners/yttv_event.py). Fails closed per event (old route for 10 min).
                            # Off until scripts/yttv_espnplus_try.py passes on a stick with a live ESPN+ event
+  espnplus_yttv_miss_s: 600  # an ESPN+ event whose YouTube TV search failed keeps its old route this long
 autofix:                   # the watchdog files problems it can't fix as GitHub issues for Claude (docs/auto-fix.md)
   enabled: true            # kill switch on the Mac side (the repo variable AUTOFIX_ENABLED=false stops the GitHub side)
   max_per_day: 3           # at most this many issues a day

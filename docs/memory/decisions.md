@@ -1201,6 +1201,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   YouTube TV through ESPN Unlimited, and ESPN app links opened 0 of 15. New flag `tuners.espnplus_yttv`, default
   **false**: an ESPN+ game routes to a proven per-event YouTube TV code (`yttv_events` in data/channels.json), else to
   `youtubetv:evq:<game>`, tuned by in-app search (a LIVE tile naming both teams, confirmed by the media session naming
-  both teams). Fail closed per event: no match = a failed tune, and the game keeps its old route for 10 minutes.
+  both teams). Fail closed per event: no match = a failed tune, and the game keeps its old route for 10 minutes (tuners.espnplus_yttv_miss_s).
   YouTube TV's autoplay prompt is answered "Ask later" only. On after `scripts/yttv_espnplus_try.py` passes on a
   stick with a live ESPN+ event (found, tuned, scrub holds by the label reader). Rule #1 is unchanged.

@@ -25,7 +25,7 @@ from redzone.tuners.profiles import is_profile_screen
 from redzone.tuners.yttv_search import (LOADED_STATES, _center, _purchase, _same_focus, focus_text,
                                         loose_codes_in, step_toward)
 
-EVENT_BUDGET_S = 120.0
+EVENT_BUDGET_S = 120.0   # same bound as yttv_search.HUNT_BUDGET_S
 WATCH_LIVE = ("watch live", "live", "watch now", "watch")   # exact labels only; never "start from beginning"
 AUTOPLAY = ("autoplay", "auto-play", "auto play", "ask later")
 ASK_LATER = "ask later"

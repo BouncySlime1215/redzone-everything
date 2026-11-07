@@ -2,7 +2,7 @@
 import asyncio
 import re
 
-from redzone.channels import EVENT_MISS_S, ChannelMap, describe
+from redzone.channels import ChannelMap, describe
 from redzone.models import GameState, League, Team
 from redzone.screen_ocr import FocusBox, OCRResult, TextBox
 from redzone.tuners.adb import RunResult
@@ -235,8 +235,8 @@ def test_flag_on_routes_by_search_then_fails_closed(tmp_path):
     assert cm.yttv_code(w.target) is None and cm.yttv_search_key(w.target) is None
     assert describe(w.target) == "ESPN+ · YouTube TV (by search)"
     cm.event_missed(w.target)                              # the search failed
-    assert cm.where(_g()).target == "espn:abc"             # old route for EVENT_MISS_S
-    cm.yttv_event_miss["g1"] -= EVENT_MISS_S + 1
+    assert cm.where(_g()).target == "espn:abc"             # old route for event_miss_s
+    cm.yttv_event_miss["g1"] -= cm.event_miss_s + 1
     assert cm.where(_g()).target == "youtubetv:evq:g1"
 
 
