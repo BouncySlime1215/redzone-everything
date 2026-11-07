@@ -143,6 +143,13 @@ class Engine:
         # OFF by default); the delay book shares the controller's held offsets.
         self.delays.held = self.control.held
         self.control.behind_of = self._behind_of
+        self.control.scrub_of = self._scrub_of   # [scrub entry] per league
+        # [scrub entry] a measured label reading -> the delay model (#376's label_behind when it's there; else the
+        # controller's held offset alone moves the delay book, as today), and a stale label -> redo the hidden stick
+        if hasattr(self, "label_behind"):
+            self.control.on_label = self.label_behind
+        if hasattr(self.delays, "on_label_stale"):
+            self.delays.on_label_stale = self.control.label_stale
         self.control.on_behind = self._on_behind
         # [buffer.watchdog STK-06] a lost hold is rebuilt only while that game is in a dead ball
         self.control.dead_ball = self._target_dead
@@ -376,6 +383,15 @@ class Engine:
         by = self.cfg.get("timing.behind_live_s.by_league") or {}
         b = by.get(g.league.value, by.get(g.league.base.value, self.cfg.get("timing.behind_live_s.default", 0)))
         return max(0.0, min(float(b or 0.0), float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
+
+    def _scrub_of(self, target: str) -> bool:
+        """[scrub entry, item 4] Is the overlay scrub (not a pause) this target's buffer entry? Per league:
+        timing.behind_live_s.scrub_entry (league_overrides.<lg> wins). Unknown game -> off."""
+        gid = self._game_on(target, False)
+        g = self.merger.games.get(gid or "")
+        if g is None:
+            return False
+        return bool(for_league(self.cfg, "timing.behind_live_s.scrub_entry", g.league.value, False))
 
     def _shadow_buffer_on(self) -> bool:
         """[buffer shadow] timing.behind_live_s.shadow while the buffer itself is off on screen."""

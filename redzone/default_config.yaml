@@ -648,6 +648,19 @@ timing:
     label_reader: false    # [YTTV scrub buffer item 2, Nick Nov 6 10:15 PM] read YouTube TV's overlay time label (screencap ->
                            # local OCR -> numbers; the frame is deleted at once, never kept) as the behind-live truth
                            # meter after a scrub seek (media_session lies after a seek). Code: redzone/tuners/yttv_label.py
+    scrub_entry: false     # [scrub entry, Nick Nov 6 order item 4] YouTube TV: put the hidden stick B s behind live by the
+                           # overlay scrub (yttv_seek.enter_buffer: CENTER, N x LEFT, CENTER) BEFORE the flip, never by
+                           # a pause (a pause doesn't hold: docs/sync/2026-11-06-yttv-scrub-buffer-spec.md). held = the
+                           # overlay label's reading, not media_session. Per league (league_overrides.<lg>); also needs
+                           # yttv_seek.enabled. OFF until a stick flip onto a scrubbed stream is proven
+    scrub_fallback: keep   # a failed scrub: keep = keep the current game (no flip to an unread offset); live = flip at
+                           # the live edge as today
+    scrub_cost_s: 18       # seconds the scrub adds before a flip (deadline_cost): ~10 s presses + ~8 s label read;
+                           # the measured p90 (latency key yttv_scrub) wins once it's larger
+    scrub_read_s: 8        # one label read adds this much delay: ask B - this so the picture lands near B
+    scrub_over_s: 15       # a label reading above max_s + this fails closed (ACC Network stopped near 150 s)
+    scrub_retry_s: 120     # a target whose scrub failed isn't scrubbed again for this long
+    scrub_trust_s: 1200    # a scrubbed stream counts as on its target this long (one 20-min hold proven), then re-tunes
     rc8_fixed_s: 0         # a league pinned to this B instead of the formula (0 = the formula)
     adaptive:              # [Nick 9:35 AM] B = feed-lag p95 + sync error + tune/seek + margin, never 0
       floor_s: 15          # hard floor: a play is always known before it's shown (Nick: ~10-15 s; gate v28: 15 in RC8,
