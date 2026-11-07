@@ -1339,3 +1339,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   started" and was slow 2/10; a 3 s gap fixed the delay probe, #408 9/9): new shared `tuners.relink_gap_s`, **0 (off)**.
   When set, it waits between the reset tune and the tune back in control's reset through another channel (scrub
   fallback, watchdog re-seek), and between the canary's tune_away and tune. scripts/watchdog_try.py takes --gap=S.
+- 2026-11-07 (overseer's FOX 50 joins just after kickoff: label 5 s at the live edge, 'knob moved 5s, not 30s
+  (5s -> 0s)'; another run label 52 s went fine): **`yttv_seek.program_start_guard: true`** (flag `yttv_seek.enabled`
+  still off). The scrub bar starts at the program start, so when the LEFTs need more than the label the scrub fails
+  closed before pressing any (back to live), with `room_s` (the label) in the result and the join row. No boundary
+  retry for it. Capping the target at room - 15 instead is left to the planner (not done here).

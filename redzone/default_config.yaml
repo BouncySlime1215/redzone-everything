@@ -650,6 +650,8 @@ yttv_seek:                 # [YTTV scrub buffer, item 1] enter the time-shift bu
   settle_s: 4              # after the commit the player must report PLAYING within this (its state only)
   poll_s: 0.25             # how often the player is read while it settles
   overlay_wait_s: 1.3      # after CENTER or a LEFT, wait this long before reading the overlay (live Nov 6: 0.8 too short)
+  program_start_guard: true  # the bar starts at the program start (FOX 50 just after kickoff: label 5 s): if the LEFTs
+                           # need more than the label, fail closed before pressing them (Nick, Nov 7 noon)
   open_tries: 4            # probe LEFT, no scrub label = close, reopen, retry; fail closed after this many (tune banner)
   reopen_wait_s: 1.5       # between closing and reopening the overlay
   probe_key: RIGHT         # the probe at the live edge: RIGHT lands on the bar without moving the pinned knob (8/8),

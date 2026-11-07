@@ -123,12 +123,13 @@ class JoinResult:
     took_s: float = 0.0
     steps: list[str] = field(default_factory=list)
     verdict: str = ""                  # join_watchdog.verify status of the READ landing ("" = nothing read)
+    room_s: float | None = None        # YouTube TV: the scrub label at the bar (how far back the program allows)
 
     def row(self, **extra) -> dict:
         d = {"ts": round(time.time(), 1), **{k: v for k, v in asdict(self.plan).items()},
              "ok": self.ok, "measured_s": self.measured_s, "estimate_s": self.estimate_s, "error_s": self.error_s,
              "pred_error_s": self.pred_error_s, "reason": self.reason[:160], "took_s": round(self.took_s, 2),
-             "verdict": self.verdict,
+             "verdict": self.verdict, "room_s": self.room_s,
              # [Nick's sweep, Nov 7 14:03Z: a T30 'no scrub label after the LEFT' with no trace] the helper's own steps
              # (key names, labels in s, overlay seconds; never an address), ':' dropped so no step reads like host:port
              "steps": " | ".join(str(x).replace(":", "") for x in self.steps)[:400]}
@@ -195,6 +196,7 @@ async def join(stick, app: str, target_s: float, *, cfg=None, pkg: str | None = 
                                              behind_before_s=behind_before_s, presses=plan.presses, clock=clock,
                                              **kw)
             res.ok, res.reason, res.steps = bool(r.ok), r.reason, list(r.steps)
+            res.room_s = getattr(r, "room_s", None)
             res.measured_s = r.behind_s if r.ok else None
             res.estimate_s = None if r.measured else r.behind_live_s
         else:
