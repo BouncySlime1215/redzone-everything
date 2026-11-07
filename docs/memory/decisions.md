@@ -1304,3 +1304,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Rule #1 note: the last two loosen calibration guards (more switches land on a less certain delay); they are Nick's
   call for today and are not graded. Code follow-ups (hotfix/local-search-joinlive): YouTube TV edge prior 34.9 s on,
   stale data after a period end / 0:00 / scoring play counts as a break, the FOX fix.
+- 2026-11-07 (Nick, live CFB 1:10 PM: 'fix the jump logic... maybe the games identify safe points to jump'): default_config.yaml defined decider.leave twice; YAML kept only the second block, so decider.leave.dead_windows and decider.leave.tune_s never existed at runtime and the play-by-play dead-window leave path (cuts.DeadTracker) could not be turned on. Merged into one block; defaults unchanged (dead_windows [], tune_s 6). Nick's Mac turns dead_windows on at runtime for cfb, nfl, nhl, nba, cbb so autopilot leaves between plays. Rule #1 (joins) unchanged.
+- 2026-11-07 (Nick via the overseer, after RC6.3.2's deploy at 14:49 ET: the full suite at 3 workers pushed the Mac's
+  load to 18-21 and starved the app during live games): **during games, never run the full test suite on the Mac.**
+  Run it elsewhere (CI, the integrator's cloud run) and deploy a commit that already passed there. The 1:10-2:50 PM
+  stall was mostly the Mac in clamshell sleep on battery (~56 of 88 min dead, sticks dropped on every wake).
