@@ -114,6 +114,10 @@ class Engine:
             log.warning("could not reload delay calibrations: %s", e)
         # [edge model, Nick Nov 6 item 3] delay = D_edge(channel) + behind_live off the overlay label (delay.edge_model, OFF)
         self.delays.edge_cfg = lambda key: self.cfg.get(f"delay.edge_model.{key}")
+        # [edge prior, Nick Nov 7] YouTube TV's one live-edge delay (34.9 s) + its probe refresh (delay.edge_prior, OFF)
+        self.delays.edge_prior_cfg = lambda key: self.cfg.get(f"delay.edge_prior.{key}")
+        for t in list(self.delays.book):   # entries reloaded above were priced before the live config was attached
+            self.delays._refresh(t)
         self.decider = Decider(self.cfg, self.delays)
         data_dir = getattr(self.cfg, "user_path", None)
         # [auto sync] every channel's delay tracked by a Kalman filter from the automatic signals
@@ -160,6 +164,10 @@ class Engine:
             self.control.label_probe = LabelProbe(self.cfg)   # [label reader] off by default
         if hasattr(self.delays, "on_label_stale"):
             self.delays.on_label_stale = self.control.label_stale
+        if self.cfg.get("delay.edge_prior.enabled", False) and self.cfg.get("delay.edge_prior.refresh.enabled", False):
+            from redzone.tuners.yttv_edge_probe import EdgeProbe
+            self.control.edge_probe = EdgeProbe(self.cfg)   # [edge prior] probe the hidden stick's live edge, <= 1/30 min
+        self.control.on_edge_read = self.edge_read
         self.control.on_behind = self._on_behind
         # [buffer.watchdog STK-06] a lost hold is rebuilt only while that game is in a dead ball
         self.control.dead_ball = self._target_dead
@@ -432,6 +440,14 @@ class Engine:
         log.info("edge model: %s behind live %.1f s (label)%s -> delay %.1f±%.1f s (%s)", target, float(behind_s),
                  f", edge {e[0]:.1f}±{e[1]:.1f} s {e[2]}" if e else "", d.mu, d.sigma,
                  "on" if self.delays.edge_model else "off, logged only")
+
+    def edge_read(self, app: str, delay_s: float, ts: float | None = None) -> bool:
+        """[edge prior] One edge probe read: the app's live edge delay right now (yttv_edge_probe)."""
+        ok = self.delays.add_edge_read(app, delay_s, ts=ts)
+        e = self.delays.app_edge(app)
+        log.info("edge prior: %s live edge read %.1f s %s%s", app, float(delay_s), "kept" if ok else "dropped",
+                 f" -> {e[0]:.1f}±{e[1]:.1f} s ({e[2]})" if e else " (flag off)")
+        return ok
 
     def _on_behind(self, target: str, new_s: float, old_s: float) -> None:
         """The controller held (or freed) this target's stream: shift its delay by the difference."""

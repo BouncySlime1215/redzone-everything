@@ -566,6 +566,7 @@
     "redzone/sync_edge.py",
     "redzone/tuners/tuners.py",
     "redzone/web/server.py",
+    "scripts/edge_probe_try.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
@@ -629,6 +630,7 @@
     "redzone/tuners/adb.py",
     "redzone/tuners/join.py",
     "redzone/tuners/join_calib.py",
+    "redzone/tuners/yttv_edge_probe.py",
     "redzone/web/phone_v2.py",
     "redzone/web/server.py",
     "scripts/backtest.py",
@@ -1841,6 +1843,7 @@
     "redzone/sync_probe.py",
     "redzone/trace.py",
     "redzone/tuners/prime_multiview.py",
+    "redzone/tuners/yttv_edge_probe.py",
     "redzone/tuners/yttv_label.py",
     "redzone/userstate.py",
     "redzone/views.py",
@@ -4250,6 +4253,7 @@
     "redzone/tuners/yttv_search.py",
     "redzone/tvsetup.py",
     "scripts/doctor.py",
+    "scripts/edge_probe_try.py",
     "scripts/find_yttv_code.py",
     "scripts/join_try.py",
     "scripts/multiview_probe.py",
@@ -4552,6 +4556,7 @@
     "redzone/platform/faults.py",
     "redzone/tuners/providers.py",
     "redzone/tuners/yttv_search.py",
+    "scripts/edge_probe_try.py",
     "scripts/multiview_probe.py",
     "scripts/prime_flip_probe.py",
     "scripts/prime_multiview_probe.py",
@@ -4562,6 +4567,26 @@
    ],
    "owner": "SWITCHING",
    "role": "Tuners: one class per streaming app.",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/yttv_edge_probe.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py",
+    "redzone/tuners/yttv_label.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py",
+    "scripts/edge_probe_try.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[edge prior, Nick Nov 7] Measure YouTube TV's live-edge delay on the HIDDEN stick, numbers only.",
    "serves": [
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -4580,6 +4605,7 @@
    "outputs": [
     "redzone/canary.py",
     "redzone/engine.py",
+    "redzone/tuners/yttv_edge_probe.py",
     "scripts/watchdog_try.py",
     "scripts/yttv_scrub_try.py"
    ],
@@ -5231,6 +5257,22 @@
    "outputs": [],
    "owner": "PLATFORM",
    "role": "Download a past NFL regular season (scoreboards + play-by-play) for the training lab.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/edge_probe_try.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/tuners/adb.py",
+    "redzone/tuners/tuners.py",
+    "redzone/tuners/yttv_edge_probe.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[edge prior, Nick Nov 7] Measure YouTube TV's live-edge delay on the HIDDEN stick, Nick's way, and print JSON rows.",
    "serves": [
     "untagged"
    ]
@@ -6607,10 +6649,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 361,
+  "modules": 363,
   "orphans": 14,
-  "unowned": 190,
-  "untagged": 297
+  "unowned": 191,
+  "untagged": 298
  },
  "version": 1
 }

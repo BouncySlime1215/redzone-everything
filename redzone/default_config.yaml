@@ -882,6 +882,31 @@ delay:                     # seconds your screen runs behind real life, per app;
     default_sd_s: 3
     label_sd_s: 1.5        # one overlay label read
     edge_max_sd_s: 6       # tonight's at-the-edge estimate counts as the channel's D_edge only when this sure
+  edge_prior:              # [Nick Nov 7, hidden stick ~10:55 ET] YouTube TV's live edge measured to sub-second on 11
+                           # channels (ESPN, ESPN2, FS1, SECN, ACCN, NBA TV, TNT + locals FOX 50, CBS 17, ABC 11, WRAL
+                           # tuned by search): 28 reads 34.3-35.5 s, mean ~34.9, sd ~0.4. ONE delay for every channel,
+                           # measured against the EPG :00/:30 schedule clock. OFF
+    enabled: false         # on: an unmeasured YouTube TV channel's prior (and the edge model's D_edge) is this, not
+                           # the old per-channel taps (youtubetv:fs1 42 +-8) or the 25 s research default.
+                           # The stated doubt still keeps the 4 s floor (delay.sync.min_sigma_s; the gates' floor)
+    prior:
+      youtubetv: {mu_s: 34.9, sd_s: 0.6}
+    drift_cap_s: 2         # the prior's stated doubt grows at most this much over a night (4 -> 6 s, under
+                           # decider.uncalibrated_sigma_s 8); a stall still widens it
+    refresh:               # Nick's probe: fresh live edge (tune away -> back), CENTER, RIGHT, screencap + OCR, BACK;
+                           # delay = (capture - EPG start) - label, start = the :00/:30 boundary. ~15 s on the hidden stick
+      enabled: false       # run it from keepalive on the hidden stick (only at the live edge, never on a buffer)
+      min_gap_s: 1800      # at most one probe per this many seconds (tried or not)
+      max_age_s: 10800     # probe reads older than this no longer count (back to the prior)
+      keep: 6              # median of the newest this many reads
+      band_s: 10           # a read further than this from the prior is a misread (skipped, logged)
+      max_label_gap_s: 120 # (capture - label) must sit this close past a :00/:30 boundary, else no boundary start
+      boundary_s: 1800     # EPG programs start on the :00 / :30
+      relink_gap_s: 3      # between the reset tune and the tune back (Nick's run: 2/12 "video never started" without)
+      after_tune_s: 2      # wait after the fresh tune before CENTER
+      overlay_wait_s: 1.3  # after CENTER / RIGHT, wait this long before the screencap
+      left_offset_s: 0     # no label after RIGHT (FOX 4K game feed): one LEFT; s the knob sits before the live edge then
+                           # (0: at the live edge a LEFT doesn't move it, 12f405ab LEFT 6/6)
   self_calibrate:          # [self-calibrating doubt] stated doubt learned from break-anchor innovations (NoiseCal), OFF
     enabled: false         # sims only so far (eval_sports --break-anchors); live needs the pool persisted across nights
     min_n: 20              # residuals (first anchor after a tune) before it speaks

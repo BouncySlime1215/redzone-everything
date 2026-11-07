@@ -309,6 +309,10 @@ class Controller:
         self.label_probe: Any = None
         self.drift: Any = None   # [drift monitor] join_watchdog.DriftMonitor, made on first use (join.drift.enabled)
         self.on_label: Callable[[str, float, float | None, float], None] | None = None
+        # [edge prior, Nick Nov 7] yttv_edge_probe.EdgeProbe when delay.edge_prior(.refresh).enabled (engine), and
+        # where a read goes (engine.edge_read -> DelayBook.add_edge_read): (app, delay s, capture wall)
+        self.edge_probe: Any = None
+        self.on_edge_read: Callable[[str, float, float | None], Any] | None = None
         self.dead_ball: Callable[[str], bool] = lambda target: True   # [STK-06] engine: is target's game dead now?
         self._buffer_bad: dict[str, float] = {}                      # target -> when its hold went bad
         self._scrub_backoff: dict[str, float] = {}                   # [scrub entry] target -> no scrub before this
@@ -734,6 +738,10 @@ class Controller:
             await self._drift_tick()
         except Exception:   # the drift check must never break keepalive
             log.exception("drift tick")
+        try:
+            await self._edge_probe_tick()
+        except Exception:   # nor the edge probe
+            log.exception("edge probe tick")
 
     async def _maybe_reassert(self) -> None:
         """The TV input is unknown (a flip that wasn't confirmed, someone's remote, CEC lost).
@@ -3261,6 +3269,60 @@ class Controller:
         if not (still_hidden() and self.label_stale(t)):
             if self.hidden is hid and self.hidden_target == t:
                 self._set_hidden(None, False)   # the next preload re-tunes it (at the live edge, then re-enters)
+
+    async def _edge_probe_tick(self) -> None:
+        """[edge prior, Nick Nov 7] From keepalive, at most once per delay.edge_prior.refresh.min_gap_s: measure
+        YouTube TV's live-edge delay on the HIDDEN stick (yttv_edge_probe: fresh live edge through another channel,
+        CENTER, RIGHT, one label read, BACK; ~15 s). Only on a ready hidden stick that sits at the live edge on a
+        YouTube TV target: never on a scrubbed / held buffer (the fresh tune would throw it away), never on the stick
+        on screen. Not ready while it runs; ready again only if the player is back PLAYING, else the next preload
+        re-tunes it. A read with no label is skipped (logged), never guessed."""
+        ep = self.edge_probe
+        if ep is None or not self.two_stick or self._busy() or self._flipping or not ep.due():
+            return
+        hid, t = self.hidden, self.hidden_target
+        if hid is None or not t or t.split(":", 1)[0] != "youtubetv" or not self.hidden_ready \
+                or self.parked is not None or hid.scrubbed(t) is not None or self.held.get(t, 0.0) \
+                or getattr(hid, "behind_on", None):
+            return
+        async with self._lock:
+            if self.hidden is not hid or self.hidden_target != t or not self.hidden_ready \
+                    or hid.scrubbed(t) is not None or self.held.get(t, 0.0):
+                return
+            self._set_hidden(t, False)   # not ready while the overlay is up: nothing flips to it mid-read
+
+            def still_hidden() -> bool:
+                return self.hidden is hid and self.hidden_target == t and not self._flipping
+
+            async def relink() -> bool:
+                # through another channel first (#391: a same-channel deep link does not reset the stick), so the
+                # label is read at a fresh live edge, as in Nick's method. [Nick's 61fdcc84 run, Nov 7: 2/12 tunes
+                # back right after the reset said "video never started"] a relink_gap_s pause between the two.
+                tuner = TUNERS.get("youtubetv")
+                if tuner is None or await self._reset_through_other(hid, t, tuner) is not None or not still_hidden():
+                    return False
+                await asyncio.sleep(float(self.cfg.get("delay.edge_prior.refresh.relink_gap_s", 3.0) or 0.0))
+                return still_hidden() and bool((await self._tune(hid, t)).ok) and still_hidden()
+            try:
+                r = await ep.measure(hid, relink=relink, still_hidden=still_hidden, channel=t.split(":", 1)[1])
+            except Exception:
+                log.exception("edge probe on %s", t)
+                r = None
+            if getattr(hid, "behind_on", None) == t:
+                hid.behind_on = None   # it was at the live edge before; a failed reset left it there or elsewhere
+            if r is not None and r.ok and self.on_edge_read is not None:
+                try:
+                    self.on_edge_read("youtubetv", float(r.delay_s), r.cap_wall)
+                except Exception:
+                    log.exception("edge probe: on_edge_read")
+            if r is not None and r.status != "tune_failed" and still_hidden():   # a failed tune may sit elsewhere
+                pb = await hid.playback(self._package(hid, t))
+                if pb.get("state") == "playing" and playback_ready(pb):
+                    hid.remember(t, pb)
+                    self._set_hidden(t, True)
+                    return
+            if self.hidden is hid and self.hidden_target == t:
+                self._set_hidden(None, False)   # the next preload re-tunes it at the live edge
 
     async def _session_preflight(self, stick: Stick, target: str, pkg: str | None,
                                  still_hidden: Callable[[], bool]) -> tuple[str, bool]:
