@@ -42,6 +42,9 @@ LIMITS: dict[str, tuple[float, float]] = {
     "score.garbage.comeback_s": (0, 1800),
     "delay.sync.min_sigma_s": (1, 15),   # [auto sync] below ~1 s the gates would trust a filter more than any signal can be
     "delay": (0, 180),
+    "delay.edge_model.default_sd_s": (1, 15),   # [edge model] never surer than one stick-to-stick edge spread
+    "delay.edge_model.label_sd_s": (0.5, 10),
+    "delay.edge_model.edge_max_sd_s": (2, 15),
     "replay": (0, 7200),
     "reel.min_clips": (1, 12),
     "reel.min_s": (5, 120),

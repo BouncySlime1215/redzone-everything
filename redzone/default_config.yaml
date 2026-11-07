@@ -663,6 +663,12 @@ delay:                     # seconds your screen runs behind real life, per app;
     enabled: true          # Kalman filter per channel: show flips, score bug (score + clock), stick position, taps
     min_sigma_s: 4         # a synced channel's stated doubt never goes below this (the gates' tested floor)
     log: true              # every signal + estimate to data/sync.jsonl (scripts/eval_sync.py --log grades it)
+  edge_model:              # [Nick Nov 6 order item 3] a scrubbed YouTube TV tune: delay = D_edge(channel) + behind_live,
+    enabled: false         # behind_live read off the overlay time label (not media_session, wrong after a seek). OFF
+    default: {youtubetv: 25}   # s the live edge runs behind real life with nothing better (research Nov 6: ~25 s +-3)
+    default_sd_s: 3
+    label_sd_s: 1.5        # one overlay label read
+    edge_max_sd_s: 6       # tonight's at-the-edge estimate counts as the channel's D_edge only when this sure
   self_calibrate:          # [self-calibrating doubt] stated doubt learned from break-anchor innovations (NoiseCal), OFF
     enabled: false         # sims only so far (eval_sports --break-anchors); live needs the pool persisted across nights
     min_n: 20              # residuals (first anchor after a tune) before it speaks

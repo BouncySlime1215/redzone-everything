@@ -1052,3 +1052,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   30-90 s pauses were back near live 20-30 s after resume, 120 s reset to 0, also with auto-switching OFF (so not
   STK-05). No seek path works yet. The EXP-601 grader keeps its registered defaults; no refreeze, no runs. EXP-601
   itself assumed a held stick stays held, which is now unproven, so its FAIL is if anything optimistic for RC8.
+- **2026-11-07 (Nick's Nov 6 10:15 PM order, item 3): new flag `delay.edge_model.enabled`, default false (OFF).**
+  With it on, a YouTube TV tune scrubbed back (yttv_seek) has delay = D_edge(channel) + behind_live, behind_live read
+  off the overlay time label (`Engine.label_behind`); D_edge = tonight's at-the-edge estimate, else calib.auto, else
+  `delay.edge_model.default` (youtubetv 25 s, sd 3, Nov 6 research). media_session's position (wrong after a seek)
+  and the pause-hold timing no longer move a labelled tune, and sync B never re-links it off media_session. The
+  supervisor's delay_doubt re-anchors a measured channel on its edge + behind_live instead of resetting it to
+  `delay.default` (that reset dropped a scrubbed tune's 60 s behind_live). Interval floor stays 4 s (Rule #1).

@@ -105,6 +105,8 @@ class Engine:
             self.delays.load(self.store.calibrations(since=time.time() - TAP_HISTORY_S))
         except Exception as e:
             log.warning("could not reload delay calibrations: %s", e)
+        # [edge model, Nick Nov 6 item 3] delay = D_edge(channel) + behind_live off the overlay label (delay.edge_model, OFF)
+        self.delays.edge_cfg = lambda key: self.cfg.get(f"delay.edge_model.{key}")
         self.decider = Decider(self.cfg, self.delays)
         data_dir = getattr(self.cfg, "user_path", None)
         # [auto sync] every channel's delay tracked by a Kalman filter from the automatic signals
@@ -196,6 +198,7 @@ class Engine:
         self.sync_probe.delay_of = lambda target: (self.sync.estimate(target) if self.sync is not None
                                                    and hasattr(self.sync, "estimate") else None)
         # [SYNC, Nick 3:30 AM] a Prime epoch read + K -> a delay sample (sync.edge.epoch_signal, off)
+        self.sync_probe.label_of = lambda t: (self.delays.labels[t][0] if self.delays.labelled(t) else None)
         self.sync_probe.on_epoch = lambda target, z, t, sd: self._sync_measure(target, z, "epoch", t, sd)
         self.sync_probe.on_force_live = lambda target, row: (   # [SYNC B] re-link to live (flags off)
             self.control.force_live_hidden(target) if row["role"] == "hidden" else self.control.relink_visible_live(target))
@@ -313,6 +316,8 @@ class Engine:
             return None
 
     def _sync_position(self, target: str, wall: float, position_s: float, sd: float) -> None:
+        if self.delays.labelled(target):
+            return   # [edge model] media_session's position is wrong after a seek (Nov 6 stick tests)
         if self.sync is not None:
             try:
                 self.sync.position(target, position_s, t=wall, sd=sd)
@@ -320,6 +325,8 @@ class Engine:
                 log.exception("sync: could not use a position read on %s", target)
 
     def _sync_tune(self, target: str, wall: float, new_stream: bool = True) -> None:
+        if new_stream:
+            self.delays.clear_label(target)   # [edge model] a fresh tune lands on the live edge: old label is void
         if self.sync is not None:
             try:
                 self.sync.tuned(target, wall, new_stream=new_stream)
@@ -384,6 +391,16 @@ class Engine:
         by = self.cfg.get("timing.behind_live_s.by_league") or {}
         b = by.get(g.league.value, by.get(g.league.base.value, self.cfg.get("timing.behind_live_s.default", 0)))
         return max(0.0, min(float(b or 0.0), float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
+
+    def label_behind(self, target: str, behind_s: float, sd: float | None = None, ts: float | None = None) -> None:
+        """[edge model, Nick Nov 6 items 1-3] behind_live for the tune on `target`, read off YouTube TV's overlay
+        time label (yttv_seek.enter_buffer / the label reader). With delay.edge_model.enabled the delay becomes
+        D_edge(channel) + behind_s; with it off the read is kept and logged only."""
+        d = self.delays.set_label_behind(target, behind_s, sd=sd, ts=ts)
+        e = self.delays.edge(target)
+        log.info("edge model: %s behind live %.1f s (label)%s -> delay %.1f±%.1f s (%s)", target, float(behind_s),
+                 f", edge {e[0]:.1f}±{e[1]:.1f} s {e[2]}" if e else "", d.mu, d.sigma,
+                 "on" if self.delays.edge_model else "off, logged only")
 
     def _on_behind(self, target: str, new_s: float, old_s: float) -> None:
         """The controller held (or freed) this target's stream: shift its delay by the difference."""
