@@ -1060,3 +1060,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Registered after EXP-603's interim NBA FAIL and a fit-night smoke (disclosed in the prereg). Known optimism: the
   re-check judges dead balls with the grader's dead_at on delivered plays, not the engine's may_cut, and skips the
   leave check; so a pass is a model pass that the shadow run must confirm before any card.
+- 2026-11-07 (PR #381, item 6 of Nick's Nov 6 order): new default `decider.lock_wait` {enabled: false, retry_s: 20,
+  max_s: 90}. A locked/held game we can't reach (no channel, or a tune that failed) says why, retries after retry_s,
+  and after max_s the lock and hold are dropped with a toast. Off by default: Nick flips it. Nov 6: a hold on the ACC
+  Network game sat 96 s and 261 s on "switch: you locked this game" (617 instant "no channel" attempts). Rule #1 unchanged.

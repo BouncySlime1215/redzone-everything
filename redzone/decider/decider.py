@@ -313,6 +313,13 @@ class Decider:
         # [core] Every soft choice (which game, visit or not, reel, replay vs live, go back) is scored by
         # the one expected-value function in core.py; the rules left in here are the hard guards.
         self.core = DecisionCore(Knobs.from_cfg(cfg))
+        # [lock wait] decider.lock_wait: a locked/held game we can't reach (no channel, or the tune
+        # failed) waits with a visible reason and a retry time, then gives the lock up
+        self.lock_gid: str | None = None    # the locked game these fields are about
+        self.lock_since: float | None = None   # first time it couldn't be reached
+        self.lock_retry_at = 0.0
+        self.lock_why = ""
+        self.lock_expired: str | None = None   # gave up on this locked game: the engine releases it
 
     # ----- inputs -----------------------------------------------------------
 
@@ -468,6 +475,48 @@ class Decider:
             self.start_fails += 1
             wait = min(START_RETRY_MAX_S, START_RETRY_S * 2 ** (self.start_fails - 1))
             self.start_retry_at = self._clock() + wait
+
+    def lock_failed(self, d: Decision, why: str) -> None:
+        """[lock wait] A switch to your locked game failed for a reason that is the target's
+        fault (the engine filters out closed safe windows and cancels): wait before retrying."""
+        gid = self.user.locked_game
+        if not self.cfg.get("decider.lock_wait.enabled") or d.kind != "user" or not gid or d.target != gid:
+            return
+        now = self._clock()
+        self._lock_note(gid, why, now)
+        self.lock_retry_at = now + self.cfg.get("decider.lock_wait.retry_s")
+
+    def _lock_note(self, gid: str, why: str, now: float) -> None:
+        if self.lock_gid != gid:
+            self.lock_gid, self.lock_since, self.lock_retry_at = gid, None, 0.0
+        if self.lock_since is None:
+            self.lock_since = now
+        self.lock_why = why
+
+    def _lock_reset(self) -> None:
+        self.lock_gid, self.lock_since, self.lock_retry_at, self.lock_why = None, None, 0.0, ""
+
+    def _lock_wait(self, gid: str, x: Candidate, now: float) -> Decision | None:
+        """[lock wait] Why a switch to the locked game can't go now, or None to switch.
+        Never forever: after decider.lock_wait.max_s unreachable, the lock is given up."""
+        if self.lock_gid != gid:
+            self._lock_reset()
+        if not x.target:
+            self._lock_note(gid, "no working channel for it right now", now)
+        if self.lock_since is None:
+            return None
+        waited = now - self.lock_since
+        if waited >= self.cfg.get("decider.lock_wait.max_s"):
+            self.lock_expired = gid
+            return Decision(now, "stay", self.current, f"gave up on your locked game after {waited:.0f}s: "
+                            f"{self.lock_why}", State.PAUSED, want=gid)
+        if x.target and now >= self.lock_retry_at:
+            return None
+        if not x.target:
+            return Decision(now, "stay", self.current, f"waiting on your locked game ({waited:.0f}s): {self.lock_why} "
+                            f"— tap another game or Resume auto", State.PAUSED, want=gid)
+        return Decision(now, "stay", self.current, f"couldn't get to your locked game ({self.lock_why}) — trying "
+                        f"again in {math.ceil(self.lock_retry_at - now)}s", State.PAUSED, want=gid)
 
     # ----- catch-up replays ---------------------------------------------------
 
@@ -1474,7 +1523,12 @@ class Decider:
                 if self.current is None and now < self.start_retry_at:
                     return Decision(now, "stay", None, f"couldn't get to your locked game yet — trying again in "
                                     f"{math.ceil(self.start_retry_at - now)}s", State.PAUSED, want=u.locked_game)
+                if c.get("decider.lock_wait.enabled"):
+                    wait = self._lock_wait(u.locked_game, cands[u.locked_game], now)
+                    if wait:
+                        return wait
                 return Decision(now, "switch", u.locked_game, "you locked this game", State.PAUSED, kind="user")
+            self._lock_reset()
             return Decision(now, "stay", self.current, "locked here by you", State.PAUSED)
         if now < u.manual_until:
             return Decision(now, "stay", self.current, "you just picked this — hands off for a minute", State.PAUSED)
