@@ -543,9 +543,10 @@ class ChannelHunt:
     elapsed_s: float = 0.0
 
 
-# Channel-page search tune (ABC 11, Nov 7, on the hidden stick): Select at the starting focus played the
-# live airing in 15 s (blind run dce27c18); by hand, search -> 3 s -> DOWN -> 1.5 s -> Select did too.
-CHANNEL_PAGE_PATHS = ((), ("KEYCODE_DPAD_DOWN",))
+# Channel-page search tune (Nov 7, hidden stick): search -> 3 s -> DOWN -> 1.5 s -> Select tuned 4/4 locals
+# (Select alone from the search page 0/4 by hand); Select at the starting focus is kept as the fallback
+# (it worked once in the --blind hunt, dce27c18, after a reopened search).
+CHANNEL_PAGE_PATHS = (("KEYCODE_DPAD_DOWN",), ())
 # A live YouTube TV channel's playhead is its stream clock (ESPN ~46,800 s on Nov 6); a recording starts near 0.
 LIVE_MIN_MS = 30 * 60 * 1000
 CHANNEL_PAGE_DOWN_S = 3.0
@@ -661,8 +662,8 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
     prove_code(). Never raises.
 
     ``channel_page`` (ABC 11, Nov 7): the search opens the station's channel page, but OCR can't read
-    the focus ring there. Then, per path in CHANNEL_PAGE_PATHS (Select at the starting focus; else
-    reopen the search, DOWN, Select): accept only when the media session's SUBTITLE contains the
+    the focus ring there. Then, per path in CHANNEL_PAGE_PATHS (DOWN, Select; else reopen the
+    search and Select at the starting focus): accept only when the media session's SUBTITLE contains the
     query ('..., ABC 11') AND the playhead is live (>= LIVE_MIN_MS, a recording starts near 0);
     a miss presses BACK. Waits: >= 3 s after the search link, >= 1.5 s after DOWN.
     """
