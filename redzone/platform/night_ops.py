@@ -28,12 +28,12 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-DEFAULTS = {"enabled": False, "join_margin_s": 10.0}
-STEPS = ("buffered", "live", "other_stick", "hold")
+NIGHT_OPS_DEFAULTS = {"enabled": False, "join_margin_s": 10.0}
+LADDER_STEPS = ("buffered", "live", "other_stick", "hold")
 
 
 def options(over: Any = None) -> dict:
-    out = dict(DEFAULTS)
+    out = dict(NIGHT_OPS_DEFAULTS)
     if isinstance(over, dict):
         if isinstance(over.get("enabled"), bool):
             out["enabled"] = over["enabled"]
@@ -93,7 +93,7 @@ def _joins(rows: list[dict], margin: float) -> dict:
     return out
 
 
-def summarize(root: Path, t0: float, t1: float, margin: float = DEFAULTS["join_margin_s"]) -> dict:
+def summarize(root: Path, t0: float, t1: float, margin: float = NIGHT_OPS_DEFAULTS["join_margin_s"]) -> dict:
     """Everything the night's ops section says, as numbers (also the .json sidecar's "ops")."""
     root = Path(root)
     jrows = _rows(root / "joins.jsonl", t0, t1)
@@ -119,8 +119,8 @@ def summarize(root: Path, t0: float, t1: float, margin: float = DEFAULTS["join_m
         "margin_s": margin,
         "joins": _joins(joins, margin),
         "joins_total": len(joins),
-        "fallbacks": {"total": len(falls), "steps": {k: steps[k] for k in STEPS if steps[k]}
-                      | {k: n for k, n in steps.items() if k not in STEPS},
+        "fallbacks": {"total": len(falls), "steps": {k: steps[k] for k in LADDER_STEPS if steps[k]}
+                      | {k: n for k, n in steps.items() if k not in LADDER_STEPS},
                       "why": dict(why.most_common(3))},
         "drift": {"reads": len(drift), "read_cost_s": round(sum(cost), 1),
                   "abs_drift_p50": round(statistics.median(d), 2) if d else None,

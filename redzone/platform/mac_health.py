@@ -34,7 +34,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-DEFAULTS: dict[str, Any] = {
+MAC_HEALTH_DEFAULTS: dict[str, Any] = {
     "enabled": False,             # OFF until Nick turns it on (Nov 7 order: all flags off)
     "battery_low_pct": 20,
     "battery_critical_pct": 10,
@@ -50,16 +50,16 @@ DEFAULTS: dict[str, Any] = {
     "repeat_s": 1800.0,
     "push": True,                 # also push high/urgent alerts through ntfy when supervisor.ntfy_topic is set
 }
-LEVELS = ("info", "warn", "high", "urgent")
+ALERT_LEVELS = ("info", "warn", "high", "urgent")
 PUSH_LEVELS = ("high", "urgent")
 
 
 def options(over: Any = None) -> dict:
     """Defaults + overrides of the right type (a bad value keeps the default)."""
-    out = dict(DEFAULTS)
+    out = dict(MAC_HEALTH_DEFAULTS)
     if isinstance(over, dict):
         for k, v in over.items():
-            d = DEFAULTS.get(k)
+            d = MAC_HEALTH_DEFAULTS.get(k)
             if d is None:
                 continue
             if isinstance(d, bool):
@@ -107,7 +107,7 @@ def _clock_et(ts: float) -> str:
 
 @dataclass
 class MacHealth:
-    opts: dict = field(default_factory=lambda: dict(DEFAULTS))
+    opts: dict = field(default_factory=lambda: dict(MAC_HEALTH_DEFAULTS))
     since: dict[str, float] = field(default_factory=dict)       # condition -> first seen
     fired: dict[str, float] = field(default_factory=dict)       # alert -> last fired at
     fired_level: dict[str, str] = field(default_factory=dict)   # alert -> level it last fired at
@@ -189,7 +189,7 @@ class MacHealth:
         out: list[Alert] = []
         for code, (level, text) in cur.items():
             last = self.fired.get(code)
-            worse = LEVELS.index(level) > LEVELS.index(self.fired_level.get(code, level))
+            worse = ALERT_LEVELS.index(level) > ALERT_LEVELS.index(self.fired_level.get(code, level))
             if last is None or worse or now - last >= float(self.opts["repeat_s"]):
                 self.fired[code], self.fired_level[code] = now, level
                 out.append(Alert(code, level, text, now))
