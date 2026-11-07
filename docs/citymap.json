@@ -525,6 +525,26 @@
     "STK-06"
    ]
   },
+  "redzone/canary.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/tuners/adb.py",
+    "redzone/tuners/join.py",
+    "redzone/tuners/join_calib.py",
+    "redzone/tuners/tuners.py",
+    "redzone/tuners/yttv_label.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/canary.py"
+   ],
+   "owner": "unowned",
+   "role": "[Canary, Nick's Nov 7 order item 8] A daily stick self-test before games, on the HIDDEN stick only, that fails loud.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/channels.py": {
    "contracts": [],
    "inputs": [
@@ -533,6 +553,7 @@
    "kind": "module",
    "outputs": [
     "redzone/autonomy.py",
+    "redzone/canary.py",
     "redzone/control.py",
     "redzone/demo/engine.py",
     "redzone/discovery/providers.py",
@@ -606,10 +627,12 @@
     "redzone/sync_probe.py",
     "redzone/tuners/adb.py",
     "redzone/tuners/join.py",
+    "redzone/tuners/join_calib.py",
     "redzone/web/phone_v2.py",
     "redzone/web/server.py",
     "scripts/backtest.py",
     "scripts/build_reasoner_data.py",
+    "scripts/canary.py",
     "scripts/delay_report.py",
     "scripts/eval.py",
     "scripts/eval_reasoner.py",
@@ -4193,6 +4216,7 @@
    "kind": "module",
    "outputs": [
     "redzone/autonomy.py",
+    "redzone/canary.py",
     "redzone/control.py",
     "redzone/discovery/stickio.py",
     "redzone/discovery/yttv.py",
@@ -4252,16 +4276,39 @@
    "contracts": [],
    "inputs": [
     "redzone/config.py",
+    "redzone/tuners/join_calib.py",
     "redzone/tuners/prime_pause.py",
     "redzone/tuners/yttv_seek.py"
    ],
    "kind": "module",
    "outputs": [
+    "redzone/canary.py",
+    "redzone/tuners/join_calib.py",
     "redzone/tuners/join_watchdog.py",
     "scripts/join_try.py"
    ],
    "owner": "SWITCHING",
    "role": "[Join API] Put a HIDDEN stick a chosen time behind live, say where it should land, measure where it did, log both.",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/join_calib.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py",
+    "redzone/tuners/join.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/canary.py",
+    "redzone/tuners/join.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[Join self-calibration, Nick's Nov 7 order item 5] Per channel and stick: join-error and delay stats, and a bias that updates itself from data/joins.jsonl, i...",
    "serves": [
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -4479,6 +4526,7 @@
    "kind": "module",
    "outputs": [
     "redzone/autonomy.py",
+    "redzone/canary.py",
     "redzone/control.py",
     "redzone/discovery/runtime.py",
     "redzone/platform/faults.py",
@@ -4509,6 +4557,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/canary.py",
     "redzone/engine.py",
     "scripts/watchdog_try.py",
     "scripts/yttv_scrub_try.py"
@@ -4905,6 +4954,20 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Calibrate Brain v3's cautious restart bound per break type (redzone/lab/brain3cal.py).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/canary.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/canary.py",
+    "redzone/config.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[Canary, item 8] Daily pre-game self-test of the HIDDEN stick.",
    "serves": [
     "untagged"
    ]
@@ -6483,10 +6546,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 354,
+  "modules": 357,
   "orphans": 14,
-  "unowned": 184,
-  "untagged": 291
+  "unowned": 186,
+  "untagged": 293
  },
  "version": 1
 }

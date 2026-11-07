@@ -1212,3 +1212,13 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   auto-play prompt only ever gets "Ask later", no account settings. With `enabled`, the scrub waits out the banner
   and refuses on a broken session (no key pressed). Runbook: docs/memory/runbooks/stick-session.md. Rule #1 unchanged.
 - 2026-11-07 (Nick's sync order, items 6 + 7): **new `supervisor.mac_health` and `supervisor.night_ops` blocks ship OFF (`enabled: false`).** Mac health alerts to the phone (battery <= 20% / 10%, on battery 2 min with games, slept 60 s+, caffeinate missing, memory critical or swap >= 8 GB, paused 10 min, no switch row 20 min with 2+ live games on autopilot) and a 'Sync and health' section in the nightly report (joins, fallbacks, drift, faults, Mac alerts). Why: every one of these happened Nov 4-6 (battery 13-19% during games, 10 GB swap, 66-145 min with no switch and up to 10 live games) and nobody heard until morning. They see and say only; Nick turns them on (all flags off per his order). Thresholds from the Mac's own logs: swap 3-6 GB is this Mac's normal evening, so 8 GB.
+- 2026-11-07 (Nick's 2:33 AM ET sync order, items 5, 8, 9): new `join.calib.*` group, **enabled false**, and a new
+  `canary.*` group (a manual / launchd script, nothing runs it by itself). Calibration: per app, app:channel and
+  app:channel:stick, the YouTube TV scrub lead (shipped 11.7 s) and the Prime pause bias (shipped 0) are re-estimated
+  from measured rows of data/joins.jsonl (label / timecode only, never an estimate or media_session): last 20 rows,
+  rows off by > 12 s counted not used, residuals clipped to +-2x the expected error, shrunk toward the parent with
+  4 pseudo-rows, clamped to shipped +-5 s (YouTube TV) / +-3 s (Prime); a SHIFT alert when the newest 3 all land > 5 s
+  off the same side. At the shipped lead the plan is exactly Nick's n = round((T - 10) / 15). Canary: daily on the
+  HIDDEN stick only, never with a game live or within 90 min, tunes away then ESPN, joins 60 s with the label reader,
+  must land within 6 s of the predicted 56.7 s, then puts the stick back on live; FAIL / WARN go to the phone loud.
+  Why: Nick's order "self-calibration ... with bounds" and "a daily stick self-test before games that fails loud".

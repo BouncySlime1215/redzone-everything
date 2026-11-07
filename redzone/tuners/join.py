@@ -45,10 +45,13 @@ class JoinPlan:
     predicted_s: float | None = None  # where it should land (behind live)
     expected_err_s: float | None = None
     reason: str = ""
+    bias_used_s: float | None = None  # the lead (scrub) / bias (pause) this plan used: calibration reads it back
+    bias_source: str = "shipped"      # "shipped" or the calibration key level (join_calib, join.calib.enabled)
 
 
-def plan_join(app: str, target_s: float, behind_before_s: float = 0.0, cfg=None) -> JoinPlan:
-    """How to get a stick that is `behind_before_s` behind live to `target_s`, and where that should land."""
+def plan_join(app: str, target_s: float, behind_before_s: float = 0.0, cfg=None, bias=None) -> JoinPlan:
+    """How to get a stick that is `behind_before_s` behind live to `target_s`, and where that should land.
+    bias: a join_calib.Bias for this channel and stick (None = the shipped lead / bias, i.e. calibration off)."""
     app = app.split(":", 1)[0]
     t, before = float(target_s), float(behind_before_s)
     method = APPS.get(app, "none")
@@ -64,13 +67,25 @@ def plan_join(app: str, target_s: float, behind_before_s: float = 0.0, cfg=None)
         return p
     if method == "scrub":
         step = float(_cfg(cfg, "yttv_step_s"))
-        p.presses = max(1, int(round((t - before - float(_cfg(cfg, "yttv_n_offset_s"))) / step)))
-        p.predicted_s = round(before + step * p.presses + float(_cfg(cfg, "yttv_lead_s")), 2)
-        p.expected_err_s = float(_cfg(cfg, "yttv_err_s"))
+        lead = float(_cfg(cfg, "yttv_lead_s"))
+        err = float(_cfg(cfg, "yttv_err_s"))
+        n_off = float(_cfg(cfg, "yttv_n_offset_s"))
+        if bias is not None:
+            # Nick's rule moves with the calibrated lead: at the shipped lead it is exactly round((T - 10) / 15)
+            n_off, lead, err, p.bias_source = n_off + (bias.value - lead), bias.value, bias.err_s, bias.source
+        p.presses = max(1, int(round((t - before - n_off) / step)))
+        p.predicted_s = round(before + step * p.presses + lead, 2)
+        p.expected_err_s, p.bias_used_s = err, round(lead, 2)
     else:
+        b = float(_cfg(cfg, "prime_bias_s"))
+        err = float(_cfg(cfg, "prime_err_s"))
         p.hold_s = round(t - before, 2)
-        p.predicted_s = round(before + p.hold_s + float(_cfg(cfg, "prime_bias_s")), 2)
-        p.expected_err_s = float(_cfg(cfg, "prime_err_s"))
+        if bias is not None:
+            # calibrated: the pause lands at before + hold + bias, so hold for the gap less the bias
+            b, err, p.bias_source = bias.value, bias.err_s, bias.source
+            p.hold_s = round(max(0.0, t - before - b), 2)
+        p.predicted_s = round(before + p.hold_s + b, 2)
+        p.expected_err_s, p.bias_used_s = err, round(b, 2)
     return p
 
 
@@ -121,12 +136,24 @@ async def join(stick, app: str, target_s: float, *, cfg=None, pkg: str | None = 
                read_behind: Callable[[Any], Awaitable[float | None]] | None = None,
                read_overlay=None, read_timecode=None, behind_before_s: float = 0.0,
                log_path: Path | None = None, label: str = "", channel: str = "",
-               clock: Callable[[], float] | None = None) -> JoinResult:
+               clock: Callable[[], float] | None = None, calib=None, source: str = "") -> JoinResult:
     """Join `target_s` behind live on a hidden stick of `app`. See the module docstring. Never raises.
-    label/channel go to the log row (a stick name such as "stickB", never its address)."""
+    label/channel go to the log row (a stick name such as "stickB", never its address).
+    calib: a join_calib.JoinCalib; None loads one from the join log when join.calib.enabled (OFF), else the plan
+    uses the shipped lead / bias. source tags the row (e.g. "canary")."""
     clock = clock or time.monotonic
     t0 = clock()
-    plan = plan_join(app, target_s, behind_before_s, cfg)
+    bias = None
+    try:
+        from redzone.tuners import join_calib
+        if calib is None and join_calib.enabled(cfg):
+            calib = join_calib.JoinCalib.load(log_path, cfg)
+        if calib is not None:
+            bias = calib.bias(app, channel, label)
+    except Exception as e:   # calibration never blocks a join: shipped values
+        log.warning("join calibration: %r", e)
+        bias = None
+    plan = plan_join(app, target_s, behind_before_s, cfg, bias)
     res = JoinResult(ok=False, plan=plan)
     try:
         if plan.method == "none":
@@ -161,5 +188,6 @@ async def join(stick, app: str, target_s: float, *, cfg=None, pkg: str | None = 
         if plan.predicted_s is not None:
             res.pred_error_s = round(res.measured_s - plan.predicted_s, 2)
     res.took_s = clock() - t0
-    log_join(res, log_path, stick=label, channel=channel)
+    extra = {"source": source} if source else {}
+    log_join(res, log_path, stick=label, channel=channel, **extra)
     return res
