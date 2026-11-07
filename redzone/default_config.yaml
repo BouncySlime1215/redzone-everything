@@ -578,11 +578,25 @@ yttv_seek:                 # [YTTV scrub buffer, item 1] enter the time-shift bu
   overlay_wait_s: 1.3      # after CENTER or a LEFT, wait this long before reading the overlay (live Nov 6: 0.8 too short)
   open_tries: 4            # probe LEFT, no scrub label = close, reopen, retry; fail closed after this many (tune banner)
   reopen_wait_s: 1.5       # between closing and reopening the overlay
+  probe_key: RIGHT         # the probe at the live edge: RIGHT lands on the bar without moving the pinned knob (8/8),
+                           # LEFT only reveals the label there too (6/6; Nick, Nov 7; ported from integration/next #403)
+  topup_max: 1             # a knob one whole step short before the commit (a lost press) gets this many more LEFTs
+  topup_tol_s: 2           # ...only when it is one step short within this, and that LEFT then moves one step within this
   reset_channel: ""        # a stick that may be behind on a channel goes through this one to get back to live (a
                            # same-channel deep link does not reset it; Nick, Nov 7). "" = any other coded channel
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true
+  yttv_seek: scrub         # [Nick, Nov 7] a YouTube TV catch-up is seeked on the HIDDEN stick by the overlay scrub
+                           # (yttv_seek.enter_buffer, knob-checked), its landing READ on the label (LabelProbe), then
+                           # it plays up to park_lead_s before the snap and pauses there; the flip un-pauses it. The
+                           # viewer never sees a rewind. "keys" = the old seek_key presses (their 20 s shell timeout
+                           # failed every YouTube TV replay: 'replay seek failed', 20-24 s each)
+  back_lead_s: 3           # a replay's back_s already starts this long before the snap (Missed.back_s)
+  park_lead_s: 1.5         # ...the scrubbed stick is paused this long before the snap (Nick: land 1-2 s before it)
+  scrub_slack_s: 4         # playing (not frozen) time in a scrub: one more LEFT's worth of room is planned for it
+  park_wait_max_s: 40      # a scrub landing more than this before the park point fails closed (holds the stick)
+  yttv_max_lefts: 8        # never more LEFTs than this (8 = 120 s of knob): a deeper catch-up is not seeked
   yours_first: true        # your team's missed big plays: replayed before other games' and over ordinary live play
   apps: [youtubetv]        # apps where rewinding live TV works
   max_age_s: 1800          # don't replay anything older than this

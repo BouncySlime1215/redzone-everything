@@ -1634,6 +1634,40 @@ class Controller:
         over = float(self.cfg.get("timing.behind_live_s.hold_overreport_s", 0.0) or 0.0)
         return round(max(0.0, span_s - over), 1)
 
+    def _replay_scrubs(self, target: str | None) -> bool:
+        """[replay on the scrub, Nick Nov 7 17:56Z] MEDIA_REWIND never seeks on YouTube TV (proven Nov 6; 275 'replay
+        seek failed' lines in service.log, each burning 20-24 s). A YouTube TV catch-up seeks by the overlay scrub."""
+        return bool(target) and str(target).split(":", 1)[0] == "youtubetv" and \
+            str(self.cfg.get("replay.yttv_seek", "scrub")).lower() == "scrub"
+
+    async def _scrub_park(self, stick: Stick, target: str, back_s: float, replay_id: str) -> bool:
+        """[replay on the scrub, Nick Nov 7] Park the HIDDEN stick park_lead_s before the snap by the label-measured
+        overlay scrub (redzone/tuners/replay_park.py). False = keep the current game (fails closed)."""
+        from redzone.tuners import replay_park
+        if self._task is asyncio.current_task():
+            self.stage["stage"] = "rewinding"
+        probe = self.label_probe
+        if probe is None:
+            # the scrub-entry label reader (timing.behind_live_s.label_reader) is off: a replay still never parks
+            # blind, so it gets its own probe (same local OCR, frames read then deleted)
+            if getattr(self, "_replay_probe", None) is None:
+                from redzone.tuners.yttv_label import LabelProbe
+                self._replay_probe = LabelProbe(self.cfg)
+            probe = self._replay_probe
+        r = await replay_park.park(stick, back_s, probe=probe, cfg=self.cfg,
+                                   pkg=self._package(stick, target),
+                                   still_hidden=lambda: self.hidden is stick and not self._flipping)
+        if r.moved:
+            stick.behind_on = target   # keys moved it: the next live tune of target resets first (#391)
+        self._last_seek_sent = r.lefts
+        if not r.ok:
+            log.info("replay scrub %s on %s: %s", target, stick.host, r.reason)
+            return False
+        self.latency.record("seek", r.took_s)
+        log.info("replay scrub %s on %s: %s", target, stick.host, r.steps[-1] if r.steps else r.reason)
+        self._set_hidden(target, True, Parked(replay_id, target, time.time(), r.paused))
+        return True
+
     async def _rewind(self, stick: Stick, back_s: float) -> bool:
         """Rewind about back_s and play. Whole presses, rounded UP: landing a few seconds early shows
         the snap; landing late misses it (the decider pads the replay's end for this). Up to
@@ -1663,6 +1697,8 @@ class Controller:
     async def _park(self, stick: Stick, target: str, back_s: float, replay_id: str) -> bool:
         """Rewind to just before the play and hold it there, so the replay starts the instant we flip."""
         self._set_hidden(target, False)   # mid-rewind it's neither live nor parked
+        if self._replay_scrubs(target):
+            return await self._scrub_park(stick, target, back_s, replay_id)
         if not await self._rewind(stick, back_s):
             return False
         sent = await stick.key("KEYCODE_MEDIA_PAUSE")
@@ -1679,6 +1715,8 @@ class Controller:
         p = self.parked
         step = float(self.cfg.get("replay.seek_step_s", 10))
         if p is not None and not p.paused and time.time() - p.at >= step / 2:
+            if self._replay_scrubs(p.target):
+                return False   # a drifted YouTube TV park can't be stepped back a few s (the scrub's floor is ~38 s)
             return await self._rewind(stick, time.time() - p.at)   # ends with PLAY
         sent = await stick.key("KEYCODE_MEDIA_PLAY")
         return bool(sent and sent.ok)
@@ -1996,6 +2034,10 @@ class Controller:
                        stick=main.host)
 
     async def _execute_one(self, target, replay_back_s, t0, back_at=None) -> Outcome:
+        if replay_back_s and self._replay_scrubs(target):
+            # [Nick, Nov 7] the viewer never sees a rewind: a YouTube TV replay is only ever scrubbed on the hidden stick
+            return Outcome(False, target, 0.0, "replay needs the hidden stick (never rewound on screen)", False,
+                           path="single", screen_unchanged=True)
         if not replay_back_s and await self._still_on_visible(target):
             return Outcome(True, target, 0.0, "already on it", False, time.time(), path="already")
         main = self.main
@@ -3173,6 +3215,8 @@ class Controller:
         if not (self.live_control and self.two_stick) or self.input_unknown or p is None or p.paused or self._busy() \
                 or time.time() - p.at < 2 * step or not self._parked_for(p.target, p.replay_id):
             return
+        if self._replay_scrubs(p.target):
+            return   # a YouTube TV park is never re-scrubbed from behind live (unmeasured); _unpark refuses it
         self._preloading = (p.target, p.replay_id)
         self._preload_task = asyncio.create_task(self._reseek(p))
 

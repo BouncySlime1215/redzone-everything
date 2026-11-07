@@ -19,6 +19,14 @@ from redzone.tuners.adb import RunResult, Stick
 from redzone.tuners.tuners import TuneResult
 
 
+
+@pytest.fixture(autouse=True)
+def _replay_keys(request):
+    """These cases cover the KEY rewind mechanics (seek_key presses, wake press, drift re-seek). YouTube TV catch-up
+    now seeks by the overlay scrub (replay.yttv_seek: scrub, Nick Nov 7); tests/test_replay_scrub.py covers that."""
+    if "cfg" in request.fixturenames:
+        request.getfixturevalue("cfg").update({"replay": {"yttv_seek": "keys"}})
+
 class FakeStick(Stick):
     """A stick that logs every command. playback() reports `state`; dumpsys power reports `power`."""
 
