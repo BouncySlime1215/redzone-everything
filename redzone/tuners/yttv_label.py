@@ -44,7 +44,7 @@ LABEL_READER_FLAG = "timing.behind_live_s.label_reader"
 
 # Overlay geometry (normalized, top-left; 1920x1080 screencaps Nov 5, ESPN, both sticks; ui_common.py):
 # bar y ~0.815, x ~0.05..0.95; label sits just above the knob; window '2:30 AM - 3:00 AM' at (0.81, 0.72).
-LABEL_Y = (0.60, 0.84)
+LABEL_Y = (0.38, 0.84)  # live Nov 6: with a preview card up the label box starts at y 0.444-0.450
 LABEL_X = (0.03, 0.97)
 MIN_CONF = 0.80
 WINDOW_SLACK_S = 120          # a label may run a little past the listed end (overruns), never far
