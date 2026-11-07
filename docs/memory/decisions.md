@@ -1056,3 +1056,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   hidden-stick model (#374).** Measured only (a60c9cbd scrub spec): ready keys 10 s + read 8 s after the tune, lands
   15 N + 15 s behind live (B75 measured, B90 extrapolated). Both arms must pass. A pass is not a flip card: RC8 waits on
   a live stick test of a held scrub, per Nick.
+- **2026-11-07 (item 4 of Nick's Nov 6 10:15 PM order, scrub entry):** new flags `timing.behind_live_s.scrub_entry`
+  (false, per league via league_overrides) and `scrub_fallback` (keep), plus `scrub_cost_s` 18, `scrub_read_s` 8,
+  `scrub_over_s` 15, `scrub_retry_s` 120. With it on (and `yttv_seek.enabled`), the hidden stick enters the buffer by
+  the overlay scrub (yttv_seek.enter_buffer) before the flip, never by a pause; `held` is the overlay label's reading,
+  not media_session; the flip still waits for a dead ball on the delayed picture. A failed scrub re-tunes at the live
+  edge and keeps the current game. Ships OFF: a flip onto a scrubbed stick with a person watching is not yet proven
+  (spec "Still to prove"). No live config change. Rule #1 unchanged.

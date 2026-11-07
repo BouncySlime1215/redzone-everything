@@ -41,6 +41,7 @@ MAX_REPLY = 32 << 20   # biggest reply we'll buffer (a full UI dump is ~100 KB)
 AWAKE_TTL_S = 60.0     # trust "the stick is awake" this long before asking again
 STICK_HUNG = "stick not responding"   # detail prefix while a stick's breaker is open (not the target's fault)
 CONNECT_RETRY_MAX_S = 9.0   # a failed connect is retried at the next ~10 s keepalive tick, never later
+SCRUB_TRUST_S = 1200.0   # [scrub entry] a scrubbed stream is trusted this long (Nick Nov 6: one 20-minute hold proven on TNT)
 
 # Catch-up reel player: VLC if it's installed (plays a URL straight away), else Fire TV's Silk browser.
 REEL_PACKAGES = ["org.videolan.vlc", "com.amazon.cloud9"]
@@ -454,10 +455,28 @@ class Stick:
         self.mark_awake()
         return asleep
 
-    def remember(self, target: str, report: dict) -> None:
-        """A tune to `target` was confirmed by this playback report."""
+    def remember(self, target: str, report: dict, scrubbed_s: float | None = None) -> None:
+        """A tune to `target` was confirmed by this playback report.
+
+        scrubbed_s [scrub entry, item 4 of Nick's Nov 6 order]: the stream was then put that many seconds
+        behind live by the overlay scrub (yttv_seek.enter_buffer), read off the overlay's time label. After
+        such a seek YouTube TV's media_session position crawls (~+0.3 s per 20 s) while the picture plays in
+        real time, so still_on can't judge it from position vs clock; it trusts the scrub for
+        SCRUB_TRUST_S (the longest hold proven on a stick, 20 min) and nothing longer."""
         self.tuned = {"target": target, "pkg": report.get("pkg"), "report": dict(report)}
+        if scrubbed_s is not None:
+            self.tuned["scrubbed_s"] = float(scrubbed_s)
+            self.tuned["scrubbed_at"] = time.monotonic()
         self.mark_awake()   # it's playing video, so it's awake
+
+    def scrubbed(self, target: str | None = None) -> float | None:
+        """Seconds behind live the overlay scrub left `target` at, while that anchor is still trusted."""
+        t = self.tuned
+        if not t or t.get("scrubbed_s") is None or (target is not None and t["target"] != target):
+            return None
+        if time.monotonic() - float(t.get("scrubbed_at") or 0.0) > SCRUB_TRUST_S:
+            return None
+        return float(t["scrubbed_s"])
 
     def still_on(self, target: str, report: dict) -> bool:
         """Provably still on `target`, live: we tuned it there, nothing has been pressed or launched
@@ -465,6 +484,10 @@ class Stick:
         t = self.tuned
         if not (t and t["target"] == target and playback_ready(report) and report.get("pkg") == t["pkg"]):
             return False
+        if t.get("scrubbed_s") is not None:
+            # [scrub entry] nothing pressed since the scrub (any key clears `tuned`), still playing, same app:
+            # that is all media_session can tell after a seek. Past SCRUB_TRUST_S the hold is unproven: not on.
+            return report.get("state") == "playing" and self.scrubbed(target) is not None
         # Live players run a touch fast to catch up (Prime/Sye: ~1%, Nov 2): allow 2% of the elapsed time.
         elapsed = (report.get("updated") or 0) - (t["report"].get("updated") or 0)
         return same_stream(t["report"], report, slack_ms=3000 + int(0.02 * max(0, elapsed))) is True
