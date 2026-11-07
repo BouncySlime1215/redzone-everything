@@ -38,3 +38,8 @@ def test_scrub_rejects_unreachable_b(b):
 def test_bad_entry():
     with pytest.raises(ValueError):
         _stick("seek", 75.0)
+
+
+def test_scrub_measured_cost():
+    s = _stick("scrub_measured", 90.0)
+    assert s.hold_of("youtubetv:x") == 22.5 and s.hold_of("prime:x") == 0.0 and s.true_sync is False

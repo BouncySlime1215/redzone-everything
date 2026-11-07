@@ -102,7 +102,9 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
                          "(arm B, the verdict arm); off = today's scorecard")
     ap.add_argument("--hold-overrun", type=float, default=1.0,
                     help="[EXP-601] the B s hold takes this many times B (S1: 1.36), with --hidden-stick")
-    ap.add_argument("--hs-entry", choices=("hold", "scrub"), default="hold",
+    ap.add_argument("--hs-prime-edge", action="store_true",
+                    help="[EXP-605] with --hidden-stick: the app plans Prime targets at their live edge (no buffer)")
+    ap.add_argument("--hs-entry", choices=("hold", "scrub", "scrub_measured"), default="hold",
                     help="[EXP-603] how the hidden stick gets behind live, with --hidden-stick: hold (pause B s, "
                          "EXP-601) or scrub (overlay scrub + one label read, ~18 s; B must be 75 or 90)")
     ap.add_argument("--hs-recheck", action="store_true",
@@ -125,6 +127,7 @@ def knobs(a: argparse.Namespace) -> dict:
                 feed_lag_model="measured" if getattr(a, "real_lag", False) else None,
                 **({"hidden_stick": a.hidden_stick, "hold_overrun": a.hold_overrun,
                     "hs_entry": getattr(a, "hs_entry", "hold"), "hs_recheck": getattr(a, "hs_recheck", False),
+                    "hs_prime_edge": getattr(a, "hs_prime_edge", False),
                     "behind_live_s": float(getattr(a, "behind_live", None) or 0.0)}
                    if getattr(a, "hidden_stick", None) else {}),
                 **feed_lag_knobs(getattr(a, "feed_lag", None), getattr(a, "behind_live", None)))
