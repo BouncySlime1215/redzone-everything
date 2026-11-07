@@ -1197,3 +1197,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   YouTube TV: n = round((T - 10) / 15) LEFTs (fixed, passed to enter_buffer as `presses`), predicted 15 n + 11.7 s
   (9 label-measured runs landed T - 3.3 s on average, +-3 s); targets are 15 s steps and the overlay is never held
   to hit one in between (that measured +2..+10 s and one -18.7 s). Prime: pause for the gap (prime_pause), +-1-2 s.
+- **2026-11-07 02:43 ET (Nick, overseer): ESPN+ events go through YouTube TV.** Every ESPN app game is also on
+  YouTube TV through ESPN Unlimited, and ESPN app links opened 0 of 15. New flag `tuners.espnplus_yttv`, default
+  **false**: an ESPN+ game routes to a proven per-event YouTube TV code (`yttv_events` in data/channels.json), else to
+  `youtubetv:evq:<game>`, tuned by in-app search (a LIVE tile naming both teams, confirmed by the media session naming
+  both teams). Fail closed per event: no match = a failed tune, and the game keeps its old route for 10 minutes.
+  YouTube TV's autoplay prompt is answered "Ask later" only. On after `scripts/yttv_espnplus_try.py` passes on a
+  stick with a live ESPN+ event (found, tuned, scrub holds by the label reader). Rule #1 is unchanged.

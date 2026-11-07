@@ -86,6 +86,13 @@ class ChannelMap:
         self.prime_gti: dict[str, str] = {}    # game_id -> Prime GTI
         self.st_slots: dict[str, str] = {}     # game_id -> Sunday Ticket slot code
         self.espn_ids: dict[str, str] = {}     # game_id -> ESPN watch id (ESPN+ events)
+        # tuners.espnplus_yttv (set by the engine): ESPN+ events through YouTube TV (ESPN Unlimited).
+        # A proven per-event watch code wins; else the event is tuned by in-app search. A search that
+        # fails marks the event missed for EVENT_MISS_S, and it keeps its old route (fail closed).
+        self.espnplus_yttv = False
+        self.yttv_events: dict[str, str] = {}  # game_id -> proven YouTube TV watch code of the ESPN+ event
+        self.yttv_event_miss: dict[str, float] = {}   # game_id -> when its search last failed (not saved)
+        self._event_specs: dict = {}           # game_id -> yttv_event.EventSpec (not saved)
         self.st_codes: list[str] = []          # YouTube TV codes of "NFL Sunday Ticket 1..16" (fixed)
         self.link_notes: dict[str, str] = {}   # game_id -> "blacked out here" etc.
         self.load()
@@ -102,6 +109,7 @@ class ChannelMap:
             self.prime_gti = d.get("prime_gti", {})
             self.st_slots = d.get("st_slots", {})
             self.espn_ids = d.get("espn_ids", {})
+            self.yttv_events = d.get("yttv_events", {})
             self.st_codes = d.get("st_codes", [])
 
     def save(self) -> None:
@@ -110,7 +118,7 @@ class ChannelMap:
         tmp.write_text(json.dumps({"codes": self.codes, "overrides": self.overrides,
                                    "team_rules": self.team_rules, "prime_gti": self.prime_gti,
                                    "st_slots": self.st_slots, "espn_ids": self.espn_ids,
-                                   "st_codes": self.st_codes,
+                                   "st_codes": self.st_codes, "yttv_events": self.yttv_events,
                                    "saved": time.time()}, indent=1))
         tmp.replace(self.path)
 
@@ -198,11 +206,46 @@ class ChannelMap:
         return Where(None, "unknown — set it on the phone", "unknown", False)
 
     def _espnplus(self, g: GameState) -> Where:
+        yt = self._espnplus_yttv(g)
+        if yt is not None:
+            return yt
+
         if g.game_id in self.st_slots:
             return Where(f"youtubetv:ev:{self.st_slots[g.game_id]}", "ESPN+ · YouTube TV", "sure", True)
         if g.game_id in self.espn_ids:
             return Where(f"espn:{self.espn_ids[g.game_id]}", "ESPN+ · ESPN app", "likely", True)
         return Where("youtubetv:espnplus", "ESPN+ (event link not found yet)", "likely", False)
+
+    def _espnplus_yttv(self, g: GameState) -> Where | None:
+        """ESPN+ through YouTube TV (tuners.espnplus_yttv), or None = the old route (flag off, the
+        teams can't be told apart by name, or this event's search failed recently)."""
+        if not self.espnplus_yttv:
+            return None
+        code = self.yttv_events.get(g.game_id)
+        if code:
+            return Where(f"youtubetv:ev:{code}", "ESPN+ · YouTube TV", "sure", True)
+        if time.time() - self.yttv_event_miss.get(g.game_id, 0.0) < EVENT_MISS_S:
+            return None
+        from redzone.tuners.yttv_event import event_spec
+        spec = event_spec(g.game_id, g.home.name or "", g.away.name or "")
+        if spec is None:
+            return None
+        self._event_specs[g.game_id] = spec
+        return Where(f"youtubetv:evq:{g.game_id}", "ESPN+ · YouTube TV (by search)", "likely", True)
+
+    def event_missed(self, target: str) -> None:
+        """A search tune of this ESPN+ event failed: back to its old route for EVENT_MISS_S."""
+        app, _, rest = target.partition(":")
+        if app == "youtubetv" and rest.startswith("evq:"):
+            self.yttv_event_miss[rest[4:]] = time.time()
+
+    def yttv_event_ref(self, target: str) -> str | None:
+        """Tuner ref ('event:...') of an ESPN+ event tuned by search, else None."""
+        app, _, rest = target.partition(":")
+        if app != "youtubetv" or not rest.startswith("evq:"):
+            return None
+        spec = self._event_specs.get(rest[4:])
+        return spec.ref() if spec is not None else None
 
     def apply_links(self, g: GameState, found: dict, my_teams: set[str]) -> None:
         """Event links found online (Prime GTIs, ESPN+ watch ids) for one game."""
@@ -250,6 +293,8 @@ class ChannelMap:
         if app == "youtubetv":
             if rest.startswith(("st:", "ev:")):
                 return True
+            if rest.startswith("evq:"):
+                return self.espnplus_yttv and rest[4:] in self._event_specs
             return rest in self.codes or rest in SEARCH_CHANNELS
         if app == "prime":
             return rest.startswith("amzn1.")
@@ -280,6 +325,7 @@ class ChannelMap:
 # What to type for each (the channel table's own search name where it works; "WRAL" finds WRAL
 # news, while "NBC" opens the NBC network page whose Live row is the local station, Nov 3).
 SEARCH_QUERY = {"nbc": "NBC"}
+EVENT_MISS_S = 600.0   # an ESPN+ event whose YouTube TV search failed keeps its old route this long
 SEARCH_CHANNELS = frozenset({"nbcsn", "nbc"})   # both proven on the stick (Nov 3). Not yet: NHL Network (not in this lineup: Sports Plus add-on)
 
 YTTV_LINK = re.compile(r"tv\.youtube\.com/watch/([A-Za-z0-9_-]{11})")
@@ -313,6 +359,8 @@ def describe(target: str | None) -> str:
     if app == "youtubetv":
         if rest.startswith("st"):
             return "Sunday Ticket"
+        if rest.startswith("evq:"):
+            return "ESPN+ · YouTube TV (by search)"
         return f"{PRETTY.get(rest, rest.upper())} · YouTube TV"
     if app == "prime":
         return {"leaguepass": "NBA League Pass · Prime", "monumental": "Monumental · Prime"}.get(rest, "Prime Video")
