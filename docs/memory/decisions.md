@@ -1309,3 +1309,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   load to 18-21 and starved the app during live games): **during games, never run the full test suite on the Mac.**
   Run it elsewhere (CI, the integrator's cloud run) and deploy a commit that already passed there. The 1:10-2:50 PM
   stall was mostly the Mac in clamshell sleep on battery (~56 of 88 min dead, sticks dropped on every wake).
+- 2026-11-07 (Nick 12:40 PM live report: UNC@CONN stuck in the end-of-Q1 ads, leave gate said "no fresh data for
+  103-128s" and "delay not calibrated yet"): **new `decider.leave.quiet_break` (enabled: true, floor_s
+  {period_end: 120, score: 40})**. When the newest entry on a game is a period end / 0:00 clock, or a score in a
+  stop-start sport, and nothing newer has arrived, the leave gate treats it as an official stoppage: leavable from
+  seen + mu + 2 sigma + 3 s to seen + floor + mu - 2 sigma - tune_s, ahead of the stale-data and uncalibrated rules.
+  enabled: false = old behavior; read every poll, so a settings change applies to games already on. Opt-in
+  `near_end_clock_s` (0 = off) guesses the clock ran out when the last play left <= N s before a quarter break
+  (not Q4) and the feed has been silent near_end_quiet_s; today's UNC@CONN data stopped at 0:22 of Q1 with no
+  period end, so only this opt-in would have fired there.

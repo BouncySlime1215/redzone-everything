@@ -335,7 +335,10 @@ class Decider:
             if self._pick_on(league):
                 from redzone.noggin.pick import LiveGame
                 tl.live = LiveGame(league, game_id, "")
-        return self.timelines[game_id]
+        tl = self.timelines[game_id]
+        # [quiet break] read every poll so a /api/settings change applies to games already on
+        tl.quiet_cfg = _config.for_league(self.cfg, "decider.leave.quiet_break", league.value, None)
+        return tl
 
     def _pick_on(self, league: League) -> bool:
         """[noggin PICK] on (or in shadow) for this league, with a model to run (PICK itself, or the

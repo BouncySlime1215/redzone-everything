@@ -341,6 +341,16 @@ decider:
     # can only be left while start + floor + delay hasn't passed. NBA end of a quarter, fit nights: min 148 s
     # (103 breaks, 7 nights; valid 34 breaks, min 148). Candidate {end_period: 120}, OFF until graded.
     break_floor_s: {}
+    # [quiet break, Nick Nov 7 12:40] the data on the game you're watching went quiet right after a period
+    # end / 0:00 clock / a score (stop-start sports): during the ad the feed logs nothing, and the stale-data
+    # and uncalibrated-delay rules blocked leaving exactly then. Treat that entry as an official stoppage:
+    # leavable from when it has surely aired until floor_s[kind] after it (same rule as a logged break with
+    # no restart in the data). Ends the moment anything newer is logged. enabled: false = old behavior.
+    quiet_break:
+      enabled: true
+      floor_s: {period_end: 120, score: 40}   # NFL END_PERIOD floor is 120 (p1 171 s); a PAT/kickoff follows a score
+      near_end_clock_s: 0    # opt-in GUESS: last play left <= this many s before a quarter break and the
+      near_end_quiet_s: 60   # feed is silent this long -> assume the clock ran out (0 = off)
   dwell:                   # [EXP-213, RC8 switch count] stay at least min_s on a game before an OPTIONAL switch
     min_s: 0               # 0 = off. Only these kinds wait; crunch, ended, home, return, start, user never do
     kinds: [break_visit, chase, better, drive, live]
