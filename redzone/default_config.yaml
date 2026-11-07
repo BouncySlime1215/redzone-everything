@@ -609,6 +609,10 @@ yttv_seek:                 # [YTTV scrub buffer, item 1] enter the time-shift bu
   overlay_wait_s: 1.3      # after CENTER or a LEFT, wait this long before reading the overlay (live Nov 6: 0.8 too short)
   open_tries: 4            # probe LEFT, no scrub label = close, reopen, retry; fail closed after this many (tune banner)
   reopen_wait_s: 1.5       # between closing and reopening the overlay
+  probe_key: RIGHT         # the probe at the live edge: RIGHT lands on the bar without moving the pinned knob (8/8),
+                           # LEFT only reveals the label there too (6/6, same landings; Nick, Nov 7). RIGHT is the default
+  topup_max: 1             # a knob one whole step short before the commit (a lost press) gets this many more LEFTs
+  topup_tol_s: 2           # ...only when it is one step short within this, and that LEFT then moves one step within this
   reset_channel: ""        # a stick that may be behind on a channel goes through this one to get back to live (a
                            # same-channel deep link does not reset it; Nick, Nov 7). "" = any other coded channel
 
@@ -642,15 +646,16 @@ prime_pause:               # [Prime buffer] enter the time-shift buffer on a HID
 join:                      # [Join API] put a HIDDEN stick a chosen time behind live, predict, measure, log the error
                            # (redzone/tuners/join.py; overseer's 9 label-measured runs, Nov 7). OFF: the caller checks it.
   enabled: false
-  yttv_step_s: 15          # one LEFT = 15 s: YouTube TV targets are steps of 15 s (never hold the overlay in between)
-  yttv_n_offset_s: 10      # n = round((T - before - 10) / 15) LEFTs (Nick's measured rule)
-  yttv_lead_s: 11.7        # predicted landing = before + 15 n + this (9 runs: T - 3.3 s on average)
+  yttv_step_s: 15          # one LEFT moves the knob 15 s (the knob checks; never hold the overlay in between)
+  yttv_left_s: 16.8        # ... but the landing grows 16.8 s per real LEFT k (each adds ~1.4-1.8 s of frozen overlay;
+                           # Nick's depth sweep Nov 7, k = 1, 2, 4, 6 within 1 s). k = round((T - before - 28.5) / 16.8), >= 1
+  yttv_lead_s: 21.0        # predicted landing = before + 16.8 k + this + yttv_read_s (21.0 + 7.5 = the sweep's 28.5)
   yttv_err_s: 3            # expected +- error of a YouTube TV join
   prime_bias_s: 0          # predicted landing = before + hold + this (Prime pause, ~1-2 s accurate)
   prime_err_s: 2           # expected +- error of a Prime join
   max_s: 150               # never join further behind live
   yttv_read_s: 7.5         # the label read that measures a join freezes ~7.5 s and its reading includes that: predicted
-                           # = before + 15 n + lead + this (Nick Nov 7: measured - predicted +5.9, +6.5, +6.5, +7.8 without it)
+                           # = before + 16.8 k + lead + this (Nick Nov 7: measured - predicted +5.9, +6.5, +6.5, +7.8 without it)
   watchdog:                # [join watchdog, Nick Nov 7 item 1] verify every entry on the label / timecode (join_watchdog.py)
     enabled: false         # OFF: control's scrub entry and watched_join check it
     margin_s: {youtubetv: 6, prime: 4}            # |read - predicted| allowed (9 label runs: -4.4..+4.9; Prime +-1-2)
@@ -679,7 +684,7 @@ join:                      # [Join API] put a HIDDEN stick a chosen time behind 
     clip_k: 2              # each residual clipped to parent +- 2 x expected error
     shift_n: 3             # newest 3 joins all off the same side by > shift_s -> SHIFT alert (canary + night report)
     shift_s: 5
-    max_shift_s: {youtubetv: 5, prime: 3}   # calibrated value stays within shipped +- this (11.7 +- 5, 0 +- 3)
+    max_shift_s: {youtubetv: 5, prime: 3}   # calibrated value stays within shipped +- this (21.0 +- 5, 0 +- 3)
     err_min_s: 1
     err_max_s: 6
     edge_prior_s: 25.9     # D_edge of an on-time YouTube TV channel (Nov 7), stats only

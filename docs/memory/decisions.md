@@ -1259,3 +1259,26 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   check, new `join.watchdog.target_gross_s` **{youtubetv: 20, prime: 8}** (nearest step up to 8.4 s from the target;
   T30's one-LEFT floor lands ~46 s). Without a plan (control's scrub entry, the re-probe) target_band_s still applies.
   Flags off.
+- 2026-11-07 (overseer's canary on 5f80eb94, run 1: espn target 60, 3 presses, landed 52.12 vs 64.2 predicted, one
+  15 s step short, row said ok): lost-press guard in `yttv_seek` (flag still off). At the live edge the probe is now
+  a RIGHT (`probe_key: RIGHT`), which shows the scrub label without moving the knob (pinned at live), so the knob
+  check covers every LEFT; behind live, or if RIGHT shows no label, the LEFT probe is used as before. Before the
+  commit, a knob one whole step short gets one more LEFT (`topup_max: 1`), a re-read and the same check; anything
+  else off still fails closed. The watchdog's off-target re-seek (#401) stays as the backstop.
+- 2026-11-07 (overseer's #403 stick run, 0/10 via the watchdog): **`yttv_seek.probe_key` back to LEFT** (8/8 on
+  5f80eb94); RIGHT is opt-in. Mode B: with the RIGHT probe all LEFTs move, landing one step deeper than the shared
+  join predictor (78 vs 64.2), because the LEFT probe at the live edge usually only reveals the label. A fixed press
+  count after a RIGHT probe now sends n-1 LEFTs, the same motion as the LEFT probe. Mode A ("knob moved 0s", 7/10)
+  is not explained yet; its reason now carries both labels for a trace. The top-up fires only for a knob exactly one
+  step short (+-2 s) and only if that extra LEFT moves exactly one step; a 10 s app or a label reset still fails closed.
+- 2026-11-07 (overseer's 12f405ab runs: RIGHT probe 8/8, mean 63.0; LEFT probe 6/6, mean 62.1; predicted 64.2):
+  **`yttv_seek.probe_key` is RIGHT again** (flag `yttv_seek.enabled` still off). Model fixed: at the live edge
+  NEITHER probe moves the knob (the LEFT only reveals the label), so a fixed count n moves n-1 steps on both and the
+  join predictor (yttv_lead_s 11.7 + yttv_read_s 7.5) is unchanged. Behind live a LEFT probe is still assumed to
+  move one step (unmeasured). Rig note in runbooks/join-watchdog.md: retune before every run.
+- 2026-11-07 (overseer's depth sweep, ESPN, #403 RIGHT probe, retuned before each join: k = 1, 2, 4, 6 real LEFTs
+  landed 45.3, 62.1, 95.7, 129.3 on average; T30 sent zero LEFTs and landed 10-14 s): **YouTube TV join model is
+  16.8 s per real LEFT** (`join.yttv_left_s: 16.8`, `join.yttv_lead_s` 11.7 -> 21.0, `yttv_n_offset_s` removed;
+  `join.enabled` still off). predicted = before + 16.8 k + 21.0 + 7.5 read; k = round((T - before - 28.5) / 16.8),
+  at least 1, so the shallowest scrub join is ~45 s and achievable() says so. Each LEFT also keeps the frozen overlay
+  up ~1.4-1.8 s; 15 n + 19.2 drifted -3.9 .. +4.9 s with depth (the T120 off_target). Calibration converts old rows.

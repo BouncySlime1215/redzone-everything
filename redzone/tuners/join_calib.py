@@ -2,10 +2,10 @@
 bias that updates itself from data/joins.jsonl, inside hard bounds. OFF (join.calib.enabled false).
 
 What is calibrated (the only thing a join controls):
-  * YouTube TV: the LEAD of a scrub. A join of n LEFTs from `before` lands at before + 15 n + lead. The shipped lead
-    is 11.7 s (Nick's 9 label-measured runs, Nov 7: errors -4.3 -3.9 -5.3 -1.6 -4.6 -4.6 -7.7 +1.0 +1.6 at targets
-    of 60/75/90 -> T - 3.3 s). The calibrated lead moves Nick's n rule with it: n = round((T - before - n_offset')
-    / 15), n_offset' = n_offset + (lead' - lead), so at the shipped lead the plan is exactly Nick's rule.
+  * YouTube TV: the LEAD of a scrub. A join of k real LEFTs from `before` lands at before + 16.8 k + lead + read
+    (Nick's depth sweep, Nov 7 13:48Z: 16.8 k + 28.5 with the label read's 7.5 s, k = 1..6 within 1 s; shipped lead
+    21.0). The plan picks k = round((T - before - lead - read) / 16.8), at least 1, so a calibrated lead moves k with
+    it. Rows logged on the old model (15 n + 11.7, n presses = n - 1 real LEFTs, no `lefts` field) are converted.
   * Prime: the BIAS of a pause. A hold of h s from `before` lands at before + h + bias; the calibrated bias shortens
     or lengthens the hold so the landing is the target (shipped bias 0, accurate to ~1-2 s).
 
@@ -61,7 +61,7 @@ CALIB_DEFAULTS = {
     "edge_max_s": 45.0,
     "use_canary": True,    # the daily canary's joins count (they are real joins on the hidden stick)
 }
-SHIPPED = {"youtubetv": ("yttv_lead_s", 11.7, "yttv_err_s", 3.0), "prime": ("prime_bias_s", 0.0, "prime_err_s", 2.0)}
+SHIPPED = {"youtubetv": ("yttv_lead_s", 21.0, "yttv_err_s", 3.0), "prime": ("prime_bias_s", 0.0, "prime_err_s", 2.0)}
 _ADDR = re.compile(r"\d+\.\d+\.\d+\.\d+|:\d{2,5}$")
 
 
@@ -106,6 +106,12 @@ def observation(row: dict, cfg=None) -> float | None:
         # error carries it. Take it off, or the lead learns the read and the plan (which now adds it) counts it twice.
         from redzone.tuners.join import _cfg as _jcfg
         lead -= float(_jcfg(cfg, "yttv_read_s"))
+    if app == "youtubetv" and row.get("method") == "scrub" and row.get("lefts") is None and row.get("presses"):
+        # rows logged before the depth fit (Nick's sweep, Nov 7) used landed = 15 n + lead + read with n presses,
+        # i.e. n - 1 real LEFTs. The same landing on today's model (16.8 per LEFT): lead + 15 n - 16.8 (n - 1).
+        from redzone.tuners.join import _cfg as _jcfg
+        n = int(row["presses"])
+        lead += float(_jcfg(cfg, "yttv_step_s")) * n - float(_jcfg(cfg, "yttv_left_s")) * max(0, n - 1)
     return lead
 
 

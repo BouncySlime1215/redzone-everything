@@ -14,16 +14,20 @@ enter_buffer(stick, seconds, ...) therefore:
   2. CENTER (a LIVE/title banner sits up for ~20 s after a tune: close and reopen until the CC button shows), then reads the screen (screencap -> local OCR -> the PNG deleted at once; numbers and labels only) and
      goes on only if the overlay is up with the PROGRESS BAR focused: a scrub label MM:SS above the knob and no row
      button (HD, CC, Networks, ...) holding focus. Anything else: fail closed;
-  3. LEFT x N, then reads again: the scrub label must have moved
-     back N x step_s (+- step_tol_s). Otherwise: fail closed;
+  2b. the probe that puts focus on the bar and shows the label: at the live edge a RIGHT (probe_key, default) or a
+     LEFT; neither moves the knob there (Nick, Nov 7: RIGHT 8/8, LEFT 6/6, same landings), so the label it shows is
+     the start point. Behind live only a LEFT probe is used, and it is assumed to move one step;
+  3. LEFT x N, then reads again: the scrub label must have moved back N x step_s (+- step_tol_s). Exactly one step
+     short = a lost press: one more LEFT (topup_max), which must move one step. Otherwise: fail closed. A fixed
+     `presses` count (the join plan's n) sends n - 1 LEFTs after the probe, the motion its predictor is fit to;
   4. CENTER commits, then the player must report PLAYING again (its state only, never its position);
   5. behind_live_s: from the label reader if one is given (item 2, the overlay time label vs the wall clock), else
      the estimate behind_before + N x step_s + the seconds the overlay was up, with `measured` False.
   The picture stands still while the overlay is up (Nick's 90 s run, Nov 7: asked 90, 6 LEFTs, 37.6 s -> 130.8 s
-  behind), so N is planned after the probe from what is left: seconds - one step - time in the overlay so far - one
-  more read. N is capped by max_back_s / step_s.
+  behind), so N is planned after the probe from what is left: seconds - the probe's step (0 at the live edge) - time
+  in the overlay so far - one more read. N is capped by max_back_s / step_s.
 "Fail closed" = no commit; the stick is re-linked to the live edge by the caller-supplied relink() (a deep link
-lands at live +-0.5 s), and the result says why. The hidden check runs before every key batch: a stick that
+lands at live +-0.5 s, but only from ANOTHER channel: #391 behind_on), and the result says why. The hidden check runs before every key batch: a stick that
 became visible is never pressed again, and it is not re-linked either (that would change the screen).
 
 Rule #1 is unchanged: this only ever moves a HIDDEN stick, and a flip still waits for a dead ball. Flag
@@ -44,7 +48,7 @@ log = logging.getLogger("redzone.yttv_seek")
 
 YTTV_PKG_HINT = "youtube.tv"
 SCRUB_DEFAULTS = {"enabled": False, "step_s": 15.0, "max_back_s": 150.0, "step_tol_s": 6.0,
-                  "key_gap_s": 0.35, "open_tries": 4, "boundary_retries": 1, "reopen_wait_s": 1.5, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 1.3}
+                  "key_gap_s": 0.35, "open_tries": 4, "probe_key": "RIGHT", "topup_max": 1, "topup_tol_s": 2.0, "boundary_retries": 1, "reopen_wait_s": 1.5, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 1.3}
 
 # The player row under the bar (#356 ROW_BUTTON labels seen so far). Focus on any of these = NOT the bar.
 ROW_BUTTONS = ("hd", "cc", "networks", "multiview", "episodes", "more to watch", "stats", "key plays", "scores",
@@ -277,6 +281,12 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     # has the CC button), but keys do nothing there. The scrub label appears only after a LEFT lands on the bar, so
     # LEFT is the probe: no label means nothing moved, so close, reopen and probe again. Fail closed after open_tries.
     before = None
+    # Steps the probe itself moved the knob. [Nick's 12f405ab runs, Nov 7: RIGHT 8/8 and LEFT 6/6 landed the same]
+    # at the live edge NEITHER probe moves it (a LEFT there only reveals the label); behind live a LEFT probe is
+    # still assumed to move one step (unmeasured).
+    probe_moved = 1
+    left_probe = True
+    at_live = behind_before < step / 2
     blind_closes = 0      # CENTERs sent after a LEFT whose result we could not read: each may have committed a step
     for attempt in range(int(_cfg(cfg, "open_tries"))):
         opened = await read_overlay(stick)
@@ -285,6 +295,23 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
         if not still_hidden():
             return await _fail(res, "stick became visible before the scrub", relink, still_hidden, pressed=True)
         if opened is not None and opened.overlay:
+            # [lost press, Nick's canary Nov 7: 3 presses, landed one 15 s step short, ok:true] A LEFT probe's own
+            # step can't be checked (no label before it). At the live edge a RIGHT probe lands on the bar without
+            # moving the knob (it can't go past live), so the label it shows is the start point and EVERY LEFT is
+            # checked. No label after it: the LEFT probe, as before.
+            if at_live and str(_cfg(cfg, "probe_key")).upper() == "RIGHT":
+                if not await _keys(stick, "KEYCODE_DPAD_RIGHT", 1, 0.0):
+                    return await _fail(res, "RIGHT not sent", relink, still_hidden, pressed=True)
+                await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
+                r0 = clock()
+                before = await read_overlay(stick)
+                read_cost = clock() - r0
+                if before is not None and before.bar_focused:
+                    probe_moved, left_probe = 0, False
+                    res.steps.append("RIGHT probe (knob at the live edge)")
+                    break
+                if before is not None and before.row_focused:
+                    return await _fail(res, "focus guard: a row button has focus", relink, still_hidden, pressed=True)
             if not await _keys(stick, "KEYCODE_DPAD_LEFT", 1, 0.0):
                 return await _fail(res, "LEFT not sent", relink, still_hidden, pressed=True)
             res.presses = 1
@@ -293,6 +320,7 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
             before = await read_overlay(stick)
             read_cost = clock() - r0
             if before is not None and before.bar_focused:
+                probe_moved, left_probe = (0 if at_live else 1), True
                 break
             before = None
             res.presses = 0
@@ -306,26 +334,57 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     res.steps.append(f"bar focused at {before.scrub_s:.0f}s")
     # Plan the rest so that LEFTs + time in the overlay land on the target: the probe gave one step, the overlay
     # has been up (now - t_open), and the check read still to come costs about what the probe read did.
-    left_s = seconds - step - (clock() - t_open) - read_cost - float(_cfg(cfg, "overlay_wait_s"))
+    left_s = seconds - probe_moved * step - (clock() - t_open) - read_cost - float(_cfg(cfg, "overlay_wait_s"))
     if fixed_n is None:
-        n = 1 + max(0, min(n - 1, int(round(left_s / (step + gap)))))
+        n = probe_moved + max(0, min(n - probe_moved, int(round(left_s / (step + gap)))))
     res.steps.append(f"plan: {n} LEFT(s) ({clock() - t_open:.1f}s in the overlay so far)")
     # 3. the other LEFTs, then the label must have moved back that many steps
     if not still_hidden():
         return await _fail(res, "stick became visible before the scrub", relink, still_hidden, pressed=True)
-    if n > 1 and not await _keys(stick, "KEYCODE_DPAD_LEFT", n - 1, gap):
-        res.presses = n
+    rest = n - probe_moved
+    if fixed_n is not None:
+        # A fixed count n is the join plan's presses = k + 1 (k = JoinPlan.lefts, fit on real LEFTs after the probe,
+        # Nick's depth sweep Nov 7): (n - 1) LEFTs whichever probe ran (at live neither probe moves the knob).
+        rest = max(0, n - 1)
+    if rest > 0 and not await _keys(stick, "KEYCODE_DPAD_LEFT", rest, gap):
+        res.presses = rest + int(left_probe)
         return await _fail(res, "LEFT not sent", relink, still_hidden, pressed=True)
-    res.presses = n
-    res.steps.append(f"LEFT x{n}")
+    res.presses = rest + int(left_probe)
+    res.steps.append(f"LEFT x{rest} after the {'LEFT' if left_probe else 'RIGHT'} probe")
     await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
     after = await read_overlay(stick)
-    want = (n - 1) * step
+    want = rest * step
+    tol = float(_cfg(cfg, "step_tol_s"))
     if after is None or not after.bar_focused or after.scrub_s is None:
         return await _fail(res, "scrub label lost after the LEFTs", relink, still_hidden, pressed=True)
     moved = before.scrub_s - after.scrub_s
-    if abs(moved - want) > float(_cfg(cfg, "step_tol_s")):
-        return await _fail(res, f"knob moved {moved:.0f}s, not {want:.0f}s", relink, still_hidden, pressed=True)
+    # A LEFT that never landed leaves the knob whole steps short: top it up (one LEFT per missing step, at most
+    # topup_max), read again, and only then commit. Anything else off: fail closed as before.
+    tight = float(_cfg(cfg, "topup_tol_s"))
+    for _ in range(int(_cfg(cfg, "topup_max"))):
+        # only a knob exactly ONE step short is a lost press; anything else (a 10 s app, a label reset at a program
+        # boundary, two lost presses) fails closed below, as before
+        if abs((want - moved) - step) > tight:
+            break
+        was = moved
+        if not still_hidden():
+            return await _fail(res, "stick became visible before the top-up", relink, still_hidden, pressed=True)
+        if not await _keys(stick, "KEYCODE_DPAD_LEFT", 1, 0.0):
+            return await _fail(res, "LEFT not sent", relink, still_hidden, pressed=True)
+        res.presses += 1
+        res.steps.append(f"lost press: knob moved {moved:.0f}s of {want:.0f}s, one more LEFT")
+        await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
+        after = await read_overlay(stick)
+        if after is None or not after.bar_focused or after.scrub_s is None:
+            return await _fail(res, "scrub label lost after the top-up", relink, still_hidden, pressed=True)
+        moved = before.scrub_s - after.scrub_s
+        if abs((moved - was) - step) > tight:    # the extra LEFT itself must move exactly one step
+            return await _fail(res, f"knob moved {moved:.0f}s, not {want:.0f}s, and the top-up {moved - was:.0f}s "
+                               f"({before.scrub_s:.0f}s -> {after.scrub_s:.0f}s)", relink, still_hidden, pressed=True)
+    if abs(moved - want) > tol:
+        # the labels go in the reason for a trace (Nick's #403 mode A: "knob moved 0s, not 45s" 7 of 10)
+        return await _fail(res, f"knob moved {moved:.0f}s, not {want:.0f}s ({before.scrub_s:.0f}s -> "
+                           f"{after.scrub_s:.0f}s)", relink, still_hidden, pressed=True)
     res.steps.append(f"knob {after.scrub_s:.0f}s (moved {moved:.0f}s)")
     # 4. commit, then it must play again (state only: the position is wrong after a seek)
     if not still_hidden():
@@ -346,7 +405,7 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     if not playing:
         return await _fail(res, "not playing after the commit", relink, still_hidden, pressed=True)
     # 5. how far behind now
-    res.behind_live_s = behind_before + moved + step + frozen
+    res.behind_live_s = behind_before + moved + probe_moved * step + frozen
     if read_behind is not None:
         try:
             got = await read_behind(stick)

@@ -12,6 +12,8 @@ Checks, in order (each logged; the first failure ends the test, then the stick i
   api          the app answers /api/state                         (down -> FAIL: nothing guards the night)
   idle         no game live, none within soon_s                   (-> deferred, exit 2, nothing touched)
   standby      a stick has role "standby" and is connected        (two-stick mode off / stick offline -> FAIL)
+  channels     data/channels.json exists and has watch codes for both channels (it is gitignored: a scratch
+               worktree has none -> FAIL before any key, also in --dry-run)
   adb          adb connect + shell to that stick                  (adb drop -> FAIL)
   yttv_app     YouTube TV installed on it
   tune_away    tune canary.away_channel: the canary channel's tune is then fresh at the live edge (#391: a
@@ -146,6 +148,9 @@ class Env:
     playing: Callable[[Any], Awaitable[bool]]
     do_join: Callable[..., Awaitable[Any]]              # join.join-like
     make_probe: Callable[[], Any] | None = None          # LabelProbe-like (arm, overlay_reader, __call__)
+    # [Nick's rig note, Nov 7] which channels have no YouTube TV watch code ("" problems = all present), or a sentence
+    # naming what is missing (data/channels.json is gitignored: a scratch worktree has none)
+    missing_codes: Callable[[list[str]], str] | None = None
     push: Callable[[str, str], None] = lambda text, status: None
     journal_path: Path | None = None
     joins_path: Path | None = None
@@ -233,6 +238,10 @@ class Canary:
             return
         self.host = row["host"]
         self.res.stick = _safe(row.get("name") or "")
+        if env.missing_codes is not None:
+            miss = env.missing_codes([str(_c(cfg, "away_channel")), str(_c(cfg, "channel"))])
+            if not self._add("channels", not miss, miss):
+                return
         if dry_run:
             self.res.status, self.res.reason = "PASS", "dry run: preflight only, nothing touched"
             return
@@ -410,6 +419,14 @@ def real_env(cfg, root: Path, api: str) -> Env:
         from redzone.tuners.yttv_label import LabelProbe
         return LabelProbe(cfg)
 
+    def missing_codes(channels: list[str]) -> str:
+        if not chans.path.exists():
+            return (f"{chans.path.relative_to(root) if chans.path.is_relative_to(root) else chans.path} is missing "
+                    "(gitignored): run from the Mac repo, or symlink its data/ into this checkout")
+        gone = [c for c in channels if not chans.codes.get(c)]
+        return f"no YouTube TV watch code for {', '.join(gone)} in data/channels.json" if gone else ""
+
     return Env(fetch_state=fetch_state, make_stick=lambda host: Stick(host=host), tune=tune, playing=playing,
+               missing_codes=missing_codes,
                do_join=join.join, make_probe=make_probe, push=phone_push(root, cfg),
                journal_path=root / "data/canary.jsonl", joins_path=root / "data/joins.jsonl")
