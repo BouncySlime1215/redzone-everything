@@ -1149,3 +1149,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   stands still while the overlay is up (asked 90, 6 LEFTs, 37.6 s -> 130.8 s behind): enter_buffer now plans the
   LEFTs after the probe from what is left (ask - one step - time in the overlay - one more read) and adds the overlay
   time to its estimate.
+- 2026-11-07 (Nick ~1:00 AM stick run; integrator): **yttv_seek.boundary_retries: 1 (new, behind yttv_seek.enabled,
+  which stays off).** A knob check that fails because the label reset at a new program ("knob moved 39s, not 60s")
+  retries the scrub once from the live edge, only after a re-link to live with nothing committed; otherwise it fails
+  closed as before. Merged with #385 + #391 so --label gives measured reads.
