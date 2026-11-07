@@ -63,7 +63,7 @@ def test_knob_offset_applies():
 
 @pytest.mark.parametrize("rows,status", [
     ([], "no_overlay"),
-    (frame(label=None), "no_label"),
+    (frame(label=None), "banner"),   # overlay/banner up, scrubber not focused
     (frame(extra=[o("24:10", 0.7, 0.78)]), "ambiguous"),
     (frame(label="59:00"), "out_of_window"),          # far past a 30-min window
 ])
@@ -182,3 +182,22 @@ def test_label_above_the_preview_card_reads():
     rows = [o("11:04 PM", 0.881, 0.095, w=0.068), o("34:05", 0.214, 0.444, w=0.044), o("88 Multiview", 0.462, 0.889, w=0.1)]
     r = L.parse_label(rows, 1794024000.0)
     assert r.ok and r.label_s == 2045
+
+
+def test_post_tune_banner_is_its_own_status():
+    """Live Nov 6 (#377): a LIVE/title banner with CC but no scrub label -> 'banner', no numbers."""
+    rows = [o("LIVE", 0.05, 0.62, w=0.03), o("Kansas at MTSU", 0.07, 0.66, w=0.2), o("CC", 0.3, 0.89),
+            o("11:04 PM", 0.881, 0.095, w=0.068)]
+    r = L.parse_label(rows, 1794024000.0)
+    assert r.status == "banner" and r.label_s is None
+    assert L.parse_label([o("Kansas at MTSU", 0.07, 0.66, w=0.2)], 1794024000.0).status == "no_overlay"
+
+
+def test_pair_with_no_program_window_and_left_probe():
+    """No window on screen live: behind_from_pair still works; each read taken one LEFT back (offset 15)."""
+    t0 = 1794024000.0
+    live = L.parse_label([o("34:05", 0.214, 0.444)], t0, knob_offset_s=15)           # at the live head
+    assert live.ok and live.prog_start is None and live.ui_delay_s is None and live.label_s == 2060
+    # 4 LEFTs committed (60 s back), 100 s later the probe shows the playhead -15 s
+    later = L.parse_label([o("34:50", 0.214, 0.444)], t0 + 100, knob_offset_s=15)
+    assert L.behind_from_pair(live, later) == 55.0
