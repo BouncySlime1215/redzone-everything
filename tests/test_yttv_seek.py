@@ -83,7 +83,7 @@ def test_scrub_enters_the_buffer_with_four_lefts():
     assert r.ok and r.committed and r.presses == 4, r
     assert s.keys == ["KEYCODE_DPAD_CENTER"] + ["KEYCODE_DPAD_LEFT"] * 4 + ["KEYCODE_DPAD_CENTER"]
     assert s.committed_back == 60.0
-    assert r.behind_live_s == 85.0 and not r.measured and r.behind_s is None   # estimate, never media_session
+    assert abs(r.behind_live_s - 85.0) < 0.5 and not r.measured and r.behind_s is None   # estimate, never media_session
 
 
 def test_label_reader_is_the_truth_when_given():
@@ -220,3 +220,27 @@ def test_a_blind_probe_close_is_fine_with_a_label_read():
         return 75.2
     r = run(s, 60.0, read_overlay=_misses_probe_once(s), read_behind=label)
     assert r.ok and r.measured and r.behind_s == 75.2
+
+
+class Wall:
+    def __init__(self):
+        self.t = 0.0
+
+    def __call__(self):
+        return self.t
+
+
+def test_time_in_the_overlay_is_planned_and_counted():
+    """Nick's 90 s run (Nov 7): the picture stands still while the overlay is up, so asked 90 with 6 LEFTs and 37.6 s
+    in the overlay ended 130.8 s behind. Each OCR read here costs 8 s; the stick ends near the ask, not ask + took."""
+    wall, s = Wall(), FakeYTTV(label0=3600.0)
+    base = reader(s)
+
+    async def slow_read(st):
+        wall.t += 8.0
+        return await base(st)
+    r = asyncio.run(ys.enter_buffer(s, 90.0, cfg=CFG, pkg=YT, read_overlay=slow_read, clock=wall))
+    frozen = 24.0                                         # three reads while the overlay was up
+    assert r.ok and r.presses == 4, r                     # not 6: 4 x 15 + 24 s in the overlay = 84, nearest to 90
+    assert abs((s.committed_back + frozen) - 90.0) <= 7.5
+    assert abs(r.behind_live_s - (s.committed_back + frozen)) < 0.01

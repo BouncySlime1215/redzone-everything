@@ -1438,6 +1438,26 @@ class Controller:
             self._resume_task.cancel()
         self._cancel_refresh()
 
+    async def _reset_through_other(self, stick: Stick, target: str, tuner) -> TuneResult | None:
+        """Tune `stick` to another channel of the same app so the next tune of `target` starts at the live edge.
+        None = done (go on with the tune); a failed TuneResult = no reset was possible, so no tune either.
+        The channel: yttv_seek.reset_channel if set, else any other channel with a watch code."""
+        app = target.split(":", 1)[0]
+        other = str(self.cfg.get("yttv_seek.reset_channel", "") or "")
+        if not other and app == "youtubetv":
+            here = target.split(":", 1)[1] if ":" in target else ""
+            other = next((k for k in sorted(self.channels.codes) if k != here), "")
+        other_t = f"{app}:{other}" if other and ":" not in other else other
+        _, ref = self._ref(other_t) if other_t else ("", "")
+        if not ref or other_t == target:
+            return TuneResult(False, target, 0.0, [], "may be behind live on this channel; no other channel to reset "
+                              "through (yttv_seek.reset_channel)", screen_changed=False)
+        res = await tuner.tune(stick, ref, other_t)
+        if not res.ok:
+            return TuneResult(False, target, res.took, list(res.steps), f"reset through {other_t} failed: {res.error}")
+        stick.behind_on = None
+        return None
+
     def _ref(self, target: str) -> tuple[str, str]:
         app, _, ref = target.partition(":")
         if app == "youtubetv":
@@ -1466,9 +1486,17 @@ class Controller:
             # Hung stick: fail now (nothing sent) instead of waiting out every adb timeout again.
             return TuneResult(False, target, 0.0, [], f"{STICK_HUNG}: {stick.host}, retry in {br.retry_in():.0f}s",
                               screen_changed=False)
+        if getattr(stick, "behind_on", None) == target:
+            # [Nick's 90 s run, Nov 7] this stick may be behind live on this very channel, and a same-channel deep
+            # link does not reset that: go through another channel first, or fail (never claim a live edge).
+            reset = await self._reset_through_other(stick, target, tuner)
+            if reset is not None:
+                return reset
         self._tuned_on = stick.host
         self.tuned_at[stick.host] = time.time()
         res = await tuner.tune(stick, ref, target, **({"may_cut": may_cut} if may_cut is not None else {}))
+        if res.ok and getattr(stick, "behind_on", None) not in (None, target):
+            stick.behind_on = None   # it plays another channel now; that one starts at its live edge
         if not res.ok and br is not None and br.state != "closed" and not res.error.startswith(STICK_HUNG):
             # The tune died because the stick hung, not because of the channel: say so, so the
             # target isn't cooled down or marked unplayable for a stick fault.
@@ -3022,6 +3050,9 @@ class Controller:
                 log.exception("scrub: enter_buffer(%s) on %s", target, stick.host)
                 why = f"crashed: {e}"
         took = round(time.monotonic() - t0, 1)
+        if res is None or getattr(res, "presses", 1) or getattr(res, "committed", True) or why.startswith("crashed"):
+            if not why.startswith("backoff"):
+                stick.behind_on = target   # keys may have moved it: the next tune of target must reset first
         behind = getattr(res, "behind_s", None) if res is not None and getattr(res, "ok", False) else None
         if behind is not None and getattr(res, "measured", True) is False:
             behind = None   # an estimate (behind_before + presses x 15 s), not a label reading: never trusted

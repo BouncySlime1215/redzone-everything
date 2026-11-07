@@ -1142,3 +1142,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   checks the destination's delayed picture for a dead ball (NBA isn't cut-timed; the whistle wait runs before the
   22.5 s+ scrub), so live would land later than the sim's already-lenient re-check. EXP-610 pairs the live fix
   (clock-stopped dead ball on the delayed picture, behind the scrub flag) with the same rule in the replay.
+- 2026-11-07 (overseer's 90 s stick test): two scrub fixes, flags still off. (1) A same-channel deep link does NOT
+  bring a stick that is behind back to live (a stick left behind measured 23 s after asking 90). A stick the scrub
+  pressed keys on is marked `behind_on`; the next tune of that same target first tunes another channel
+  (`yttv_seek.reset_channel`, "" = any other coded channel), or fails without claiming a live edge. (2) The picture
+  stands still while the overlay is up (asked 90, 6 LEFTs, 37.6 s -> 130.8 s behind): enter_buffer now plans the
+  LEFTs after the probe from what is left (ask - one step - time in the overlay - one more read) and adds the overlay
+  time to its estimate.

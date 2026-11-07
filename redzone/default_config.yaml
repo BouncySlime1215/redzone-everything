@@ -573,6 +573,8 @@ yttv_seek:                 # [YTTV scrub buffer, item 1] enter the time-shift bu
   overlay_wait_s: 1.3      # after CENTER or a LEFT, wait this long before reading the overlay (live Nov 6: 0.8 too short)
   open_tries: 4            # probe LEFT, no scrub label = close, reopen, retry; fail closed after this many (tune banner)
   reopen_wait_s: 1.5       # between closing and reopening the overlay
+  reset_channel: ""        # a stick that may be behind on a channel goes through this one to get back to live (a
+                           # same-channel deep link does not reset it; Nick, Nov 7). "" = any other coded channel
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true
