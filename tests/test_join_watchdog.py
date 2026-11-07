@@ -282,7 +282,7 @@ def test_control_watchdog_records_on_the_fallback_ladder_when_present(scrub):
     c, tuner, hid, calls, result, behind = scrub
     c.cfg.update({"join": {"watchdog": {"enabled": True}}})
     rows = []
-    c.ladder = NS(record=lambda *a: rows.append(a))
+    c.ladder = NS(enabled=False, record=lambda *a: rows.append(a))   # #397: control always has a ladder
     run(_preload(c, "youtubetv:fox"))           # Res() default 67.0 for B 60: verified
     assert rows and rows[0][2:4] == ("buffered", True) and rows[0][5] == 67.0 and rows[0][6] is True
 
