@@ -71,6 +71,7 @@ class Engine:
         self.cfg = cfg or Config()
         self.store = store or Store()
         self.channels = ChannelMap()
+        self.channels.local_search = bool(self.cfg.get("tuners.yttv_local_search", False))
         self.fetcher = Fetcher()
         # [NHL primary] api-web's live play-by-play owns NHL stoppages while it's fresh.
         self._nhl_primary = bool(for_league(self.cfg, "sources.nhl_primary", "nhl", False))
