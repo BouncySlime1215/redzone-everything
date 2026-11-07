@@ -71,7 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Prime POR@LAL would not start on .181: app switch aborted 'playback not confirmed', Watch press did nothing. Prime seek untested. Sticks back on YouTube TV. Auto-switching paused for dev.
+PRIME CAN BE BUFFERED: on .150, a 60 s pause sat 67.7 s behind live on the epoch clock with Prime's own timecode advancing in real time. Unlike YouTube TV, pause is the tool on Prime; rewind is continuous and overshoots (214 s, 665 s).
+This removes the main reason NBA regrades failed. Replay should now model Prime pause entry.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
