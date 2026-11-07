@@ -1253,3 +1253,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   count after a RIGHT probe now sends n-1 LEFTs, the same motion as the LEFT probe. Mode A ("knob moved 0s", 7/10)
   is not explained yet; its reason now carries both labels for a trace. The top-up fires only for a knob exactly one
   step short (+-2 s) and only if that extra LEFT moves exactly one step; a 10 s app or a label reset still fails closed.
+- 2026-11-07 (overseer's 12f405ab runs: RIGHT probe 8/8, mean 63.0; LEFT probe 6/6, mean 62.1; predicted 64.2):
+  **`yttv_seek.probe_key` is RIGHT again** (flag `yttv_seek.enabled` still off). Model fixed: at the live edge
+  NEITHER probe moves the knob (the LEFT only reveals the label), so a fixed count n moves n-1 steps on both and the
+  join predictor (yttv_lead_s 11.7 + yttv_read_s 7.5) is unchanged. Behind live a LEFT probe is still assumed to
+  move one step (unmeasured). Rig note in runbooks/join-watchdog.md: retune before every run.

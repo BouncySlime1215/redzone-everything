@@ -14,16 +14,20 @@ enter_buffer(stick, seconds, ...) therefore:
   2. CENTER (a LIVE/title banner sits up for ~20 s after a tune: close and reopen until the CC button shows), then reads the screen (screencap -> local OCR -> the PNG deleted at once; numbers and labels only) and
      goes on only if the overlay is up with the PROGRESS BAR focused: a scrub label MM:SS above the knob and no row
      button (HD, CC, Networks, ...) holding focus. Anything else: fail closed;
-  3. LEFT x N, then reads again: the scrub label must have moved
-     back N x step_s (+- step_tol_s). Otherwise: fail closed;
+  2b. the probe that puts focus on the bar and shows the label: at the live edge a RIGHT (probe_key, default) or a
+     LEFT; neither moves the knob there (Nick, Nov 7: RIGHT 8/8, LEFT 6/6, same landings), so the label it shows is
+     the start point. Behind live only a LEFT probe is used, and it is assumed to move one step;
+  3. LEFT x N, then reads again: the scrub label must have moved back N x step_s (+- step_tol_s). Exactly one step
+     short = a lost press: one more LEFT (topup_max), which must move one step. Otherwise: fail closed. A fixed
+     `presses` count (the join plan's n) sends n - 1 LEFTs after the probe, the motion its predictor is fit to;
   4. CENTER commits, then the player must report PLAYING again (its state only, never its position);
   5. behind_live_s: from the label reader if one is given (item 2, the overlay time label vs the wall clock), else
      the estimate behind_before + N x step_s + the seconds the overlay was up, with `measured` False.
   The picture stands still while the overlay is up (Nick's 90 s run, Nov 7: asked 90, 6 LEFTs, 37.6 s -> 130.8 s
-  behind), so N is planned after the probe from what is left: seconds - one step - time in the overlay so far - one
-  more read. N is capped by max_back_s / step_s.
+  behind), so N is planned after the probe from what is left: seconds - the probe's step (0 at the live edge) - time
+  in the overlay so far - one more read. N is capped by max_back_s / step_s.
 "Fail closed" = no commit; the stick is re-linked to the live edge by the caller-supplied relink() (a deep link
-lands at live +-0.5 s), and the result says why. The hidden check runs before every key batch: a stick that
+lands at live +-0.5 s, but only from ANOTHER channel: #391 behind_on), and the result says why. The hidden check runs before every key batch: a stick that
 became visible is never pressed again, and it is not re-linked either (that would change the screen).
 
 Rule #1 is unchanged: this only ever moves a HIDDEN stick, and a flip still waits for a dead ball. Flag
@@ -44,7 +48,7 @@ log = logging.getLogger("redzone.yttv_seek")
 
 YTTV_PKG_HINT = "youtube.tv"
 SCRUB_DEFAULTS = {"enabled": False, "step_s": 15.0, "max_back_s": 150.0, "step_tol_s": 6.0,
-                  "key_gap_s": 0.35, "open_tries": 4, "probe_key": "LEFT", "topup_max": 1, "topup_tol_s": 2.0, "boundary_retries": 1, "reopen_wait_s": 1.5, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 1.3}
+                  "key_gap_s": 0.35, "open_tries": 4, "probe_key": "RIGHT", "topup_max": 1, "topup_tol_s": 2.0, "boundary_retries": 1, "reopen_wait_s": 1.5, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 1.3}
 
 # The player row under the bar (#356 ROW_BUTTON labels seen so far). Focus on any of these = NOT the bar.
 ROW_BUTTONS = ("hd", "cc", "networks", "multiview", "episodes", "more to watch", "stats", "key plays", "scores",
@@ -277,7 +281,11 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     # has the CC button), but keys do nothing there. The scrub label appears only after a LEFT lands on the bar, so
     # LEFT is the probe: no label means nothing moved, so close, reopen and probe again. Fail closed after open_tries.
     before = None
-    probe_moved = 1       # LEFT steps the probe itself made (RIGHT probe at the live edge: 0, the knob is pinned)
+    # Steps the probe itself moved the knob. [Nick's 12f405ab runs, Nov 7: RIGHT 8/8 and LEFT 6/6 landed the same]
+    # at the live edge NEITHER probe moves it (a LEFT there only reveals the label); behind live a LEFT probe is
+    # still assumed to move one step (unmeasured).
+    probe_moved = 1
+    left_probe = True
     at_live = behind_before < step / 2
     blind_closes = 0      # CENTERs sent after a LEFT whose result we could not read: each may have committed a step
     for attempt in range(int(_cfg(cfg, "open_tries"))):
@@ -299,7 +307,7 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
                 before = await read_overlay(stick)
                 read_cost = clock() - r0
                 if before is not None and before.bar_focused:
-                    probe_moved = 0
+                    probe_moved, left_probe = 0, False
                     res.steps.append("RIGHT probe (knob at the live edge)")
                     break
                 if before is not None and before.row_focused:
@@ -312,7 +320,7 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
             before = await read_overlay(stick)
             read_cost = clock() - r0
             if before is not None and before.bar_focused:
-                probe_moved = 1
+                probe_moved, left_probe = (0 if at_live else 1), True
                 break
             before = None
             res.presses = 0
@@ -334,17 +342,16 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     if not still_hidden():
         return await _fail(res, "stick became visible before the scrub", relink, still_hidden, pressed=True)
     rest = n - probe_moved
-    if fixed_n is not None and probe_moved == 0:
-        # [Nick's #403 stick run, Nov 7] the LEFT probe at the live edge usually only REVEALS the label (no step), so
-        # `presses` LEFT keys move the knob (presses - 1) steps, and the shared join predictor (yttv_lead_s) is fit
-        # to that. With the RIGHT probe every LEFT moves (it landed one step deeper: 78 vs 64.2), so send one fewer
-        # to keep the same motion and the same predictor for both probes.
+    if fixed_n is not None:
+        # A fixed count is the join plan's n = round((T - 10) / 15), fit (yttv_lead_s) to the old LEFT probe, which
+        # moved the knob (n - 1) steps: keep that motion for both probes (Nick, Nov 7: RIGHT 2 LEFTs -> 63.0 mean,
+        # LEFT probe + 2 -> 62.1, predicted 64.2).
         rest = max(0, n - 1)
     if rest > 0 and not await _keys(stick, "KEYCODE_DPAD_LEFT", rest, gap):
-        res.presses = rest + probe_moved
+        res.presses = rest + int(left_probe)
         return await _fail(res, "LEFT not sent", relink, still_hidden, pressed=True)
-    res.presses = rest + probe_moved
-    res.steps.append(f"LEFT x{rest} after the {'RIGHT' if probe_moved == 0 else 'LEFT'} probe")
+    res.presses = rest + int(left_probe)
+    res.steps.append(f"LEFT x{rest} after the {'LEFT' if left_probe else 'RIGHT'} probe")
     await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
     after = await read_overlay(stick)
     want = rest * step
