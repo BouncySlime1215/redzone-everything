@@ -71,7 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick: ignore the usage limit for this push (88% stop off, his call). 20-min scrub hold running on hidden .181; auto-resume armed.
+20-MIN HOLD PASSED: hidden .181, TNT live game, scrub seek held 67/75/83 s behind live over 20 min, playhead exactly real time between reads; each label read costs about 8 s. Auto-switching back on.
+Next: repeats on other channels and stick .150, then scorebug read from preview. No Library games added.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
