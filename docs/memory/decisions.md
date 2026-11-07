@@ -1119,3 +1119,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-07 (integrator): **Grader freeze v42: EXP-605 (#384) NBA YouTube TV-only RC8, Prime planned at its live
   edge as the live code does, measured scrub 15 s + one 7.5 s read.** Flags off = EXP-604 byte for byte. Model pass
   only; no card until a live stick holds a scrub and the shadow run confirms.
+- 2026-11-07 (integrator, EXP-606 read): **No NFL dwell passes; NFL RC8 stays OFF and no more NFL dwell points on these
+  nights.** D120 gets switches inside 1.5x (1.41x) but resync mid-play rises on every seed, plays missed on entry is
+  ~2.6x the control at every D and your-team crunch is 91%. Plays missed doesn't fall with dwell, so the cost sits in the
+  scrub wait + re-check delaying cuts, not in the switch rate.
