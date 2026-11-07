@@ -1197,3 +1197,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   YouTube TV: n = round((T - 10) / 15) LEFTs (fixed, passed to enter_buffer as `presses`), predicted 15 n + 11.7 s
   (9 label-measured runs landed T - 3.3 s on average, +-3 s); targets are 15 s steps and the overlay is never held
   to hit one in between (that measured +2..+10 s and one -18.7 s). Prime: pause for the gap (prime_pause), +-1-2 s.
+- 2026-11-07 (Nick's sync order via the overseer, 2:33 AM ET, items 1 and 3; build thread "Verify every join with a
+  watchdog"): new `join.watchdog.*` and `join.drift.*`, both **enabled false**. Watchdog: every entry is checked on the
+  label / Prime timecode (never media_session); |read - predicted| <= 6 s YouTube TV / 4 s Prime and |read - target|
+  <= 10.5 / 5 s, else ONE re-seek from the live edge (through another channel, #391), then fall back to live.
+  control.held (what the phone shows) is written only from a verified reading. Drift: the HIDDEN stick only, first
+  read 5 min after the join, then x2 up to 20 min, at most 30 s of reads per stick per hour (4 YouTube TV reads);
+  each YouTube TV read is expected to add 7.5 s (soak); off band, at the edge or unread -> not buffered, re-entered.
