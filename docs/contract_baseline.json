@@ -480,6 +480,7 @@
   {"rule": "K5", "path": "redzone/lab/night/presses.py", "key": "redzone.lab.night.presses"},
   {"rule": "K5", "path": "redzone/tuners/identity.py", "key": "redzone.tuners.identity"},
   {"rule": "K5", "path": "redzone/tuners/yttv_label.py", "key": "redzone.tuners.yttv_label"},
+  {"rule": "K5", "path": "redzone/tuners/yttv_seek.py", "key": "redzone.tuners.yttv_seek"},
   {"rule": "K6", "path": "redzone/autonomy.py", "key": "redzone.lab.optimize"},
   {"rule": "K6", "path": "redzone/demo/__main__.py", "key": "redzone.lab.evaldata"},
   {"rule": "K6", "path": "redzone/demo/engine.py", "key": "redzone.lab.backtest"},
