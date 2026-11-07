@@ -14,6 +14,7 @@ live TV. Every run is one row in `data/canary.jsonl`; FAIL and WARN reach the ph
 |---|---|---|
 | `api` | The app's API did not answer: nothing guards tonight. | `launchctl print gui/$(id -u)/com.redzone.everything`; see [deploy.md](deploy.md) / [rollback.md](rollback.md). |
 | `standby` | No single connected "standby" stick: two-stick mode is off or a stick is offline. | [stick-offline.md](stick-offline.md). Sticks on wall power (Nov 5: TV USB cut one). |
+| `channels` | `data/channels.json` is missing (it is gitignored, so a scratch worktree has none) or has no watch code for `canary.channel` / `canary.away_channel`. Nick hit this Nov 7 ("no watch code for fs1"). | Run from the Mac repo, or `ln -s <Mac repo>/data data` in the worktree; or paste the channel's link in the app's channel settings. |
 | `adb` | adb connect / shell failed: adb drop, the stick asleep or rebooting. | `adb disconnect` + `adb connect` that stick (stick-offline.md step 4); rerun the canary. |
 | `yttv_app` | YouTube TV not installed / not found on the hidden stick. | Check the stick's apps; an app update can rename the package. |
 | `tune_away` / `tune` | The deep link did not confirm playing. "Who's watching" or "Are you still watching" the tuner could not clear, a crash, or no watch code for the channel in `data/channels.json`. | Look at the hidden stick (HDMI input of the standby stick); clear the prompt by hand; rerun. A missing code: paste the channel link in the app's channel settings. |
