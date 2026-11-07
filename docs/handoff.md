@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Overseer ran PR 377 and 375 on the real stick; both failed first, both fixed and pushed. enter_buffer 3/3 live at 60 s (about 15 s with the tune banner up), label reader reads with confidence 1.0. Key plays reel runs about 10 s per play and returns to live in 0.4 s.
+31-MIN SOAK PASSED: ESPN live game on hidden .181 stayed behind live the whole time, 82 to 119 s, all growth from my 7.5 s reads, no snap back. Key plays list lagged about 12 min in one read, so catch-up only, not real time.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
