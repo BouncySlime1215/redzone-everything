@@ -71,8 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-7:15 PM: RedZone live: UNC on screen (.150), WSH@ATL Prime on hidden .181 waiting for a safe switch. Scrub preview test postponed: both sticks are in real use for Nick's teams.
-Will run it only when a stick is truly free. Usage 84%.
+Minimal sweep 7:45 PM: auto-switching on, switch count checked. Usage checked.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
