@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Auto-switching PAUSED for dev; resume when dev ends. Work loop cron af9016eb every 5 min. Passed: scrub 47/48, 31-min hold, #385, #389, Prime pause. Waiting: Nick's yes for dev build deploy (flip test); regrade with Prime pause; usage 87%.
+Dev build b490ab86 deployed to the Mac by Nick's OK: 3323 tests passed side run, health watch result in deploy.jsonl. New features flagged off. Next: flip test.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
