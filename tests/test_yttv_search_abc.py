@@ -8,7 +8,8 @@ from redzone.channels import LOCAL_SEARCH_QUERY, ChannelMap
 from redzone.config import Config
 from redzone.discovery.yttv import load_table
 from redzone.tuners.prime_search import CapturedScreen
-from redzone.tuners.yttv_search import hunt_channel, loose_codes_in, near_program_change, yttv_lines
+from redzone.tuners.yttv_search import (hunt_channel, loose_codes_in, near_program_change, purchase_dialog,
+                                         yttv_lines)
 from scripts import find_yttv_code as tool
 
 BOXES = ([["Home", .05, .04, .04, .03], ["Live", .11, .04, .04, .03], ["Library", .17, .04, .06, .03],
@@ -35,6 +36,8 @@ MORNING_KEYS = ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER"]
 FOX_BOXES = ([["Home", .05, .04, .04, .03], ["Live", .11, .04, .04, .03], ["FOX 50", .05, .2, .08, .04],
               ["Top picks", .05, .32, .08, .03], ["WRAL News Saturday Morning on Fox 50", .05, .45, .2, .03],
               ["On now & upcoming", .05, .6, .15, .03], ["UCLA at Minnesota", .05, .7, .15, .03],
+              ["Tower of Power: 50 Years of Funk & Soul", .3, .45, .2, .03], ["2018", .3, .48, .04, .02],
+              ["$ Rent or buy", .36, .48, .08, .02],
               ["LIVE", .05, .74, .03, .02], ["FOX 50", .1, .74, .04, .02], ["Today 12:06 PM - 3:30 PM", .15, .74, .12, .02]])
 SHEET = [["How would you like to begin watching?", .6, .3, .3, .04], ["Join live", .62, .4, .1, .03],
          ["Watch in multiview", .62, .48, .14, .03]]
@@ -244,3 +247,28 @@ async def test_multiview_focused_on_the_sheet_is_never_pressed():
     stick, h = await hunt(fx, key="fox")
     assert h.status == "stopped" and "multiview" in h.reason
     assert keys(stick)[-3:] == ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER"]
+
+
+def _frame(boxes, focus=None):
+    return CapturedScreen(tool._ocr({"boxes": boxes, **({"focus": focus} if focus else {})}), 1, 0.0)
+
+
+def test_rental_tile_on_a_browse_page_is_not_a_purchase_screen():
+    assert not purchase_dialog(_frame(FOX_BOXES))                          # Nick's FOX 50 page, 13:33
+    assert purchase_dialog(_frame(FOX_BOXES + [["Payment method", .4, .4, .2, .04]]))
+    assert purchase_dialog(_frame(FOX_BOXES, focus=[.29, .44, .22, .07, "neutral_rectangle_border"]))  # tile focused
+    assert purchase_dialog(_frame([["Tower of Power", .1, .2, .3, .05], ["Rent $3.99", .1, .5, .1, .04],
+                                   ["Buy $9.99", .25, .5, .1, .04]]))       # its rent/buy page
+
+
+async def test_priced_tile_opening_a_rent_page_is_never_pressed_on():
+    fx = copy.deepcopy(LIVE_GAME)
+    fx["scenes"]["top_picks"]["keys"]["KEYCODE_DPAD_CENTER"] = "rent_page"
+    fx["scenes"]["rent_page"] = {"boxes": [["Tower of Power", .1, .2, .3, .05], ["Rent $3.99", .1, .5, .1, .04],
+                                           ["Buy $9.99", .25, .5, .1, .04]],
+                                 "keys": {"KEYCODE_DPAD_CENTER": "BOUGHT"}}
+    stick, h = await hunt(fx, key="fox")
+    assert h.status == "confirmed", h.reason
+    assert keys(stick) == ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER", "KEYCODE_BACK",
+                           "KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER", "KEYCODE_DPAD_CENTER"]
+    assert any("rent/buy" in s["detail"] for s in h.steps)

@@ -630,6 +630,29 @@ def names_channel(text: str, key: str, table) -> bool:
     return mine > 0 and all(s < mine for k, s in scores.items() if k != key)
 
 
+_BROWSE_ROWS_RE = re.compile(r"\b(?:top picks|on now (?:& |and )?upcoming)\b")
+_REAL_PURCHASE_RE = re.compile(r"payment method|confirm (?:your )?purchase|complete (?:your )?purchase|"
+                               r"enter (?:your )?pin|purchase complete|order total")
+
+
+def purchase_dialog(frame) -> bool:
+    """A screen where OK might buy or rent. Nov 7 (FOX 50 live): the channel/search page's Top picks row
+    can hold a rental TILE ('Tower of Power ..., $ Rent or buy'); that browse page is not a purchase
+    screen. It still is when the focused element itself offers a price/rent/buy, or a real checkout
+    phrase shows. Every other screen with purchase words stays a stop, as before."""
+    text = getattr(frame, "text", "") or ""
+    if not is_purchase_screen(text):
+        return False
+    focus = unique_focus(frame)
+    if focus is not None and is_purchase_screen(focus_text(frame, focus)):
+        return True
+    t = normalize_text(text)
+    nav = sum(w in t.split() for w in ("home", "live", "library"))
+    if _BROWSE_ROWS_RE.search(t) and nav >= 2:
+        return bool(_REAL_PURCHASE_RE.search(t))
+    return True
+
+
 def channel_tiles(ocr, key: str, table, query: str = "") -> list[tuple[float, object]]:
     """OCR boxes that look like `key`'s live channel tile, best first: [(score, box)].
 
@@ -716,7 +739,7 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
         if not frame.read_ok:
             raise RuntimeError("screen text could not be read (screencap/OCR)")
         verdict = classify_screen(frame.text)
-        if is_purchase_screen(frame.text) or (verdict and verdict.stops):
+        if purchase_dialog(frame) or (verdict and verdict.stops):
             raise RuntimeError(f"account, payment or unavailable screen: {frame.text[:120]!r}")
         record("read", frame.text[:600])
         return frame
@@ -835,7 +858,7 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
             await sleep(1.0)
         return None, why
 
-    async def join_live_sheet() -> bool:
+    async def join_live_sheet() -> bool | None:
         """After Select: the 'How would you like to begin watching?' sheet opens with 'Join live' focused.
         CENTER once on it; anything else (no sheet, unreadable video frame) presses nothing. Never multiview."""
         await sleep(CHANNEL_PAGE_SHEET_S)
@@ -843,6 +866,8 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
             frame = await read()
         except RuntimeError as exc:          # playing video is DRM-black: no sheet to answer
             record("channel_page", f"no sheet read ({exc})")
+            if "payment" in str(exc):
+                return None                  # a priced tile opened its rent/buy page: never press on it
             return False
         t = normalize_text(frame.text)
         if not (BEGIN_SHEET_RE.search(t) and JOIN_LIVE_RE.search(t)):
@@ -871,7 +896,10 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
             label = "+".join(c.replace("KEYCODE_DPAD_", "") for c in path) or "start"
             record("channel_page", f"ring unread: {label} -> Select")
             joined = await join_live_sheet()
-            ev, why = await subtitle_confirmed(before, joined=joined)
+            if joined is None:
+                ev, why = None, "Select opened a rent/buy page (priced tile)"
+            else:
+                ev, why = await subtitle_confirmed(before, joined=joined)
             if ev is not None:
                 hunt.tile = f"(channel page: {label}{' + Join live' if joined else ''})"
                 return ev
