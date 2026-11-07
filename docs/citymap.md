@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**352 modules**, 289 untagged, 184 unowned, 14 orphans (no importer).
+**354 modules**, 291 untagged, 184 unowned, 14 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -139,7 +139,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/prime_multiview_grade.py` (entry) | Grade a live Prime NBA multiview night against the turn-on gate (redzone/tuners/prime_multiview.py). | tuners.prime_multiview -> - | Landings in dead time, Mid-play entries (per 100 landings), STK-03 |
 | `scripts/prime_multiview_probe.py` (entry) | At home on a Prime NBA night, ~10 minutes, before you watch: learn Prime Video's NBA multiview on one stick and write data/prime_multiview_keys.json (what Pr... | lab.prime_mv_fake, tuners.adb, tuners.prime_multiview, tuners.tuners -> - | Flips PLAYING within 3 s, STK-03, STK-04 |
 
-## PLATFORM (33)
+## PLATFORM (35)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -151,7 +151,9 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/platform/breaker.py` | Circuit breaker: stop waiting on something that keeps hanging. | - -> tuners.adb, tv | untagged |
 | `redzone/platform/faults.py` | Fault injection: fake sticks, TV and feeds that fail on cue, for drills and end-to-end tests. | tuners.adb, tuners.tuners -> scripts.fault_drill | untagged |
 | `redzone/platform/health.py` | Runtime invariants and the Health report (contracts/health.py), checked every supervisor tick. | contracts.health, models, uses:Fault, uses:Fix, uses:HealthReport, uses:Severity -> supervisor, scripts.fault_drill | untagged |
-| `redzone/platform/wake.py` | The Mac slept, or moved networks: everything that held a connection is stale (hardening.mac). | - -> engine | untagged |
+| `redzone/platform/mac_health.py` | Mac health alerts: tell Nick's phone when the Mac itself is about to cost him the night. | - -> supervisor | untagged |
+| `redzone/platform/night_ops.py` | Night ops report: joins, errors, fallbacks, drift and Mac health for one night (Nick's Nov 7 order, item 7). | supervisor -> supervisor | untagged |
+| `redzone/platform/wake.py` | The Mac slept, or moved networks: everything that held a connection is stale (hardening.mac). | - -> engine, supervisor | untagged |
 | `redzone/recorded.py` | Explicit recorded-game navigation, isolated from live decisions and calibration. | screen_ocr, tuners.adb, tuners.prime_search -> engine, scripts.find_yttv_code | untagged |
 | `redzone/recorder.py` | Flight recorder: the real-world numbers the simulator needs. | models, sources.espn, sources.leagues -> engine, lab.night.run | untagged |
 | `redzone/sources/__init__.py` (package) | no docstring | - -> - | untagged |
@@ -165,7 +167,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/sources/leagues.py` | League feeds that are faster or richer than ESPN for some things. | models, sources.espn -> engine, recorder, sources.fastfeeds | untagged |
 | `redzone/sources/merge.py` | Multi-source merge: several feeds report the same game; trust whoever is furthest ahead. | models -> demo.engine, engine, sources.feeds, scripts.fault_drill | FEED-01 |
 | `redzone/store.py` | SQLite log of everything the app decides and everything you tell it. | - -> demo.engine, engine, lab.night.run, supervisor, trace, scripts.fault_drill +1 | untagged |
-| `redzone/supervisor.py` | Supervisor: the live system watches itself, so nobody has to. | calibration, channels, config, contracts.health, control, decider.decider +13 -> engine, lab.night.run, observability, trace, web.phone_v2, scripts.export_decision_records +1 | untagged |
+| `redzone/supervisor.py` | Supervisor: the live system watches itself, so nobody has to. | calibration, channels, config, contracts.health, control, decider.decider +16 -> engine, lab.night.run, observability, platform.night_ops, trace, web.phone_v2 +2 | untagged |
 | `redzone/views.py` | JSON shapes for the phone: game cards, game detail, team directory, rosters. | models, sources.espn -> demo.engine, engine, sources.fastcast | untagged |
 | `redzone/web/__init__.py` (package) | no docstring | - -> - | untagged |
 | `redzone/web/server.py` | Phone control page + JSON API. | channels, config, engine, platform.agent_fix, web.phone_v2 -> __main__, demo.__main__ | untagged |
@@ -408,7 +410,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/wv_aux_label.py` (entry) | Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804). | - -> scripts.attention_labels | untagged |
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 
-## Untagged (289)
+## Untagged (291)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -546,6 +548,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/platform/breaker.py`
 - `redzone/platform/faults.py`
 - `redzone/platform/health.py`
+- `redzone/platform/mac_health.py`
+- `redzone/platform/night_ops.py`
 - `redzone/platform/wake.py`
 - `redzone/reasoner/__init__.py`
 - `redzone/reasoner/brief.py`

@@ -3350,12 +3350,41 @@
     "untagged"
    ]
   },
+  "redzone/platform/mac_health.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/supervisor.py"
+   ],
+   "owner": "PLATFORM",
+   "role": "Mac health alerts: tell Nick's phone when the Mac itself is about to cost him the night.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/platform/night_ops.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/supervisor.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/supervisor.py"
+   ],
+   "owner": "PLATFORM",
+   "role": "Night ops report: joins, errors, fallbacks, drift and Mac health for one night (Nick's Nov 7 order, item 7).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/platform/wake.py": {
    "contracts": [],
    "inputs": [],
    "kind": "module",
    "outputs": [
-    "redzone/engine.py"
+    "redzone/engine.py",
+    "redzone/supervisor.py"
    ],
    "owner": "PLATFORM",
    "role": "The Mac slept, or moved networks: everything that held a connection is stale (hardening.mac).",
@@ -4049,6 +4078,9 @@
     "redzone/platform/agent_fix.py",
     "redzone/platform/autofix.py",
     "redzone/platform/health.py",
+    "redzone/platform/mac_health.py",
+    "redzone/platform/night_ops.py",
+    "redzone/platform/wake.py",
     "redzone/store.py",
     "redzone/trace.py",
     "redzone/tuners/adb.py",
@@ -4061,6 +4093,7 @@
     "redzone/engine.py",
     "redzone/lab/night/run.py",
     "redzone/observability.py",
+    "redzone/platform/night_ops.py",
     "redzone/trace.py",
     "redzone/web/phone_v2.py",
     "scripts/export_decision_records.py",
@@ -6450,10 +6483,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 352,
+  "modules": 354,
   "orphans": 14,
   "unowned": 184,
-  "untagged": 289
+  "untagged": 291
  },
  "version": 1
 }

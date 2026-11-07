@@ -366,6 +366,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   the drop wiped the last uptime. Fix: `session_guard.classify` gives every unknown the buffer state "unknown" (never
   "valid"), keeps the last read uptime / process id across a drop, and holds on any dialog-shaped text it has no rule
   for. Runbook: runbooks/stick-session.md.
+- 2026-11-07 (Mac health): on Nov 5-6 the app went 66-145 min without a single switch row while up to 10 games were live; the supervisor logged stuck command locks and stale feeds every few minutes but nothing reached the phone, because each fault on its own was 'only a warning'. Lesson: alert on the OUTCOME (no switch in 20 min with games on autopilot), not only on each cause. Signals: no_switches, stuck_lock, stale_feed.
 
 ## A join that "worked" was not where we said (Nov 5-7)
 - **Symptom:** six different buffer entries reported success while the stick was somewhere else (2026-11-07 join watchdog).

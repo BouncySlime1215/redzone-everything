@@ -460,6 +460,24 @@ supervisor:                # watches the live system and fixes what it can on it
     dead_air_s: 10         # a cut whose new picture took longer than this is "slow"...
     dead_air_pct: 10       # ...and this % of cuts may be slow
     safe_mode_min: 10      # minutes in safe mode a night
+  mac_health:              # [Nick Nov 7 item 6] phone alerts when the Mac itself is the problem (redzone/platform/mac_health.py)
+    enabled: false         # OFF until Nick turns it on; sees and says only, never changes the Mac
+    battery_low_pct: 20    # on battery at or under this -> high (pushed); battery_critical_pct -> urgent
+    battery_critical_pct: 10
+    battery_hold_s: 120    # on battery with live games this long -> warn
+    sleep_gap_s: 60        # asleep or frozen this long between ticks -> high with live games
+    keep_awake_s: 120      # live games but caffeinate not running this long -> warn
+    mem_hold_s: 60         # memory pressure critical this long -> alert
+    swap_alert_mb: 8000    # swap this high with live games for swap_hold_s -> warn (Nov 3-7: 5.8-10 GB seen)
+    swap_hold_s: 300
+    paused_alert_s: 600    # auto-switching paused this long with live games -> warn
+    no_switch_s: 1200      # no switch row this long with no_switch_min_live+ live games on autopilot -> high
+    no_switch_min_live: 2
+    repeat_s: 1800         # an alert still true says so again this often
+    push: true             # high/urgent also go through ntfy when ntfy_topic is set
+  night_ops:               # [Nick Nov 7 item 7] joins, errors, fallbacks, drift, Mac alerts in the nightly report
+    enabled: false
+    join_margin_s: 10      # a join landing within this of its target counts as on target
 
 multiview:                 # YouTube TV multiview as a switch path (redzone/tuners/multiview.py)
   enabled: false           # off until scripts/multiview_probe.py has measured it on the real sticks

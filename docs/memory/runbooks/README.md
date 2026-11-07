@@ -14,6 +14,7 @@ Short, do-this-now steps. Each one links to the full doc. Run everything from th
 | A stick's session broke (prompt, crash, reboot, banner, label reset, new UI) | [stick-session.md](stick-session.md) |
 | Weekly usage is near the cap | [usage-pause.md](usage-pause.md) |
 | A join landed off target / a buffer drifted | [join-watchdog.md](join-watchdog.md) |
+| The phone says the Mac is the problem (battery, sleep, memory, paused, no switches) | [mac-health.md](mac-health.md) |
 
 ## Memory hook
 
