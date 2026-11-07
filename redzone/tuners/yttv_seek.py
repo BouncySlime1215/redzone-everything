@@ -11,7 +11,7 @@ Measured (overseer, Nov 6 9:40 PM; docs/sync/2026-11-06-yttv-scrub-buffer-spec.m
 
 enter_buffer(stick, seconds, ...) therefore:
   1. refuses unless the stick is still hidden, YouTube TV is in front, and it is playing (nothing pressed);
-  2. CENTER, then reads the screen (screencap -> local OCR -> the PNG deleted at once; numbers and labels only) and
+  2. CENTER (a LIVE/title banner sits up for ~20 s after a tune: close and reopen until the CC button shows), then reads the screen (screencap -> local OCR -> the PNG deleted at once; numbers and labels only) and
      goes on only if the overlay is up with the PROGRESS BAR focused: a scrub label MM:SS above the knob and no row
      button (HD, CC, Networks, ...) holding focus. Anything else: fail closed;
   3. LEFT x N (N = round(seconds / step_s), capped by max_back_s), then reads again: the scrub label must have moved
@@ -41,7 +41,7 @@ log = logging.getLogger("redzone.yttv_seek")
 
 YTTV_PKG_HINT = "youtube.tv"
 SCRUB_DEFAULTS = {"enabled": False, "step_s": 15.0, "max_back_s": 150.0, "step_tol_s": 4.0,
-                  "key_gap_s": 0.35, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 0.8}
+                  "key_gap_s": 0.35, "open_tries": 4, "reopen_wait_s": 1.5, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 0.8}
 
 # The player row under the bar (#356 ROW_BUTTON labels seen so far). Focus on any of these = NOT the bar.
 ROW_BUTTONS = ("hd", "cc", "networks", "multiview", "episodes", "more to watch", "stats", "key plays", "scores",
@@ -246,23 +246,49 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
         return await _fail(res, "CENTER not sent", relink, still_hidden, pressed=True)
     res.steps.append("CENTER")
     await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
+    # Live finding (Nov 6): at the live edge the overlay shows NO scrub label until the first LEFT, so the first
+    # press is the probe. It only moves an uncommitted knob, and it is pressed only with the overlay up and no row
+    # button focused. The label it reveals must then be there, or we fail closed before any commit.
+    # Live finding (Nov 6): for ~20 s after a tune a LIVE/title banner sits up instead of the player overlay. Keys
+    # do nothing there, and only the player overlay has the CC button. Close and reopen until it is that overlay.
+    opened = await read_overlay(stick)
+    for _ in range(int(_cfg(cfg, "open_tries"))):
+        if opened is None or "cc" in opened.buttons:
+            break
+        if not still_hidden():
+            return await _fail(res, "stick became visible before the scrub", relink, still_hidden, pressed=True)
+        await _keys(stick, "KEYCODE_DPAD_CENTER", 1, 0.0)
+        await asyncio.sleep(float(_cfg(cfg, "reopen_wait_s")))
+        await _keys(stick, "KEYCODE_DPAD_CENTER", 1, 0.0)
+        await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
+        opened = await read_overlay(stick)
+    if opened is None or "cc" not in opened.buttons or opened.row_focused:
+        why = "overlay unreadable" if opened is None else (
+            "a row button has focus" if opened.row_focused else "overlay not up")
+        return await _fail(res, f"focus guard: {why}", relink, still_hidden, pressed=True)
+    if not still_hidden():
+        return await _fail(res, "stick became visible before the scrub", relink, still_hidden, pressed=True)
+    if not await _keys(stick, "KEYCODE_DPAD_LEFT", 1, 0.0):
+        return await _fail(res, "LEFT not sent", relink, still_hidden, pressed=True)
+    res.presses = 1
+    await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
     before = await read_overlay(stick)
     if before is None or not before.bar_focused:
         why = "overlay unreadable" if before is None else (
-            "a row button has focus" if before.row_focused else
-            "no scrub label: the bar does not have focus" if before.overlay else "overlay not up")
+            "a row button has focus" if before.row_focused else "no scrub label after the first LEFT")
         return await _fail(res, f"focus guard: {why}", relink, still_hidden, pressed=True)
     res.steps.append(f"bar focused at {before.scrub_s:.0f}s")
-    # 3. LEFT x n, then the label must have moved back n steps
+    # 3. the other LEFTs, then the label must have moved back that many steps
     if not still_hidden():
         return await _fail(res, "stick became visible before the scrub", relink, still_hidden, pressed=True)
-    if not await _keys(stick, "KEYCODE_DPAD_LEFT", n, gap):
+    if n > 1 and not await _keys(stick, "KEYCODE_DPAD_LEFT", n - 1, gap):
         res.presses = n
         return await _fail(res, "LEFT not sent", relink, still_hidden, pressed=True)
     res.presses = n
     res.steps.append(f"LEFT x{n}")
+    await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
     after = await read_overlay(stick)
-    want = n * step
+    want = (n - 1) * step
     if after is None or not after.bar_focused or after.scrub_s is None:
         return await _fail(res, "scrub label lost after the LEFTs", relink, still_hidden, pressed=True)
     moved = before.scrub_s - after.scrub_s
@@ -287,7 +313,7 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     if not playing:
         return await _fail(res, "not playing after the commit", relink, still_hidden, pressed=True)
     # 5. how far behind now
-    res.behind_live_s = behind_before + moved
+    res.behind_live_s = behind_before + moved + step
     if read_behind is not None:
         try:
             got = await read_behind(stick)

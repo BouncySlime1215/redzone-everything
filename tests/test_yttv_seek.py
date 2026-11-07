@@ -16,7 +16,7 @@ class Cfg(dict):
 
 
 CFG = Cfg({"yttv_seek.key_gap_s": 0.0, "yttv_seek.overlay_wait_s": 0.0, "yttv_seek.poll_s": 0.0,
-           "yttv_seek.settle_s": 0.05})
+           "yttv_seek.settle_s": 0.05, "yttv_seek.reopen_wait_s": 0.0})
 
 
 class FakeYTTV:
@@ -57,7 +57,7 @@ def reader(stick):
         if stick.focus == "bar":
             return ys.parse_overlay([{"text": "9:00 PM - 11:00 PM", "x": .8, "y": .72},
                                      {"text": f"{int(stick.knob // 60)}:{int(stick.knob % 60):02d}", "x": .5, "y": .76},
-                                     {"text": "Networks", "x": .3, "y": .9}])
+                                     {"text": "cc", "x": .2, "y": .9}, {"text": "Networks", "x": .3, "y": .9}])
         if stick.focus == "row":
             return ys.parse_overlay([{"text": "Networks", "x": .3, "y": .9}],
                                     [{"text": "Networks", "x": .3, "y": .9}])
@@ -109,7 +109,7 @@ def test_not_hidden_presses_nothing():
     assert not r.ok and s.keys == []
 
 
-@pytest.mark.parametrize("focus,why", [("row", "row button"), ("none", "bar does not have focus")])
+@pytest.mark.parametrize("focus,why", [("row", "row button"), ("none", "overlay not up")])
 def test_focus_guard_fails_closed_before_any_left(focus, why):
     """#356: LEFT with unknown focus seeked a stick 60 s. No LEFT unless the bar provably has focus."""
     s, log = FakeYTTV(focus=focus), []
@@ -131,7 +131,7 @@ def test_unreadable_overlay_fails_closed():
 def test_knob_that_moved_the_wrong_amount_is_not_committed():
     s, log = FakeYTTV(step=10.0), []                      # an app that steps 10 s, not 15
     r = run(s, 60.0, relink=relinker(log))
-    assert not r.ok and "knob moved 40s" in r.reason
+    assert not r.ok and "knob moved 30s" in r.reason
     assert s.keys.count("KEYCODE_DPAD_CENTER") == 1 and not r.committed and log == ["relink"]
 
 
@@ -179,3 +179,19 @@ def test_parse_overlay_rules():
     hd = ys.parse_overlay([{"text": "12:00", "y": .76}], [{"text": "HD", "y": .9}])
     assert hd.row_focused and not hd.bar_focused
     assert ys.mmss("12:75") is None and ys.mmss("1:05") == 65
+
+
+def test_live_banner_after_a_tune_is_closed_before_any_left():
+    """Live, Nov 6: for ~20 s after a tune CENTER shows a LIVE/title banner, not the player overlay; LEFT does nothing."""
+    s = FakeYTTV()
+    base, seen = reader(s), []
+
+    async def read(st):
+        seen.append(1)
+        if len(seen) == 1:                                 # the banner: row text, no CC button
+            return ys.parse_overlay([{"text": "Networks", "x": .3, "y": .9}])
+        return await base(st)
+
+    r = run(s, 60.0, read_overlay=read)
+    assert r.ok and r.committed and r.presses == 4, r
+    assert s.keys[:3] == ["KEYCODE_DPAD_CENTER"] * 3
