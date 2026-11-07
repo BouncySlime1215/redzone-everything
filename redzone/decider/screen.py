@@ -93,11 +93,8 @@ SCREEN_SIGMA_S = 4.0
 # [edge model, Nick's Nov 6 order item 3, flag delay.edge_model.enabled, OFF] On a YouTube TV stick that was
 # scrubbed back (yttv_seek enter_buffer), the screen delay is D_edge(channel) + behind_live, where behind_live
 # is read off YouTube TV's own overlay time label. media_session's position is wrong after a seek and the old
-# pause "hold" never held (Nov 6 stick tests), so neither may set behind_live on a seeked tune.
-EDGE_DEFAULT_S = {"youtubetv": 25.0}   # research Nov 6: honest edge ~25 s +-3 on ESPN / NBA TV
-EDGE_DEFAULT_SD_S = 3.0
-EDGE_LABEL_SD_S = 1.5                  # one overlay label read (whole seconds, read 1-2 s after the press)
-EDGE_MAX_SD_S = 6.0                    # tonight's fresh-tune estimate counts as this channel's edge only this sure
+# pause "hold" never held (Nov 6 stick tests), so neither may set behind_live on a seeked tune. Every number
+# (edge default 25 s +-3, label sd, edge_max_sd_s) lives in delay.edge_model in default_config.yaml.
 
 
 @dataclass
@@ -202,7 +199,7 @@ class DelayBook:
         self.cal: NoiseCal | None = None                         # [self-calibrating doubt] see attach_cal
         self._fresh: set[str] = set()                            # tuned, no anchor yet since
         self.calibrated: dict[str, tuple[float, float]] = {}     # [calib.auto] target -> (fresh-tune delay, sd)
-        # [edge model] delay = D_edge(channel) + behind_live (label), see EDGE_DEFAULT_S
+        # [edge model] delay = D_edge(channel) + behind_live (label), config delay.edge_model
         self.edge_cfg = None                                      # key -> delay.edge_model.<key> (engine), else defaults
         self.labels: dict[str, tuple[float, float, float]] = {}   # target -> (behind_live_s, sd, ts) off the overlay label
         self.edge_seen: dict[str, tuple[float, float, float]] = {}  # target -> (edge s, sd, ts) tonight at behind 0
@@ -310,19 +307,23 @@ class DelayBook:
         d.source, d.drift_cap = "sync", SETTLED_DRIFT_S
 
     # ------------------------------------------------------------------ [edge model] D_edge + behind_live
-    def _ecfg(self, key: str, fallback):
+    def _ecfg(self, key: str):
+        """delay.edge_model.<key> from the live config (engine), else the shipped default."""
         v = None
         if self.edge_cfg is not None:
             try:
                 v = self.edge_cfg(key)
             except Exception:
                 v = None
-        return fallback if v is None else v
+        if v is None:
+            from redzone import config
+            v = config.default(f"delay.edge_model.{key}")
+        return v
 
     @property
     def edge_model(self) -> bool:
         """delay.edge_model.enabled (OFF in the shipped config): a seeked tune's delay is D_edge + label."""
-        return bool(self._ecfg("enabled", False))
+        return bool(self._ecfg("enabled"))
 
     def edge(self, target: str) -> tuple[float, float, str] | None:
         """D_edge(channel): how far this channel's live edge runs behind real life, with its sd and source.
@@ -337,11 +338,11 @@ class DelayBook:
         cal = self.calibrated.get(target)
         if cal is not None:
             return float(cal[0]), float(cal[1]), "calib"
-        defaults = self._ecfg("default", None) or EDGE_DEFAULT_S
+        defaults = self._ecfg("default") or {}
         v = defaults.get(self.app(target))
         if v is None:
             return None
-        return float(v), float(self._ecfg("default_sd_s", EDGE_DEFAULT_SD_S)), "default"
+        return float(v), float(self._ecfg("default_sd_s")), "default"
 
     def set_label_behind(self, target: str, behind_s: float, sd: float | None = None,
                          ts: float | None = None) -> Delay:
@@ -349,7 +350,7 @@ class DelayBook:
         the label reader). It stays this tune's behind_live until the next fresh tune (clear_label) or the
         next label read; media_session and the pause-hold timing no longer move it."""
         behind_s = max(0.0, float(behind_s))
-        sd = float(self._ecfg("label_sd_s", EDGE_LABEL_SD_S)) if sd is None else max(0.1, float(sd))
+        sd = float(self._ecfg("label_sd_s")) if sd is None else max(0.1, float(sd))
         prev = self.labels.get(target)
         self.labels[target] = (behind_s, sd, self._clock() if ts is None else float(ts))
         d = self.get(target)
@@ -383,7 +384,7 @@ class DelayBook:
         if lab is None:
             # remember tonight's edge: a tune at the live edge, measured (not a default), and sure enough
             if d.behind == 0.0 and not (self.held or {}).get(target) and d.source in ("sync", "tap", "screen") \
-                    and d.sigma <= float(self._ecfg("edge_max_sd_s", EDGE_MAX_SD_S)):
+                    and d.sigma <= float(self._ecfg("edge_max_sd_s")):
                 self.edge_seen[target] = (float(d.mu), float(d.sigma), float(d.calibrated_at or self._clock()))
             return
         e = self.edge(target)

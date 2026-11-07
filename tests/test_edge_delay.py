@@ -16,7 +16,9 @@ from redzone import supervisor as sup
 from redzone import sync_probe as sp
 from redzone.config import Config
 from redzone.decider.decider import Decider
-from redzone.decider.screen import (EDGE_DEFAULT_SD_S, EDGE_LABEL_SD_S, SETTLED_DRIFT_S, DelayBook)
+from redzone.decider.screen import SETTLED_DRIFT_S, DelayBook
+
+EDGE_DEFAULT_SD_S, EDGE_LABEL_SD_S = 3.0, 1.5   # delay.edge_model.default_sd_s / label_sd_s as shipped
 from redzone.supervisor import Supervisor
 from conftest import FakeClock, nfl
 
@@ -27,7 +29,7 @@ ESPN = "youtubetv:espn"
 def book(on=True, clock=None, **cfg):
     b = DelayBook({"youtubetv": 45.0, "prime": 40.0}, 15.0, clock=clock or FakeClock(T0))
     vals = {"enabled": on, **cfg}
-    b.edge_cfg = vals.get
+    b.edge_cfg = vals.get       # keys not given fall back to the shipped delay.edge_model defaults
     return b
 
 
