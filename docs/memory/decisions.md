@@ -1123,3 +1123,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   nights.** D120 gets switches inside 1.5x (1.41x) but resync mid-play rises on every seed, plays missed on entry is
   ~2.6x the control at every D and your-team crunch is 91%. Plays missed doesn't fall with dwell, so the cost sits in the
   scrub wait + re-check delaying cuts, not in the switch rate.
+- 2026-11-07 (integrator, EXP-605 read): **EXP-605 FAILS; NBA RC8 stays OFF.** Shipped harness is close: no added
+  mid-play on the main grader, YouTube TV-only 6 -> 1, switches 1.08x, plays missed 19 -> 16, but clock-truth adds 1 on
+  two seeds and the primary CI touches 0. On resync, Prime entries double (54 vs 23 over 3 seeds) for a reason not yet
+  shown; T9's guess is the re-sync prior pulling Prime's belief back to the buffered lag. A diagnosis is info-only;
+  any grader change from it is a new EXP, registered before it runs. No card until a live stick holds a scrub.
