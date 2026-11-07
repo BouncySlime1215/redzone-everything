@@ -561,6 +561,21 @@ redzone_mode:              # whip-around like NFL RedZone (scoring/drive.py; dec
   heat_points: 0           # NFL game score lift per unit of heat. 8 cost big plays and your-team plays on the NFL scorecard
   dead_damp: 0             # share of score lost to punt-fest signs. 0.25 cost big plays on the NFL scorecard
 
+session_guard:             # [sync hardening item 4, Nick Nov 7] redzone/tuners/session_guard.py: classify each stick
+                           # session (banner, profile, still-watching, auto-play, crash, reboot, adb drop, Prime detail
+                           # page, label reset, unexpected UI text) and fail closed. Runbook: runbooks/stick-session.md
+  enabled: false           # observe + log + demote buffer trust; the scrub waits out the post-tune banner and checks
+                           # the session (adb only) before its first key
+  act: false               # also run recoveries (re-link, clear prompts, 'Ask later' only); keys only on the hidden
+                           # stick except the prompts already covering the picture
+  banner_s: 28             # Nov 6: the LIVE/title banner sat up 20-25+ s after a tune and looks like the overlay
+  banner_wait_max_s: 30
+  reboot_slack_s: 30       # /proc/uptime falling by more than this between looks = rebooted
+  label_slack_s: 20        # a label this far under where the playhead should be = program boundary (label reset)
+  label_ahead_s: 45
+  max_actions: 3           # recoveries per stick per window, then hold + alert (no key storms)
+  action_window_s: 600
+
 yttv_seek:                 # [YTTV scrub buffer, item 1] enter the time-shift buffer on the HIDDEN YouTube TV stick by
                            # scrubbing the player overlay (CENTER, LEFT x N, CENTER; overseer Nov 6: 7/7 held, pause
                            # doesn't). OFF until the switch path (item 4) and a hidden-stick night prove it.

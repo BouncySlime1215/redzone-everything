@@ -360,6 +360,12 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   behind live). On a stick scrubbed 60 s back that turns the believed delay 60 s too short: every cut would plan the
   dead ball a minute early. Lesson: a "reset to safe defaults" must keep what was MEASURED about this tune (its
   behind_live), and only throw away what was guessed.
+- 2026-11-07 (session guard, sync hardening item 4): **"no evidence" read as "fine" in every session check we had.**
+  An adb drop, an unread playback state or an unreadable screen left a scrubbed stick's buffer looking valid, the
+  post-tune LIVE banner (Nov 6) passed as the overlay, and a reboot hidden inside an adb drop was never noticed because
+  the drop wiped the last uptime. Fix: `session_guard.classify` gives every unknown the buffer state "unknown" (never
+  "valid"), keeps the last read uptime / process id across a drop, and holds on any dialog-shaped text it has no rule
+  for. Runbook: runbooks/stick-session.md.
 
 ## A join that "worked" was not where we said (Nov 5-7)
 - **Symptom:** six different buffer entries reported success while the stick was somewhere else (2026-11-07 join watchdog).
