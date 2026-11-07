@@ -1107,3 +1107,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `two_stick.unavailable_backoff_s` (default 0 = the usual 120 s): a standby tune stopped at an account/payment/
   UNAVAILABLE screen keeps that game off the standby that long (Nick saw the standby pick a Prime game showing
   UNAVAILABLE). Both off by default.
+- 2026-11-07 (integrator, EXP-603 read): **EXP-603 FAILS in both arms for NBA B90 and NFL B75; RC8 stays OFF.** NBA:
+  mid-play ~10 -> ~24 per run, ~21 of them Prime switches at B = 0 (registered pessimism; YouTube TV only ~2-3, at or
+  below the control). NFL: 45 -> 71 (live edge), 43 -> 96 (wait) shipped, and switches 1.72x (4.6 -> 7.9 per hour), a
+  guardrail breach by itself. S2 (+-3.4 s) moves nothing material. EXP-604 (#378's re-check) is the next read.
