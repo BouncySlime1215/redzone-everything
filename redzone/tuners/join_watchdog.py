@@ -77,6 +77,9 @@ DRIFT_DEFAULTS = {
     "drift_margin_s": 6.0,
     "read_cost_s": {"youtubetv": 7.5, "prime": 8.0},    # wall time of one read (budget)
     "read_adds_s": {"youtubetv": 7.5, "prime": 0.0},    # ...and how much it pushes the picture back (frozen overlay)
+    # [Nick 13:53Z] depth band: re-enter only when the stick is deeper than target + this (landing + every read so
+    # far) or shallower than target - target_band_s. Drift itself is judged on drift_s, not on the target band.
+    "max_over_s": {"youtubetv": 20.0, "prime": 10.0},
 }
 
 
@@ -373,8 +376,12 @@ class DriftMonitor:
             t.drifts.append(v.drift_s)
             if m <= float(wcfg(self.cfg, "min_behind_s")):
                 v.action, v.reason = "snapped", f"read {m:.1f}s: back at the live edge"
-            elif abs(m - t.target_s) > band:
-                v.action, v.reason = "reenter", f"read {m:.1f}s, target {t.target_s:.0f}s (drift {v.drift_s:+.1f}s)"
+            elif m > t.target_s + float(dcfg(self.cfg, "max_over_s", t.app)) or m < t.target_s - band:
+                # [Nick 13:53Z] depth, not drift: every YouTube TV read pushes the stick ~7.5-10 s deeper, so a +6
+                # landing crossed the target band on its first read while holding at +1.3 s drift
+                v.action, v.reason = "reenter", (f"read {m:.1f}s outside depth {t.target_s - band:.0f}-"
+                                                 f"{t.target_s + float(dcfg(self.cfg, 'max_over_s', t.app)):.0f}s "
+                                                 f"(drift {v.drift_s:+.1f}s)")
             elif abs(v.drift_s) > float(dcfg(self.cfg, "drift_margin_s")):
                 # still near target but not where we believed: trust the reading, check again sooner
                 v.action, v.reason = "ok", f"drift {v.drift_s:+.1f}s, re-anchored"

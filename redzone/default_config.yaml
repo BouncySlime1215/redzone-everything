@@ -669,6 +669,7 @@ join:                      # [Join API] put a HIDDEN stick a chosen time behind 
     drift_margin_s: 6      # |read - believed| above this re-anchors and checks sooner
     read_cost_s: {youtubetv: 7.5, prime: 8}       # wall time of one read (Nick's soak: 7.5 s)
     read_adds_s: {youtubetv: 7.5, prime: 0}       # the frozen overlay pushes YouTube TV back by this per read
+    max_over_s: {youtubetv: 20, prime: 10}        # re-enter only when deeper than target + this (landing + reads)
   calib:                   # [item 5, Nov 7] self-calibration per channel and stick (redzone/tuners/join_calib.py). OFF
     enabled: false         # on: each plan uses the calibrated lead (YouTube TV) / bias (Prime) from data/joins.jsonl
     window: 20             # newest measured joins per key (app -> app:channel -> app:channel:stick)

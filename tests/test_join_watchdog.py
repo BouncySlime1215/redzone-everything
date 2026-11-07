@@ -184,20 +184,42 @@ def test_never_reads_the_visible_stick_and_waits_first_s():
     assert not dm.due("b|espn", hidden=False) and dm.due("b|espn", hidden=True)
 
 
-def test_the_31_minute_espn_soak_reenters_once_the_reads_push_it_past_the_band():
+def test_the_31_minute_espn_soak_reenters_once_the_reads_push_it_past_the_depth_band():
     """Nick's Nov 7 soak: 82, 89, ... 119 s at 5-min reads: no snap, but every read added 7.5 s. With backoff the
-    reads come at 5, 15, 35 min; the third would be 104.5 > 90 + 10.5 -> re-enter (the soak itself never would)."""
+    reads come at 5, 15, 35, 55 min; the fourth reads 112 > 90 + max_over_s 20 -> re-enter (the soak never would)."""
     c = Clock()
     dm = jw.DriftMonitor(clock=c, log_path="")
     dm.anchor("k", "youtubetv", 90, 82.0)
     seen, b = [], 82.0
-    for _ in range(3):
+    for _ in range(4):
         while not dm.due("k", hidden=True):
             c.t += 10
         b += 7.5
         seen.append((round(c.t / 60), dm.record("k", b).action))
-    assert seen == [(5, "ok"), (15, "ok"), (35, "reenter")]
-    assert dm.report()["reads"] == 3 and dm.report()["read_cost_s"] == 22.5 and dm.believed("k") is None
+    assert seen == [(5, "ok"), (15, "ok"), (35, "ok"), (55, "reenter")]
+    assert dm.report()["reads"] == 4 and dm.report()["read_cost_s"] == 30.0 and dm.believed("k") is None
+
+
+def test_nicks_drift_run_holds_after_a_plus_six_landing():
+    """Nick 13:53Z, ESPN target 60: buffered at 66.14, first read at 2.2 min 74.98 (expected 73.64, drift +1.34, cost
+    9.8 s). The old target band (60 +- 10.5) re-entered a stick that held; judged on drift + depth it holds."""
+    c = Clock()
+    dm = jw.DriftMonitor({"join.drift.first_s": 120}, clock=c, log_path="")
+    dm.anchor("k", "youtubetv", 60, 66.14)
+    c.t = 132
+    v = dm.record("k", 74.98, cost_s=9.8)
+    assert (v.action, v.expected_s, v.drift_s) == ("ok", 73.64, 1.34)
+    assert dm.believed("k") == 74.98
+    c.t = 400
+    assert dm.record("k", 82.6).action == "reenter"       # 82.6 > 60 + 20: too deep now, re-enter
+
+
+def test_a_drift_read_shallower_than_the_target_band_reenters():
+    c = Clock()
+    dm = jw.DriftMonitor(clock=c, log_path="")
+    dm.anchor("k", "youtubetv", 60, 64.0)
+    c.t = 400
+    assert dm.record("k", 45.0).action == "reenter"       # < 60 - 10.5: crept toward live
 
 
 def test_plain_pause_snap_to_live_is_snapped():
