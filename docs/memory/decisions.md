@@ -1165,3 +1165,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   hold_only league waits for a clock-stopped dead ball on the delayed picture (decider.entry.whistle_band_s: 3);
   sim: the re-check uses the same rule, worst measured 90 s scrub 37.6 s.** scrub_entry stays off; the scrub's
   landing overshoot (130.8 s for 90 asked, Nick 05:54Z) waits on the SEEK_TO fix and is not covered by a pass.
+- 2026-11-07 (integrator, EXP-610 read): **EXP-610 FAILS on the resync harness only; the shipped harness holds every
+  gate.** With the clock-stopped flip, NBA B90 drops dev-grader mid-play on every seed (11/10/10 -> 4/3/4) and plays
+  missed falls 16 -> 11. Resync fails on your-team crunch 17/31 (the Oct 24 WSH leave-gate night already known from
+  the #363 sweep; decider.leave.low_leverage=[nba], #258, took it to 31/31 and waits on Nick's RC6.3 pick) and plays
+  missed 12 -> 14. Unmodelled: 14-19 re-checks/run past 25 s (live drops and re-picks) and the live landing overshoot.
