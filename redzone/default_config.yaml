@@ -658,6 +658,7 @@ join:                      # [Join API] put a HIDDEN stick a chosen time behind 
     min_behind_s: 5        # a reading at or below this is the live edge, not a buffer
     over_s: 15             # a reading past max_s + this is a runaway / misread
     max_reseeks: 1         # then fall back
+    reprobe_unmeasured: false  # an unmeasured committed join: read the label once more before falling back (+~7.5 s)
     fallback: live         # live = relink to the live edge through another channel; keep = leave it, state unknown
   drift:                   # [drift monitor, Nick Nov 7 item 3] rare, budgeted re-reads of the HIDDEN stick only
     enabled: false

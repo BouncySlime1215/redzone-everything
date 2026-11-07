@@ -62,6 +62,10 @@ WATCHDOG_DEFAULTS = {
     "max_s": 150.0,            # join.max_s
     "over_s": 15.0,            # a reading past max_s + this is a misread / runaway (ACC Network stopped near 150 s)
     "max_reseeks": 1,
+    # [Nick's cross-channel run, Nov 7 13:02Z: 25/26 verified, the 1 miss was a post-commit label read that returned
+    # nothing] on "unmeasured" after a committed join, read the label ONCE more before falling back (~7.5 s more
+    # behind; the plan and target move by that one extra read). OFF.
+    "reprobe_unmeasured": False,
     "fallback": "live",        # live = relink to the live edge (known position); keep = leave it, state unknown
 }
 DRIFT_DEFAULTS = {
@@ -165,6 +169,7 @@ class Outcome:
     attempts: int = 0
     verdicts: list[dict] = field(default_factory=list)
     fallback: str = ""                 # "" | "live" | "live_failed" | "keep"
+    reprobes: int = 0                  # extra label reads after an unmeasured committed join (reprobe_unmeasured)
     took_s: float = 0.0
 
     @property
@@ -220,6 +225,23 @@ async def watched_join(stick, app: str, target_s: float, *, relink: Callable[[],
                        visible=not still_hidden(),
                        reseeks_left=max_re - (out.attempts - 1), cfg=cfg)
             out.verdicts.append(asdict(v))
+            reader = join_kw.get("read_behind")
+            if v.status == "unmeasured" and bool(wcfg(cfg, "reprobe_unmeasured")) and bool(getattr(r, "ok", False)) \
+                    and reader is not None and plan is not None and not out.reprobes and still_hidden():
+                # the join committed but its one label read came back empty: read once more (it adds its own freeze,
+                # so the plan moves by one more read_s and the target by both reads)
+                out.reprobes += 1
+                try:
+                    again = await reader(stick)
+                except Exception as e:
+                    log.warning("re-probe failed: %r", e)
+                    again = None
+                rs = float(getattr(plan, "read_s", 0.0) or 0.0)
+                pred = getattr(plan, "predicted_s", None)
+                v = verify(a, target_s, again, None if pred is None else float(pred) + rs, read_adds_s=2 * rs,
+                           visible=not still_hidden(), reseeks_left=max_re - (out.attempts - 1), cfg=cfg)
+                v.reason = f"re-probe: {v.reason}"
+                out.verdicts.append(asdict(v))
             if v.action == "accept":
                 out.state, out.behind_s = "buffered", v.measured_s
                 break
@@ -253,6 +275,7 @@ async def watched_join(stick, app: str, target_s: float, *, relink: Callable[[],
     out.took_s = round(clock() - t0, 2)
     log_row({"kind": "watchdog", "app": a, "stick": label, "channel": channel, "target_s": out.target_s,
              "state": out.state, "behind_s": out.behind_s, "attempts": out.attempts, "fallback": out.fallback,
+             "reprobes": out.reprobes,
              "status": [d.get("status") for d in out.verdicts],
              "off_pred_s": [d.get("off_pred_s") for d in out.verdicts], "took_s": out.took_s}, log_path)
     return out

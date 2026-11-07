@@ -427,3 +427,67 @@ def test_calibration_keeps_an_off_target_read_as_a_measurement_not_a_failure():
            "channel": "espn", "stick": "stickB", "target_s": 60, "error_s": -7.88}
     st = jc.JoinCalib([row]).stats("youtubetv")
     assert st.failed == 0 and st.gross == 1          # counted as gross (|err| > 12), never used, not a failed join
+
+
+# ------------------------------------- Nick's cross-channel run, Nov 7 13:02Z: ESPN2 run 2, the post-commit read was empty
+def _unread_then(*reads):
+    """A committed join whose own label read returned nothing; later reads of the same probe return `reads`."""
+    seq = iter(reads)
+    n = []
+
+    async def reader(_stick):
+        n.append(1)
+        return next(seq)
+
+    async def join_fn(stick, app, target_s, *, behind_before_s=0.0, read_behind=None, **kw):
+        plan = jn.plan_join(app, target_s, behind_before_s)
+        return NS(ok=True, measured_s=None, plan=plan, verdict="")
+    return join_fn, reader, n
+
+
+def test_reprobe_is_off_by_default_and_falls_back_as_before():
+    jf, reader, n = _unread_then(71.0)
+    rl, relinks = _relinker()
+    out = run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, read_behind=reader, log_path=""))
+    assert out.state == "live" and out.reprobes == 0 and not n and len(relinks) == 1
+
+
+def test_reprobe_saves_the_join_when_the_second_read_lands():
+    """Plan 64.2 (one read); the re-probe adds another ~7.5 s: 63.0 + 7.5 = 70.5 vs 71.7 -> verified."""
+    jf, reader, n = _unread_then(70.5)
+    rl, relinks = _relinker()
+    out = run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, read_behind=reader, log_path="",
+                              cfg={"join.watchdog.reprobe_unmeasured": True}))
+    assert out.state == "buffered" and out.behind_s == 70.5 and out.reprobes == 1 and len(n) == 1 and not relinks
+    assert [v["status"] for v in out.verdicts] == ["unmeasured", "verified"]
+    assert out.verdicts[-1]["predicted_s"] == pytest.approx(71.7) and out.verdicts[-1]["reason"].startswith("re-probe")
+
+
+def test_reprobe_reads_only_once_then_falls_back():
+    jf, reader, n = _unread_then(None, 70.0)
+    rl, relinks = _relinker()
+    out = run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, read_behind=reader, log_path="",
+                              cfg={"join.watchdog.reprobe_unmeasured": True}))
+    assert out.state == "live" and out.reprobes == 1 and len(n) == 1 and len(relinks) == 1
+
+
+def test_reprobe_off_target_still_reseeks():
+    jf, reader, n = _unread_then(90.0)
+    rl, relinks = _relinker()
+    out = run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, read_behind=reader, log_path="",
+                              cfg={"join.watchdog.reprobe_unmeasured": True}))
+    assert out.verdicts[1]["status"] == "off_target" and out.verdicts[1]["action"] == "reseek" and len(relinks) >= 1
+
+
+def test_no_reprobe_on_a_failed_join_or_a_visible_stick():
+    async def failed(stick, app, target_s, *, behind_before_s=0.0, read_behind=None, **kw):
+        return NS(ok=False, measured_s=None, plan=jn.plan_join(app, target_s), verdict="")
+    _, reader, n = _unread_then(70.5)
+    rl, _ = _relinker()
+    cfg = {"join.watchdog.reprobe_unmeasured": True}
+    run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=failed, read_behind=reader, log_path="",
+                        cfg=cfg))
+    jf, reader2, n2 = _unread_then(70.5)
+    run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, read_behind=reader2, log_path="", cfg=cfg,
+                        still_hidden=lambda: False))
+    assert not n and not n2

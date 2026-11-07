@@ -1241,3 +1241,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   way); a new `verdict` field says why. Off target -> ok false, reason names "a lost press?" when one 15 s step short.
   The watchdog still re-seeks such a READ landing once (it is a measurement, not a failed join), and join_calib keeps
   it as a measurement (its gross filter decides). The pre-commit knob guard is the seek thread's. Flags off.
+- 2026-11-07 (Nick's cross-channel run 13:02Z: 25/26 joins verified at 61.2-67.5 s for target 60, the 1 miss an empty
+  post-commit label read): new `join.watchdog.reprobe_unmeasured`, **false**. On, an unmeasured COMMITTED join reads the
+  label once more before falling back to live; that read adds its own ~7.5 s, so the plan moves by one more read_s and
+  the target by both. One re-probe per join, never on a failed join or a visible stick.
