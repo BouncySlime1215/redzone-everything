@@ -67,6 +67,7 @@ from redzone.tv import SamsungTV
 
 log = logging.getLogger(__name__)
 DEVICES = Path(__file__).resolve().parent.parent / "data" / "devices.json"
+NO_STICK = "no stick connected"   # live mode, no stick online: a refused switch, never a success
 MAX_SAFE_WAIT_S = 25.0     # how long a flip may wait for a safe moment before giving up
 SAFE_POLL_S = 0.2          # re-check for that moment this often (a cheap local computation)
 PRELOAD_BACKOFF_S = 120.0  # a preload that failed isn't retried for this long
@@ -2022,9 +2023,13 @@ class Controller:
         if not target:
             return Outcome(False, None, 0.0, "no channel for this game", True)
         if not self.live_control:
-            why = "dry run" if self.cfg.get("mode.dry_run", True) else "no stick connected"
-            self.on_target = target
-            return Outcome(True, target, 0.0, why, True, time.time())
+            if self.cfg.get("mode.dry_run", True):
+                self.on_target = target
+                return Outcome(True, target, 0.0, "dry run", True, time.time())
+            # [Nov 7 overseer] Live mode with no stick online (the Mac asleep, sticks off the network): nothing
+            # reached the TV. A success here logged phantom starts ("start ALA@LSU ok=True took 0 s") that
+            # inflated switch counts, and set on_target to a game the TV never showed.
+            return Outcome(False, target, 0.0, NO_STICK, False, screen_unchanged=True)
         if self.input_unknown:
             return Outcome(False, target, 0.0, "TV input is unknown; verify the visible stick before resuming", False)
         mv = self.prime_mv

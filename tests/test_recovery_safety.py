@@ -160,6 +160,26 @@ async def test_failed_switch_cools_the_target_down(cfg, tmp_path):
     await engine.close()
 
 
+async def test_no_stick_is_not_a_switch_nor_the_targets_fault(cfg, tmp_path):
+    """[Nov 7 overseer] Every stick offline in live mode: the start is not confirmed on screen, the target
+    isn't cooled down, it never counts toward safe mode, and the switch row says ok=False."""
+    cfg.update({'mode': {'dry_run': False}})
+    engine = Engine(cfg, Store(tmp_path / 'test.db'))
+    callbacks = []
+    engine.control.submit = lambda *args, **kwargs: callbacks.append(args[2])
+    engine.decider.target_of = lambda gid: 'youtubetv:espn'
+    rows = []
+    engine.store.switch = lambda **kw: rows.append(kw)
+    d = Decision(1, 'switch', 'new', 'first pick', State.WATCHING, kind='start')
+    for _ in range(3):
+        engine._act(d, None, {})
+        callbacks[-1](ctl.Outcome(False, 'youtubetv:espn', 0.0, ctl.NO_STICK, False, screen_unchanged=True))
+    assert engine.decider.current is None and engine.decider.start_fails == 3
+    assert not engine._fail_cool and not engine.decider.errors and not engine.decider.safe_mode
+    assert [r['ok'] for r in rows] == [False, False, False]
+    await engine.close()
+
+
 async def test_cancelled_switch_is_not_an_error(cfg, tmp_path):
     cfg.update({'mode': {'dry_run': False}})
     engine = Engine(cfg, Store(tmp_path / 'test.db'))

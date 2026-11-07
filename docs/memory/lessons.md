@@ -383,3 +383,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Fix:** join.yttv_read_s in join.plan_join (predicted includes the read; old rows corrected in join_calib), identify() and printed relink
   steps in scripts/watchdog_try.py, RZ_JOINS_LOG for the log path. Runbook: [join-watchdog.md](runbooks/join-watchdog.md).
 - **Signals:** live_failed, youtubetv app not found, off_pred_s near 7.5
+- 2026-11-07: Live mode with every stick offline (the Mac asleep) returned a dry-run style success from
+  control._execute ("no stick connected", ok=True, 0 s) and set on_target: the switch log filled with phantom
+  "start ALA@LSU ok=True took 0 s" rows that inflated switch counts. Only mode.dry_run is a simulated success now;
+  no stick is a refused switch (ok=False, screen_unchanged, not the target's fault).
