@@ -8,6 +8,12 @@ Measured (overseer, 9 runs on NBA TV, ESPN, FS1, ACCN; targets 60/75/90; label t
     never done here.
   * Prime: pause for the gap (prime_pause), accurate to ~1-2 s at any target.
 
+  * [Nick's depth sweep, Nov 7 13:48Z, #403 RIGHT probe, retuned before each join] the landing grows 16.8 s per real
+    LEFT k, not 15: each LEFT also keeps the overlay (frozen picture) up ~1.4-1.8 s longer. landed = 16.8 k + 28.5 (the
+    label read's 7.5 s included) fits k = 1, 2, 4, 6 (45.3, 62.1, 95.7, 129.3) within 1 s; 15 n + 19.2 drifted -3.9 at
+    45 to +4.9 at 120 (one T120 off_target). k = round((T - 28.5) / 16.8), at least 1: the shallowest scrub join is
+    ~45 s (T30 used to plan zero LEFTs, a no-op scrub that landed at 10-14 s).
+
 plan_join(app, target_s) says how (presses or hold) and the predicted landing. join(stick, app, target_s, ...) runs
 it on the hidden stick (yttv_seek.enter_buffer with that fixed press count, or prime_pause.enter_buffer_pause) and
 returns a JoinResult with target, predicted, measured (label / timecode; None when nothing measured) and the errors,
@@ -25,7 +31,7 @@ from typing import Any, Awaitable, Callable
 
 log = logging.getLogger("redzone.join")
 
-JOIN_DEFAULTS = {"enabled": False, "yttv_step_s": 15.0, "yttv_n_offset_s": 10.0, "yttv_lead_s": 11.7,
+JOIN_DEFAULTS = {"enabled": False, "yttv_step_s": 15.0, "yttv_left_s": 16.8, "yttv_lead_s": 21.0,
                  "yttv_err_s": 3.0, "prime_bias_s": 0.0, "prime_err_s": 2.0, "max_s": 150.0, "yttv_read_s": 7.5}
 APPS = {"youtubetv": "scrub", "prime": "pause"}
 
@@ -40,12 +46,13 @@ class JoinPlan:
     app: str
     method: str                       # "scrub" (YouTube TV) | "pause" (Prime) | "none"
     target_s: float                   # the behind_live asked for
-    presses: int = 0                  # scrub: LEFTs, the probe included
+    presses: int = 0                  # scrub: keys for yttv_seek's fixed count (the probe + lefts)
+    lefts: int = 0                    # scrub: real LEFTs that move the knob (k; the probe at live moves nothing)
     hold_s: float = 0.0               # pause: seconds paused
     predicted_s: float | None = None  # where it should land (behind live)
     expected_err_s: float | None = None
     reason: str = ""
-    bias_used_s: float | None = None  # the lead (scrub) / bias (pause) this plan used: calibration reads it back
+    bias_used_s: float | None = None  # the lead (scrub: landing - 16.8 k - read) / bias (pause): calibration reads it
     bias_source: str = "shipped"      # "shipped" or the calibration key level (join_calib, join.calib.enabled)
     read_s: float = 0.0               # what the measuring read itself adds (YouTube TV label probe: frozen overlay)
 
@@ -67,20 +74,23 @@ def plan_join(app: str, target_s: float, behind_before_s: float = 0.0, cfg=None,
         p.predicted_s, p.expected_err_s, p.reason = before, 0.0, "already there (nothing to do)"
         return p
     if method == "scrub":
-        step = float(_cfg(cfg, "yttv_step_s"))
+        per = float(_cfg(cfg, "yttv_left_s"))
         lead = float(_cfg(cfg, "yttv_lead_s"))
         err = float(_cfg(cfg, "yttv_err_s"))
-        n_off = float(_cfg(cfg, "yttv_n_offset_s"))
-        if bias is not None:
-            # Nick's rule moves with the calibrated lead: at the shipped lead it is exactly round((T - 10) / 15)
-            n_off, lead, err, p.bias_source = n_off + (bias.value - lead), bias.value, bias.err_s, bias.source
-        p.presses = max(1, int(round((t - before - n_off) / step)))
         # [Nick's stick tests, Nov 7 11:35Z / 11:40Z] the label probe that measures the join freezes the picture
-        # ~7.5 s and its reading includes that (measured - predicted +5.9, +6.5, +6.5, +7.8 with the read left out).
-        # The ONE place this cost lives: the canary and the watchdog both read predicted_s; calibration reads read_s.
+        # ~7.5 s and its reading includes that. The ONE place this cost lives: the canary and the watchdog both read
+        # predicted_s; calibration reads read_s.
         p.read_s = float(_cfg(cfg, "yttv_read_s"))
-        p.predicted_s = round(before + step * p.presses + lead + p.read_s, 2)
+        if bias is not None:
+            lead, err, p.bias_source = bias.value, bias.err_s, bias.source
+        # [Nick's depth sweep, Nov 7] landed = before + 16.8 k + lead + read (lead 21.0 + read 7.5 = his 28.5).
+        # At least one LEFT: k = 0 is a scrub that seeks nothing (T30 landed 10-14 s, off_target).
+        p.lefts = max(1, int(round((t - before - lead - p.read_s) / per)))
+        p.presses = p.lefts + 1          # yttv_seek sends a fixed count n as the probe + (n - 1) LEFTs
+        p.predicted_s = round(before + per * p.lefts + lead + p.read_s, 2)
         p.expected_err_s, p.bias_used_s = err, round(lead, 2)
+        if p.predicted_s - t > per / 2:
+            p.reason = f"shallowest scrub join is ~{p.predicted_s:.0f}s (one LEFT)"
     else:
         b = float(_cfg(cfg, "prime_bias_s"))
         err = float(_cfg(cfg, "prime_err_s"))
@@ -95,7 +105,8 @@ def plan_join(app: str, target_s: float, behind_before_s: float = 0.0, cfg=None,
 
 
 def achievable(app: str, target_s: float, cfg=None) -> float | None:
-    """The nearest landing a join from the live edge can be expected to hit (YouTube TV: one per 15 s step)."""
+    """The nearest landing a join from the live edge can be expected to hit (YouTube TV: one per 16.8 s LEFT,
+    the shallowest ~45 s: a target under ~37 s returns that, never a no-op)."""
     p = plan_join(app, target_s, 0.0, cfg)
     return p.predicted_s if p.method != "none" else None
 
@@ -117,7 +128,10 @@ class JoinResult:
         d = {"ts": round(time.time(), 1), **{k: v for k, v in asdict(self.plan).items()},
              "ok": self.ok, "measured_s": self.measured_s, "estimate_s": self.estimate_s, "error_s": self.error_s,
              "pred_error_s": self.pred_error_s, "reason": self.reason[:160], "took_s": round(self.took_s, 2),
-             "verdict": self.verdict}
+             "verdict": self.verdict,
+             # [Nick's sweep, Nov 7 14:03Z: a T30 'no scrub label after the LEFT' with no trace] the helper's own steps
+             # (key names, labels in s, overlay seconds; never an address), ':' dropped so no step reads like host:port
+             "steps": " | ".join(str(x).replace(":", "") for x in self.steps)[:400]}
         d.update(extra)
         return d
 

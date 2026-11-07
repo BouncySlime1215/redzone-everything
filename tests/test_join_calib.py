@@ -14,39 +14,57 @@ TARGETS = [60, 75, 90] * 3
 CHANNELS = ["nbatv", "espn", "fs1", "accn"]
 
 
-def row(target, error, channel="espn", stick="stickB", app="youtubetv", ok=True, measured=True, ts=None, **kw):
+OLD_LEAD = 11.7   # the lead of the 15 n model the Nov 7 rows were logged with
+
+
+def row(target, error, channel="espn", stick="stickB", app="youtubetv", ok=True, measured=True, ts=None, old=False,
+        **kw):
+    """A join row. old=True: logged by the pre-depth-fit plan (n = round((T - 10) / 15) presses, predicted
+    15 n + 11.7 + read, no `lefts` field), as Nick's Nov 7 rows were. error = landed - target, read excluded."""
     p = jn.plan_join(app, target)
     # Nick's 9 runs were read without the probe's own freeze; a probe reading today carries it (join.yttv_read_s)
     m = round(target + error + p.read_s, 2) if measured else None
-    r = {"ts": ts, "app": app, "method": p.method, "target_s": target, "presses": p.presses, "hold_s": p.hold_s,
-         "predicted_s": p.predicted_s, "read_s": p.read_s, "ok": ok, "measured_s": m if ok else None,
-         "error_s": round(m - target, 2) if (ok and m is not None) else None,
-         "pred_error_s": round(m - p.predicted_s, 2) if (ok and m is not None) else None,
-         "channel": channel, "stick": stick}
+    r = {"ts": ts, "app": app, "method": p.method, "target_s": target, "presses": p.presses, "lefts": p.lefts,
+         "hold_s": p.hold_s, "predicted_s": p.predicted_s, "read_s": p.read_s, "bias_used_s": p.bias_used_s}
+    if old and app == "youtubetv":
+        n = max(1, round((target - 10) / 15))
+        r.update(presses=n, predicted_s=round(15 * n + OLD_LEAD + p.read_s, 2), bias_used_s=OLD_LEAD)
+        del r["lefts"]
+    r.update({"ok": ok, "measured_s": m if ok else None,
+              "error_s": round(m - target, 2) if (ok and m is not None) else None,
+              "pred_error_s": round(m - r["predicted_s"], 2) if (ok and m is not None) else None,
+              "channel": channel, "stick": stick})
     r.update(kw)
     return r
 
 
 def nick_rows(**kw):
-    return [row(t, e, channel=CHANNELS[i % 4], **kw) for i, (t, e) in enumerate(zip(TARGETS, NICK_ERRORS))]
+    return [row(t, e, channel=CHANNELS[i % 4], old=True, **kw) for i, (t, e) in enumerate(zip(TARGETS, NICK_ERRORS))]
+
+
+# Nick's 9 old-model rows on today's model (16.8 per real LEFT, n - 1 of them): T + e - 16.8 (n - 1), mean ~21.3,
+# the depth sweep's 21.0 within 0.3 s
+NICK_LEAD = sum(t + e - 16.8 * (round((t - 10) / 15) - 1) for t, e in zip(TARGETS, NICK_ERRORS)) / 9
 
 
 def test_nicks_nine_runs_keep_the_shipped_lead_and_say_plus_minus_three():
     c = jc.JoinCalib(nick_rows())
     b = c.bias("youtubetv")
-    assert b.source == "app" and b.n == 9 and b.value == pytest.approx(11.7, abs=0.15)
-    assert 1.0 <= b.err_s <= 3.0 and not c.alerts()
+    assert b.source == "app" and b.n == 9 and b.value == pytest.approx(NICK_LEAD, abs=0.6)
+    # on the 16.8-per-LEFT model these old rows spread a little wider (T60 / 75 / 90 differ by ~1.8 s per step)
+    assert abs(b.value - 21.0) < 1.0 and 1.0 <= b.err_s <= 4.0 and not c.alerts()
     assert c.stats("youtubetv").mean_error_s == pytest.approx(-3.27 + 7.5, abs=0.01)   # vs target, read included
 
 
 def test_calibration_off_plans_exactly_nicks_rule():
     for t in range(20, 151, 5):
         p = jn.plan_join("youtubetv", t)
-        assert p.presses == max(1, round((t - 10) / 15)) and p.bias_source == "shipped" and p.bias_used_s == 11.7
+        assert p.lefts == max(1, round((t - 28.5) / 16.8)) and p.presses == p.lefts + 1
+        assert p.bias_source == "shipped" and p.bias_used_s == 21.0
 
 
 def test_at_the_shipped_lead_the_calibrated_plan_is_nicks_rule_too():
-    b = jc.Bias(11.7, 3.0, "app", 9)
+    b = jc.Bias(21.0, 3.0, "app", 9)
     for t in range(20, 151, 5):
         assert jn.plan_join("youtubetv", t, bias=b).presses == jn.plan_join("youtubetv", t).presses
 
@@ -58,7 +76,7 @@ def test_online_replay_from_a_naive_lead_learns_the_measured_one():
     rows = []
     for t, e in zip(TARGETS, NICK_ERRORS):
         r = row(t, e)
-        r["bias_used_s"] = 11.7   # the measured landing is what it is; the row says which lead its plan used
+        r["bias_used_s"] = 21.0   # the measured landing is what it is; the row says which lead its plan used
         rows.append(r)
     out = jc.replay(rows, cfg)
     assert out["n"] == 9 and out["calib_mae_s"] < out["shipped_mae_s"]
@@ -68,7 +86,7 @@ def test_gross_rows_never_move_the_bias():
     """Overlay held for an in-between target landed -18.7 s; #391 'asked 90, read 23' (the stick was not at live)."""
     rows = nick_rows() + [row(75, -18.7 - 3.3), row(90, 23 - 90)]
     c = jc.JoinCalib(rows)
-    assert c.stats("youtubetv").gross == 2 and c.bias("youtubetv").value == pytest.approx(11.7, abs=0.15)
+    assert c.stats("youtubetv").gross == 2 and c.bias("youtubetv").value == pytest.approx(NICK_LEAD, abs=0.6)
 
 
 def test_unmeasured_and_failed_joins_are_counted_not_used():
@@ -81,10 +99,10 @@ def test_unmeasured_and_failed_joins_are_counted_not_used():
 
 
 def test_bounds_and_a_shift_alert_when_the_app_changes():
-    rows = nick_rows() + [row(60, 8.0) for _ in range(20)]   # every join suddenly lands ~11 s later than predicted
+    rows = nick_rows() + [row(60, 6.0) for _ in range(20)]   # every join suddenly lands ~10 s later than predicted
     c = jc.JoinCalib(rows)
     b = c.bias("youtubetv")
-    assert b.value <= 11.7 + 5 + 1e-9 and b.clamped
+    assert b.value <= 21.0 + 5 + 1e-9 and b.clamped
     assert any("landed later" in a for a in c.alerts())
 
 
@@ -100,7 +118,7 @@ def test_a_single_join_on_a_new_channel_moves_it_a_fifth_of_the_way():
     c = jc.JoinCalib(nick_rows() + [row(60, 2.0, channel="tbs")])
     parent = c.stats("youtubetv")
     ch = c.stats("youtubetv:tbs")
-    seen = 56.7 + 5.3 - 56.7 + 11.7          # landed 62.0 vs predicted 56.7: lead seen 17.0
+    seen = 60 + 2.0 - 16.8 * 2               # landed 62.0 (+ read) after 2 real LEFTs: lead seen 28.4
     clipped = min(seen, parent.value + 2 * parent.err_s)
     assert ch.n == 1 and ch.value == pytest.approx((clipped + 4 * parent.value) / 5, abs=0.02)
 
@@ -145,13 +163,13 @@ def test_join_uses_the_calibration_and_logs_what_it_used(tmp_path):
                             log_path=log, label="stickB", channel="espn", source="canary"))
     last = json.loads(log.read_text().splitlines()[-1])
     assert r.ok and last["bias_source"] in ("app", "app:channel", "app:channel:stick") and last["source"] == "canary"
-    assert last["bias_used_s"] == pytest.approx(11.7, abs=1.0)   # ESPN ran ~1 s early in Nick's runs
+    assert last["bias_used_s"] == pytest.approx(NICK_LEAD, abs=1.5)   # ESPN ran ~1 s early in Nick's runs
 
 
 def test_join_with_calibration_off_is_unchanged(tmp_path):
     s = FakeYTTV(label0=3600.0)
     r = asyncio.run(jn.join(s, "youtubetv", 60, cfg=CFG, pkg=YT, read_overlay=reader(s), log_path=tmp_path / "j"))
-    assert r.plan.bias_source == "shipped" and r.plan.presses == 3 and r.plan.predicted_s == 64.2
+    assert r.plan.bias_source == "shipped" and r.plan.presses == 3 and r.plan.predicted_s == 62.1
 
 
 def test_a_broken_calibration_file_never_blocks_a_join(tmp_path):
@@ -165,12 +183,13 @@ def test_a_broken_calibration_file_never_blocks_a_join(tmp_path):
 
 def test_rows_from_before_the_read_cost_are_corrected_not_learned_twice():
     """Nick's Nov 7 canary + watchdog rows (no read_s): measured - predicted +5.9, +6.5, +6.5, +7.8 with the read left
-    out of the plan. They must calibrate to about the shipped lead, not 11.7 + 6.7."""
+    out of the plan. They must calibrate to about the shipped lead, not 11.7 + 6.7 (old model), and on today's
+    16.8-per-LEFT model to about 21: 11.7 - 7.5 + pe + 15 n - 16.8 (n - 1)."""
     rows = []
     for t, pe in ((60, 5.93), (60, 6.45), (60, 6.48), (75, 7.82)):
-        p = jn.plan_join("youtubetv", t)
-        old_pred = p.predicted_s - p.read_s
-        rows.append({"app": "youtubetv", "method": "scrub", "ok": True, "target_s": t, "presses": p.presses,
+        n = round((t - 10) / 15)
+        old_pred = 15 * n + 11.7
+        rows.append({"app": "youtubetv", "method": "scrub", "ok": True, "target_s": t, "presses": n,
                      "predicted_s": old_pred, "measured_s": round(old_pred + pe, 2), "pred_error_s": pe,
                      "bias_used_s": 11.7, "channel": "espn", "stick": "stickB"})
-    assert [round(jc.observation(r), 2) for r in rows] == [10.13, 10.65, 10.68, 12.02]
+    assert [round(jc.observation(r), 2) for r in rows] == [21.53, 22.05, 22.08, 21.62]
