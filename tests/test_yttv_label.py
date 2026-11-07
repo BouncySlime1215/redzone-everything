@@ -175,3 +175,10 @@ def test_flag_ships_off():
     assert d["timing"]["behind_live_s"]["label_reader"] is False
     assert L.enabled(SimpleNamespace(get=lambda k, default=None: d["timing"]["behind_live_s"]["label_reader"]
                                      if k == L.LABEL_READER_FLAG else default)) is False
+
+
+def test_label_above_the_preview_card_reads():
+    """Live, Nov 6: with the scrub preview up the label sits at y 0.444, above the card (the wall clock is at y 0.095)."""
+    rows = [o("11:04 PM", 0.881, 0.095, w=0.068), o("34:05", 0.214, 0.444, w=0.044), o("88 Multiview", 0.462, 0.889, w=0.1)]
+    r = L.parse_label(rows, 1794024000.0)
+    assert r.ok and r.label_s == 2045
