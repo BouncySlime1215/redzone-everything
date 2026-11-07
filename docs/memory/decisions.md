@@ -1134,3 +1134,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-07 (Nick 05:26Z order; integrator freeze): **Grader freeze v44: EXP-608 (#387) Prime buffered by pause on
   the hidden stick, ready B + 1 s after its tune; the "Prime can't buffer" replay assumption is withdrawn for it.**
   Measured once (60 s pause, 4-min hold, stick .150); B90 extrapolated; multiview tiles still 0 live.
+- 2026-11-07 (integrator, EXP-607 read): **The EXP-605 resync failure was a sim artifact (resync mid-play 19.0 -> 7.7
+  per run with Prime pinned at its edge), but NBA stays FAIL:** clock-truth adds 1-2 on two seeds and the primary CI
+  touches 0 on both harnesses. EXP-608 (Prime by pause) is the next read.
