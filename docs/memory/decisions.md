@@ -1132,6 +1132,13 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   TNT, NBA TV, BTN, ACCN, FS1, ESPN2 and TBS (about 15 s each); the one failure failed closed on "knob moved 40s, not
   45s", one second outside the old tolerance. 6 is still well under one 15 s step, so a missed or extra LEFT is caught.
   Flag stays off.
+- 2026-11-07 (Nick's 12:26 AM order 2): new `prime_pause.*` group, **enabled false**. `redzone/tuners/prime_pause`
+  puts a HIDDEN Prime stick behind live with MEDIA_PAUSE, a hold, then MEDIA_PLAY, because on Prime pause holds
+  (overseer: 60 s pause, timecode 02:20:54 -> 02:24:44 over 230 s wall, no snap in 4 min). It never uses
+  MEDIA_REWIND (continuous on Prime: 214 s / 665 s back) or media_session (stale). Prime's overlay timecode is the
+  truth: the paused timecode must not move during the hold, and the gain after PLAY must match the hold within 3 s,
+  else it fails closed (un-pause, then the caller's relink to live). A stick that turns visible mid-hold is
+  un-paused, not re-linked. The entry-path wiring and the regrade are other threads.
 - 2026-11-07 (integrator): **Grader freeze v43: EXP-607 (#386) pins Prime's re-sync prior at its live edge.** T9's
   trace: resync believed Prime 116 s vs true 26 s on 34/36 decisions because _attach_resync pinned every target at the
   buffered lag. Diagnostic of the sim only; NBA stays FAIL on EXP-605's shipped breaches.
