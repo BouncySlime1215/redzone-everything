@@ -19,8 +19,9 @@ OVERSEER_9 = [(60, 55.7), (60, 56.1), (75, 69.7), (75, 73.4), (90, 85.4), (90, 8
 # ------------------------------------------------------------------------------------------------- verify
 @pytest.mark.parametrize("target,measured", OVERSEER_9)
 def test_the_nine_measured_joins_all_verify(target, measured):
-    pred = jn.plan_join("youtubetv", target).predicted_s
-    v = jw.verify("youtubetv:espn", target, measured, pred)
+    p = jn.plan_join("youtubetv", target)
+    # read by hand (no probe freeze); a probe reading of the same landing carries the read's own 7.5 s
+    v = jw.verify("youtubetv:espn", target, measured + p.read_s, p.predicted_s, read_adds_s=p.read_s)
     assert v.status == "verified" and v.buffered and v.action == "accept"
 
 
@@ -331,11 +332,22 @@ def test_nicks_nbatv_run_counts_the_reads_own_seven_and_a_half_seconds():
     freeze, so that is a good join, not a re-seek."""
     old = jw.verify("youtubetv", 75, 79.52, 71.7)
     assert old.status == "off_target"                                   # what the stick test hit
-    v = jw.verify("youtubetv", 75, 79.52, 71.7, read_adds_s=7.5)
-    assert v.buffered and v.off_pred_s == 0.32 and v.measured_s == 79.52
+    p = jn.plan_join("youtubetv", 75)
+    assert p.read_s == 7.5 and p.predicted_s == pytest.approx(79.2)     # the read now lives in the plan
+    v = jw.verify("youtubetv", 75, 79.52, p.predicted_s, read_adds_s=p.read_s)
+    assert v.buffered and v.off_pred_s == 0.32 and v.off_target_s == -2.98 and v.measured_s == 79.52
 
 
-def test_watched_join_applies_the_read_cost_only_with_the_shipped_lead():
+@pytest.mark.parametrize("measured", [62.63, 63.15, 63.18])
+def test_nicks_three_canary_joins_verify_with_the_read_in_the_plan(measured):
+    """Canary, espn, target 60 (Nov 7 11:40Z): 62.63 / 63.15 / 63.18 vs 56.7 without the read (+5.9..+6.5)."""
+    p = jn.plan_join("youtubetv", 60)
+    assert p.predicted_s == pytest.approx(64.2)
+    v = jw.verify("youtubetv", 60, measured, p.predicted_s, read_adds_s=p.read_s)
+    assert v.buffered and abs(v.off_pred_s) < 2
+
+
+def test_watched_join_takes_the_read_cost_from_the_plan_once():
     jf, _ = _fake_join([79.52])
     rl, n = _relinker()
     out = run(jw.watched_join(object(), "youtubetv", 75, relink=rl, join_fn=jf, log_path=""))
@@ -343,14 +355,16 @@ def test_watched_join_applies_the_read_cost_only_with_the_shipped_lead():
 
     async def calibrated(stick, app, target_s, *, behind_before_s=0.0, **kw):
         plan = jn.plan_join(app, target_s, behind_before_s)
-        plan.predicted_s, plan.bias_source = 79.2, "channel"           # a lead learned from probe readings
+        plan.predicted_s, plan.bias_source = 79.0, "channel"           # a calibrated lead (+ the read, in the plan)
         return NS(ok=True, measured_s=79.52, plan=plan)
     out = run(jw.watched_join(object(), "youtubetv", 75, relink=rl, join_fn=calibrated, log_path=""))
     assert out.state == "buffered" and not n                             # not counted twice
 
 
 def test_prime_reads_add_nothing():
-    v = jw.verify("prime:x", 60.0, 60.5, 60.0, read_adds_s=float(jw.wcfg(None, "read_adds_s", "prime")))
+    p = jn.plan_join("prime:x", 60.0)
+    assert p.read_s == 0.0
+    v = jw.verify("prime:x", 60.0, 60.5, p.predicted_s, read_adds_s=p.read_s)
     assert v.buffered and v.off_pred_s == 0.5
 
 

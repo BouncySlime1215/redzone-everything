@@ -97,7 +97,13 @@ def observation(row: dict, cfg=None) -> float | None:
     used = row.get("bias_used_s")
     if used is None:   # rows logged before calibration existed used the shipped value
         used = shipped(app, cfg)[0]
-    return float(row["pred_error_s"]) + float(used)
+    lead = float(row["pred_error_s"]) + float(used)
+    if app == "youtubetv" and row.get("method") == "scrub" and row.get("read_s") is None:
+        # rows logged before join.yttv_read_s: their prediction left the label read's own ~7.5 s out, so their
+        # error carries it. Take it off, or the lead learns the read and the plan (which now adds it) counts it twice.
+        from redzone.tuners.join import _cfg as _jcfg
+        lead -= float(_jcfg(cfg, "yttv_read_s"))
+    return lead
 
 
 @dataclass

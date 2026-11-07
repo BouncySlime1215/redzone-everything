@@ -1231,6 +1231,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   mid-play keep -> ladder 59.3 -> 61.0 (10% scrub failures), 66.0 -> 68.7 (25%); NBA 24.67 both. A failed buffered
   entry holds; the live and other-stick rungs stay off until a grader shows 0 added.
 - 2026-11-07 (Nick's watchdog stick test FAIL, 11:35Z: hidden stick, NBA TV, target 75, planned 71.7, read 79.52): new
-  `join.watchdog.read_adds_s` {youtubetv 7.5, prime 0}. The label probe's reading includes its own ~7.5 s frozen
-  overlay, so the watchdog compares the reading with plan + read and target + read (shipped lead only; a calibrated
-  lead is learned from the same readings). Margin stays 6 s: the corrected miss was 0.3 s. Flags still off.
+  `join.yttv_read_s` 7.5 (in join.plan_join, the ONE place: predicted = before + 15 n + lead + read; the canary and
+  the watchdog both read predicted_s; JoinPlan.read_s goes into each join row). The label probe's reading includes its
+  own ~7.5 s frozen overlay (Nick's 4 runs: measured - predicted +5.9, +6.5, +6.5, +7.8 without it). join_calib takes it
+  off youtubetv rows logged without read_s. The watchdog moves only the TARGET by read_s. Margins stay 6 s. Flags off.
+  Open: landings run ~+4.7 s over the target (Nick's 3 reruns) -> a later lead trim.

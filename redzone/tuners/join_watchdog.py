@@ -61,10 +61,6 @@ WATCHDOG_DEFAULTS = {
     "min_behind_s": 5.0,       # a "buffered" reading at or below this is the live edge
     "max_s": 150.0,            # join.max_s
     "over_s": 15.0,            # a reading past max_s + this is a misread / runaway (ACC Network stopped near 150 s)
-    # [Nick's stick test, Nov 7 11:35Z] the read that measures a join pushes it back by this (the YouTube TV label
-    # probe: ~7.5 s frozen overlay, included in its reading). Only with the SHIPPED lead: a calibrated lead
-    # (join_calib) is learned from those same readings, so it already contains the read.
-    "read_adds_s": {"youtubetv": 7.5, "prime": 0.0},
     "max_reseeks": 1,
     "fallback": "live",        # live = relink to the live edge (known position); keep = leave it, state unknown
 }
@@ -129,11 +125,11 @@ def verify(app: str, target_s: float, measured_s: float | None, predicted_s: flo
     """Is the stick where we meant it to be? Pure: no stick, no clock. See the module docstring.
     predicted_s None (control's scrub entry plans its own presses): only the target band applies.
     read_adds_s: how far the measuring read itself pushed the stick back (the YouTube TV label probe freezes the
-    picture ~7.5 s and its reading INCLUDES that: Nick's Nov 7 run, planned 71.7, read 79.52). Plan and target are
-    moved by it before comparing; the reported measured_s stays the raw reading."""
+    picture ~7.5 s and its reading INCLUDES that: Nick's Nov 7 run, planned 71.7 without it, read 79.52). The TARGET
+    is moved by it before comparing; predicted_s already includes it (join.plan_join, JoinPlan.read_s)."""
     a = _app(app)
     adds = float(read_adds_s or 0.0)
-    pred = (float(predicted_s) if predicted_s is not None else float(target_s)) + adds
+    pred = float(predicted_s) if predicted_s is not None else float(target_s) + adds
     v = Verdict("unmeasured", "fallback", a, round(float(target_s), 2), round(pred, 2),
                 None if measured_s is None else round(float(measured_s), 2))
     if visible:
@@ -214,9 +210,10 @@ async def watched_join(stick, app: str, target_s: float, *, relink: Callable[[],
             r = await join_fn(stick, app, target_s, cfg=cfg, still_hidden=still_hidden, behind_before_s=before,
                               log_path=log_path, label=label, channel=channel, clock=clock, **join_kw)
             plan = getattr(r, "plan", None)
-            shipped = str(getattr(plan, "bias_source", "shipped") or "shipped") == "shipped"
+            # the measuring read's own cost is in plan.predicted_s (join.yttv_read_s, the one place it lives): only
+            # the TARGET is moved by it here
             v = verify(a, target_s, getattr(r, "measured_s", None), getattr(plan, "predicted_s", None),
-                       read_adds_s=float(wcfg(cfg, "read_adds_s", a)) if shipped else 0.0,
+                       read_adds_s=float(getattr(plan, "read_s", 0.0) or 0.0),
                        join_ok=bool(getattr(r, "ok", False)), visible=not still_hidden(),
                        reseeks_left=max_re - (out.attempts - 1), cfg=cfg)
             out.verdicts.append(asdict(v))

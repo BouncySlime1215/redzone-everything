@@ -380,6 +380,6 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** the label probe's reading includes its own ~7.5 s frozen overlay, so a good join read 7.8 s "off"; the test
   script never identify()'d the stick, so every relink tune failed at once ("youtubetv app not found"); the run was
   from a scratch worktree, so its rows went to that worktree's data/joins.jsonl.
-- **Fix:** join.watchdog.read_adds_s (plan and target + the read, shipped lead only), identify() and printed relink
+- **Fix:** join.yttv_read_s in join.plan_join (predicted includes the read; old rows corrected in join_calib), identify() and printed relink
   steps in scripts/watchdog_try.py, RZ_JOINS_LOG for the log path. Runbook: [join-watchdog.md](runbooks/join-watchdog.md).
 - **Signals:** live_failed, youtubetv app not found, off_pred_s near 7.5

@@ -26,7 +26,7 @@ from typing import Any, Awaitable, Callable
 log = logging.getLogger("redzone.join")
 
 JOIN_DEFAULTS = {"enabled": False, "yttv_step_s": 15.0, "yttv_n_offset_s": 10.0, "yttv_lead_s": 11.7,
-                 "yttv_err_s": 3.0, "prime_bias_s": 0.0, "prime_err_s": 2.0, "max_s": 150.0}
+                 "yttv_err_s": 3.0, "prime_bias_s": 0.0, "prime_err_s": 2.0, "max_s": 150.0, "yttv_read_s": 7.5}
 APPS = {"youtubetv": "scrub", "prime": "pause"}
 
 
@@ -47,6 +47,7 @@ class JoinPlan:
     reason: str = ""
     bias_used_s: float | None = None  # the lead (scrub) / bias (pause) this plan used: calibration reads it back
     bias_source: str = "shipped"      # "shipped" or the calibration key level (join_calib, join.calib.enabled)
+    read_s: float = 0.0               # what the measuring read itself adds (YouTube TV label probe: frozen overlay)
 
 
 def plan_join(app: str, target_s: float, behind_before_s: float = 0.0, cfg=None, bias=None) -> JoinPlan:
@@ -74,7 +75,11 @@ def plan_join(app: str, target_s: float, behind_before_s: float = 0.0, cfg=None,
             # Nick's rule moves with the calibrated lead: at the shipped lead it is exactly round((T - 10) / 15)
             n_off, lead, err, p.bias_source = n_off + (bias.value - lead), bias.value, bias.err_s, bias.source
         p.presses = max(1, int(round((t - before - n_off) / step)))
-        p.predicted_s = round(before + step * p.presses + lead, 2)
+        # [Nick's stick tests, Nov 7 11:35Z / 11:40Z] the label probe that measures the join freezes the picture
+        # ~7.5 s and its reading includes that (measured - predicted +5.9, +6.5, +6.5, +7.8 with the read left out).
+        # The ONE place this cost lives: the canary and the watchdog both read predicted_s; calibration reads read_s.
+        p.read_s = float(_cfg(cfg, "yttv_read_s"))
+        p.predicted_s = round(before + step * p.presses + lead + p.read_s, 2)
         p.expected_err_s, p.bias_used_s = err, round(lead, 2)
     else:
         b = float(_cfg(cfg, "prime_bias_s"))

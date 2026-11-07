@@ -649,14 +649,14 @@ join:                      # [Join API] put a HIDDEN stick a chosen time behind 
   prime_bias_s: 0          # predicted landing = before + hold + this (Prime pause, ~1-2 s accurate)
   prime_err_s: 2           # expected +- error of a Prime join
   max_s: 150               # never join further behind live
+  yttv_read_s: 7.5         # the label read that measures a join freezes ~7.5 s and its reading includes that: predicted
+                           # = before + 15 n + lead + this (Nick Nov 7: measured - predicted +5.9, +6.5, +6.5, +7.8 without it)
   watchdog:                # [join watchdog, Nick Nov 7 item 1] verify every entry on the label / timecode (join_watchdog.py)
     enabled: false         # OFF: control's scrub entry and watched_join check it
     margin_s: {youtubetv: 6, prime: 4}            # |read - predicted| allowed (9 label runs: -4.4..+4.9; Prime +-1-2)
     target_band_s: {youtubetv: 10.5, prime: 5}    # |read - target| allowed (YouTube TV lands on 15 s steps)
     min_behind_s: 5        # a reading at or below this is the live edge, not a buffer
     over_s: 15             # a reading past max_s + this is a runaway / misread
-    read_adds_s: {youtubetv: 7.5, prime: 0}       # the measuring read pushes the stick back this much (label probe
-                           # freezes ~7.5 s, included in its reading; Nick Nov 7: planned 71.7, read 79.52). Shipped lead only
     max_reseeks: 1         # then fall back
     fallback: live         # live = relink to the live edge through another channel; keep = leave it, state unknown
   drift:                   # [drift monitor, Nick Nov 7 item 3] rare, budgeted re-reads of the HIDDEN stick only
