@@ -97,6 +97,24 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--feed-lag", type=float, default=None, metavar="S",
                     help="[switch timing] every play reaches the app S s after it happened (default 8). The "
                          "screen stays 43 s behind real life, so only the warning before it airs changes")
+    ap.add_argument("--hidden-stick", choices=("wait", "live_edge"), default=None,
+                    help="[EXP-601] model the hidden stick's readiness: wait (arm A, report only) or live_edge "
+                         "(arm B, the verdict arm); off = today's scorecard")
+    ap.add_argument("--hold-overrun", type=float, default=1.0,
+                    help="[EXP-601] the B s hold takes this many times B (S1: 1.36), with --hidden-stick")
+    ap.add_argument("--hs-resync-prime-edge", action="store_true",
+                    help="[EXP-607] with --hs-prime-edge --resync: the re-sync prior pins Prime at its live edge too")
+    ap.add_argument("--hs-prime-pause", action="store_true",
+                    help="[EXP-608] with --hidden-stick: Prime gets behind live by pause (B s + resume), like "
+                         "Nick's Nov 7 stick run; not with --hs-prime-edge")
+    ap.add_argument("--hs-prime-edge", action="store_true",
+                    help="[EXP-605] with --hidden-stick: the app plans Prime targets at their live edge (no buffer)")
+    ap.add_argument("--hs-entry", choices=("hold", "scrub", "scrub_measured"), default="hold",
+                    help="[EXP-603] how the hidden stick gets behind live, with --hidden-stick: hold (pause B s, "
+                         "EXP-601) or scrub (overlay scrub + one label read, ~18 s; B must be 75 or 90)")
+    ap.add_argument("--hs-recheck", action="store_true",
+                    help="[EXP-604] with --hidden-stick wait: after the wait, the cut waits for the next dead ball "
+                         "on the delayed picture as the app sees it (#378's post-scrub _wait_safe)")
     ap.add_argument("--behind-live", type=float, default=None, metavar="S",
                     help="[time-shift buffer] hold every stream S s behind its live edge: the screen runs "
                          "26 s (a YouTube TV channel) + S behind real life, so the feed arrives S s earlier "
@@ -112,7 +130,21 @@ def knobs(a: argparse.Namespace) -> dict:
                 flip_dist=getattr(a, "flip_dist", False), positions=getattr(a, "positions", False),
                 pretune_dist=getattr(a, "pretune_dist", False), real_seek=getattr(a, "real_seek", False),
                 feed_lag_model="measured" if getattr(a, "real_lag", False) else None,
+                **({"hidden_stick": a.hidden_stick, "hold_overrun": a.hold_overrun,
+                    "hs_entry": getattr(a, "hs_entry", "hold"), "hs_recheck": getattr(a, "hs_recheck", False),
+                    "hs_prime_edge": getattr(a, "hs_prime_edge", False),
+                    "hs_resync_prime_edge": getattr(a, "hs_resync_prime_edge", False),
+                    "hs_prime_pause": getattr(a, "hs_prime_pause", False),
+                    "behind_live_s": float(getattr(a, "behind_live", None) or 0.0)}
+                   if getattr(a, "hidden_stick", None) else {}),
                 **feed_lag_knobs(getattr(a, "feed_lag", None), getattr(a, "behind_live", None)))
+
+
+def _feed_lag_p90(league: str) -> float:
+    """Measured feed-lag p90 per league from redzone/lab/feed_lag_profile.json (graders never import brain code)."""
+    prof = json.loads((ROOT / "redzone/lab/feed_lag_profile.json").read_text())
+    qs, row = prof["quantiles"], prof["leagues"].get(league) or prof["leagues"]["nba"]
+    return float(row["q"][qs.index(90)])
 
 
 def main():
@@ -159,6 +191,9 @@ def main():
     end = a.end or evaldata.window_end(lg.value, EVAL_END)
     behind_all: list = []
     per_night = []   # the unit of evidence for the release gate's night bootstrap (scripts/release_gate.py)
+    if getattr(a, "hidden_stick", None) and a.split not in ("train", "valid", "fit"):
+        # [EXP-601] pre-registered on train+valid only: never read the locked nights (or a window that holds them)
+        sys.exit("--hidden-stick needs --split train, valid or fit (EXP-601 never reads locked)")
     for day, reps, targets in nights(lg, a.nights, end, a.split):
         rep = run(reps, cfg, mine, targets=targets, step=a.step, **knobs(a))
         # [xleague] Grade against what the screen REALLY showed (true delay), not the app's belief.
@@ -193,6 +228,14 @@ def main():
         per_night[-1]["rewinds"] = card.cut.rewinds
         per_night[-1]["flash_mid_play"] = card.cut.flash_mid_play
         per_night[-1]["plays_missed_entry"] = card.cut.plays_missed_entry
+        hs = getattr(rep, "hidden_stick", None)
+        if hs is not None:   # [EXP-601] report only when the flag is on: off, the output stays byte for byte
+            mid_t = {t for t, *_ in card.cut.mid_entries}
+            per_night[-1]["hidden_stick"] = {
+                **{k: v for k, v in hs.items() if k not in ("prime_t", "unbuffered_t")},
+                "non_replay_switches": sum(s.kind not in ("replay", "resume", "skip") for s in rep.switches),
+                "prime_mid_play_entries": sum(t in mid_t for t in hs["prime_t"]),
+                "unbuffered_mid_play_entries": sum(t in mid_t for t in hs["unbuffered_t"])}
         if a.oracle:
             from redzone.lab import oracle as O
             n = O.Night(reps, mine, rep.lag_true, 5.0, rep.t0, rep.t1)
@@ -205,7 +248,17 @@ def main():
             plan = [(obj, obj, None) for obj in O.OBJECTIVES]
             if a.cue_max_s > 0:
                 plan += [(f"{obj}_cue", obj, a.cue_max_s) for obj in O.OBJECTIVES]
+            # [time-shift buffer, Nick Nov 5 ~5 PM] a buffered show also reports the WINDOWED oracle (what the buffer
+            # reveals at the measured feed-lag p90) as <obj>_window, INFORMATION ONLY: full hindsight stays the gate
+            # ceiling until the window's beyond value is a real model (integrator, v31; the v1 placeholder scores
+            # below the app on NBA fit nights, WV loop Nov 5).
+            buffered = bool(getattr(a, "behind_live", None))
+            if buffered:
+                from redzone.lab import oracle_window as OW
+                fl90 = _feed_lag_p90(lg.value)
             for key, obj, cue in plan:
+                if buffered and cue is None:
+                    per_night[-1]["oracle"][f"{obj}_window"] = O.counts(O.grade(n, OW.solve_window(n, fl90, obj, tab)))
                 osw = O.solve(n, obj, tab) if cue is None else O.solve_cue(n, obj, tab, max_cue_s=cue)
                 if cue is not None:
                     per_night[-1]["oracle"][key] = O.counts(O.grade(n, osw))

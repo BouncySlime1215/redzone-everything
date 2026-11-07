@@ -163,3 +163,20 @@ def test_live_overrides_never_downgrade_a_proven_intermission():
     g.period, g.stoppage = 1, Stoppage.NONE
     espn._live_overrides(g, {}, {"status": {"type": {"detail": "End of 1st"}}}, {})
     assert g.stoppage == Stoppage.INTERMISSION
+
+
+@pytest.mark.parametrize("t", ["Penalty", "Cross checking", "Cross-Checking", "High sticking",
+                               "Delaying Game - Puck over Glass", "Too Many Men on the Ice", "Tripping", "Hooking"])
+def test_nhl_penalty_types_are_whistles(t):
+    # v3 autopsy: 2025-26 ESPN NHL summaries type every penalty "Penalty"; 2026-27 types the infraction.
+    assert espn.stoppage_for(League.NHL, {"type": {"text": t}, "text": ""}) == Stoppage.WHISTLE
+
+
+@pytest.mark.parametrize("t", ["Face Off", "Shot", "Hit", "Blocked Shot", "Giveaway", "Takeaway", "Missed Shot"])
+def test_nhl_live_types_are_not_whistles(t):
+    assert espn.stoppage_for(League.NHL, {"type": {"text": t}, "text": ""}) != Stoppage.WHISTLE
+
+
+@pytest.mark.parametrize("t", ["Penalty Shot", "Penalty Shot Infraction", "penalty-shot"])
+def test_nhl_penalty_shot_is_not_a_whistle(t):
+    assert espn.stoppage_for(League.NHL, {"type": {"text": t}, "text": ""}) != Stoppage.WHISTLE

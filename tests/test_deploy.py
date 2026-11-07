@@ -124,7 +124,7 @@ def world(tmp_path):
     (mac / "agent/model/adapter").mkdir(parents=True)
     (mac / "agent/model/adapter/adapters.safetensors").write_bytes(b"OLD")
     fake = FakeMac(mac)
-    s = D.Settings(test_args=["-q", "-p", "no:cacheprovider"])
+    s = D.Settings(test_args=["-q", "-p", "no:cacheprovider"], test_workers=1)
 
     class W:
         pass
@@ -537,9 +537,27 @@ def test_watchdog_leaves_restarts_to_a_running_deploy(tmp_path, monkeypatch):
     assert calls
 
 
-@pytest.mark.skipif(sys.platform != "darwin", reason="taskpolicy is macOS-only")
-def test_tests_run_under_taskpolicy_on_the_mac():
-    assert D.System().low_priority(["x"])[:2] == ["taskpolicy", "-b"]
+def test_deploy_tests_run_at_nice_10_by_default_even_on_the_mac(monkeypatch):
+    """taskpolicy -b pinned the suite to the efficiency cores: it timed out at 60 min where nice 10 took
+    30 min (Nick, Nov 6). nice 10 is the default; taskpolicy -b is opt-in (test_priority: background)."""
+    monkeypatch.setattr(D.sys, "platform", "darwin")
+    monkeypatch.setattr(D.shutil, "which", lambda name: f"/usr/bin/{name}")
+    assert D.System().low_priority(["x"]) == ["nice", "-n", "10", "x"]
+    assert D.System().low_priority(["x"], "background") == ["taskpolicy", "-b", "x"]
+    assert D.Settings().test_priority == "nice"
+    monkeypatch.setattr(D.sys, "platform", "linux")
+    assert D.System().low_priority(["x"], "background") == ["nice", "-n", "10", "x"]
+
+
+def test_deploy_settings_take_test_priority_and_the_cli_takes_a_test_timeout(monkeypatch, tmp_path):
+    (tmp_path / "deploy.yaml").write_text("test_priority: background\ntest_timeout_s: 5400\n")
+    s = D.Settings.load(tmp_path / "deploy.yaml")
+    assert (s.test_priority, s.test_timeout_s) == ("background", 5400)
+    seen = {}
+    monkeypatch.setattr(D.Deployer, "deploy", lambda self, **kw: seen.update(t=self.s.test_timeout_s) or 0)
+    assert D.main(["deploy", "--test-timeout", "90"], system=FakeMac(tmp_path), root=tmp_path) == 0
+    assert seen == {"t": 5400.0}
+    assert D.main(["deploy"], system=FakeMac(tmp_path), root=tmp_path) == 0 and seen == {"t": 3600.0}
 
 
 def test_warm_up_warnings_right_after_the_restart_are_not_a_regression(world):
@@ -667,3 +685,95 @@ def test_deploy_cli_at_break_flag(monkeypatch, tmp_path):
     assert D.main(["deploy", "--at-break", "--wait", "60"], system=FakeMac(tmp_path), root=tmp_path) == 0
     assert seen == {"at": True, "poll": 30.0}
     assert D.main(["deploy"], system=FakeMac(tmp_path), root=tmp_path) == 0 and seen["at"] is False
+
+
+# ---- the test step finishes: parallel workers, a log, a timeout that really stops (Nick, Nov 6) -----
+
+def _journal(w) -> list[dict]:
+    return [json.loads(ln) for ln in (w.mac / "data/deploy/deploy.jsonl").read_text().splitlines()]
+
+
+def test_auto_workers_are_half_the_cores_at_most_four(world, monkeypatch):
+    w = world
+    w.s.test_workers = 0
+    monkeypatch.setattr(w.fake, "has_module", lambda py, mod: True)
+    for cores, want in ((1, 1), (2, 1), (4, 2), (8, 4), (16, 4)):
+        monkeypatch.setattr(w.fake, "cpu_count", lambda c=cores: c)
+        assert w.deployer().test_workers(sys.executable) == want
+    w.s.test_workers = 3
+    assert w.deployer().test_workers(sys.executable) == 3
+
+
+def test_without_xdist_in_the_venv_the_suite_runs_serially_and_says_why(world, monkeypatch):
+    w = world
+    w.s.test_workers = 4
+    monkeypatch.setattr(w.fake, "has_module", lambda py, mod: False)
+    assert w.deployer().deploy(dry_run=True) == D.EXIT_OK
+    msgs = [r.get("msg", "") for r in _journal(w)]
+    assert any("pytest-xdist is not in the venv" in m for m in msgs)
+    assert any("(nice priority, serial)" in m for m in msgs)
+
+
+def test_the_suite_runs_on_parallel_workers_one_file_each(world):
+    pytest.importorskip("xdist")
+    w = world
+    w.s.test_workers = 2
+    _push(w.dev, "import os\n\ndef test_w():\n    assert os.environ.get('PYTEST_XDIST_WORKER')\n",
+          "tests/test_worker.py")
+    assert w.deployer().deploy(dry_run=True) == D.EXIT_OK      # fails if it ran outside a worker
+    assert any("2 workers" in r.get("msg", "") for r in _journal(w))
+    log = (w.mac / "data/deploy/tests.log").read_text()
+    assert "2 passed" in log
+
+
+def test_failed_parallel_suite_still_stops_the_deploy(world):
+    pytest.importorskip("xdist")
+    w = world
+    w.s.test_workers = 2
+    w.push_commit("def test_broken():\n    assert False\n", "tests/test_broken.py")
+    assert w.deployer().deploy() == D.EXIT_TESTS
+    assert w.fake.head() == w.a and w.fake.restarts == []
+
+
+def test_timeout_kills_the_whole_suite_and_says_how_far_it_got(world, tmp_path):
+    """subprocess.run(timeout=) killed only pytest itself: xdist workers and anything a test started
+    kept running on the Mac after the deploy had given up. Now the whole process group goes."""
+    w = world
+    pidfile = tmp_path / "child.pid"
+    _push(w.dev, "def test_fast():\n    pass\n", "tests/test_a.py")
+    _push(w.dev, ("import subprocess, sys, time\n\n"
+                  "def test_hangs():\n"
+                  "    c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)'])\n"
+                  f"    open({str(pidfile)!r}, 'w').write(str(c.pid))\n"
+                  "    time.sleep(300)\n"), "tests/test_z_hang.py")
+    w.s.test_timeout_s = 8.0
+    assert w.deployer().deploy() == D.EXIT_TESTS
+    tail = [r for r in _journal(w) if r["step"] == "tests"][-1]["tail"]
+    assert "timed out" in tail and "the suite was stopped" in tail and "tests.log" in tail
+    assert "2 tests done" in tail                             # test_ok + test_a ran before the hang
+    import os
+    pid = int(pidfile.read_text())
+    import time
+    for _ in range(50):                                       # reaped by init; give it a moment
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.1)
+    else:
+        os.kill(pid, 9)
+        pytest.fail("a process the suite started outlived the timeout")
+    assert w.fake.head() == w.a and w.fake.restarts == []
+
+
+def test_test_workers_setting_and_flag(monkeypatch, tmp_path):
+    (tmp_path / "deploy.yaml").write_text("test_workers: 3\n")
+    assert D.Settings.load(tmp_path / "deploy.yaml").test_workers == 3
+    (tmp_path / "deploy.yaml").write_text("test_workers: -1\n")
+    with pytest.raises(ValueError, match="test_workers"):
+        D.Settings.load(tmp_path / "deploy.yaml")
+    seen = {}
+    monkeypatch.setattr(D.Deployer, "deploy", lambda self, **kw: seen.update(n=self.s.test_workers) or 0)
+    assert D.main(["deploy", "--test-workers", "1"], system=FakeMac(tmp_path), root=tmp_path) == 0
+    assert seen == {"n": 1}
+    assert D.main(["deploy"], system=FakeMac(tmp_path), root=tmp_path) == 0 and seen == {"n": 0}

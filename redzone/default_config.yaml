@@ -320,6 +320,10 @@ decider:
   must_see_lead: 20
   locked_override_lead: 20
   manual_pause_s: 60
+  lock_wait:               # a locked/held game we can't reach (no channel, tune failed): say why, retry, give up
+    enabled: false         # off = old behavior (re-tries every tick, forever)
+    retry_s: 20            # after a failed tune to the locked game, wait this long before the next try
+    max_s: 90              # unreachable this long: drop the lock, tell you why, back to autopilot
   uncalibrated_sigma_s: 8  # above this delay uncertainty, only leave at official stoppages
   sticky_visit_needs_calibration: true  # your game's break: only visit games whose delay is calibrated (else no way back until their own break)
   wait_for_my_team_s: 1800  # your team tips within this: don't start on a basketball/hockey game we can't leave (uncalibrated)
@@ -332,7 +336,20 @@ decider:
   leave:                   # [cut rules, Nick Nov 4 3:15 PM] never JOIN mid-play; LEAVING mid-play only at low leverage
     low_leverage: []       # leagues where a low-leverage moment may be left mid-play ([] = never: today's rule)
     sticky_closeness: 0.5  # down the stretch is sticky: a late game at least this close is never left mid-play
+    # [EXP-212] break floors on top of screen.MIN_BREAK_S, per league ({stoppage: s}; {} = off). With the
+    # measured feed lag the data never covers the screen, so a basketball break with no restart in the data
+    # can only be left while start + floor + delay hasn't passed. NBA end of a quarter, fit nights: min 148 s
+    # (103 breaks, 7 nights; valid 34 breaks, min 148). Candidate {end_period: 120}, OFF until graded.
+    break_floor_s: {}
+  dwell:                   # [EXP-213, RC8 switch count] stay at least min_s on a game before an OPTIONAL switch
+    min_s: 0               # 0 = off. Only these kinds wait; crunch, ended, home, return, start, user never do
+    kinds: [break_visit, chase, better, drive, live]
+    long_visit_min_score: 0   # a halftime / intermission visit only to a game at least this good (0 = any game)
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
+    # [EXP-214] your team first: in its final period a catch-up return never leaves it, and late and close it is
+    # never left for another game's crunch or a big-play chase (v3 NBA fit, 90 s buffer: your-team crunch live
+    # 493 -> 535/537, resync 473 -> 521/537, 0 added mid-play entries). Overseer default ON (Nick can override).
+    mine_first: true
     floor: true            # [SAFE-09] in a crunch window: no overlay or model leaves it for a non-crunch game, and
     floor_low_value: 0     # ...no game below this value (watch value, else score) pulls us out. 0 = off: at 50 it
                            # held dev but cost locked NFL crunch live -0.6/-3.9/0 (Nov 4); waits for watch value
@@ -455,6 +472,9 @@ tuners:                    # per-app switch paths
   prime_tiles: 3           # games in one Prime multiview (1 main + 2 on the right)
   prime_tile_s: 1.0        # seconds for a tile switch, until data/prime_multiview_keys.json has timings
   prime_tile_p90_s: 2.0    # ...and its deadline bound
+  yttv_local_search: false # ABC/CBS/FOX/NBC locals by YouTube TV search (WRAL, ABC 11, CBS 17, FOX 50): channel
+                           # page -> Select, accepted only on a media-session subtitle naming the station AND a
+                           # live playhead. fox/cbs Sunday Ticket mirror codes are skipped except on Sundays (Nov 7)
 autofix:                   # the watchdog files problems it can't fix as GitHub issues for Claude (docs/auto-fix.md)
   enabled: true            # kill switch on the Mac side (the repo variable AUTOFIX_ENABLED=false stops the GitHub side)
   max_per_day: 3           # at most this many issues a day
@@ -483,6 +503,8 @@ hardening:                 # error handling (PLATFORM). Each switch is off until
   tv: false                # the TV jumped by itself to a stick on its home screen (a reboot's HDMI-CEC): flip it back
 
 two_stick:
+  unavailable_backoff_s: 0  # [Nick live test Nov 7] a standby tune that stopped at an account/payment/UNAVAILABLE screen keeps
+                            # that game off the standby this long (0 = the usual 120 s retry). Suggested 900
   standby_repause_s: 600     # [APP-04] the same standby pausing again within this long is a blocked app (a forced update)
   cec_flip: true           # HOME -> HDMI-CEC Active Source as the last-resort flip (the TV's own input change,
                            # set up by scripts/tv_setup.py, goes first when it's proven)
@@ -540,6 +562,24 @@ redzone_mode:              # whip-around like NFL RedZone (scoring/drive.py; dec
   priority_gap: 15         # ...those other games are held this many points under the hottest drive
   heat_points: 0           # NFL game score lift per unit of heat. 8 cost big plays and your-team plays on the NFL scorecard
   dead_damp: 0             # share of score lost to punt-fest signs. 0.25 cost big plays on the NFL scorecard
+
+yttv_seek:                 # [YTTV scrub buffer, item 1] enter the time-shift buffer on the HIDDEN YouTube TV stick by
+                           # scrubbing the player overlay (CENTER, LEFT x N, CENTER; overseer Nov 6: 7/7 held, pause
+                           # doesn't). OFF until the switch path (item 4) and a hidden-stick night prove it.
+  enabled: false
+  step_s: 15               # one LEFT on the focused bar moves the knob this far back (measured Nov 6)
+  max_back_s: 150          # never scrub further (ACC Network stopped near 2.5 min behind)
+  step_tol_s: 4            # the knob label must move N x step_s within this, or the scrub isn't committed
+  boundary_retries: 1      # a failed knob check (the label resets at a new program) retries once from the live
+                           # edge, only after a re-link to live with nothing committed; then fail closed
+  key_gap_s: 0.35          # between LEFT presses
+  settle_s: 4              # after the commit the player must report PLAYING within this (its state only)
+  poll_s: 0.25             # how often the player is read while it settles
+  overlay_wait_s: 1.3      # after CENTER or a LEFT, wait this long before reading the overlay (live Nov 6: 0.8 too short)
+  open_tries: 4            # probe LEFT, no scrub label = close, reopen, retry; fail closed after this many (tune banner)
+  reopen_wait_s: 1.5       # between closing and reopening the overlay
+  reset_channel: ""        # a stick that may be behind on a channel goes through this one to get back to live (a
+                           # same-channel deep link does not reset it; Nick, Nov 7). "" = any other coded channel
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true
@@ -620,6 +660,22 @@ timing:
                            # the hold above for that league). Nick flips it himself (scripts/rc8_flip.py); the
                            # pre-registered gate (docs/plans/2026-11-05-rc8-buffer-gate.md) is reported per league
                            # by scripts/rc8_gate_report.py. Ships false everywhere. Code: redzone/buffer_rc8.py
+    label_reader: false    # [YTTV scrub buffer item 2, Nick Nov 6 10:15 PM] read YouTube TV's overlay time label (screencap ->
+                           # local OCR -> numbers; the frame is deleted at once, never kept) as the behind-live truth
+                           # meter after a scrub seek (media_session lies after a seek). Code: redzone/tuners/yttv_label.py
+    scrub_entry: false     # [scrub entry, Nick Nov 6 order item 4] YouTube TV: put the hidden stick B s behind live by the
+                           # overlay scrub (yttv_seek.enter_buffer: CENTER, N x LEFT, CENTER) BEFORE the flip, never by
+                           # a pause (a pause doesn't hold: docs/sync/2026-11-06-yttv-scrub-buffer-spec.md). held = the
+                           # overlay label's reading, not media_session. Per league (league_overrides.<lg>); also needs
+                           # yttv_seek.enabled. OFF until a stick flip onto a scrubbed stream is proven
+    scrub_fallback: keep   # a failed scrub: keep = keep the current game (no flip to an unread offset); live = flip at
+                           # the live edge as today
+    scrub_cost_s: 28       # seconds the scrub adds before a flip (deadline_cost): ~15-20 s presses with the tune banner + ~8 s read;
+                           # the measured p90 (latency key yttv_scrub) wins once it's larger
+    scrub_read_s: 8        # one label read adds this much delay: ask B - this so the picture lands near B
+    scrub_over_s: 15       # a label reading above max_s + this fails closed (ACC Network stopped near 150 s)
+    scrub_retry_s: 120     # a target whose scrub failed isn't scrubbed again for this long
+    scrub_trust_s: 1200    # a scrubbed stream counts as on its target this long (one 20-min hold proven), then re-tunes
     rc8_fixed_s: 0         # a league pinned to this B instead of the formula (0 = the formula)
     adaptive:              # [Nick 9:35 AM] B = feed-lag p95 + sync error + tune/seek + margin, never 0
       floor_s: 15          # hard floor: a play is always known before it's shown (Nick: ~10-15 s; gate v28: 15 in RC8,
@@ -650,6 +706,12 @@ delay:                     # seconds your screen runs behind real life, per app;
     enabled: true          # Kalman filter per channel: show flips, score bug (score + clock), stick position, taps
     min_sigma_s: 4         # a synced channel's stated doubt never goes below this (the gates' tested floor)
     log: true              # every signal + estimate to data/sync.jsonl (scripts/eval_sync.py --log grades it)
+  edge_model:              # [Nick Nov 6 order item 3] a scrubbed YouTube TV tune: delay = D_edge(channel) + behind_live,
+    enabled: false         # behind_live read off the overlay time label (not media_session, wrong after a seek). OFF
+    default: {youtubetv: 25}   # s the live edge runs behind real life with nothing better (research Nov 6: ~25 s +-3)
+    default_sd_s: 3
+    label_sd_s: 1.5        # one overlay label read
+    edge_max_sd_s: 6       # tonight's at-the-edge estimate counts as the channel's D_edge only when this sure
   self_calibrate:          # [self-calibrating doubt] stated doubt learned from break-anchor innovations (NoiseCal), OFF
     enabled: false         # sims only so far (eval_sports --break-anchors); live needs the pool persisted across nights
     min_n: 20              # residuals (first anchor after a tune) before it speaks

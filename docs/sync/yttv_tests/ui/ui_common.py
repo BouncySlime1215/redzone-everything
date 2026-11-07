@@ -287,8 +287,56 @@ def ocr(path: Path) -> dict:
     obs = [dict(text=o.text, conf=round(o.confidence, 2), x=o.x, y=o.y, w=o.width, h=o.height)
            for o in r.observations]
     foc = [dict(x=f.x, y=f.y, w=f.width, h=f.height, text=f.text) for f in r.focus_boxes]
+    status = r.focus_status
+    if not foc and r.status in ("ok", "empty"):
+        # The app's parser keeps a filled-button focus only when its text is a playback action
+        # (Resume, Watch key plays...). The YTTV player row (HD, CC, Networks, Multiview, Stats...)
+        # is all filled buttons, so ui_10 saw no focus (Nov 5 night). Re-read the helper's raw
+        # candidates here, test-only; the app's own gate is unchanged.
+        foc, status = bank_focus(path, obs)
     return dict(status=r.status, W=r.width or 1920, H=r.height or 1080, obs=obs, focus=foc,
-                focus_status=r.focus_status)
+                focus_status=status)
+
+
+def pick_focus(cands: list[dict], obs: list[dict]) -> tuple[list[dict], str]:
+    """From raw helper focus candidates, the one focused element: a rectangle border wins (YTTV draws it
+    around the focused control); else the single most confident filled button. Text = OCR rows inside it."""
+    out = []
+    for c in cands or []:
+        try:
+            x, y, w, h, cf, src = (float(c["x"]), float(c["y"]), float(c["width"]), float(c["height"]),
+                                   float(c["confidence"]), c["source"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        floor = 0.9 if src == "neutral_rectangle_border" else 0.68 if src == "neutral_filled_button" else None
+        if floor is None or cf < floor or not (0 < w <= 1 and 0 < h <= 1):
+            continue
+        txt = "\n".join(t["text"] for t in obs if t["x"] >= x - 0.005 and t["y"] >= y - 0.005
+                        and t["x"] + t["w"] <= x + w + 0.005 and t["y"] + t["h"] <= y + h + 0.005)
+        txt = "\n".join(ln for ln in txt.splitlines() if ln.strip() not in {"•", "▶", "►", "▸", "●", ">"})
+        out.append(dict(x=x, y=y, w=w, h=h, text=txt, conf=cf, src=src))
+    if not out:
+        return [], "none"
+    rect = [f for f in out if f["src"] == "neutral_rectangle_border"]
+    pool = rect or out
+    best = max(pool, key=lambda f: f["conf"])
+    tie = [f for f in pool if f is not best and f["conf"] >= best["conf"] - 0.02]
+    return [best], ("bank_unique" if not tie else "bank_best_of_%d" % (len(tie) + 1))
+
+
+def bank_focus(path: Path, obs: list[dict]) -> tuple[list[dict], str]:
+    """Raw focus candidates from the same Vision helper the app uses (macOS only)."""
+    import json as _json
+    import platform
+    if platform.system() != "Darwin":
+        return [], "none"
+    try:
+        from redzone.screen_ocr import _helper
+        proc = subprocess.run([str(_helper(45.0)), str(path)], capture_output=True, text=True, timeout=15)
+        cands = _json.loads(proc.stdout).get("focus_candidates", [])
+    except Exception:  # noqa: BLE001
+        return [], "none"
+    return pick_focus(cands, obs)
 
 
 # ------------------------------------------------------------------------------------------ pixels
@@ -475,23 +523,61 @@ def snap(g: Guard, tag: str) -> tuple[Path, float, dict]:
     return p, w, ocr(p)
 
 
+# On the YTTV SCRUBBER, DPAD_LEFT/RIGHT SEEK the playhead. Nov 5 night: ui_10 pressed LEFT x9 with the
+# focus unknown (no focus box) and left the hidden stick ~60 s behind live (E_drift 60.2 s). Rule for every
+# test: LEFT/RIGHT only while the focused label is a known player-row button. Unknown focus counts as
+# the scrubber.
+SCRUB_LABEL = re.compile(r"^\s*(\d{1,2}:\d{2}(:\d{2})?\s*([AaPp][Mm])?)\s*$")
+ROW_BUTTON = re.compile(r"\u22ee|\u2026|more|options|settings|\bhd\b|^\W*c\s*c\W*$|networks|multiview|episodes|"
+                        r"stats|key ?plays|scores|box ?score|game ?cast|live chat|info|captions", re.I)
+
+
+def on_scrubber(ft: str) -> bool:
+    return not (ft or "").strip() or bool(SCRUB_LABEL.match(ft))
+
+
+def is_row_button(ft: str) -> bool:
+    return bool(ft) and not on_scrubber(ft) and bool(ROW_BUTTON.search(ft))
+
+
+def reach_row(g: Guard, reveal: tuple[str, ...] = ("DPAD_DOWN",), max_down: int = 3) -> tuple[str, list[str]]:
+    """Reveal the overlay and move DOWN (never LEFT/RIGHT) until a row button holds focus.
+    Returns (focused label or '', keys pressed). '' = not reached: the caller must not press LEFT/RIGHT."""
+    keys = []
+    if reveal:
+        if not g.key(*reveal):
+            return "", list(reveal)
+        keys += reveal
+    _, _, o = snap(g, "nav")
+    ft = focused_text(o).strip()
+    for _ in range(max_down):
+        if is_row_button(ft):
+            break
+        g.key("DPAD_DOWN"); keys.append("DPAD_DOWN")
+        _, _, o = snap(g, "nav")
+        ft = focused_text(o).strip()
+    return (ft if is_row_button(ft) else ""), keys
+
+
 def navigate_to(g: Guard, pattern: str, row_key: str = "DPAD_RIGHT", max_steps: int = 10,
                 reveal: tuple[str, ...] = ("DPAD_DOWN",)) -> dict:
-    """Reveal the overlay, then step focus along a row until the focused label matches `pattern`.
-    Never presses CENTER. Returns {found, steps, keys, text}."""
+    """Reveal the overlay, reach the button row, then step focus along it until the focused label matches
+    `pattern`. Never presses CENTER, and never presses LEFT/RIGHT unless a known row button has focus
+    (on the scrubber they seek). Returns {found, steps, keys, text}."""
     rx = re.compile(pattern, re.I)
-    keys = []
-    if not g.key(*reveal):
-        return dict(found=False, why="no input allowed", keys=list(reveal))
-    keys += reveal
+    ft, keys = reach_row(g, reveal)
+    if not ft:
+        return dict(found=False, why="row button not focused: LEFT/RIGHT could seek", keys=keys, text="")
     for i in range(max_steps + 1):
-        _, _, o = snap(g, "nav")
-        ft = focused_text(o)
-        if ft and rx.search(ft):
+        if rx.search(ft):
             return dict(found=True, steps=i, keys=keys, text=ft)
-        if i < max_steps:
-            g.key(row_key); keys.append(row_key)
-    return dict(found=False, steps=max_steps, keys=keys, text="")
+        if i == max_steps or not is_row_button(ft):
+            break
+        g.key(row_key); keys.append(row_key)
+        _, _, o = snap(g, "nav")
+        ft = focused_text(o).strip()
+    return dict(found=False, steps=i, keys=keys, text=ft,
+                why=None if is_row_button(ft) else "left the button row: stopped")
 
 
 def load_recipes() -> dict:

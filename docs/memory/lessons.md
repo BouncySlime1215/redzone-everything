@@ -335,3 +335,28 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   switches without a revealed window, first pick waits for a dead ball, night-bootstrap CIs, and the oracle moved
   out of the frozen grader file into redzone/lab/oracle_window.py. Lesson: an oracle's information set must come
   from measured numbers and from everything the grader itself reads, and a second tester should re-derive both.
+- **2026-11-05, YTTV night with no switches (RC6.2):** for 70+ minutes the leave gate on an NBA game read "play
+  is live", even at timeouts and the quarter break. With a wide delay (42 ± 15 s) and the measured feed lag,
+  `covered` can never be true for basketball, and NBA had no break floor except halftime. Separately, the DB couldn't
+  show the gate at halftime, because decisions were logged only when the reason text changed. Fix: a measured NBA
+  end-of-quarter floor behind `decider.leave.break_floor_s` (EXP-212, off), and log every gate change. Lesson: a
+  safety gate that is shut for a structural reason looks exactly like a game that's live, so log the gate itself.
+  Autopsy: /mnt/project-files/lane2/yttv-no-switch-autopsy-2026-11-05.md.
+- **2026-11-06 Last season's NHL penalties read as live hockey (v3 autopsy).** eval-data-v3 jumped NHL dev mid-play
+  0 -> 344/3340, all on 2025-26 nights. ESPN typed every 2025-26 NHL penalty "Penalty", which the hardcoded list of
+  infractions in `espn.stoppage_for` didn't hold, and 2026-27 spellings ("Cross checking", "Delaying Game - ...")
+  slipped past it too. Fix: match any penalty type (344 -> 3; v1 stays 0). Lesson: when a new season or window jumps
+  a metric, diff the feed's type vocabulary first. Report: /mnt/project-files/test-writers/v3-autopsy.md.
+- 2026-11-06: NBA real-lag replays had drawn ESPN's feed lag (p50 45 s) since nba_cdn became NBA's primary, because
+  `LagSampler` quietly falls back to ESPN when a source has no profile. That made every NBA buffer read pessimistic
+  (B60 big seen 12.8 % instead of 66.7 %). Fix: the measured nba_cdn profile. Lesson: when a sim falls back to a
+  default input, say so in the output; a silent fallback reads as a real result.
+- 2026-11-06 (EXP-214): the catch-up return stack outlived its moment. A Q1 break visit onto WSH left LAL on the stack
+  for two hours, and the generic "moment's over, back to" return fired from WSH's Q4 (up 13, so not "late and
+  close"). Separately `_crunch_go` returned True whenever the current game wasn't in crunch, so your team late and
+  close lost to any neutral crunch. Lesson: every path that leaves a game (return, crunch hop, chase) has to ask the
+  same "is this your team's endgame?" question; guarding only the "better game" path left three doors open.
+- 2026-11-07 (edge model): delay_doubt's reset popped the channel's Delay, and with it `behind` (what the tune is held
+  behind live). On a stick scrubbed 60 s back that turns the believed delay 60 s too short: every cut would plan the
+  dead ball a minute early. Lesson: a "reset to safe defaults" must keep what was MEASURED about this tune (its
+  behind_live), and only throw away what was guessed.

@@ -83,6 +83,7 @@ FLIP_STEADY_WAIT_S = 3.0   # ...and gets this long to get there (buffering/conne
 FLIP_SETTLE_S = 3.0        # a flip "settled" = the stick we flipped to is PLAYING within this (North Star row)
 BUFFER_DRIFT_S = 2.0       # [STK-06] a hold further than this from its target is rebuilt (Nick, Nov 4)
 HOLD_RESUME_LOCK_S = 1.0   # [time-shift buffer] a hold's resume waits at most this for the control lock
+SCRUB_APPS = ("youtubetv",)   # [scrub entry] apps whose overlay scrub is proven to hold a buffer (Nick, Nov 6)
 BUFFER_WAIT_S = 90.0       # ...at its game's next dead ball; none by then (a 90 s-held NFL stream reads "a play is
                            # on screen" for minutes, night lab): rebuild anyway. It's off screen and not flippable
                            # while it rebuilds, so no play is cut either way.
@@ -293,8 +294,18 @@ class Controller:
         # (Prime's epoch positions, overseer Nov 5 3:15 AM)
         self.behind_real: dict[str, float] = {}
         self.behind_of: Callable[[str], float] = lambda target: 0.0
+        # [scrub entry] engine: is the overlay scrub on for this target's league (timing.behind_live_s.scrub_entry
+        # per league)? None = the global setting only.
+        self.scrub_of: Callable[[str], bool] | None = None
+        # [scrub entry] the overlay label reader (#375) as enter_buffer's read_behind (None = yttv_seek's own default)
+        # and where a measured reading goes (engine.label_behind, #376: delay = D_edge(channel) + behind_live)
+        self.read_behind: Callable[..., Any] | None = None
+        # [label reader] redzone.tuners.yttv_label.LabelProbe when timing.behind_live_s.label_reader is on (engine)
+        self.label_probe: Any = None
+        self.on_label: Callable[[str, float, float | None, float], None] | None = None
         self.dead_ball: Callable[[str], bool] = lambda target: True   # [STK-06] engine: is target's game dead now?
         self._buffer_bad: dict[str, float] = {}                      # target -> when its hold went bad
+        self._scrub_backoff: dict[str, float] = {}                   # [scrub entry] target -> no scrub before this
         self.buffer_log_path: Path | None = None
         self.on_behind: Callable[[str, float, float], None] | None = None   # (target, new s, old s)
         # [SYNC 1] stick host -> ((target, stick `updated` ms), first monotonic seen): how long a stick
@@ -1343,7 +1354,9 @@ class Controller:
         if mv is not None and target and hid is not None and mv.has_tile(hid.host, target):
             # Off-screen tile switch on the hidden stick, then the flip.
             return flip + (0.0 if mv.is_main(hid.host, target) else self.tile_cost(p90=True))
-        return flip if target and self._live_on_hidden(target) else tune + flip
+        # [scrub entry] a target the hidden stick still has to scrub pays for the scrub before the flip
+        scrub = self._scrub_cost(target)
+        return flip + scrub if target and self._live_on_hidden(target) else tune + scrub + flip
 
     def switch_times(self) -> dict:
         """For the phone's Health card: what we measured, and what the decider is planning with."""
@@ -1425,13 +1438,33 @@ class Controller:
             self._resume_task.cancel()
         self._cancel_refresh()
 
+    async def _reset_through_other(self, stick: Stick, target: str, tuner) -> TuneResult | None:
+        """Tune `stick` to another channel of the same app so the next tune of `target` starts at the live edge.
+        None = done (go on with the tune); a failed TuneResult = no reset was possible, so no tune either.
+        The channel: yttv_seek.reset_channel if set, else any other channel with a watch code."""
+        app = target.split(":", 1)[0]
+        other = str(self.cfg.get("yttv_seek.reset_channel", "") or "")
+        if not other and app == "youtubetv":
+            here = target.split(":", 1)[1] if ":" in target else ""
+            other = next((k for k in sorted(self.channels.codes) if k != here), "")
+        other_t = f"{app}:{other}" if other and ":" not in other else other
+        _, ref = self._ref(other_t) if other_t else ("", "")
+        if not ref or other_t == target:
+            return TuneResult(False, target, 0.0, [], "may be behind live on this channel; no other channel to reset "
+                              "through (yttv_seek.reset_channel)", screen_changed=False)
+        res = await tuner.tune(stick, ref, other_t)
+        if not res.ok:
+            return TuneResult(False, target, res.took, list(res.steps), f"reset through {other_t} failed: {res.error}")
+        stick.behind_on = None
+        return None
+
     def _ref(self, target: str) -> tuple[str, str]:
         app, _, ref = target.partition(":")
         if app == "youtubetv":
             ref = self.channels.yttv_code(target) or ""
             if not ref:
                 key = self.channels.yttv_search_key(target)
-                ref = f"search:{key}" if key else ""
+                ref = self.channels.search_ref(key) if key else ""
         return app, ref
 
     def _package(self, stick: Stick, target: str) -> str | None:
@@ -1453,9 +1486,17 @@ class Controller:
             # Hung stick: fail now (nothing sent) instead of waiting out every adb timeout again.
             return TuneResult(False, target, 0.0, [], f"{STICK_HUNG}: {stick.host}, retry in {br.retry_in():.0f}s",
                               screen_changed=False)
+        if getattr(stick, "behind_on", None) == target:
+            # [Nick's 90 s run, Nov 7] this stick may be behind live on this very channel, and a same-channel deep
+            # link does not reset that: go through another channel first, or fail (never claim a live edge).
+            reset = await self._reset_through_other(stick, target, tuner)
+            if reset is not None:
+                return reset
         self._tuned_on = stick.host
         self.tuned_at[stick.host] = time.time()
         res = await tuner.tune(stick, ref, target, **({"may_cut": may_cut} if may_cut is not None else {}))
+        if res.ok and getattr(stick, "behind_on", None) not in (None, target):
+            stick.behind_on = None   # it plays another channel now; that one starts at its live edge
         if not res.ok and br is not None and br.state != "closed" and not res.error.startswith(STICK_HUNG):
             # The tune died because the stick hung, not because of the channel: say so, so the
             # target isn't cooled down or marked unplayable for a stick fault.
@@ -2029,6 +2070,21 @@ class Controller:
                     return Outcome(False, target, time.time() - t0, "replay seek failed; kept current game", False,
                                    path=path, screen_unchanged=visible_untouched)
                 self._mark("park_done")
+        if not replay and path in ("tuned", "preloaded") and self._scrub_wanted(target) \
+                and hid.scrubbed(target) is None:
+            # [scrub entry, item 4] seek the hidden stick into the buffer BEFORE the flip, with the old game still
+            # on screen: the picture comes up B s behind live and the safe-moment wait below then judges the
+            # dead ball on that delayed picture (the engine's may_cut reads the delay book, which _set_held
+            # shifted by the measured label). Never a flip to a stream whose offset we didn't read.
+            b = self._buffer_for(hid, target, TuneResult(True, target, 0.0, [], ""))
+            if b > 0:
+                self._mark("scrub_start")
+                ok = await self._scrub_into(hid, target, b)
+                self._mark("scrub_done")
+                self._note("scrub", self.held.get(target) if ok else "failed")
+                if not ok and not (self._scrub_fallback_live() and self._live_on_hidden(target)):
+                    return Outcome(False, target, time.time() - t0, "buffer entry failed; kept the current game",
+                                   False, path=path, screen_unchanged=visible_untouched)
         self.latency.note_preloaded(target.split(":", 1)[0], path != "tuned")
         work = time.time() - t0
         # Wait for a safe moment on what's visible, THEN flip. This is where "never mid-play" is enforced
@@ -2064,6 +2120,7 @@ class Controller:
                 if back:
                     # [seek model] rewind the hidden stick to the dead ball before the flip, then take
                     # its position as the stream's new anchor (a seek breaks still_on's clock).
+                    was = hid.scrubbed(target)   # [scrub entry] read before the rewind's presses clear it
                     if not await self._rewind(hid, back):
                         self._set_hidden(None, False)
                         return Outcome(False, target, time.time() - t0, "entry rewind failed; kept current game",
@@ -2072,7 +2129,7 @@ class Controller:
                     pb0 = await hid.playback(self._package(hid, target))
                     self._seek_sample(hid, target, back, pb0)
                     if playback_ready(pb0):
-                        hid.remember(target, pb0)
+                        hid.remember(target, pb0, scrubbed_s=None if was is None else was + back)
                     self._hidden_entry_done = True
                 # Cached readiness is not proof the stream survived a pause,
                 # app error, or a user change on the hidden stick.
@@ -2723,6 +2780,10 @@ class Controller:
             self._steady.pop(stick.host, None)
             return None
         now, key = time.monotonic(), (target, pb.get("updated"))
+        if stick.scrubbed(target) is not None:
+            # [scrub entry] after a seek media_session's stamp and position crawl on: steady = playing since the
+            # scrub's own playing check (still_on above), not an unchanged `updated` stamp
+            key = (target, ("scrub", (stick.tuned or {}).get("scrubbed_at")))
         seen = self._steady.get(stick.host)
         if seen is None or seen[0] != key:
             self._steady[stick.host] = (key, now)
@@ -2758,8 +2819,8 @@ class Controller:
         Returns the seconds booked (0.0 = none)."""
         t = stick.tuned or {}
         a = t.get("report") or {}
-        if t.get("target") != target:
-            return 0.0
+        if t.get("target") != target or t.get("scrubbed_s") is not None:
+            return 0.0   # [scrub entry] a scrubbed stream's position crawls (a reporting quirk): never a stall
         pa, ua, pn, un = a.get("position"), a.get("updated"), pb.get("position"), pb.get("updated")
         if None in (pa, ua, pn, un) or pa <= 0 or pn <= 0:
             return 0.0
@@ -2787,6 +2848,11 @@ class Controller:
         preload gap and replaces a planner preload still loading, never a switch."""
         if not (self.live_control and self.two_stick and target) or self.input_unknown:
             return False   # unknown input: the "hidden" stick may be the one on screen
+        if not user and self._scrub_protected(target):
+            # [scrub entry] Nick's live test (Nov 7): a preload overwrote a scrubbed hidden stick. A scrubbed standby
+            # is kept until it's flipped to (or its anchor expires / its label goes stale); only a game you open on
+            # the phone replaces it.
+            return False
         if self._steal_task and not self._steal_task.done():
             return False   # playbook=TV-04: the "hidden" stick is the game the TV jumped off; keep it
         if replay_id is None and (target == self.on_target or self._live_on_hidden(target)):
@@ -2836,7 +2902,7 @@ class Controller:
                         self._set_hidden(None, False)
                         if res.error.startswith(STICK_HUNG):
                             return   # the stick's fault, not the channel's: the breaker paces retries
-                        self._failed[target] = time.time() + PRELOAD_BACKOFF_S
+                        self._failed[target] = time.time() + self._preload_backoff(res)
                         self._blackout_check(target, res)
                         if self.on_preload_fail:
                             self.on_preload_fail(target, res.error + " | " + "; ".join(res.steps[-3:]),
@@ -2848,6 +2914,11 @@ class Controller:
                     self._note_steady(hid, target, (hid.tuned or {}).get("report") or {})
                     await self._maybe_build_multiview(hid, target, res)
                     hold = 0.0 if replay_id is not None else self._buffer_for(hid, target, res)
+                    if hold and self._scrub_wanted(target):
+                        # [scrub entry] the overlay scrub, off screen, before anything can flip to it; a pause
+                        # doesn't hold on YouTube TV (Nick, Nov 6). Fails closed at the live edge or not ready.
+                        await self._scrub_into(hid, target, hold)   # sets the hidden stick's state itself
+                        hold = 0.0
                     if hold:
                         self._set_hidden(target, False)   # not flippable until it's held
                 if replay_id is not None:
@@ -2885,6 +2956,181 @@ class Controller:
             log.exception("buffer: behind_of(%s)", target)
             return 0.0
         return max(0.0, min(b, float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
+
+    # --- [scrub entry] item 4 of Nick's Nov 6 order: seek the hidden stick before the flip --------------
+
+    def _scrub_wanted(self, target: str | None) -> bool:
+        """Is this target buffered by the overlay scrub (redzone/tuners/yttv_seek.enter_buffer) instead of a pause?
+        Needs yttv_seek.enabled (the tool) and timing.behind_live_s.scrub_entry for the target's league (engine:
+        scrub_of), a YouTube TV target and two sticks. Ships off: nothing changes until both are on."""
+        if not target or target.split(":", 1)[0] not in SCRUB_APPS or not self.two_stick:
+            return False
+        if not self.cfg.get("yttv_seek.enabled", False):
+            return False
+        try:
+            if self.scrub_of is not None:
+                return bool(self.scrub_of(target))
+        except Exception:
+            log.exception("scrub: scrub_of(%s)", target)
+            return False
+        return bool(self.cfg.get("timing.behind_live_s.scrub_entry", False))
+
+    def _scrub_fallback_live(self) -> bool:
+        """After a failed scrub: flip to the stream at the live edge (today's behavior, graded at B=0) or keep
+        the current game ("keep", the default: no picture of unproven delay goes on screen)."""
+        return str(self.cfg.get("timing.behind_live_s.scrub_fallback", "keep")) == "live"
+
+    def _preload_backoff(self, res: TuneResult) -> float:
+        """Seconds before a failed standby target is preloaded again. [Nick's live test, Nov 7] the standby kept
+        choosing a Prime game whose page said UNAVAILABLE: with two_stick.unavailable_backoff_s > 0 an
+        account / payment / unavailable screen keeps that target off the standby that long (0 = as before)."""
+        text = (" ".join(res.steps) + " " + res.error).lower()
+        long = float(self.cfg.get("two_stick.unavailable_backoff_s", 0) or 0)
+        return max(PRELOAD_BACKOFF_S, long) if long and "unavailable" in text else PRELOAD_BACKOFF_S
+
+    def _scrub_protected(self, target: str | None = None) -> bool:
+        """[scrub entry] The hidden stick is a ready, scrubbed standby (label-read behind live) of a game other than
+        `target`: nothing but its flip or a fresh redo (label_stale) may replace it."""
+        hid, have = self.hidden, self.hidden_target
+        return bool(hid is not None and have and have != target and self.hidden_ready and self.parked is None
+                    and hid.scrubbed(have) is not None and self._scrub_wanted(have))
+
+    def _scrub_cost(self, target: str | None) -> float:
+        """Seconds the scrub adds before a flip to `target` (0 = none needed): about 10 s of presses plus one
+        label read (Nick, Nov 6), measured once we have scrubs (latency key yttv_scrub, p90)."""
+        if not self._scrub_wanted(target):
+            return 0.0
+        hid = self.hidden
+        if hid is not None and self._live_on_hidden(target) and hid.scrubbed(target) is not None:
+            return 0.0
+        samples = sorted(self.latency.samples.get("yttv_scrub") or ())
+        p90 = samples[min(len(samples) - 1, math.ceil(len(samples) * .9) - 1)] if samples else 0.0
+        return max(float(self.cfg.get("timing.behind_live_s.scrub_cost_s", 28.0)), p90)
+
+    async def _scrub_into(self, stick: Stick, target: str, seconds: float) -> bool:
+        """[scrub entry] Put the hidden stick's fresh tune of `target` about `seconds` behind live by the overlay
+        scrub (CENTER, N x LEFT, CENTER), off screen. Called with the control lock held. True = playing that far
+        behind live as READ off the overlay's time label: `held` and the delay book get the measured value
+        (never media_session, which lies after a seek), and the stick is a ready standby.
+
+        Fails closed: no label read, a reading past max_s, a stick that is no longer the hidden one, or any
+        error -> the stream is re-tuned at the live edge (a known position) and is ready only with
+        scrub_fallback "live". A failed target isn't scrubbed again for scrub_retry_s (no key storms)."""
+        t0 = time.monotonic()
+        pkg = self._package(stick, target)
+        cap = float(self.cfg.get("timing.behind_live_s.max_s", 90.0))
+        read_s = float(self.cfg.get("timing.behind_live_s.scrub_read_s", 8.0))
+        # Each label read adds ~8 s (Nick, Nov 6: 60 s asked -> 67 s read), so ask that much less.
+        ask = max(15.0, min(float(seconds), cap) - read_s)
+        self._set_hidden(target, False)
+
+        def still_hidden() -> bool:
+            return self.hidden is stick and self.hidden_target == target and not self._flipping
+
+        res, why = None, ""
+        if time.time() < self._scrub_backoff.get(target, 0.0):
+            why = "backoff after a failed scrub"
+        else:
+            try:
+                from redzone.tuners import yttv_seek
+                kw = {"read_behind": self.read_behind} if self.read_behind is not None else {}
+                if self.label_probe is not None:
+                    # [label reader] one screencap feeds the focus guard and the label; the probe at the live edge
+                    # is the at-live anchor, and one read after the commit measures behind-live (yttv_label)
+                    if self.label_probe.arm(stick):
+                        kw = {"read_overlay": self.label_probe.overlay_reader, "read_behind": self.label_probe}
+                    # not armed (#391: the stick is still behind on a target) -> no read_behind: the scrub runs
+                    # unmeasured and is refused below (fails closed)
+                res = await yttv_seek.enter_buffer(stick, ask, cfg=self.cfg, pkg=pkg, still_hidden=still_hidden, **kw)
+            except asyncio.CancelledError:
+                raise
+            except ImportError:
+                why = "yttv_seek not installed"
+            except Exception as e:   # the seek helper never raises by contract; a bug must still fail closed
+                log.exception("scrub: enter_buffer(%s) on %s", target, stick.host)
+                why = f"crashed: {e}"
+        took = round(time.monotonic() - t0, 1)
+        if res is None or getattr(res, "presses", 1) or getattr(res, "committed", True) or why.startswith("crashed"):
+            if not why.startswith("backoff"):
+                stick.behind_on = target   # keys may have moved it: the next tune of target must reset first
+        behind = getattr(res, "behind_s", None) if res is not None and getattr(res, "ok", False) else None
+        if behind is not None and getattr(res, "measured", True) is False:
+            behind = None   # an estimate (behind_before + presses x 15 s), not a label reading: never trusted
+        if res is not None and not why:
+            why = str(getattr(res, "reason", "") or ("no label read" if behind is None else ""))
+        if behind is not None and not (0.0 < float(behind) <= cap + float(
+                self.cfg.get("timing.behind_live_s.scrub_over_s", 15.0))):
+            why, behind = f"label read {float(behind):.0f}s behind live, outside (0, max_s]", None
+        if behind is not None and still_hidden():
+            pb = await stick.playback(pkg)
+            if pb.get("state") == "playing" and playback_ready(pb) and still_hidden():
+                behind = round(float(behind), 1)
+                stick.remember(target, pb, scrubbed_s=behind)
+                self._set_held(target, behind)
+                self._set_hidden(target, True)
+                self.latency.record("yttv_scrub", took)
+                if self.on_label is not None:
+                    try:
+                        self.on_label(target, behind, None, time.time())   # the delay model's measured behind_live
+                    except Exception:
+                        log.exception("scrub: on_label(%s)", target)
+                self._buffer_log("scrubbed", target, stick.host, behind, round(behind - float(seconds), 1), took=took,
+                                 asked_s=round(ask, 1))
+                log.info("scrub: %s on %s is %.1fs behind live by the overlay label (%.1fs)", target, stick.host,
+                         behind, took)
+                return True
+            why = f"not playing after the scrub ({pb.get('state')})"
+        if not why:
+            why = "the stick is no longer the hidden one"
+        self._buffer_log("scrub_failed", target, stick.host, 0.0, None, took=took, why=why[:120])
+        log.warning("scrub: %s on %s failed (%s): fail closed", target, stick.host, why)
+        if not why.startswith("backoff"):
+            self._scrub_backoff[target] = time.time() + float(self.cfg.get("timing.behind_live_s.scrub_retry_s", 120.0))
+        if not still_hidden() and self.hidden is not stick:
+            return False   # it's on screen (or gone): never pressed or re-tuned from here
+        self._set_held(target, 0.0)
+        if res is not None or stick.tuned is None or stick.tuned.get("target") != target:
+            # keys were (or may have been) pressed: the position is unknown. A fresh live tune is a known one.
+            again = await self._tune(stick, target)
+            if not again.ok:
+                self._set_hidden(None, False)
+                return False
+        self._set_hidden(target, self._scrub_fallback_live())
+        return False
+
+    def label_stale(self, target: str) -> bool:
+        """[scrub entry] The delay model says this target's label reading went stale (stalls widened it, #376
+        delays.on_label_stale). On the hidden stick: drop it from ready and redo it off screen (fresh live tune,
+        then the scrub), so no flip trusts a stale offset. The stick on screen is never pressed. True = redoing."""
+        hid = self.hidden
+        if hid is None or self.hidden_target != target or hid.scrubbed(target) is None or self._busy() \
+                or not self._scrub_wanted(target):
+            return False
+        self._set_hidden(target, False)
+        self._preloading = (target, None)
+        self._preload_task = asyncio.create_task(self._rescrub(hid, target))
+        return True
+
+    async def _rescrub(self, hid: Stick, target: str) -> None:
+        try:
+            async with self._lock:
+                if self.hidden is not hid or self.hidden_target != target:
+                    return
+                res = await self._tune(hid, target)
+                if not res.ok:
+                    self._set_hidden(None, False)
+                    return
+                b = self._buffer_for(hid, target, res)
+                if b:
+                    await self._scrub_into(hid, target, b)
+                else:
+                    self._set_hidden(target, True)
+        except asyncio.CancelledError:
+            self._set_hidden(None, False)
+            raise
+        finally:
+            if self._preload_task is asyncio.current_task():
+                self._preloading = None
 
     def plan_prime_multiview(self, tiles: list[str]) -> None:
         """The engine's pick of Prime NBA games for a multiview, best first (prime_multiview.plan_tiles)."""
@@ -3029,6 +3275,12 @@ class Controller:
             return None
         t = stick.tuned or {}
         a = t.get("report") or {}
+        if self._scrub_wanted(target) and (t.get("scrubbed_s") is not None
+                                           or time.time() < self._scrub_backoff.get(target, 0.0)):
+            # [scrub entry] after a seek media_session's position crawls, so position vs clock would read a
+            # scrubbed stream as "fell behind" every tick; the overlay label is its meter (Nick, Nov 6). And a
+            # target whose scrub just failed stays at the live edge until scrub_retry_s, never re-tuned in a loop.
+            return None
         if (held <= 0 and want > 0 and t.get("target") == target and playback_ready(pb)
                 and self._holding is None and not (self._preload_task and not self._preload_task.done())
                 and self._buffer_for(stick, target, TuneResult(True, target, 0.0, [], "")) > 0):
@@ -3083,6 +3335,18 @@ class Controller:
         since = self._buffer_bad.get(target, time.time())
         ok = False
         try:
+            if self._scrub_wanted(target):
+                # [scrub entry] a pause doesn't hold on YouTube TV: rebuild by the overlay scrub (it re-tunes at
+                # the live edge itself when it fails)
+                async with self._lock:
+                    if self.hidden is not hid or self.hidden_target != target:
+                        return
+                    hold = self._buffer_for(hid, target, TuneResult(True, target, 0.0, [], ""))
+                    if hold:
+                        ok = await self._scrub_into(hid, target, hold)
+                    else:
+                        self._set_hidden(target, True)   # no buffer wanted now: the live-edge stream is the standby
+                return
             if err < 0:
                 ok = await self._hold(hid, target, max(0.5, -err + cal), base_s=now_s)
             else:
@@ -3247,6 +3511,8 @@ class Controller:
         text = " ".join(res.steps).lower() + res.error.lower()
         if "regional" in text or "blackout" in text or "not available in your location" in text:
             self.note = f"{target} is blacked out here"
+        elif "unavailable" in text:
+            self.note = f"{target} shows UNAVAILABLE here"
 
     def status(self) -> list[dict]:
         out = []

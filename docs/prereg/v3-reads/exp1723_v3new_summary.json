@@ -1,0 +1,116 @@
+{
+ "exp": "EXP-1723",
+ "league": "nba",
+ "buffer_s": 90.0,
+ "feed_lag_s": 70.0,
+ "horizon_steps": 24,
+ "nights_chain": 102,
+ "nights_pooled": 74,
+ "nights_excluded": {
+  "your_team_crunch": 14,
+  "full_value_not_positive": 14
+ },
+ "pct_of_full": {
+  "B0": {
+   "pct": 70.75,
+   "ci": [
+    65.5,
+    74.94
+   ],
+   "nights": 74
+  },
+  "B1": {
+   "pct": 71.39,
+   "ci": [
+    66.83,
+    75.34
+   ],
+   "nights": 74
+  },
+  "B2": {
+   "pct": 70.66,
+   "ci": [
+    65.97,
+    74.76
+   ],
+   "nights": 74
+  },
+  "app": {
+   "pct": 81.01,
+   "ci": [
+    77.44,
+    84.39
+   ],
+   "nights": 74
+  }
+ },
+ "app_gradable_nights": 74,
+ "pct_of_full_on_app_nights": {
+  "app": 81.01,
+  "B1": 71.39,
+  "B2": 70.66
+ },
+ "info_pool_full_positive_only": {
+  "nights": 88,
+  "app": 93.8,
+  "B0": 84.32,
+  "B1": 84.35,
+  "B2": 84.33
+ },
+ "B1_minus_B0": {
+  "delta": 0.64,
+  "ci": [
+   -2.95,
+   4.64
+  ]
+ },
+ "B2_minus_B0": {
+  "delta": -0.09,
+  "ci": [
+   -3.06,
+   3.21
+  ]
+ },
+ "B1_minus_app": {
+  "delta": -9.62,
+  "ci": [
+   -14.33,
+   -5.42
+  ]
+ },
+ "B2_minus_app": {
+  "delta": -10.35,
+  "ci": [
+   -14.73,
+   -6.4
+  ]
+ },
+ "ledger_causes_app_vs_full": {
+  "stay_leave_timing": {
+   "episodes": 345,
+   "value_lost": 2715.64,
+   "share": 0.678
+  },
+  "wrong_game_value": {
+   "episodes": 174,
+   "value_lost": 956.76,
+   "share": 0.239
+  },
+  "break_estimate": {
+   "episodes": 75,
+   "value_lost": 324.38,
+   "share": 0.081
+  },
+  "switch_cost": {
+   "episodes": 3,
+   "value_lost": 6.0,
+   "share": 0.001
+  }
+ },
+ "locked_nights_read": 0,
+ "evidence": "dev history only (eval-data-v1 fit nights); counting nights = v3 new + live",
+ "seconds": 1414,
+ "tag": "personal-use, not for commercial release",
+ "B1_bar": false,
+ "B2_bar": false
+}

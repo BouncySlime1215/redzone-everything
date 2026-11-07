@@ -61,11 +61,17 @@ def _fastcast_ended(task: asyncio.Task) -> None:
         log.error("Fastcast client stopped: %r (polling carries on)", e, exc_info=e)
 
 
+def _short_why(detail: str) -> str:
+    """The first clause of a switch outcome, short enough for a status line."""
+    return detail.split(";", 1)[0].strip()[:80] or "switch failed"
+
+
 class Engine:
     def __init__(self, cfg: Config | None = None, store: Store | None = None):
         self.cfg = cfg or Config()
         self.store = store or Store()
         self.channels = ChannelMap()
+        self.channels.local_search = bool(self.cfg.get("tuners.yttv_local_search", False))
         self.fetcher = Fetcher()
         # [NHL primary] api-web's live play-by-play owns NHL stoppages while it's fresh.
         self._nhl_primary = bool(for_league(self.cfg, "sources.nhl_primary", "nhl", False))
@@ -105,6 +111,8 @@ class Engine:
             self.delays.load(self.store.calibrations(since=time.time() - TAP_HISTORY_S))
         except Exception as e:
             log.warning("could not reload delay calibrations: %s", e)
+        # [edge model, Nick Nov 6 item 3] delay = D_edge(channel) + behind_live off the overlay label (delay.edge_model, OFF)
+        self.delays.edge_cfg = lambda key: self.cfg.get(f"delay.edge_model.{key}")
         self.decider = Decider(self.cfg, self.delays)
         data_dir = getattr(self.cfg, "user_path", None)
         # [auto sync] every channel's delay tracked by a Kalman filter from the automatic signals
@@ -141,6 +149,16 @@ class Engine:
         # OFF by default); the delay book shares the controller's held offsets.
         self.delays.held = self.control.held
         self.control.behind_of = self._behind_of
+        self.control.scrub_of = self._scrub_of   # [scrub entry] per league
+        # [scrub entry] a measured label reading -> the delay model (#376's label_behind when it's there; else the
+        # controller's held offset alone moves the delay book, as today), and a stale label -> redo the hidden stick
+        if hasattr(self, "label_behind"):
+            self.control.on_label = self.label_behind
+        if self.cfg.get("timing.behind_live_s.label_reader", False):
+            from redzone.tuners.yttv_label import LabelProbe
+            self.control.label_probe = LabelProbe(self.cfg)   # [label reader] off by default
+        if hasattr(self.delays, "on_label_stale"):
+            self.delays.on_label_stale = self.control.label_stale
         self.control.on_behind = self._on_behind
         # [buffer.watchdog STK-06] a lost hold is rebuilt only while that game is in a dead ball
         self.control.dead_ball = self._target_dead
@@ -179,6 +197,7 @@ class Engine:
         self.source_status: dict[str, dict] = {}
         self._caffeinate: subprocess.Popen | None = None
         self._last_logged_reason = ""
+        self._last_logged_gate = ""
         self._tick = 0
         self.started = time.time()
         self.summaries: dict[str, dict] = {}  # latest raw summary per live game (for the detail sheet)
@@ -195,6 +214,7 @@ class Engine:
         self.sync_probe.delay_of = lambda target: (self.sync.estimate(target) if self.sync is not None
                                                    and hasattr(self.sync, "estimate") else None)
         # [SYNC, Nick 3:30 AM] a Prime epoch read + K -> a delay sample (sync.edge.epoch_signal, off)
+        self.sync_probe.label_of = lambda t: (self.delays.labels[t][0] if self.delays.labelled(t) else None)
         self.sync_probe.on_epoch = lambda target, z, t, sd: self._sync_measure(target, z, "epoch", t, sd)
         self.sync_probe.on_force_live = lambda target, row: (   # [SYNC B] re-link to live (flags off)
             self.control.force_live_hidden(target) if row["role"] == "hidden" else self.control.relink_visible_live(target))
@@ -312,6 +332,8 @@ class Engine:
             return None
 
     def _sync_position(self, target: str, wall: float, position_s: float, sd: float) -> None:
+        if self.delays.labelled(target):
+            return   # [edge model] media_session's position is wrong after a seek (Nov 6 stick tests)
         if self.sync is not None:
             try:
                 self.sync.position(target, position_s, t=wall, sd=sd)
@@ -319,6 +341,8 @@ class Engine:
                 log.exception("sync: could not use a position read on %s", target)
 
     def _sync_tune(self, target: str, wall: float, new_stream: bool = True) -> None:
+        if new_stream:
+            self.delays.clear_label(target)   # [edge model] a fresh tune lands on the live edge: old label is void
         if self.sync is not None:
             try:
                 self.sync.tuned(target, wall, new_stream=new_stream)
@@ -369,6 +393,15 @@ class Engine:
         b = by.get(g.league.value, by.get(g.league.base.value, self.cfg.get("timing.behind_live_s.default", 0)))
         return max(0.0, min(float(b or 0.0), float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
 
+    def _scrub_of(self, target: str) -> bool:
+        """[scrub entry, item 4] Is the overlay scrub (not a pause) this target's buffer entry? Per league:
+        timing.behind_live_s.scrub_entry (league_overrides.<lg> wins). Unknown game -> off."""
+        gid = self._game_on(target, False)
+        g = self.merger.games.get(gid or "")
+        if g is None:
+            return False
+        return bool(for_league(self.cfg, "timing.behind_live_s.scrub_entry", g.league.value, False))
+
     def _shadow_buffer_on(self) -> bool:
         """[buffer shadow] timing.behind_live_s.shadow while the buffer itself is off on screen."""
         tb = self.cfg.get("timing.behind_live_s") or {}
@@ -383,6 +416,16 @@ class Engine:
         by = self.cfg.get("timing.behind_live_s.by_league") or {}
         b = by.get(g.league.value, by.get(g.league.base.value, self.cfg.get("timing.behind_live_s.default", 0)))
         return max(0.0, min(float(b or 0.0), float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
+
+    def label_behind(self, target: str, behind_s: float, sd: float | None = None, ts: float | None = None) -> None:
+        """[edge model, Nick Nov 6 items 1-3] behind_live for the tune on `target`, read off YouTube TV's overlay
+        time label (yttv_seek.enter_buffer / the label reader). With delay.edge_model.enabled the delay becomes
+        D_edge(channel) + behind_s; with it off the read is kept and logged only."""
+        d = self.delays.set_label_behind(target, behind_s, sd=sd, ts=ts)
+        e = self.delays.edge(target)
+        log.info("edge model: %s behind live %.1f s (label)%s -> delay %.1f±%.1f s (%s)", target, float(behind_s),
+                 f", edge {e[0]:.1f}±{e[1]:.1f} s {e[2]}" if e else "", d.mu, d.sigma,
+                 "on" if self.delays.edge_model else "off, logged only")
 
     def _on_behind(self, target: str, new_s: float, old_s: float) -> None:
         """The controller held (or freed) this target's stream: shift its delay by the difference."""
@@ -1354,10 +1397,15 @@ class Engine:
         redzone = self._redzone_target(st, dry)
         d = self.decider.decide(cands, redzone, commit=dry, reel=self._reel_target())
         self.last_decision = d
-        changed = d.reason != self._last_logged_reason or d.action != "stay"
+        # [autopsy Nov 5] the gate is logged when it changes too: a halftime that never opened the gate
+        # was invisible in the DB because the reason text stayed the same.
+        gate = str(getattr(d, "gate", "") or "")
+        changed = d.reason != self._last_logged_reason or d.action != "stay" or gate != self._last_logged_gate
+        self._lock_expired()
         if changed:
             self.store.decision(d)
             self._last_logged_reason = d.reason
+            self._last_logged_gate = gate
         if d.action in ("switch", "replay") and d.target:
             self._act(d, before, cands)
         else:
@@ -1484,6 +1532,8 @@ class Engine:
                         self.decider.user.manual_until = time.time() + self.cfg.get("decider.manual_pause_s")
                 else:
                     self.decider.reject(d)
+                    if not out.dry_run and not cancelled and not out.detail.startswith(NOT_THE_TARGETS_FAULT):
+                        self.decider.lock_failed(d, _short_why(out.detail))   # [lock wait] (flag off: no-op)
                     # Playback can be unknown after a failed launch. Hold for
                     # recovery instead of making new decisions from a fiction.
                     if out.screen_unchanged:
@@ -2129,6 +2179,22 @@ class Engine:
         """Your second "Go now" tap on the held game: it cuts at once, even mid-play (Nick, Nov 5)."""
         h = self.hold
         return bool(h and d.kind == "user" and d.action == "switch" and d.target == h["game_id"] and h.get("force"))
+
+    def _lock_expired(self) -> None:
+        """[lock wait] The decider gave up on a locked game it couldn't reach: drop the lock (and the
+        hold) and say why, instead of re-trying it forever with the lock still on."""
+        dec = self.decider
+        gid, dec.lock_expired = dec.lock_expired, None
+        if not gid or dec.user.locked_game != gid:
+            return
+        why = dec.lock_why
+        dec._lock_reset()
+        if self.hold and self.hold["game_id"] == gid:
+            self._release_hold("")
+        else:
+            dec.user.locked_game = None
+        self.toast(f"Couldn't get to {self._name(gid)} ({why}) — back on autopilot", "error")
+        log.warning("lock on %s given up: %s", gid, why)
 
     def _hold_waits(self, d: Decision) -> bool:
         """A switch to the held game honors the never-cut-mid-play rule unless you forced it."""

@@ -925,3 +925,237 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   7. **No prioritization model ships or gets a locked read tonight** (T8 stay/leave failed valid; WV attention arms
      below A0; GI v2 not pre-registered until #345). A0 stays.
   Still waiting on Nick only: keys, the Kaggle ID check, and the RC8 flip.
+- 2026-11-05 (integrator, grader v32; Nick 4:50 PM / ~5 PM: audit the oracle before more Watch Value training):
+  - **EXP-1720 (GI v3 NBA, #347) metric, bar and harness frozen** (`scripts/gi_v3_nba.py` joins the freeze): pair-weighted
+    within-night agreement vs realized volume; pass = G3 − C0 lower 95% bound > 0 and point ≥ +2.0 on fresh 2026-27 NBA
+    nights after this commit (≥ 8 nights / 60 pairs first read, ≥ 40 nights firm). The 2025-26 dev pass (+5.5, CI
+    +2.7..+8.5) and the 60 already-seen 2026-27 games are not evidence (the metric was picked after seeing them).
+  - **EXP-1715 (GI v2 NFL, #345) prereg accepted; its harness freeze waits** on `scripts/game_importance.py`, which
+    lives on #317 (held for two leakage fixes: aux labels in valid/locked targets, split_nights instead of
+    league_split). Fresh nights count only from that freeze.
+  - **EXP-1721 (oracle reward v2, #348) prereg and audit accepted, not yet a gate.** The audit confirms the v1 oracle
+    structurally favors closest-game in the NBA (57.5% of games worth 0; Spearman −0.83 vs final margin) and counts
+    low-swing NFL plays. oracle.py v1 stays the frozen reference for every current line until v2's code lands as its
+    own frozen file and passes its acceptance on fit nights (it needs the human highlight set first). Nothing in RC6.3
+    or integration/release changes. Grader freeze v32.
+- 2026-11-05 (integrator; WV loop #348): **EXP-1721 (oracle reward v2) FAILS, graded once on fit nights against
+  crew H's recap highlight set.** NBA zero-value games 54.4% -> 1.5% (criterion 1 passes); NBA highlight recall
+  52.2 -> 58.7, CI -4.9..+18.1, short of the +10 bar (92 plays over 9 nights); NFL recall 82.7 -> 67.4, CI -19..-11
+  (recaps name nearly every score, as v1 does). `redzone/lab/oracle.py` v1 stays the frozen reference; no tuning on
+  these nights. Next: EXP-1722 (NBA-only big_v2, NFL unchanged), pre-registered before eval-data-v3's new NBA nights.
+- 2026-11-05 (integrator, grader v33; WV loop #350, Nick ~5 PM oracle-audit items 4-6; overseer default, Nick can
+  override): **(4)** the nightly North Star runs `--oracle`, so pct_of_oracle stops reading n/a. **(5)** a buffered
+  card also reports the windowed oracle as `<obj>_window`, INFORMATION ONLY; full hindsight stays the gate ceiling
+  until the window's beyond-window value is a real model (its v1 placeholder scores below the app on NBA fit nights).
+  **(6)** Watch Value gates set before any WV read: calibration error <= 6 pts (locked, reliability curve) and rank
+  agreement with the oracle >= 65% in the worst league; PENDING until a card carries watch_value. A 0-1 calibration
+  value is read as a fraction and scaled to points (errs toward FAIL). `scripts/sync_truth_wv.py` (#353, lane 2) is an
+  offline ledger input, not a gate, and is not frozen. Grader freeze v33.
+- 2026-11-06 (lane 4, Nick via the overseer 3:14 AM ET: "fix deploy test timing"): `scripts/deploy.py` runs its test step at
+  `nice -n 10` by default instead of `taskpolicy -b`. Reason: on the Mac the suite took 30 min at nice 10 but timed out at
+  60 min under taskpolicy -b (efficiency cores). `test_priority: background` in deploy/deploy.yaml restores taskpolicy -b;
+  `deploy --test-timeout MIN` overrides the 60 min limit. The live app (nice 0) still wins the cores, and deploys stay in
+  no-game windows.
+- 2026-11-07 (Nick's order, item 7 "deploy test timeout"): the deploy test step runs on pytest-xdist workers
+  (`--dist loadfile`, `test_workers: 0` = auto, half the cores, at most 4) at nice 10. Measured on 4 cores: whole suite
+  7 min 13 s vs ~33 min serial in CI. A timeout now kills the whole process group (subprocess.run's timeout left xdist
+  workers and test children running) and reports tests finished; output in data/deploy/tests.log. pytest-xdist==3.8.0 is
+  added to requirements.txt, so the next deploy needs `pip install -r requirements.txt` + `--deps-ok`; without it the
+  suite runs serially. A night test that read all of data/ as its own was made parallel-safe.
+- **2026-11-06 (lane 2, Nick's YTTV order):** new flag `decider.leave.break_floor_s` (EXP-212), default `{}` (OFF,
+  no behavior change). It adds measured break floors on top of `MIN_BREAK_S` per league; the candidate is NBA
+  `{end_period: 120}` (fit min 148 s over 103 breaks, valid min 148 over 34). Why: on Nov 5, NBA timeouts and quarter
+  breaks could never open the leave gate with a wide delay and the measured feed lag. It stays OFF until it's graded
+  in replay on recorded YTTV nights; Nick flips it.
+- 2026-11-06 (YTTV switching owner thread, Nick's 6:14 AM nudge, item 3 "plan buffer on the fast NBA feed"): the sim's
+  `--real-lag` model gets a measured `sources.nba_cdn.nba` profile in redzone/lab/feed_lag_profile.json (dead-ball
+  detection lag, Nov 4-6 recordings, n 1359: p50 11 s, p90 21 s, p95 31 s; ESPN's same nights p50 44 s, p95 92 s).
+  Before this, every NBA real-lag replay drew ESPN's lag although `sources.nba_primary` is on. Sim input only; no
+  live default changes, and the CI scorecards are unchanged (their pinned NBA nights are already at 100% big seen).
+  On Nov 2-5 (31 games, seeds 0-2): 0 mid-play entries at every B; B60 matches B90 on value when sigma <= 8, B90 is
+  needed at sigma 15. RC8 owns the per-league B; this is evidence for it, not a flip.
+- 2026-11-06 (overseer default (Nick 3:10 PM Nov 5), Nick can override; planner + integrator, EXP-735/EXP-017):
+  **eval-data-v3 carries no release locked read until its Nov 1+ locked block reaches >= 8 nights per league and
+  >= 25% of nights (about Nov 20); until then releases use v1's locked set, and every gate stays on v1.** Reason: no
+  clean unread 2025-26 nights (v3 dev North Star already read every added 2025-26 night, and T8's EXP-128 trained on
+  NBA/NHL Mar-Jun 2026), and the >= 25% locked rule. The v1 -> v3 dev jump (NHL mid-play 0 -> 344/3340, NBA 0 -> 9/784,
+  all on 2025-26 nights) goes to the test writers for an autopsy before any v3 dev number is used for a gate.
+- **2026-11-06 (lane 2, RC8 switch count, coordinator):** new flags `decider.dwell.min_s` (0) and
+  `decider.dwell.long_visit_min_score` (0), EXP-213, both OFF (no behavior change). They are for the RC8 sweep:
+  with the buffer on, NBA B=90 and NFL B=75 switch 1.58x / 1.80x as often as live (bar 1.5x). Fit nights, seed 0,
+  dev only: NBA B=90 resync `long_visit_min_score: 20` gives 73 -> 61 switches (B=0: 46, so 1.33x) with big plays
+  from start, crunch and mid-play unchanged, dead air +2.1 pt. NFL B=75 `min_s: 30` gives 1078 -> 908 non-replay
+  (B=0: 679, so 1.34x), big from start 47.8 -> 47.0, crunch unchanged, dead air +1.7 pt. Lane 3 re-sweeps them on
+  all seeds and harnesses; Nick flips them with RC8 per league.
+- 2026-11-06 (integrator, grader v34; T9 #366 after EXP-213 #363): `scripts/rc8_gate_report.py` refrozen. Report-only:
+  it prints lane 3's verdict_caveat next to any ON verdict and maps the NFL need `dwell_min_s_35` to
+  `--set decider.dwell.min_s=35` in the flip command. No gate logic or bar moved. NFL's ON at B=75 + dwell 35 s is
+  dev-tuned (35 s chosen after 30 s missed the 1.5x switch bar on the same train+valid nights, which the gate allows
+  for picking a setting), so it carries the caveat and only the locked read at the RC8 cut plus the shadow veto decide;
+  Nick flips. Grader freeze v34.
+- **2026-11-06 (integrator, test writers #367): every NHL penalty type is a whistle in `espn.stoppage_for`.**
+  The classifier is shared by the decider and the cut grader, so this changes the live NHL decider. Reason: ESPN typed
+  every 2025-26 NHL penalty "Penalty", and 200 of 983 2026-27 penalty rows use spellings the old list missed
+  ("Cross checking", "Delaying Game - ..."). "Penalty shot*" is excluded (live play). NHL dev, `eval_sports.py nhl
+  --split fit --real-lag`, base -> this PR: v1 entries 246 -> 251, entries_mid_play 0 -> 0, plays_missed_entry 0 -> 0,
+  dead_air_pct 22.8 -> 22.6; v3 entries 3340 -> 3300, entries_mid_play 344 -> 3, plays_missed_entry 0 -> 0,
+  dead_air_pct 20.3 -> 20.5 (+0.2: the decider now holds through 2025-26 penalties it used to treat as live).
+  The 3 residual v3 rows are "Period Start" (shootout start x2, pre-face-off x1), a later grader freeze item.
+- 2026-11-06 (integrator, grader v35; test writers #368, EXP-746/747, from the v3 autopsy and #365's trace):
+  `redzone/grading.py` gains `held_stop` for a row the classifier calls NONE. R1: a row in the same wallclock second
+  and at the same game clock as a review or substitution row (one logging batch) doesn't end the stoppage (HOU@SA
+  Oct 23 Q4 8:17: a challenge-result turnover logged with subs while the clock never ran). R2: "Period Start" is dead
+  until the next action (NHL shootouts and opening face-offs). Before/after on fixed autopsy rows: v1 NBA 0->0, NHL
+  0->0; v3 NBA 9->5 (all 4 flips clock-truth dead), v3 NHL (with #367) 3->0; cutgrade-dead/clock-truth-live stays 0
+  everywhere. The decider never calls dead_at, so no runtime change. Frozen before #365's sim-input change is read.
+  Grader freeze v35. Note on #365: its nba_cdn lag profile is measured on Nov 4-6 recordings, some inside v3's
+  Nov 1+ locked block; it is a sim input (lag distribution), never a label, and B is still picked on train+valid.
+- 2026-11-06 (integrator, grader v36; WV loop #351): **EXP-1722 (NBA-only oracle big_v2) PASSES as pre-registered**
+  on 101 new v3 NBA fit nights (zero-value games 59.2% -> 1.2%; highlight recall 52.0 -> 58.8, +6.8, CI 3.5..9.8;
+  your-team crunch 506/506 and mid-play 0 under both). `redzone/lab/oracle_v2.py` and its read harness `scripts/exp1722_read.py` (which imports it) join the
+  freeze as INFORMATION reported beside v1; oracle.py v1 stays the gate reference until Nick says otherwise (card to
+  follow). `oracle_v2.register()` adds "v2" to oracle.OBJECTIVES at runtime and must never be called on a gate path.
+  EXP-1723 and EXP-1724 (Watch Value as the windowed oracle's beyond-window value, at p90 and primary feed lag) FAIL;
+  the windowed oracle stays information only. Grader freeze v36, then v37 once the harness moved to scripts/ and
+  was re-run through the frozen module (identical JSON).
+- 2026-11-06 (integrator request, lane 2, EXP-214): **`decider.crunch.mine_first: true` (new; overseer default ON, Nick
+  can override).** Your team holds the TV: in its final period a catch-up return never leaves it (unless garbage
+  time), and while it is late and close it is never left for another game's crunch or a big-play chase with less
+  personal stake. Why: eval-data-v3 NBA fit nights showed the hard rule "your-team crunch live" at 91.3%: WSH @ DET
+  Nov 10 2025 (a return to a Q1 visit's origin at 8:37 left, back at 0:01 of OT) and CLE @ WSH Dec 12 2025 (left
+  late and close for a CHI crunch; resync: a chase). v3 fit (111 nights), off -> on: shipped harness (B90, feed lag
+  70) 493 -> 535/537, entries mid-play 4 -> 4, crunch live 86.8 -> 86.5, dead air 22.0 = ; real-lag resync B90
+  seed 0 473 -> 521/537, mid-play 10 -> 10, crunch live 87.0 -> 86.3, dead air 21.6 = ; plain B0 unchanged. v1
+  pinned scorecards (all six): no change except NHL crunch live -0.2 / -0.8 (resync). Left: 20251231 (2 plays at
+  arrival, never left) and 20261024 (NBA leave gate; decider.leave.low_leverage, awaiting Nick's RC6.3 pick).
+  Integrator ruling: ships ON below the 100% bar set for it because neither left miss is on a path the flag touches
+  and mid-play entries / plays missed are identical on every harness; crunch live -0.3/-0.7 overall is the price of
+  never leaving your team for a neutral crunch (north star: his teams first). v1 locked read once at the next release.
+- 2026-11-06 (integrator, T9 + red team item 1): **No RC8 flip card until EXP-601 is read.** The replay treats the
+  time-shift buffer as free; live, the hidden stick needs tune (Nov 4 p50 21.6 s, p95 44.7 s) + B before a switch is
+  buffered, and NFL dw35 switches every ~131 s (resync median). EXP-601 (docs/prereg/exp-601.md) adds a hidden-stick
+  readiness model behind a flag (off = today's grader), frozen before lane 3 re-sweeps NFL B75 dw35 and NBA B90.
+- 2026-11-06 (integrator): **Grader freeze v38: EXP-601 hidden-stick readiness (#372) in backtest.py / eval_sports.py,
+  verdict arm B (live edge).** Flag off = byte-identical scorecards. Integrator additions at merge: the stick we leave
+  must re-hold before it is ready again if its game was airing at the live edge, and eval_sports refuses
+  --hidden-stick unless --split is train, valid or fit. **Locked exposure on record:** the builder's pre-freeze smoke
+  ran v1 NBA's last 3 nights (locked) at B90: mid-play 0 -> 7 in both arms, 18/23 switches to Prime (B = 0). Not a
+  gated read; nothing is tuned on it; NBA B and dwell stay where #363 put them until EXP-601 reads train+valid.
+- 2026-11-06 (integrator, EXP-601 read): **EXP-601 FAILS for NFL B75 dw35 and NBA B90; RC8 stays OFF for every league,
+  and the earlier NFL "ON" (sweep addendum 5) is withdrawn.** With the hidden stick's real tune + hold, only ~15% of
+  NFL switches air buffered, and the unbuffered ones carry every added mid-play entry (48/37/49 -> 107/103/90 shipped).
+  Known pessimisms, as registered: on an unbuffered switch the sim's app still believes B (live, the delay book says
+  held 0), and the cut is graded at the tuned time without control's 25 s safe-moment re-check; the B0 controls with
+  the model on also rise (NFL 37-49, NBA 10-11). Lifting them needs a new EXP id, registered before it runs. Nothing on
+  Nick's screen changes: RC6.2's NBA/NFL hold stays as it is.
+- 2026-11-06 (integrator): **Grader freeze v39: rc8_gate_report.py prints one line per follow-up EXP arm (#373).**
+  Report-only: EXP-601's holds / fails, prereg, grader and verdict arm appear under each league; no gate changes.
+- 2026-11-06 (Nick 20:38 UTC, "update #372 grader assumptions only with measured values"): **EXP-602 registered to
+  carry one measured stick hold into the readiness grader.** VOID at 21:45 UTC, see the next line; never run.
+- 2026-11-06 (Nick 21:45 UTC, overseer correction): **EXP-602 is VOID and its hold value is struck from the record;
+  RC8 is not scheduled on the assumption that a stick can hold a buffer until a stick test proves it.** The hold
+  reading was invalid (the meter stays flat when the session stops updating; age not logged). Plain pause does not hold:
+  30-90 s pauses were back near live 20-30 s after resume, 120 s reset to 0, also with auto-switching OFF (so not
+  STK-05). No seek path works yet. The EXP-601 grader keeps its registered defaults; no refreeze, no runs. EXP-601
+  itself assumed a held stick stays held, which is now unproven, so its FAIL is if anything optimistic for RC8.
+- 2026-11-07 (Nick's Nov 6 10:15 PM order, item 1; overseer's scrub-buffer spec a60c9cbd): new `yttv_seek.*` group,
+  **enabled false**. `redzone/tuners/yttv_seek.enter_buffer` puts a HIDDEN YouTube TV stick N x 15 s further behind
+  by scrubbing the overlay (CENTER, LEFT x N, CENTER), because pause does not hold a buffer and rewind keys do not
+  seek (Nov 6 stick tests). It presses nothing unless the stick is hidden, YouTube TV is in front and playing; no
+  LEFT unless the overlay shows the bar focused (scrub label, no row button focused: the #356 guard); no commit
+  unless the knob label moved N x step_s +- step_tol_s; on any doubt it re-links to live. Behind-live comes from
+  the label reader (item 2) or the knob estimate, never media_session (wrong after a seek). Frames are deleted
+  as soon as they are read. The switch path that calls it is item 4's.
+- 2026-11-07 (integrator, Nick's Nov 6 10:15 PM order item 5): **Grader freeze v40: EXP-603 overlay-scrub entry in the
+  hidden-stick model (#374).** Measured only (a60c9cbd scrub spec): ready keys 10 s + read 8 s after the tune, lands
+  15 N + 15 s behind live (B75 measured, B90 extrapolated). Both arms must pass. A pass is not a flip card: RC8 waits on
+  a live stick test of a held scrub, per Nick.
+- 2026-11-07 (integrator): **Grader freeze v41: EXP-604 post-scrub re-check (#380), verdict arm wait + re-check.**
+  Registered after EXP-603's interim NBA FAIL and a fit-night smoke (disclosed in the prereg). Known optimism: the
+  re-check judges dead balls with the grader's dead_at on delivered plays, not the engine's may_cut, and skips the
+  leave check; so a pass is a model pass that the shadow run must confirm before any card.
+- **2026-11-07 (Nick's Nov 6 10:15 PM order, item 3): new flag `delay.edge_model.enabled`, default false (OFF).**
+  With it on, a YouTube TV tune scrubbed back (yttv_seek) has delay = D_edge(channel) + behind_live, behind_live read
+  off the overlay time label (`Engine.label_behind`); D_edge = tonight's at-the-edge estimate, else calib.auto, else
+  `delay.edge_model.default` (youtubetv 25 s, sd 3, Nov 6 research). media_session's position (wrong after a seek)
+  and the pause-hold timing no longer move a labelled tune, and sync B never re-links it off media_session. The
+  supervisor's delay_doubt re-anchors a measured channel on its edge + behind_live instead of resetting it to
+  `delay.default` (that reset dropped a scrubbed tune's 60 s behind_live). Interval floor stays 4 s (Rule #1).
+- **2026-11-06 22:15 ET (Nick, scrub-buffer order item 2): new flag `timing.behind_live_s.label_reader`, default
+  false.** YouTube TV's overlay time label is the behind-live truth meter after a scrub seek (media_session is wrong
+  after a seek). Reader: screencap -> private temp file -> local Vision OCR -> numbers only, file deleted in a
+  `finally`; a read whose frame could not be deleted is discarded. No keys pressed by the reader, no DRM bypass.
+  Code: redzone/tuners/yttv_label.py. No live config change; nothing reads the flag on Nick's screen yet.
+- **2026-11-07 (item 4 of Nick's Nov 6 10:15 PM order, scrub entry):** new flags `timing.behind_live_s.scrub_entry`
+  (false, per league via league_overrides) and `scrub_fallback` (keep), plus `scrub_cost_s` 28, `scrub_read_s` 8,
+  `scrub_over_s` 15, `scrub_retry_s` 120. With it on (and `yttv_seek.enabled`), the hidden stick enters the buffer by
+  the overlay scrub (yttv_seek.enter_buffer) before the flip, never by a pause; `held` is the overlay label's reading,
+  not media_session; the flip still waits for a dead ball on the delayed picture. A failed scrub re-tunes at the live
+  edge and keeps the current game. Ships OFF: a flip onto a scrubbed stick with a person watching is not yet proven
+  (spec "Still to prove"). No live config change. Rule #1 unchanged.
+- 2026-11-07 (PR #381, item 6 of Nick's Nov 6 order): new default `decider.lock_wait` {enabled: false, retry_s: 20,
+  max_s: 90}. A locked/held game we can't reach (no channel, or a tune that failed) says why, retries after retry_s,
+  and after max_s the lock and hold are dropped with a toast. Off by default: Nick flips it. Nov 6: a hold on the ACC
+  Network game sat 96 s and 261 s on "switch: you locked this game" (617 instant "no channel" attempts). Rule #1 unchanged.
+- 2026-11-07 (overseer's live hidden-stick runs, #377): `yttv_seek` follows the stick. After a tune a LIVE/title banner
+  looks like the overlay (it has CC too) and keys do nothing, and the scrub label shows only after a LEFT lands on the
+  bar, so the first LEFT is the probe: no label = close, reopen, retry, fail closed after `open_tries: 4`
+  (`reopen_wait_s: 1.5`, `overlay_wait_s` 0.8 -> 1.3). Live 3 of 3 entered at 60 s. A close after an unread probe may
+  commit that step, so then behind-live is reported unknown (None) unless the label reader measured it. Still OFF.
+- **2026-11-07 (item 4 follow-up, Nick's live stick notes 04:07Z):** a scrubbed hidden stick is protected from
+  planner/refresh preloads until its flip (only a game opened on the phone replaces it), under `scrub_entry`. New
+  `two_stick.unavailable_backoff_s` (default 0 = the usual 120 s): a standby tune stopped at an account/payment/
+  UNAVAILABLE screen keeps that game off the standby that long (Nick saw the standby pick a Prime game showing
+  UNAVAILABLE). Both off by default.
+- 2026-11-07 (integrator, EXP-603 read): **EXP-603 FAILS in both arms for NBA B90 and NFL B75; RC8 stays OFF.** NBA:
+  mid-play ~10 -> ~24 per run, ~21 of them Prime switches at B = 0 (registered pessimism; YouTube TV only ~2-3, at or
+  below the control). NFL: 45 -> 71 (live edge), 43 -> 96 (wait) shipped, and switches 1.72x (4.6 -> 7.9 per hour), a
+  guardrail breach by itself. S2 (+-3.4 s) moves nothing material. EXP-604 (#378's re-check) is the next read.
+- 2026-11-07 (integrator, EXP-604 read): **EXP-604 FAILS in both leagues; RC8 stays OFF.** NBA: every added mid-play
+  entry is a Prime switch at B = 0; YouTube TV-only mid-play is lower than the control (2.0 -> 1.3 shipped). NFL:
+  switches 1.72x and plays missed 139 -> 424. Next, both registered before they run (coordinator go-ahead): EXP-605
+  NBA YouTube TV-only RC8 with Prime at B0 (T9), and EXP-606 NFL B75 dwell grid 35/60/90/120 (integrator). Neither is
+  a card until a live stick holds a scrub.
+- 2026-11-07 (integrator): **Grader freeze v42: EXP-605 (#384) NBA YouTube TV-only RC8, Prime planned at its live
+  edge as the live code does, measured scrub 15 s + one 7.5 s read.** Flags off = EXP-604 byte for byte. Model pass
+  only; no card until a live stick holds a scrub and the shadow run confirms.
+- 2026-11-07 (integrator, EXP-606 read): **No NFL dwell passes; NFL RC8 stays OFF and no more NFL dwell points on these
+  nights.** D120 gets switches inside 1.5x (1.41x) but resync mid-play rises on every seed, plays missed on entry is
+  ~2.6x the control at every D and your-team crunch is 91%. Plays missed doesn't fall with dwell, so the cost sits in the
+  scrub wait + re-check delaying cuts, not in the switch rate.
+- 2026-11-07 (integrator, EXP-605 read): **EXP-605 FAILS; NBA RC8 stays OFF.** Shipped harness is close: no added
+  mid-play on the main grader, YouTube TV-only 6 -> 1, switches 1.08x, plays missed 19 -> 16, but clock-truth adds 1 on
+  two seeds and the primary CI touches 0. On resync, Prime entries double (54 vs 23 over 3 seeds) for a reason not yet
+  shown; T9's guess is the re-sync prior pulling Prime's belief back to the buffered lag. A diagnosis is info-only;
+  any grader change from it is a new EXP, registered before it runs. No card until a live stick holds a scrub.
+- 2026-11-07 (integrator): **Grader freeze v43: EXP-607 (#386) pins Prime's re-sync prior at its live edge.** T9's
+  trace: resync believed Prime 116 s vs true 26 s on 34/36 decisions because _attach_resync pinned every target at the
+  buffered lag. Diagnostic of the sim only; NBA stays FAIL on EXP-605's shipped breaches.
+- 2026-11-07 (Nick 05:26Z order; integrator freeze): **Grader freeze v44: EXP-608 (#387) Prime buffered by pause on
+  the hidden stick, ready B + 1 s after its tune; the "Prime can't buffer" replay assumption is withdrawn for it.**
+  Measured once (60 s pause, 4-min hold, stick .150); B90 extrapolated; multiview tiles still 0 live.
+- 2026-11-07 (integrator, EXP-607 read): **The EXP-605 resync failure was a sim artifact (resync mid-play 19.0 -> 7.7
+  per run with Prime pinned at its edge), but NBA stays FAIL:** clock-truth adds 1-2 on two seeds and the primary CI
+  touches 0 on both harnesses. EXP-608 (Prime by pause) is the next read.
+- 2026-11-07 (integrator, T9 trace of #378 at 8452ba4): **Rule #1 risk on the scrub path: timing.behind_live_s.scrub_entry
+  must stay OFF for NBA (and every hold_only league) until EXP-610's live fix lands.** After the scrub the flip never
+  checks the destination's delayed picture for a dead ball (NBA isn't cut-timed; the whistle wait runs before the
+  22.5 s+ scrub), so live would land later than the sim's already-lenient re-check. EXP-610 pairs the live fix
+  (clock-stopped dead ball on the delayed picture, behind the scrub flag) with the same rule in the replay.
+- 2026-11-07 (overseer's 90 s stick test): two scrub fixes, flags still off. (1) A same-channel deep link does NOT
+  bring a stick that is behind back to live (a stick left behind measured 23 s after asking 90). A stick the scrub
+  pressed keys on is marked `behind_on`; the next tune of that same target first tunes another channel
+  (`yttv_seek.reset_channel`, "" = any other coded channel), or fails without claiming a live edge. (2) The picture
+  stands still while the overlay is up (asked 90, 6 LEFTs, 37.6 s -> 130.8 s behind): enter_buffer now plans the
+  LEFTs after the probe from what is left (ask - one step - time in the overlay - one more read) and adds the overlay
+  time to its estimate.
+- 2026-11-07 (Nick ~1:00 AM stick run; integrator): **yttv_seek.boundary_retries: 1 (new, behind yttv_seek.enabled,
+  which stays off).** A knob check that fails because the label reset at a new program ("knob moved 39s, not 60s")
+  retries the scrub once from the live edge, only after a re-link to live with nothing committed; otherwise it fails
+  closed as before. Merged with #385 + #391 so --label gives measured reads.
+- 2026-11-07 (overseer's hidden-stick check before college football: channels.json fox/cbs are the Sunday Ticket
+  mirror codes, 'SIGN OFF | NFL ST - FOX'; 'NBC' search never started; ABC had no route; no local leaks a provable
+  watch code; station-name search -> channel page -> DOWN -> Select played FOX 50, CBS 17, WRAL, ABC 11 live, 4/4;
+  Select alone from the search page 0/4): **new flag `tuners.yttv_local_search: false`**. On: abc/cbs/fox/nbc tune by search (ABC 11 / CBS 17 /
+  FOX 50 / WRAL), accepted only on a media-session subtitle naming the station AND a live playhead (>= 30 min),
+  else BACK; fox/cbs ST mirror codes skipped except on Sundays. Off: routing unchanged. Nick flips it.

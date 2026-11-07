@@ -195,6 +195,40 @@
     ],
     "note": "NOT measured row by row yet. Nick's live check (Nov 4): api-web v1/wsc/play-by-play p50 16.7 s vs ESPN 43.1 s. Derived from ESPN's NHL dead-ball quantiles: each quantile is the larger of ESPN's scaled to a 16.7 s median and ESPN's shifted to it (floor 2 s): the low end keeps ESPN's shape, the tail stays as late as ESPN's. Replace with recordings/*/nhl_seen.jsonl once the shadow logs a live night."
    }
+  },
+  "nba_cdn": {
+   "nba": {
+    "n": 1359,
+    "basis": "dead_ball",
+    "q": [
+     1.55,
+     3.95,
+     4.97,
+     5.93,
+     6.8,
+     7.61,
+     8.44,
+     9.26,
+     10.06,
+     10.63,
+     11.19,
+     12.1,
+     12.57,
+     13.39,
+     14.27,
+     15.22,
+     16.66,
+     18.73,
+     21.49,
+     30.6,
+     475.73
+    ],
+    "days": [
+     "2026-11-04",
+     "2026-11-05",
+     "2026-11-06"
+    ]
+   }
   }
  }
 }

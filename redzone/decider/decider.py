@@ -313,6 +313,13 @@ class Decider:
         # [core] Every soft choice (which game, visit or not, reel, replay vs live, go back) is scored by
         # the one expected-value function in core.py; the rules left in here are the hard guards.
         self.core = DecisionCore(Knobs.from_cfg(cfg))
+        # [lock wait] decider.lock_wait: a locked/held game we can't reach (no channel, or the tune
+        # failed) waits with a visible reason and a retry time, then gives the lock up
+        self.lock_gid: str | None = None    # the locked game these fields are about
+        self.lock_since: float | None = None   # first time it couldn't be reached
+        self.lock_retry_at = 0.0
+        self.lock_why = ""
+        self.lock_expired: str | None = None   # gave up on this locked game: the engine releases it
 
     # ----- inputs -----------------------------------------------------------
 
@@ -321,6 +328,8 @@ class Decider:
             tl = self.timelines[game_id] = Timeline(league, clock=self._clock)
             tl.lag_prior = float(_config.for_league(self.cfg, "delay.feed_lag_prior_s", league.value,
                                                     _config.default("delay.feed_lag_prior_s")))
+            floors = _config.for_league(self.cfg, "decider.leave.break_floor_s", league.value, None) or {}
+            tl.extra_floors = {Stoppage(k): float(v) for k, v in floors.items() if v}
             from redzone.noggin.live import hook_for   # [noggin] Timing v1, off unless noggin.timing.leagues
             tl.dead.noggin = hook_for(self.cfg, league)
             if self._pick_on(league):
@@ -414,6 +423,7 @@ class Decider:
         d = self._pick(d, cands, now)
         d = self._hold_for_big(d, cands, now, home_before)
         d = self._time_entry(d, cands, now, home_before)
+        d = self._dwell(d, cands, now, home_before)
         d = self._crunch_floor(d, d0, cands, now, home_before)
         d = self._safe(d, cands, now, home_before)
         if not commit and d.action in ("switch", "replay"):
@@ -465,6 +475,48 @@ class Decider:
             self.start_fails += 1
             wait = min(START_RETRY_MAX_S, START_RETRY_S * 2 ** (self.start_fails - 1))
             self.start_retry_at = self._clock() + wait
+
+    def lock_failed(self, d: Decision, why: str) -> None:
+        """[lock wait] A switch to your locked game failed for a reason that is the target's
+        fault (the engine filters out closed safe windows and cancels): wait before retrying."""
+        gid = self.user.locked_game
+        if not self.cfg.get("decider.lock_wait.enabled") or d.kind != "user" or not gid or d.target != gid:
+            return
+        now = self._clock()
+        self._lock_note(gid, why, now)
+        self.lock_retry_at = now + self.cfg.get("decider.lock_wait.retry_s")
+
+    def _lock_note(self, gid: str, why: str, now: float) -> None:
+        if self.lock_gid != gid:
+            self.lock_gid, self.lock_since, self.lock_retry_at = gid, None, 0.0
+        if self.lock_since is None:
+            self.lock_since = now
+        self.lock_why = why
+
+    def _lock_reset(self) -> None:
+        self.lock_gid, self.lock_since, self.lock_retry_at, self.lock_why = None, None, 0.0, ""
+
+    def _lock_wait(self, gid: str, x: Candidate, now: float) -> Decision | None:
+        """[lock wait] Why a switch to the locked game can't go now, or None to switch.
+        Never forever: after decider.lock_wait.max_s unreachable, the lock is given up."""
+        if self.lock_gid != gid:
+            self._lock_reset()
+        if not x.target:
+            self._lock_note(gid, "no working channel for it right now", now)
+        if self.lock_since is None:
+            return None
+        waited = now - self.lock_since
+        if waited >= self.cfg.get("decider.lock_wait.max_s"):
+            self.lock_expired = gid
+            return Decision(now, "stay", self.current, f"gave up on your locked game after {waited:.0f}s: "
+                            f"{self.lock_why}", State.PAUSED, want=gid)
+        if x.target and now >= self.lock_retry_at:
+            return None
+        if not x.target:
+            return Decision(now, "stay", self.current, f"waiting on your locked game ({waited:.0f}s): {self.lock_why} "
+                            f"— tap another game or Resume auto", State.PAUSED, want=gid)
+        return Decision(now, "stay", self.current, f"couldn't get to your locked game ({self.lock_why}) — trying "
+                        f"again in {math.ceil(self.lock_retry_at - now)}s", State.PAUSED, want=gid)
 
     # ----- catch-up replays ---------------------------------------------------
 
@@ -943,6 +995,26 @@ class Decider:
         "rewind" (land on the last whistle with a rewind when one fits, else go now), or "wait"
         (rewind or wait for a whistle, like any entry)."""
         return str(self._lc("decider.entry.crunch_now", x, "live"))
+
+    def _dwell(self, d: Decision, cands, now: float, home_before) -> Decision:
+        """[EXP-213, RC8 switch count] Stay at least decider.dwell.min_s on a game before an optional switch
+        (decider.dwell.kinds: a break visit, a chase, a better game...). With the time-shift buffer the decider
+        sees every break coming and hops more (NBA B=90 1.58x, NFL B=75 1.80x the live switch rate against a
+        1.5x bar). Never holds crunch time, a game that ended, the way home, your taps or a first pick, and
+        only ever turns a switch into a stay, so Rule #1 is untouched. 0 = off."""
+        if d.action != "switch" or not self.current or self.current in PSEUDO:
+            return d
+        x = cands.get(self.current)
+        min_s = float(self._lc("decider.dwell.min_s", x, 0) or 0)
+        if min_s <= 0 or d.kind not in set(self._lc("decider.dwell.kinds", x, None) or ()):
+            return d
+        left = self.since + min_s - now
+        if left <= 0:
+            return d
+        self.home_break_visit, self.home_return_at = home_before
+        state = State.REPLAY if self.after_replay else d.state
+        return Decision(now, "stay", self.current, f"just got here: {left:.0f}s before an optional switch: {d.reason}",
+                        state, d.gate, want=d.target)
 
     def _time_entry(self, d: Decision, cands, now: float, home_before) -> Decision:
         """Hold a switch until its picture would come up on a dead ball, or land it with a rewind."""
@@ -1451,7 +1523,12 @@ class Decider:
                 if self.current is None and now < self.start_retry_at:
                     return Decision(now, "stay", None, f"couldn't get to your locked game yet — trying again in "
                                     f"{math.ceil(self.start_retry_at - now)}s", State.PAUSED, want=u.locked_game)
+                if c.get("decider.lock_wait.enabled"):
+                    wait = self._lock_wait(u.locked_game, cands[u.locked_game], now)
+                    if wait:
+                        return wait
                 return Decision(now, "switch", u.locked_game, "you locked this game", State.PAUSED, kind="user")
+            self._lock_reset()
             return Decision(now, "stay", self.current, "locked here by you", State.PAUSED)
         if now < u.manual_until:
             return Decision(now, "stay", self.current, "you just picked this — hands off for a minute", State.PAUSED)
@@ -1564,6 +1641,8 @@ class Decider:
         if crunch:
             return crunch
         chase = self._chase(watchable, s_cur, now) if gate_ok and not s_cur.lock else None
+        if chase and self._mine_first(s_cur) and cands[chase[0]].scored.personal < s_cur.personal:
+            chase = None   # [EXP-214] a big play elsewhere doesn't pull the TV off your team late and close
         # [chained visit] Already away from home on a break visit: the game we're visiting can hit its
         # own break. Never let that become the new "home" — a WSH halftime visit to MIN@CLE chained
         # into an OKC visit at CLE's halftime and lost the way back to WSH for 2 hours (Oct 26 replay).
@@ -1652,7 +1731,7 @@ class Decider:
             return Decision(now, "stay", self.current, f"your team, late and close — {s_cur.reason}", state, gate_txt)
 
         # Go back to where we were if this moment is over and that game is about as good.
-        if self.stack and not s_cur.lock and gate_ok:
+        if self.stack and not s_cur.lock and gate_ok and not self._mine_first(s_cur, late_only=True):
             prev = self.stack[-1]
             if prev in watchable and not cands[prev].scored.is_break and prev not in self._screen_break:
                 st = self._cstate(cands, now)
@@ -1980,9 +2059,13 @@ class Decider:
 
     def _crunch_go(self, cands, pick: str, s_cur: Scored, on_break: bool, now: float) -> bool:
         """Should we leave what's on for crunch time at `pick` (at the next safe gap)?"""
-        if not s_cur.crunch:
-            return True   # get there before its first crunch snap
         p = cands[pick].scored
+        if not s_cur.crunch:
+            if self._mine_first(s_cur) and p.personal < s_cur.personal:
+                # [EXP-214, your-team crunch first] your team late and close is never left for someone else's
+                # crunch: it may be about to become its own (CLE @ WSH, Dec 12: left for CHI 0:39, missed 19)
+                return False
+            return True   # get there before its first crunch snap
         if self.cfg.get("decider.crunch.by_value", False):
             # [crunch by value] jump when the other crunch is worth clearly more (the Bills' last 3 min vs a
             # Bears 1-minute drive); otherwise only the stoppage hop below
@@ -2622,8 +2705,10 @@ class Decider:
         left = self._long_break_left(home, now)
         if left is None or left < LONG_VISIT_MIN_S:
             return None
+        # [EXP-213] a halftime trip has to be worth two switches: below this score, the ads win (0 = any game)
+        floor = float(self._lc("decider.dwell.long_visit_min_score", home, 0) or 0)
         options = {gid: x for gid, x in watchable.items() if gid != home and not x.scored.is_break
-                   and gid not in self._screen_break}
+                   and gid not in self._screen_break and (gid in PSEUDO or x.scored.score >= floor)}
         if self._visit_needs_exit(home, watchable):
             # [return trip] Uncalibrated, a visited game's gate opens only at its own long breaks:
             # a WSH halftime visit to an NBA game stranded us through WSH's 3rd quarter and crunch.
@@ -2647,6 +2732,18 @@ class Decider:
         self.home_return_at = now + left - buffer - back
         return Decision(now, "switch", dest, self._why(options[dest], f"{_short(cands[home].scored)} at the break → "),
                         state, gate_txt, kind="break_visit")
+
+    def _mine_first(self, s, late_only: bool = False) -> bool:
+        """[EXP-214, decider.crunch.mine_first] Your team's game holds the TV: never left by a catch-up return in
+        its final period (late_only, unless garbage time; WSH @ DET, Nov 10 2025: a return to a Q1 visit's origin
+        at 8:37 left, back at 0:01 of OT), nor for another game's crunch or a big-play chase while it is late and close."""
+        if not _config.for_league(self.cfg, "decider.crunch.mine_first", getattr(getattr(s, "league", None), "value", None),
+                                  False):
+            return False
+        if late_only:
+            return bool(getattr(s, "late", False) and not s.garbage
+                        and s.personal >= self.cfg.get("decider.crunch.hold_personal", 5))
+        return self._mine_late(s)
 
     def _mine_late(self, s) -> bool:
         """Your team (or your bet) in its final period, not decided and still competitive. [EXP-204]

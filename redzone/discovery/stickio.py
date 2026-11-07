@@ -78,6 +78,7 @@ class Evidence:
     lounge_id: str | None = None
     ids: list[str] = field(default_factory=list)
     read_ok: bool = True        # False when the stick didn't answer at all
+    position: int | None = None  # media-session playhead (ms), as dumpsys reports it
 
     @property
     def meta_text(self) -> str:
@@ -208,7 +209,7 @@ async def read_evidence(stick, pkg: str | None = None, *, with_screen: bool = Tr
     ev = Evidence(read_ok=bool(out))
     if s:
         ev.playing = playback_ready({"state": s.state, "speed": s.speed})
-        ev.state, ev.package = s.state, s.package
+        ev.state, ev.package, ev.position = s.state, s.package, s.position
         ev.title, ev.subtitle, ev.description, ev.ids = s.title, s.subtitle, s.description, list(s.ids)
     if with_screen:
         ev.screen = await screen_text(stick)

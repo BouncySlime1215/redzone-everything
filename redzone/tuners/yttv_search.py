@@ -543,6 +543,36 @@ class ChannelHunt:
     elapsed_s: float = 0.0
 
 
+# Channel-page search tune (Nov 7, hidden stick): search -> 3 s -> DOWN -> 1.5 s -> Select tuned 4/4 locals
+# (Select alone from the search page 0/4 by hand); Select at the starting focus is kept as the fallback
+# (it worked once in the --blind hunt, dce27c18, after a reopened search).
+CHANNEL_PAGE_PATHS = (("KEYCODE_DPAD_DOWN",), ())
+# A live YouTube TV channel's playhead is its stream clock (ESPN ~46,800 s on Nov 6); a recording starts near 0.
+LIVE_MIN_MS = 30 * 60 * 1000
+CHANNEL_PAGE_DOWN_S = 3.0
+CHANNEL_PAGE_SELECT_S = 1.5
+CHANNEL_PAGE_WAIT_S = 15.0
+
+
+_PKG_RE = re.compile(r"\b(com\.[\w.]*youtube[\w.]*)")
+_PLAIN_YT_RE = re.compile(r"(?<!tv\.)\b(?:www\.|m\.|music\.)?youtube\.com/(?:watch|shorts)|\byoutu\.be/", re.I)
+
+
+def yttv_lines(text: str, pkg: str) -> str:
+    """Probe output minus lines about PLAIN YouTube (Nov 7: a Lofi Girl id in activity recents came from
+    the YouTube app, not YouTube TV): a youtube.com/youtu.be link that isn't tv.youtube.com, or a line
+    naming a YouTube package other than this stick's YouTube TV package."""
+    keep = []
+    for line in (text or "").splitlines():
+        if _PLAIN_YT_RE.search(line):
+            continue
+        pkgs = {m.rstrip(".") for m in _PKG_RE.findall(line)}
+        if pkgs and pkg and all(not p.startswith(pkg) for p in pkgs):
+            continue
+        keep.append(line)
+    return "\n".join(keep)
+
+
 def loose_codes_in(text: str) -> list[str]:
     """Watch codes mentioned anywhere in a probe's output, in order, no duplicates."""
     from redzone.discovery import stickio
@@ -623,12 +653,19 @@ def step_toward(focus, target) -> str:
 
 async def hunt_channel(stick, observe, *, key: str, table, query: str = "", profile: str = "",
                        sleep=asyncio.sleep, clock=time.monotonic, max_moves: int = 14,
-                       budget_s: float = HUNT_BUDGET_S, lounge=None, collect_codes: bool = True) -> ChannelHunt:
+                       budget_s: float = HUNT_BUDGET_S, lounge=None, collect_codes: bool = True,
+                       channel_page: bool = False) -> ChannelHunt:
     """Search YouTube TV for one channel, select its live tile, confirm it plays, collect code candidates.
 
     ``observe`` returns a fresh CapturedScreen (screencap + Vision OCR). ``lounge`` is an optional
     async host -> now-playing video id (discovery.lounge.now_playing). Candidates still need
     prove_code(). Never raises.
+
+    ``channel_page`` (ABC 11, Nov 7): the search opens the station's channel page, but OCR can't read
+    the focus ring there. Then, per path in CHANNEL_PAGE_PATHS (DOWN, Select; else reopen the
+    search and Select at the starting focus): accept only when the media session's SUBTITLE contains the
+    query ('..., ABC 11') AND the playhead is live (>= LIVE_MIN_MS, a recording starts near 0);
+    a miss presses BACK. Waits: >= 3 s after the search link, >= 1.5 s after DOWN.
     """
     from redzone.discovery import stickio
     from redzone.discovery.yttv import judge
@@ -636,6 +673,7 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
     hunt = ChannelHunt(key)
     entry = table.channels.get(key)
     started, last_sequence = clock(), 0
+    search_at = started
 
     def record(action, detail=""):
         hunt.steps.append({"at_s": round(clock() - started, 2), "action": action, "detail": str(detail)[:400]})
@@ -668,6 +706,8 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
         await sleep(.6)
 
     async def open_search():
+        nonlocal search_at
+        search_at = clock()
         launched = await stick.view("https://tv.youtube.com/search?q=" + quote(query, safe=""), pkg, wait=True)
         record("open_search", f"{query!r} ok={launched.ok}")
         if not launched.ok:
@@ -746,6 +786,45 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
             await sleep(1.0)
         return None
 
+    async def subtitle_confirmed(before, seconds=CHANNEL_PAGE_WAIT_S):
+        """Only the subtitle counts (the channel field, 'ABC 11 Eyewitness News at 9AM, ABC 11'), and it
+        must contain the query itself ('ABC 11', not 'ABC News Live'); the session must have changed
+        and the playhead must be live. Returns (evidence or None, why not)."""
+        t0, why = clock(), "nothing played"
+        while clock() - t0 < seconds:
+            ev = await stickio.read_evidence(stick, pkg, with_screen=False)
+            record("media", f"{ev.summary()} pos={ev.position}")
+            if (ev.read_ok and ev.state in LOADED_STATES and ev.meta_text != getattr(before, "meta_text", None)
+                    and ev.subtitle and names_channel(ev.subtitle, key, table) and _contains(ev.subtitle, query)):
+                if ev.position is not None and ev.position >= LIVE_MIN_MS:
+                    return ev, ""
+                why = f"{ev.meta_text!r} at {ev.position} ms is a recording, not live"
+            elif ev.meta_text and ev.meta_text != getattr(before, "meta_text", None):
+                why = f"plays {ev.meta_text!r}"
+            await sleep(1.0)
+        return None, why
+
+    async def channel_page_select(before):
+        misses = []
+        for i, path in enumerate(CHANNEL_PAGE_PATHS):
+            if i:
+                await open_search()                # focus resets on a fresh search link
+            await sleep(max(0.0, CHANNEL_PAGE_DOWN_S - (clock() - search_at)))
+            for code in path:
+                await press(code)
+                await sleep(CHANNEL_PAGE_SELECT_S)
+            await press("KEYCODE_DPAD_CENTER")
+            label = "+".join(c.replace("KEYCODE_DPAD_", "") for c in path) or "start"
+            record("channel_page", f"ring unread: {label} -> Select")
+            ev, why = await subtitle_confirmed(before)
+            if ev is not None:
+                hunt.tile = f"(channel page: {label})"
+                return ev
+            misses.append(f"{label}: {why}")
+            record("channel_page", f"miss {misses[-1]}; BACK")
+            await press("KEYCODE_BACK")
+        raise RuntimeError(f"channel page: no live session naming {query!r} ({'; '.join(misses)})")
+
     try:
         if entry is None:
             raise RuntimeError(f"unknown channel key {key!r}")
@@ -779,6 +858,8 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
             if not tiles:
                 raise RuntimeError(f"no tile naming {entry.name} is visible in the search results")
             if focus is None:
+                if channel_page:
+                    break                          # channel_page_select takes it from here
                 if moved_down:
                     raise RuntimeError("focus ring isn't readable on the results page")
                 await press("KEYCODE_DPAD_DOWN")   # focus can start on the search box/keyboard
@@ -792,7 +873,10 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
             frame = await read()
         else:
             raise RuntimeError("channel tile not reached within the move limit")
-        ev = await wait_confirmed(before)
+        if channel_page and not hunt.tile:
+            ev = await channel_page_select(before)
+        else:
+            ev = await wait_confirmed(before)
         if ev is None:
             raise RuntimeError("selected the tile, but the media session never named the channel")
         hunt.description = ev.meta_text
@@ -817,7 +901,7 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
             r = await stick.shell(cmd, timeout=10)
             out = r.out if r.ok else ""
             hunt.probes[label] = out[-20000:]
-            codes = loose_codes_in(out)
+            codes = loose_codes_in(yttv_lines(out, pkg))
             if "logcat" in label:
                 codes.reverse()            # newest mention first
             for code in codes:
