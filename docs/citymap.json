@@ -604,6 +604,7 @@
     "redzone/supervisor.py",
     "redzone/sync_probe.py",
     "redzone/tuners/adb.py",
+    "redzone/tuners/join.py",
     "redzone/web/phone_v2.py",
     "redzone/web/server.py",
     "scripts/backtest.py",
@@ -4172,6 +4173,7 @@
     "redzone/tvsetup.py",
     "scripts/doctor.py",
     "scripts/find_yttv_code.py",
+    "scripts/join_try.py",
     "scripts/multiview_probe.py",
     "scripts/prime_flip_probe.py",
     "scripts/prime_multiview_probe.py",
@@ -4199,6 +4201,26 @@
    "outputs": [],
    "owner": "SWITCHING",
    "role": "Conservative matchup evidence from fresh provider metadata.",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/join.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py",
+    "redzone/tuners/prime_pause.py",
+    "redzone/tuners/yttv_seek.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/join_try.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[Join API] Put a HIDDEN stick a chosen time behind live, say where it should land, measure where it did, log both.",
    "serves": [
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -4253,6 +4275,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/tuners/join.py",
     "scripts/prime_pause_try.py"
    ],
    "owner": "SWITCHING",
@@ -4449,6 +4472,7 @@
    "kind": "module",
    "outputs": [
     "redzone/control.py",
+    "redzone/tuners/join.py",
     "redzone/tuners/prime_pause.py",
     "redzone/tuners/yttv_label.py",
     "scripts/yttv_scrub_try.py"
@@ -5411,6 +5435,20 @@
     "STK-07"
    ]
   },
+  "scripts/join_try.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/tuners/adb.py",
+    "redzone/tuners/join.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Run one join (redzone/tuners/join.py) on the HIDDEN stick and print its row (also appended to data/joins.jsonl).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/kaggle_noggin_factory.py": {
    "contracts": [],
    "inputs": [
@@ -6328,10 +6366,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 346,
+  "modules": 348,
   "orphans": 14,
-  "unowned": 181,
-  "untagged": 286
+  "unowned": 182,
+  "untagged": 287
  },
  "version": 1
 }
