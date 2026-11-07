@@ -61,6 +61,17 @@ def test_unmeasured_channel_gets_the_prior_with_the_4s_floor():
     assert d.sigma == pytest.approx(4.0)
 
 
+def test_prior_counts_as_calibrated_all_night():
+    """Nick's live problem, Nov 7 12:40: CBSSN at sigma 15 > decider.uncalibrated_sigma_s 8 kept the leave gate shut
+    ('delay not calibrated yet'). On the prior every YouTube TV channel is calibrated, and stays so for hours."""
+    clock = FakeClock(T0)
+    b = book(clock=clock)
+    d = b.get("youtubetv:cbssn")
+    assert d.current_sigma(T0) <= 8.0
+    assert d.current_sigma(T0 + 6 * 3600) <= 6.0 + 1e-9
+    assert book(on=False).get("youtubetv:cbssn").current_sigma(T0) == 15.0     # today, flag off
+
+
 def test_other_nights_fs1_tap_is_replaced_tonights_tap_is_kept():
     b = book()
     tap(b, FS1, 42.0, T0 - 2 * 86400)

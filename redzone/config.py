@@ -53,6 +53,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "delay.edge_prior.refresh.boundary_s": (900, 3600),
     "delay.edge_prior.refresh": (0, 60),
     "delay.edge_prior.prior": (0.2, 180),
+    "delay.edge_prior.drift_cap_s": (0, 10),
     "replay": (0, 7200),
     "reel.min_clips": (1, 12),
     "reel.min_s": (5, 120),

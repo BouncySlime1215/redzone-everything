@@ -846,6 +846,8 @@ delay:                     # seconds your screen runs behind real life, per app;
                            # The stated doubt still keeps the 4 s floor (delay.sync.min_sigma_s; the gates' floor)
     prior:
       youtubetv: {mu_s: 34.9, sd_s: 0.6}
+    drift_cap_s: 2         # the prior's stated doubt grows at most this much over a night (4 -> 6 s, under
+                           # decider.uncalibrated_sigma_s 8); a stall still widens it
     refresh:               # Nick's probe: fresh live edge (tune away -> back), CENTER, RIGHT, screencap + OCR, BACK;
                            # delay = (capture - EPG start) - label, start = the :00/:30 boundary. ~15 s on the hidden stick
       enabled: false       # run it from keepalive on the hidden stick (only at the live edge, never on a buffer)

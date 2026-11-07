@@ -425,7 +425,9 @@ class DelayBook:
         d.mu, d.sigma = e[0] + d.behind, max(float(floor), e[1])
         d.calibrated_at = max((t for t, _ in self.edge_reads.get(self.app(target), [])), default=now) \
             if e[2] == "probe" else now
-        d.source, d.drift_cap, d.live = f"edge_{e[2]}", 6.0, None
+        # drift: at most delay.edge_prior.drift_cap_s (+2 s: 4 -> 6 s), so a long night on the prior stays under decider.uncalibrated_sigma_s (8);
+        # a stall still widens it (buffered) and tonight's anchors take over through the sync filter
+        d.source, d.drift_cap, d.live = f"edge_{e[2]}", float(self._pcfg("drift_cap_s") or 2.0), None
 
     def set_label_behind(self, target: str, behind_s: float, sd: float | None = None,
                          ts: float | None = None) -> Delay:
