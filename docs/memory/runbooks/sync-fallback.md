@@ -14,6 +14,11 @@ Flag `fallback_ladder.enabled` (OFF). Playbook rows LAD-01..LAD-11 in [playbooks
 | other_stick | the visible stick tunes the target in place, after the safe wait (`other_stick_apps`, YouTube TV only by default: a Prime tune is ~32 s of spinner) | "other stick ok" |
 | hold | keep the current game, press nothing on the visible stick | "kept the current game" |
 
+**Default (Nov 7, Rule #1): `skip_rungs: [live, other_stick]`, so a failed buffered entry goes straight to hold.**
+Both skipped rungs enter at the live edge, and the replay with the 25 s dead-ball re-check still adds NFL mid-play
+entries (59.3 -> 61.0 per run at 10% scrub failures, 66.0 -> 68.7 at 25%). Set `skip_rungs: []` only after a grader
+shows 0 added.
+
 Each climb is one row in `data/ladder.jsonl` (stick named by its HDMI input, never an address). The phone's "Now"
 screen shows the last climb that fell back for 15 minutes, and any rung paused on a stick. A rung that failed twice
 on one stick in 10 minutes is skipped on that stick for 5 minutes (`skip_after`, `window_s`, `cooldown_s`).

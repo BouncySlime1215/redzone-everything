@@ -1195,3 +1195,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   a join that can't be made as planned climbs buffered (measured only) -> live edge on the same stick -> other stick
   in place (other_stick_apps [youtubetv]) -> hold, each step in data/ladder.jsonl and on the phone; a rung that failed
   2x in 10 min on a stick is skipped there 5 min. Every flip still waits for may_cut. Off until a hidden-stick night.
+- 2026-11-07 08:05Z (coordinator, Rule #1): **fallback_ladder.skip_rungs: [live, other_stick] (default).** Replay with
+  the 25 s dead-ball re-check on the live rung (scripts/ladder_replay.py, B75 scrub_measured, fit, seeds 0-2): NFL
+  mid-play keep -> ladder 59.3 -> 61.0 (10% scrub failures), 66.0 -> 68.7 (25%); NBA 24.67 both. A failed buffered
+  entry holds; the live and other-stick rungs stay off until a grader shows 0 added.

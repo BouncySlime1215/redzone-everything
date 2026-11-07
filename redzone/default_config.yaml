@@ -588,8 +588,9 @@ fallback_ladder:           # [Nick's Nov 7 sync order, item 2] when a join can't
   skip_after: 2            # a rung that failed this many times on one stick inside window_s...
   window_s: 600
   cooldown_s: 300          # ...is skipped on that stick this long (no key storms on a path broken tonight)
-  skip_rungs: []           # rungs never tried (e.g. [live]: the report-only replay shows the live rung adds NFL
-                           # mid-play entries at a 10% scrub failure rate; scripts/ladder_replay.py)
+  skip_rungs: [live, other_stick]   # DEFAULT: a failed buffer entry HOLDS (Rule #1). Both rungs enter at the live
+                           # edge; the report-only replay with the 25 s dead-ball re-check still adds NFL mid-play
+                           # entries (10%: 59.3 -> 61.0, 25%: 66.0 -> 68.7 per run; scripts/ladder_replay.py). [] = all
   budget_s: 90             # rungs that would start after this many seconds of climbing are skipped (-> hold)
 
 prime_pause:               # [Prime buffer] enter the time-shift buffer on a HIDDEN Prime Video stick by pausing it

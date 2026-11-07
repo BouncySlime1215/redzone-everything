@@ -160,8 +160,20 @@ def test_off_by_default():
 def lscrub(scrub):  # noqa: F811
     c, tuner, hid, calls, result, behind = scrub
     c.cfg.defaults.setdefault("fallback_ladder", {"enabled": False})
-    c.cfg.update({"fallback_ladder": {"enabled": True, "other_stick_apps": ["youtubetv"]}})
+    c.cfg.update({"fallback_ladder": {"enabled": True, "other_stick_apps": ["youtubetv"], "skip_rungs": []}})
     return scrub
+
+
+def test_default_holds_when_the_buffer_entry_fails(scrub):  # noqa: F811
+    """Coordinator, Nov 7 08:05Z (Rule #1): the live and other-stick rungs add NFL mid-play entries in the replay even
+    with the 25 s dead-ball re-check, so by default a failed buffered entry holds the current game."""
+    c, tuner, hid, calls, result, behind = scrub
+    c.cfg.update({"fallback_ladder": {"enabled": True}})
+    result["r"] = Res(ok=False, behind_s=None, reason="no label read")
+    out = run(c.execute("youtubetv:espn", may_cut=lambda: True))
+    assert not out.ok and out.screen_unchanged and c.main.host == "a:5555"
+    last = c.ladder.recent[-1]
+    assert last.rung == "hold" and [a["rung"] for a in last.attempts] == ["buffered", "hold"]
 
 
 @pytest.mark.playbook("LAD-05")

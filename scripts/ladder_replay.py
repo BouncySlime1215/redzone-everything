@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT))
 from redzone.lab import backtest  # noqa: E402
 
 MODE, FAIL_P, RETRY_S, MAX_FAILS = "keep", 0.1, 120.0, 3
-COUNT = {"draws": 0, "failed": 0, "fell_to_live": 0, "kept_waits_s": 0.0}
+COUNT = {"draws": 0, "failed": 0, "fell_to_live": 0, "live_no_dead_ball_hold": 0, "kept_waits_s": 0.0}
 
 
 class LadderStick(backtest.HiddenStick):
@@ -50,7 +50,9 @@ class LadderStick(backtest.HiddenStick):
         if not fails:
             return super().on_switch(sw, watching, targets)
         COUNT["failed"] += 1
-        if MODE == "keep":
+        if MODE == "keep" or self._live_has_no_dead_ball(sw, to):
+            if MODE != "keep":
+                COUNT["live_no_dead_ball_hold"] += 1   # the live rung's re-check gave up: hold = today's keep
             extra = fails * (RETRY_S + self.hold_of(to))
             COUNT["kept_waits_s"] += extra
             super().on_switch(sw, watching, targets)
@@ -65,7 +67,8 @@ class LadderStick(backtest.HiddenStick):
         self.n += 1
         same = sw.to == self.gid
         first = 0.0 if (same and cut >= self.tuned_at) else self._tune2()
-        wait = first + self.hold_of(to) + self._tune2()
+        wait = first + self.hold_of(to) + self._tune2() + getattr(self, "_live_more", 0.0)   # + the dead-ball wait
+        self._live_more = 0.0
         self.retunes += 1
         sw.leave_dt += wait
         sw.arrive_dt += wait
@@ -81,6 +84,34 @@ class LadderStick(backtest.HiddenStick):
         if left in self.at_edge:
             self.ready_at += self.hold_of(self.target)
         return None
+
+    def _live_has_no_dead_ball(self, sw, to: str) -> bool:
+        """[EXP-610 style re-check on the live rung] control flips the live-edge picture only after _wait_safe finds a
+        dead ball on it within MAX_SAFE_WAIT_S (25 s); otherwise the climb ends on hold. Judged on the live (B=0)
+        picture after the failed scrub + re-tune, with the app's believed lag (HiddenStick.safe_after). Draws the
+        same tune times the ladder path then uses (trng is re-seeded from its state)."""
+        if self.recheck is None:
+            sys.exit("pass --hs-recheck: the live rung's dead-ball re-check needs it")
+        state = self.trng.getstate()
+        cut = sw.t + (sw.leave_dt or 0.0)
+        same = sw.to == self.gid
+        first = 0.0 if (same and cut >= self.tuned_at) else self._tune2()
+        wait = first + self.hold_of(to) + self._tune2()
+        self.trng.setstate(state)
+        off, arr = sw.offset, sw.arrive_dt
+        sw.offset -= self.B
+        sw.arrive_dt = (arr or 0.0) + wait
+        before = (self.recheck_none, self.recheck_late, self.rechecked, list(self.recheck_s))
+        try:
+            more = self.safe_after(sw, cut + wait)
+            none = self.recheck_none > before[0]
+        finally:
+            sw.offset, sw.arrive_dt = off, arr
+            self.recheck_none, self.recheck_late, self.rechecked, self.recheck_s = before
+        if none or more > 25.0:
+            return True
+        self._live_more = more
+        return False
 
     def _tune2(self) -> float:
         lo, hi = backtest.HS_PREREG["tune_clip"]
