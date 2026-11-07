@@ -107,6 +107,7 @@ class FallbackLadder:
         self.label = label or (lambda host: "stick")
         self.steps_path: Path | None = None   # [night report, item 7] data/fallbacks.jsonl: one row per step
         self.recent: deque[Climb] = deque(maxlen=20)
+        self._climbing: set[str] = set()   # hosts mid-climb: their rung results are logged by the climb itself
         self._fails: dict[tuple[str, str], deque[float]] = {}
         self._cool: dict[tuple[str, str], float] = {}
 
@@ -152,6 +153,14 @@ class FallbackLadder:
         """Try `start` and every rung below it, in order, until one works. A rung with no callable (None or
         missing) is skipped as not applicable. `hold` always ends the climb: it needs no callable (keeping the
         current game is doing nothing). Never raises: a rung that crashes counts as failed."""
+        self._climbing.add(host)
+        try:
+            return await self._climb(host, target, steps, start, reason)
+        finally:
+            self._climbing.discard(host)
+
+    async def _climb(self, host: str, target: str, steps: Mapping[str, StepFn | None], start: str,
+                     reason: str) -> Climb:
         c = Climb(target, host, self.label(host), reason, self.clock())
         budget = float(self._get("budget_s", 90.0))
         t0 = time.monotonic()
@@ -208,9 +217,13 @@ class FallbackLadder:
         return await self.climb(host, target, steps, start=next_rung(from_rung), reason=f"{from_rung} lost: {why}")
 
     def record(self, host: str, target: str, rung: str, ok: bool, why: str = "", behind_s: float | None = None,
-               measured: bool = False, reason: str = "") -> Climb:
+               measured: bool = False, reason: str = "") -> Climb | None:
         """Log a one-step outcome decided elsewhere (e.g. the planned rung worked first time), so the night report
-        counts every join on the same ladder."""
+        counts every join on the same ladder. None (nothing logged) with the flag off, or while a climb on that stick
+        is running: the climb logs that rung itself (the join watchdog, #395, records from inside the scrub, which is
+        the buffered rung), so one scrub is never two rows or two failures toward a cooldown."""
+        if not self.enabled or host in self._climbing:
+            return None
         c = Climb(target, host, self.label(host), reason, self.clock())
         self._add(c, rung, ok, why, behind_s, measured)
         c.rung, c.ok = rung, ok and rung != "hold"
