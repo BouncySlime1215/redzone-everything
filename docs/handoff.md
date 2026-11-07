@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-NEW: Scores & stats panel opens with UP then CENTER: crisp score and clock for many games, OCR-readable. Testing if panel score changes give the delay to 1-2 s. Thumbnails proved too loose for this.
+BIG: YouTube TV Key plays tab lists a game's plays with game clock and plays them on demand ('11 of 12 key plays'), code-readable. May deliver every key moment of a game on demand. Panel Scores tab too coarse for delay; thumbnails lag. Delay still about 25 s +-3.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
