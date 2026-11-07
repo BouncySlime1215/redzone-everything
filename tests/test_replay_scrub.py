@@ -151,3 +151,19 @@ def test_a_drifted_youtubetv_park_is_not_rewound_by_keys(scrub):
     c, calls, _ = scrub
     c.parked = Parked("p1", "youtubetv:fox", time.time() - 60, False)   # didn't hold still
     assert not run(c._unpark(c.hidden)) and rewinds(c.hidden) == 0 and calls == []
+
+
+def test_a_fresh_paused_park_rolls_on_play(scrub):
+    c, calls, _ = scrub
+    c.parked = Parked("p1", "youtubetv:fox", time.time() - 20, True)
+    c.hidden.playback_state = "paused"
+    assert run(c._unpark(c.hidden)) and c.hidden.log[-1] == "KEYCODE_MEDIA_PLAY"
+
+
+@pytest.mark.parametrize("age,state", [(120, "paused"), (20, "playing")])
+def test_an_old_or_unpaused_park_is_never_rolled(scrub, age, state):
+    """A pause past ~90 s may have reset; a park that no longer reads paused may have gone back to live."""
+    c, calls, _ = scrub
+    c.parked = Parked("p1", "youtubetv:fox", time.time() - age, True)
+    c.hidden.playback_state = state
+    assert not run(c._unpark(c.hidden)) and "KEYCODE_MEDIA_PLAY" not in c.hidden.log

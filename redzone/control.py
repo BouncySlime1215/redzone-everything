@@ -1734,6 +1734,18 @@ class Controller:
             if self._replay_scrubs(p.target):
                 return False   # a drifted YouTube TV park can't be stepped back a few s (the scrub's floor is ~38 s)
             return await self._rewind(stick, time.time() - p.at)   # ends with PLAY
+        if p is not None and self._replay_scrubs(p.target):
+            # [Nick Nov 6] a YouTube TV pause can lose its place: a 120 s pause reset the position, and on non-game
+            # programming a resumed pause went back to live 20-30 s later. Only a short park the player still reports
+            # PAUSED is rolled; anything else keeps the current game (never a live picture shown as the replay).
+            age = time.time() - p.at
+            if age > float(self.cfg.get("replay.park_max_age_s", 90.0)):
+                log.info("replay park on %s is %.0fs old: not rolled", stick.host, age)
+                return False
+            pb = await stick.playback(self._package(stick, p.target))
+            if pb.get("state") != "paused":
+                log.info("replay park on %s reads %s, not paused: not rolled", stick.host, pb.get("state"))
+                return False
         sent = await stick.key("KEYCODE_MEDIA_PLAY")
         return bool(sent and sent.ok)
 
