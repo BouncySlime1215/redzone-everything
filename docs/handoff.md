@@ -71,8 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick direction: hella switches, follow every game, all key moments, per-game settings for more. YouTube TV first, then the switching algorithm/model.
-YTTV not solved. Next: HDMI1 picture check for scrub, and scrub preview read when a stick is free.
+Nick decision: frames may train a scorebug reader, used then deleted, none stored, same for DVR games. Limited to what the screen exposes; no DRM bypass; nothing to repo or cloud.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
