@@ -1159,6 +1159,22 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Select alone from the search page 0/4): **new flag `tuners.yttv_local_search: false`**. On: abc/cbs/fox/nbc tune by search (ABC 11 / CBS 17 /
   FOX 50 / WRAL), accepted only on a media-session subtitle naming the station AND a live playhead (>= 30 min),
   else BACK; fox/cbs ST mirror codes skipped except on Sundays. Off: routing unchanged. Nick flips it.
+- 2026-11-07 (Nick 12:08 PM ET: "You can deploy whatever" / "You can do whatever you want"; overseer deployed 12:11:34):
+  **RC6.3.1 = a8bf14f on integration/release** (tree claude/live-b490-locals 8841ebd0 = the live dev build b490ab86 +
+  #406), live on the Mac, with `tuners.yttv_local_search` ON through the Mac's settings API (undo history; the
+  shipped default stays false). Reason: 8 of 16 CFB games on ABC/CBS/FOX/NBC locals today; the smallest change on top
+  of what was live (an RC6.3-based point release would have rolled back boundary_retries). The deploy's live-game gate
+  was bypassed once, with auto-switching paused.
+- 2026-11-07 ~12:40 PM ET (Nick live, RC6.3.1: "havent seen any switches / i want more switches", "do whatever you
+  want"; stuck on UNC@CONN through the Q1-end ads): the overseer changed **runtime config on the Mac only** via
+  /api/settings (undo history); **the tree defaults are unchanged**: `decider.switch_margin` 10 -> 4,
+  `decider.return_tolerance` 5 -> 2, `decider.break_destination_min` 25 -> 10, `score.personal.my_team` 25 -> 10,
+  `decider.uncalibrated_sigma_s` 8 -> 25, `decider.sticky_visit_needs_calibration` true -> false. Causes: FOX didn't tune
+  (UCLA@MINN, best game), the leave gate waited on an uncalibrated CBSSN delay (sigma 15 > 8), and the stale-data guard
+  ("no fresh data 103-128 s") blocked leaving during the commercial with the quarter end never flagged as a break.
+  Rule #1 note: the last two loosen calibration guards (more switches land on a less certain delay); they are Nick's
+  call for today and are not graded. Code follow-ups (hotfix/local-search-joinlive): YouTube TV edge prior 34.9 s on,
+  stale data after a period end / 0:00 / scoring play counts as a break, the FOX fix.
 - **2026-11-07 12:40 ET HOTFIX (Nick's live "no switches": CBSSN sigma 15 > decider.uncalibrated_sigma_s 8 kept the leave
   gate shut, "delay not calibrated yet"): new setting `delay.edge_prior.enabled`, default false; Nick turns it on
   at runtime (/api/settings, undoable).** On: every YouTube TV channel without its own tap / score-bug sample tonight
@@ -1166,3 +1182,23 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   reruns 34.96 / 35.09) with stated doubt 4 s growing at most `drift_cap_s` 2 s (stays under 8 all night). Prior only;
   the probe refresh is PR #408 (integration/next, off).
 - 2026-11-07 (Nick, live CFB 1:10 PM: 'fix the jump logic... maybe the games identify safe points to jump'): default_config.yaml defined decider.leave twice; YAML kept only the second block, so decider.leave.dead_windows and decider.leave.tune_s never existed at runtime and the play-by-play dead-window leave path (cuts.DeadTracker) could not be turned on. Merged into one block; defaults unchanged (dead_windows [], tune_s 6). Nick's Mac turns dead_windows on at runtime for cfb, nfl, nhl, nba, cbb so autopilot leaves between plays. Rule #1 (joins) unchanged.
+- 2026-11-07 (Nick 12:40 PM live report: UNC@CONN stuck in the end-of-Q1 ads, leave gate said "no fresh data for
+  103-128s" and "delay not calibrated yet"): **new `decider.leave.quiet_break` (enabled: true, floor_s
+  {period_end: 120, score: 40})**. When the newest entry on a game is a period end / 0:00 clock, or a score in a
+  stop-start sport, and nothing newer has arrived, the leave gate treats it as an official stoppage: leavable from
+  seen + mu + 2 sigma + 3 s to seen + floor + mu - 2 sigma - tune_s, ahead of the stale-data and uncalibrated rules.
+  enabled: false = old behavior; read every poll, so a settings change applies to games already on. Opt-in
+  `near_end_clock_s` (0 = off) guesses the clock ran out when the last play left <= N s before a quarter break
+  (not Q4) and the feed has been silent near_end_quiet_s; today's UNC@CONN data stopped at 0:22 of Q1 with no
+  period end, so only this opt-in would have fired there.
+- 2026-11-07 (Nick 12:40 PM, runtime via /api/settings on the Mac, undoable; recorded here at his request):
+  decider.switch_margin 10 -> 4, decider.return_tolerance 5 -> 2, decider.break_destination_min 25 -> 10,
+  score.personal.my_team 25 -> 10, decider.uncalibrated_sigma_s 8 -> 25, decider.sticky_visit_needs_calibration
+  true -> false. Live settings only; the tree defaults are unchanged.
+- **2026-11-07 13:10 ET, Nick ("should be 4-5 switches every minute", "i want real redzone autopilot"): JUMP MODE,
+  new group `jump_mode`, `enabled` default false; Nick turns it on at runtime (/api/settings, undoable).** A rotation
+  over every live tunable game in `jump_mode.leagues` (cfb, nfl): at each dead ball on screen it flips to the game whose
+  snap is coming or that just had a big play; a game gives the screen up after `max_plays` 2 (crunch time and a scoring
+  drive inside the 20 keep it). Leaves use the play-by-play dead window or the normal gate (incl. low_leverage); joins
+  must land on a proven dead ball (re-checked at the flip). Every jump to data/jumps.jsonl. Also: the duplicate
+  `decider.leave` block merged (dead_windows / tune_s were silently dropped by YAML; defaults unchanged).
