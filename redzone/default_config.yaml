@@ -334,6 +334,7 @@ decider:
   leave:                   # [cut rules, Nick Nov 4 3:15 PM] never JOIN mid-play; LEAVING mid-play only at low leverage
     dead_windows: []       # [whistle detection] also leave on the play-by-play's dead windows in these leagues
     tune_s: 6              # ...and the window must outlast this tune margin (a visit can't come back inside it)
+                           # [Nov 7] these two sat in a second `leave:` block that YAML dropped: merged here
     low_leverage: []       # leagues where a low-leverage moment may be left mid-play ([] = never: today's rule)
     sticky_closeness: 0.5  # down the stretch is sticky: a late game at least this close is never left mid-play
     # [EXP-212] break floors on top of screen.MIN_BREAK_S, per league ({stoppage: s}; {} = off). With the
@@ -375,6 +376,33 @@ decider:
     instant_replays: true  # ...including instant replays of plays you saw (false: only plays you missed)
     shortest_break_s:      # ~10th pct, stoppage -> next scrimmage play logged, late Q4/OT, 2025 games
       {timeout: 30, injury: 27, review: 80, score_break: 110, two_minute_warning: 150, end_period: 180}
+
+jump_mode:                 # [Nick Nov 7 12:52, "should be 4-5 switches every minute"] a rotation over every live
+                           # tunable game instead of "stay on the best game" (Decider._jump). At each dead ball on
+                           # screen it flips to the game whose next snap is coming or that just had a big moment;
+                           # the hidden stick keeps re-tuning to the next pick (Decider.jump_next). Rule #1 holds:
+                           # strict dead ball to leave, dead-ball landing to arrive, both checked again at the flip.
+  enabled: false           # OFF: Nick turns it on at runtime (POST /api/settings {"changes":{"jump_mode":{"enabled":true}}})
+  leagues: [cfb, nfl]      # leagues the rotation runs in (a game on screen in another league uses the normal decider)
+  min_plays: 1             # plays seen on screen before a jump to a "hot" game (snap coming / big moment)
+  max_plays: 2             # after this many plays the game gives the screen up at its next dead ball
+  max_hold_s: 90           # ...or after this long with no play seen (stale play data, a long stoppage)
+  hold_rz_drive: true      # a scoring drive inside the 20 keeps the screen (crunch time always does)
+  snap_window_s: 25        # "snap coming": its next snap airs within this long after the picture comes up
+  snap_bonus: 15           # value points for a snap coming
+  snap_gain_s: 10          # with no play seen yet, still jump when the other game's snap shows this much sooner
+  big_recent_s: 60         # "just had a big moment": a big play aired (or about to air) within this long
+  big_bonus: 20
+  rotate_per_min: 6        # value points per minute since the rotation last left a game (fairness), capped at
+  rotate_cap_s: 300
+  standby_margin: 8        # the hidden stick keeps its game unless another one beats it by this much
+  margin_sigmas: 2         # delay doubt each side of a leave / landing, in sigmas (2 = every other entry's rule)
+  flip_s: 3.2              # the input flip to the ready standby: a leave's dead window must outlast it
+  land_dead_s: 2           # the target stays dead at least this long after its picture comes up
+  allow_rewind: false      # first version: land live at the target's dead ball, never a DVR rewind
+  replays: true            # a queued big-play catch-up takes the hidden stick (parked before its snap); the
+                           # decider's replay switches go through jump mode untouched
+  log: true                # every jump to data/jumps.jsonl (ids, numbers and short reason codes only)
 
 crunch:                    # [one brain, step 2] ONE crunch table (redzone/crunch.py), read by the scorer, standby,
                            # the demo and the grading. period / clock_s (left, at or under; null = whole period on) / margin /
