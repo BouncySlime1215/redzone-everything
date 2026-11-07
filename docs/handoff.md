@@ -71,8 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Second channel repeat (ESPNU) matched: 67.5 and 75.3 s behind. First scorebug read from a live preview: 7-20 at 9:18, bounding delay at 19-49 s, consistent with about 25 s.
-Findings in docs/sync/2026-11-05-yttv-live-edge-tests.md. Next: HDMI1 stick, flip onto a scrubbed stick, running-clock reads.
+Scrub seek: 7/7 repeats held about 62-75 s behind on ESPNU, ACC Network, TNT and both sticks. Flip test blocked: a manual hold sat 210 s without switching (new bug). Reading scorebugs from previews next.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
