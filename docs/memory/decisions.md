@@ -1052,3 +1052,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   30-90 s pauses were back near live 20-30 s after resume, 120 s reset to 0, also with auto-switching OFF (so not
   STK-05). No seek path works yet. The EXP-601 grader keeps its registered defaults; no refreeze, no runs. EXP-601
   itself assumed a held stick stays held, which is now unproven, so its FAIL is if anything optimistic for RC8.
+- **2026-11-06 22:15 ET (Nick, scrub-buffer order item 2): new flag `timing.behind_live_s.label_reader`, default
+  false.** YouTube TV's overlay time label is the behind-live truth meter after a scrub seek (media_session is wrong
+  after a seek). Reader: screencap -> private temp file -> local Vision OCR -> numbers only, file deleted in a
+  `finally`; a read whose frame could not be deleted is discarded. No keys pressed by the reader, no DRM bypass.
+  Code: redzone/tuners/yttv_label.py. No live config change; nothing reads the flag on Nick's screen yet.

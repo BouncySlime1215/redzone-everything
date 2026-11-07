@@ -633,6 +633,9 @@ timing:
                            # the hold above for that league). Nick flips it himself (scripts/rc8_flip.py); the
                            # pre-registered gate (docs/plans/2026-11-05-rc8-buffer-gate.md) is reported per league
                            # by scripts/rc8_gate_report.py. Ships false everywhere. Code: redzone/buffer_rc8.py
+    label_reader: false    # [YTTV scrub buffer item 2, Nick Nov 6 10:15 PM] read YouTube TV's overlay time label (screencap ->
+                           # local OCR -> numbers; the frame is deleted at once, never kept) as the behind-live truth
+                           # meter after a scrub seek (media_session lies after a seek). Code: redzone/tuners/yttv_label.py
     rc8_fixed_s: 0         # a league pinned to this B instead of the formula (0 = the formula)
     adaptive:              # [Nick 9:35 AM] B = feed-lag p95 + sync error + tune/seek + margin, never 0
       floor_s: 15          # hard floor: a play is always known before it's shown (Nick: ~10-15 s; gate v28: 15 in RC8,
