@@ -1052,3 +1052,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   30-90 s pauses were back near live 20-30 s after resume, 120 s reset to 0, also with auto-switching OFF (so not
   STK-05). No seek path works yet. The EXP-601 grader keeps its registered defaults; no refreeze, no runs. EXP-601
   itself assumed a held stick stays held, which is now unproven, so its FAIL is if anything optimistic for RC8.
+- 2026-11-07 (PR #381, item 6 of Nick's Nov 6 order): new default `decider.lock_wait` {enabled: false, retry_s: 20,
+  max_s: 90}. A locked/held game we can't reach (no channel, or a tune that failed) says why, retries after retry_s,
+  and after max_s the lock and hold are dropped with a toast. Off by default: Nick flips it. Nov 6: a hold on the ACC
+  Network game sat 96 s and 261 s on "switch: you locked this game" (617 instant "no channel" attempts). Rule #1 unchanged.
