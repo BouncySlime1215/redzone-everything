@@ -3227,13 +3227,16 @@ class Controller:
 
             def still_hidden() -> bool:
                 return self.hidden is hid and self.hidden_target == t and not self._flipping
+            r0 = time.monotonic()
             try:
                 pr = await self.label_probe.probe(hid, still_hidden=still_hidden)
                 got = pr.behind_live_s
             except Exception:
                 log.exception("drift: probe on %s", t)
                 got = None
-            verdict = dm.record(key, got, channel=t, label=str(self.hdmi.get(hid.host, "")))
+            # [Nick 13:53Z] spend what the read really took (9.8 s on his run, not the 7.5 s default)
+            verdict = dm.record(key, got, cost_s=time.monotonic() - r0, channel=t,
+                                label=str(self.hdmi.get(hid.host, "")))
             if verdict.action == "ok" and still_hidden():
                 pb = await hid.playback(self._package(hid, t))
                 if pb.get("state") == "playing" and playback_ready(pb):

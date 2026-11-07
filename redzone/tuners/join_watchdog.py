@@ -30,9 +30,10 @@ costs ~7.5 s on YouTube TV (the overlay freezes the picture, so each read also A
 Nov 7: 82, 89, ... 119 s at 5-min reads) and needs the overlay, so reads are only ever taken on the HIDDEN stick.
     * reads are rare: first after first_s, then the interval grows x backoff up to max_interval_s while it holds;
     * every read's wall time is counted against budget_s_per_h (rolling hour); no budget -> no read;
-    * a read is compared with what we believe (last reading + the read's own cost on YouTube TV):
-          ok        within drift_margin_s, and still within target_band_s of the target
-          reenter   off target by more than the band (drifted, or the read itself pushed it too far back)
+    * a read is compared with what we believe (last reading + the read's own freeze, read_adds_s, on YouTube TV);
+      the depth reads add is planned (Nick 14:11Z), so only drift counts:
+          ok        |drift_s| <= drift_margin_s (3 s) and not past join max_s
+          reenter   drifted more than that, or the reads have pushed it past max_s
           snapped   at the live edge (<= min_behind_s): the buffer is gone (the plain-pause snap, Nov 6)
           unknown   no reading (program boundary resets the label, banner, OCR): NOT buffered until re-entered
     * reenter / snapped / unknown -> the caller re-enters the buffer off screen (control.label_stale -> _rescrub).
@@ -58,21 +59,31 @@ WATCHDOG_DEFAULTS = {
     "enabled": False,
     "margin_s": {"youtubetv": 6.0, "prime": 4.0},        # around the PREDICTED landing
     "target_band_s": {"youtubetv": 10.5, "prime": 5.0},  # around the TARGET (YouTube TV: half a 15 s step + 3 s)
+    # [Nick 14:03Z, #405's 16.8 s LEFTs: T120 plans k=5 -> 112.5, landed 112-114, was re-seeked to live] with a plan,
+    # the verdict is the PREDICTED margin; the target only catches gross misses (nearest step up to 8.4 s away, the
+    # one-LEFT floor ~46 s for T30)
+    "target_gross_s": {"youtubetv": 20.0, "prime": 8.0},
     "min_behind_s": 5.0,       # a "buffered" reading at or below this is the live edge
     "max_s": 150.0,            # join.max_s
     "over_s": 15.0,            # a reading past max_s + this is a misread / runaway (ACC Network stopped near 150 s)
     "max_reseeks": 1,
+    # [Nick's cross-channel run, Nov 7 13:02Z: 25/26 verified, the 1 miss was a post-commit label read that returned
+    # nothing] on "unmeasured" after a committed join, read the label ONCE more before falling back (~7.5 s more
+    # behind; the plan and target move by that one extra read). OFF.
+    "reprobe_unmeasured": False,
     "fallback": "live",        # live = relink to the live edge (known position); keep = leave it, state unknown
 }
 DRIFT_DEFAULTS = {
     "enabled": False,
     "first_s": 300.0,          # first check 5 min after a verified join (the soak read every 5 min and held)
-    "backoff": 2.0,            # then 10, 20, ... min while it holds
+    "backoff": 3.0,            # [Nick 14:11Z: it holds, read rarely] then 15 min, then every max_interval_s
     "max_interval_s": 1200.0,  # never trust longer than this without a read (scrub_trust_s, the 20-min proof)
-    "budget_s_per_h": 30.0,    # wall seconds of reads per stick per rolling hour (4 YouTube TV reads)
-    "drift_margin_s": 6.0,
-    "read_cost_s": {"youtubetv": 7.5, "prime": 8.0},    # wall time of one read (budget)
-    "read_adds_s": {"youtubetv": 7.5, "prime": 0.0},    # ...and how much it pushes the picture back (frozen overlay)
+    "budget_s_per_h": 45.0,    # wall seconds of reads per stick per rolling hour (~4 YouTube TV reads at ~10.5 s)
+    # [Nick 14:11Z] the depth each read adds is PLANNED (it is in expected_s); only a drift beyond this re-enters.
+    # His rerun: +1.0, +1.7 s per read with read_adds 7.5 (= the freeze running ~8.5 s), the stick itself ~+0.5 s.
+    "drift_margin_s": 3.0,
+    "read_cost_s": {"youtubetv": 10.5, "prime": 8.0},   # wall time of one read (budget; Nick: 9.8, 10.4, 10.1 s)
+    "read_adds_s": {"youtubetv": 8.5, "prime": 0.0},    # ...and how much it pushes the picture back (frozen overlay)
 }
 
 
@@ -123,7 +134,9 @@ def verify(app: str, target_s: float, measured_s: float | None, predicted_s: flo
            join_ok: bool = True, visible: bool = False, reseeks_left: int = 0, cfg=None,
            read_adds_s: float = 0.0) -> Verdict:
     """Is the stick where we meant it to be? Pure: no stick, no clock. See the module docstring.
-    predicted_s None (control's scrub entry plans its own presses): only the target band applies.
+    predicted_s given (join.plan_join): within margin_s of it, and within target_gross_s of the target (gross misses
+    only: the nearest YouTube TV step can sit 8.4 s from the target). predicted_s None (control's scrub entry plans
+    its own presses, the re-probe): only the target band applies.
     read_adds_s: how far the measuring read itself pushed the stick back (the YouTube TV label probe freezes the
     picture ~7.5 s and its reading INCLUDES that: Nick's Nov 7 run, planned 71.7 without it, read 79.52). The TARGET
     is moved by it before comparing; predicted_s already includes it (join.plan_join, JoinPlan.read_s)."""
@@ -146,8 +159,9 @@ def verify(app: str, target_s: float, measured_s: float | None, predicted_s: flo
     if m <= float(wcfg(cfg, "min_behind_s")) or m > float(wcfg(cfg, "max_s")) + float(wcfg(cfg, "over_s")):
         v.status = "out_of_range"
         v.reason = f"read {m:.1f}s behind live: the live edge or a runaway, not a buffer"
-    elif (predicted_s is not None and abs(m - pred) > float(wcfg(cfg, "margin_s", a))) \
-            or abs(m - float(target_s) - adds) > float(wcfg(cfg, "target_band_s", a)):
+    elif (abs(m - pred) > float(wcfg(cfg, "margin_s", a)) or abs(m - float(target_s)) > float(wcfg(cfg, "target_gross_s", a))
+          if predicted_s is not None else
+          abs(m - float(target_s) - adds) > float(wcfg(cfg, "target_band_s", a))):
         v.status = "off_target"
         v.reason = f"landed {m:.1f}s, planned {pred:.1f}s with the read (target {float(target_s):.0f}s)"
     else:
@@ -165,6 +179,7 @@ class Outcome:
     attempts: int = 0
     verdicts: list[dict] = field(default_factory=list)
     fallback: str = ""                 # "" | "live" | "live_failed" | "keep"
+    reprobes: int = 0                  # extra label reads after an unmeasured committed join (reprobe_unmeasured)
     took_s: float = 0.0
 
     @property
@@ -220,6 +235,24 @@ async def watched_join(stick, app: str, target_s: float, *, relink: Callable[[],
                        visible=not still_hidden(),
                        reseeks_left=max_re - (out.attempts - 1), cfg=cfg)
             out.verdicts.append(asdict(v))
+            reader = join_kw.get("read_behind")
+            if v.status == "unmeasured" and bool(wcfg(cfg, "reprobe_unmeasured")) and bool(getattr(r, "ok", False)) \
+                    and reader is not None and plan is not None and not out.reprobes and still_hidden():
+                # the join committed but its one label read came back empty: read once more. Whether that empty read
+                # froze the picture is unknown (Nick's #404 run, Nov 7 13:19Z: ESPN 65.83 and ESPN2 55.44 for target
+                # 60, plan 64.2 with one read), so the plan is not used: the TARGET band alone judges it, centred
+                # half a read deep (one read certain, the other unknown).
+                out.reprobes += 1
+                try:
+                    again = await reader(stick)
+                except Exception as e:
+                    log.warning("re-probe failed: %r", e)
+                    again = None
+                rs = float(getattr(plan, "read_s", 0.0) or 0.0)
+                v = verify(a, target_s, again, None, read_adds_s=rs / 2.0,
+                           visible=not still_hidden(), reseeks_left=max_re - (out.attempts - 1), cfg=cfg)
+                v.reason = f"re-probe: {v.reason}"
+                out.verdicts.append(asdict(v))
             if v.action == "accept":
                 out.state, out.behind_s = "buffered", v.measured_s
                 break
@@ -253,6 +286,7 @@ async def watched_join(stick, app: str, target_s: float, *, relink: Callable[[],
     out.took_s = round(clock() - t0, 2)
     log_row({"kind": "watchdog", "app": a, "stick": label, "channel": channel, "target_s": out.target_s,
              "state": out.state, "behind_s": out.behind_s, "attempts": out.attempts, "fallback": out.fallback,
+             "reprobes": out.reprobes,
              "status": [d.get("status") for d in out.verdicts],
              "off_pred_s": [d.get("off_pred_s") for d in out.verdicts], "took_s": out.took_s}, log_path)
     return out
@@ -340,7 +374,6 @@ class DriftMonitor:
         self.totals["read_cost_s"] = round(self.totals["read_cost_s"] + cost, 2)
         expected = round(t.behind_s + float(dcfg(self.cfg, "read_adds_s", t.app)), 2)
         v = DriftVerdict("unknown", expected, None if measured_s is None else round(float(measured_s), 2))
-        band = float(wcfg(self.cfg, "target_band_s", t.app))
         if measured_s is None:
             v.reason = "no reading (program boundary, banner, OCR): not buffered until re-entered"
         else:
@@ -349,13 +382,11 @@ class DriftMonitor:
             t.drifts.append(v.drift_s)
             if m <= float(wcfg(self.cfg, "min_behind_s")):
                 v.action, v.reason = "snapped", f"read {m:.1f}s: back at the live edge"
-            elif abs(m - t.target_s) > band:
-                v.action, v.reason = "reenter", f"read {m:.1f}s, target {t.target_s:.0f}s (drift {v.drift_s:+.1f}s)"
             elif abs(v.drift_s) > float(dcfg(self.cfg, "drift_margin_s")):
-                # still near target but not where we believed: trust the reading, check again sooner
-                v.action, v.reason = "ok", f"drift {v.drift_s:+.1f}s, re-anchored"
-                t.behind_s, t.at, t.interval = m, now, float(dcfg(self.cfg, "first_s"))
-                t.next_at = now + t.interval
+                # [Nick 14:11Z] the depth the reads add is planned (in expected); only real drift re-enters
+                v.action, v.reason = "reenter", f"drift {v.drift_s:+.1f}s (read {m:.1f}s, expected {expected:.1f}s)"
+            elif m > float(wcfg(self.cfg, "max_s")):
+                v.action, v.reason = "reenter", f"read {m:.1f}s: deeper than join.max_s after {t.reads} reads"
             else:
                 v.action, v.reason = "ok", f"held (drift {v.drift_s:+.1f}s)"
                 t.behind_s, t.at = m, now
