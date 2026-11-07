@@ -534,6 +534,9 @@ tuners:                    # per-app switch paths
   yttv_local_search: false # ABC/CBS/FOX/NBC locals by YouTube TV search (WRAL, ABC 11, CBS 17, FOX 50): channel
                            # page -> Select, accepted only on a media-session subtitle naming the station AND a
                            # live playhead. fox/cbs Sunday Ticket mirror codes are skipped except on Sundays (Nov 7)
+  yttv_local_search_live: false # true: the engine re-reads yttv_local_search every decide tick, so a change
+                           # through POST /api/settings (or Undo) applies within ~0.5 s, no restart. false: read
+                           # once at startup, as before. A tune in progress keeps the ref it started with (Nov 7)
 autofix:                   # the watchdog files problems it can't fix as GitHub issues for Claude (docs/auto-fix.md)
   enabled: true            # kill switch on the Mac side (the repo variable AUTOFIX_ENABLED=false stops the GitHub side)
   max_per_day: 3           # at most this many issues a day

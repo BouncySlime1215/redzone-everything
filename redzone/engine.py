@@ -751,6 +751,10 @@ class Engine:
         last_push = 0.0
         while True:
             try:
+                self._apply_live_settings()
+            except Exception:
+                log.exception("could not apply live settings")
+            try:
                 self._mic_calibrate()
                 changed = self.decide()
             except Exception:
@@ -769,6 +773,21 @@ class Engine:
                 # A phone-view bug is not a switching error: it must not put the TV in safe mode.
                 log.exception("broadcast failed")
             await self._next_tick(DECIDE_EVERY_S)
+
+    def _apply_live_settings(self) -> bool:
+        """[tuners.yttv_local_search_live] Settings that otherwise apply only at startup, re-read each
+        decide tick so a POST /api/settings (or Undo) takes effect without a restart. Gate off (default):
+        nothing changes. Only between ticks: a tune already running resolved its ref (Control._ref) at
+        its start and keeps it. Returns whether anything changed."""
+        if not self.cfg.get("tuners.yttv_local_search_live", False):
+            return False
+        want = bool(self.cfg.get("tuners.yttv_local_search", False))
+        if self.channels.local_search == want:
+            return False
+        log.info("settings: tuners.yttv_local_search %s -> %s (applied live, no restart)",
+                 self.channels.local_search, want)
+        self.channels.local_search = want
+        return True
 
     async def _next_tick(self, seconds: float) -> None:
         """Sleep until the next decision, or less when pushed data just arrived: a big play

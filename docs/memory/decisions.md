@@ -1351,3 +1351,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   naming the live game it let through. Snapshot, 10-min health watch and auto-rollback run as usual. Reason: a paused
   app switches nothing, so a restart moves nothing under its control, and the pause survives the restart; today's
   RC6.3.1 deploy had to bypass busy() by hand.
+- **2026-11-07** New gate `tuners.yttv_local_search_live` (default **false**; `tuners.yttv_local_search` default
+  unchanged, false). On: the engine re-reads `tuners.yttv_local_search` every decide tick, so a POST /api/settings
+  change or Undo applies within ~0.5 s with no service restart (a tune in flight keeps its ref). Reason: turning the
+  locals flag on for RC6.3.1 needed a restart mid-game-day (overseer suggestion b). PR #412.
