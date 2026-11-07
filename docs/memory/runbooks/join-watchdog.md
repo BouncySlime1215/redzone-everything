@@ -32,6 +32,10 @@ most 30 s of reads per stick per hour (`join.drift.budget_s_per_h`).
 4. A stick stuck "behind" on a channel (every re-seek reads short): tune another channel, then back (#391).
 5. To test on hardware: `RZ_JOINS_LOG=$PWD/data/joins.jsonl python scripts/watchdog_try.py <hidden stick> youtubetv 75 nbatv --reset=espn --drift-min=20`
    (hidden stick only, no game you're watching on it).
+6. **Retune before EVERY run** (another channel, then the target; `--reset=<other>` does it). A loop of
+   `watchdog_try` runs without it measures from wherever the last run left the stick: LabelProbe anchors at the
+   probe, so those numbers are relative to the start, not true behind-live (Nick's rig correction, Nov 7 12:36Z;
+   the canary's numbers were always true live-edge).
 
 ## Tests
 

@@ -40,7 +40,9 @@ def test_yttv_join_sends_the_planned_presses_and_logs_the_error(tmp_path):
     log = tmp_path / "joins.jsonl"
     r = asyncio.run(jn.join(s, "youtubetv", 60, cfg=CFG, pkg=YT, read_overlay=reader(s), read_behind=label,
                             log_path=log, label="stickB", channel="espn"))
-    assert r.ok and s.keys.count("KEYCODE_DPAD_LEFT") == 3 and s.committed_back == 45.0
+    # the RIGHT probe (default) leaves the knob at live, then n - 1 = 2 LEFTs: 30 s (Nick, 12f405ab, Nov 7)
+    assert r.ok and s.keys.count("KEYCODE_DPAD_RIGHT") == 1 and s.keys.count("KEYCODE_DPAD_LEFT") == 2
+    assert s.committed_back == 30.0
     assert r.measured_s == 64.9 and r.error_s == pytest.approx(4.9) and r.pred_error_s == pytest.approx(0.7)
     row = json.loads(log.read_text().splitlines()[-1])
     assert row["stick"] == "stickB" and row["channel"] == "espn" and row["presses"] == 3 and row["error_s"] == 4.9 and row["read_s"] == 7.5
