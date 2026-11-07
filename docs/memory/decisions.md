@@ -1178,3 +1178,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   decider.switch_margin 10 -> 4, decider.return_tolerance 5 -> 2, decider.break_destination_min 25 -> 10,
   score.personal.my_team 25 -> 10, decider.uncalibrated_sigma_s 8 -> 25, decider.sticky_visit_needs_calibration
   true -> false. Live settings only; the tree defaults are unchanged.
+- **2026-11-07 13:10 ET, Nick ("should be 4-5 switches every minute", "i want real redzone autopilot"): JUMP MODE,
+  new group `jump_mode`, `enabled` default false; Nick turns it on at runtime (/api/settings, undoable).** A rotation
+  over every live tunable game in `jump_mode.leagues` (cfb, nfl): at each dead ball on screen it flips to the game whose
+  snap is coming or that just had a big play; a game gives the screen up after `max_plays` 2 (crunch time and a scoring
+  drive inside the 20 keep it). Leaves use the play-by-play dead window or the normal gate (incl. low_leverage); joins
+  must land on a proven dead ball (re-checked at the flip). Every jump to data/jumps.jsonl. Also: the duplicate
+  `decider.leave` block merged (dead_windows / tune_s were silently dropped by YAML; defaults unchanged).
