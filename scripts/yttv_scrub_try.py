@@ -26,7 +26,9 @@ async def main(host: str, seconds: float, miss_probe: bool, label: bool = False,
     if label:
         from redzone.tuners.yttv_label import LabelProbe
         probe = LabelProbe()
-        probe.arm(stick)
+        if not probe.arm(stick):
+            print(json.dumps({"label": "not armed: stick marked behind on a target (#391); run unmeasured"}))
+            probe = None
     base = probe.overlay_reader if probe else ys.ocr_overlay
 
     async def read(st):

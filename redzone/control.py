@@ -3009,8 +3009,10 @@ class Controller:
                 if self.label_probe is not None:
                     # [label reader] one screencap feeds the focus guard and the label; the probe at the live edge
                     # is the at-live anchor, and one read after the commit measures behind-live (yttv_label)
-                    self.label_probe.arm(stick)
-                    kw = {"read_overlay": self.label_probe.overlay_reader, "read_behind": self.label_probe}
+                    if self.label_probe.arm(stick):
+                        kw = {"read_overlay": self.label_probe.overlay_reader, "read_behind": self.label_probe}
+                    # not armed (#391: the stick is still behind on a target) -> no read_behind: the scrub runs
+                    # unmeasured and is refused below (fails closed)
                 res = await yttv_seek.enter_buffer(stick, ask, cfg=self.cfg, pkg=pkg, still_hidden=still_hidden, **kw)
             except asyncio.CancelledError:
                 raise

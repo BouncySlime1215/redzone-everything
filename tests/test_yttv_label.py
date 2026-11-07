@@ -226,12 +226,13 @@ def test_cli_pair_roundtrip(tmp_path, monkeypatch):
 # ------------------------------------------------------------------ LabelProbe: banner handling + one read
 class FakeStick:
     """A hidden YTTV stick: CENTER toggles the overlay; a banner eats the first `banner` opens; LEFT/RIGHT move
-    the knob only with the bar up; CENTER with a displaced knob commits it. Labels = seconds since program start."""
+    the knob only with the bar up; CENTER with a displaced knob commits it. The picture STANDS STILL while the
+    overlay is up (scrub thread, Nov 7). Labels = seconds since program start."""
 
     def __init__(self, t0=1794024000.0, live_label=2000.0, banner=0, row_focus=False):
-        self.t = t0
+        self._t = t0
         self.live0, self.t0 = live_label, t0
-        self.behind = 0.0          # playhead behind live
+        self.pos = live_label      # playhead label (seconds since program start)
         self.knob = 0              # knob offset in steps (negative = back)
         self.overlay = False
         self.bar = False
@@ -239,6 +240,20 @@ class FakeStick:
         self.row_focus = row_focus
         self.host = "hidden"
         self.keys = []
+
+    @property
+    def t(self):
+        return self._t
+
+    @t.setter
+    def t(self, v):
+        if not self.overlay:
+            self.pos += v - self._t     # plays at 1x only while the overlay is down
+        self._t = v
+
+    @property
+    def behind(self):
+        return self.live_label() - self.pos
 
     def live_label(self):
         return self.live0 + (self.t - self.t0)
@@ -250,7 +265,7 @@ class FakeStick:
         if code == "DPAD_CENTER":
             if self.overlay:
                 if self.bar and self.knob:
-                    self.behind += -self.knob * 15
+                    self.pos += self.knob * 15
                 self.overlay, self.bar, self.knob = False, False, 0
             else:
                 self.overlay = True
@@ -271,7 +286,7 @@ class FakeStick:
             return []
         rows = [o("LIVE", 0.05, 0.62, w=0.03), o("CC", 0.3, 0.89)]
         if self.overlay is True and self.bar:
-            lab = self.live_label() - self.behind + self.knob * 15
+            lab = self.pos + self.knob * 15
             m, s_ = divmod(int(round(lab)), 60)
             rows.append(o(f"{m}:{s_:02d}", 0.214, 0.444))
         return rows
@@ -307,8 +322,9 @@ def test_probe_measures_once_after_entry(monkeypatch):
         st.t += 30
         return await p.probe(st)
     r = asyncio.run(go())
+    # measured at the screencap + the frozen seconds until the commit = where the stick really is now
     assert r.reason == "measured" and r.behind_live_s == pytest.approx(st.behind, abs=1.0)
-    assert st.behind == 60.0 and st.keys[-2:] == ["DPAD_RIGHT", "DPAD_CENTER"]
+    assert st.behind > 60.0 and st.keys[-2:] == ["DPAD_RIGHT", "DPAD_CENTER"]
     assert p.playhead(st) == r.behind_live_s
 
 
@@ -317,9 +333,11 @@ def test_probe_handles_the_post_tune_banner(monkeypatch):
     monkeypatch.setattr(L.time, "time", lambda: st.t)
     p = probe_for(st)
     p.anchors["hidden"] = L.parse_label([o("33:05", 0.214, 0.444)], st.t, knob_offset_s=15)   # 2000 s at live
-    st.behind, st.banner = 60.0, 2           # two opens land on the banner first
+    st.pos -= 60.0
+    st.banner = 2                            # two opens land on the banner first
     r = asyncio.run(p.probe(st))
-    assert r.reason == "measured" and r.behind_live_s == pytest.approx(60.0, abs=1.0)
+    assert r.reason == "measured" and r.behind_live_s == pytest.approx(st.behind, abs=1.0)
+    assert st.behind > 60.0                  # every second with the overlay up added a second
     assert r.keys.count("DPAD_LEFT") >= 2    # probed, closed, reopened
 
 
@@ -337,3 +355,12 @@ def test_probe_fails_closed():
     r2 = asyncio.run(p2.probe(st2))
     assert r2.behind_live_s is None and "row button" in r2.reason
     assert asyncio.run(p.probe(st, still_hidden=lambda: False)).keys == []
+
+
+def test_arm_refuses_a_stick_marked_behind():
+    """#391: a same-channel deep link does not reset a stick that is behind live; never anchor on it."""
+    p = L.LabelProbe()
+    st = SimpleNamespace(host="hidden", behind_on="youtubetv:espn")
+    assert p.arm(st) is False and "hidden" not in p.armed
+    st.behind_on = None
+    assert p.arm(st) is True and p.armed["hidden"] == 0.0

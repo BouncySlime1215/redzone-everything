@@ -292,6 +292,7 @@ def test_label_probe_is_armed_and_shares_the_overlay_reader(scrub, monkeypatch):
 
         def arm(self, stick, behind_before_s=0.0):
             self.armed.append(stick.host)
+            return not getattr(stick, "behind_on", None)
 
         async def overlay_reader(self, stick):
             return None
@@ -309,3 +310,30 @@ def test_label_probe_is_armed_and_shares_the_overlay_reader(scrub, monkeypatch):
     run(_preload(c, "youtubetv:fox"))
     assert Probe.armed == ["b:5555"]
     assert seen["read_overlay"] == c.label_probe.overlay_reader and seen["read_behind"] is c.label_probe
+
+
+
+def test_an_unarmed_probe_lets_the_scrub_run_unmeasured_and_fail_closed(scrub, monkeypatch):
+    """#391: arm() refuses a stick still behind on a target -> no read_behind is passed -> no measured reading."""
+    c, tuner, hid, calls, result, behind = scrub
+    seen = {}
+
+    class Probe:
+        def arm(self, stick, behind_before_s=0.0):
+            return False
+
+        async def overlay_reader(self, stick):
+            return None
+
+        async def __call__(self, stick):
+            raise AssertionError("never read when not armed")
+    c.label_probe = Probe()
+    mod = sys.modules["redzone.tuners.yttv_seek"]
+    inner = mod.enter_buffer
+
+    async def spy(stick, seconds, **kw):
+        seen.update(kw)
+        return await inner(stick, seconds, **kw)
+    monkeypatch.setattr(mod, "enter_buffer", spy)
+    run(_preload(c, "youtubetv:fox"))
+    assert "read_behind" not in seen and "read_overlay" not in seen

@@ -347,7 +347,8 @@ class LabelProbe:
     * `__call__(stick)` is enter_buffer's read_behind: the probe sequence with the post-tune banner handling from
       #377 (CENTER; no scrub label -> LEFT probe; still none -> CENTER close, reopen, retry; fail closed after
       open_tries), one label read with knob_offset_s = step, then RIGHT + CENTER so the knob goes back to where
-      it was before it commits. behind = behind_from_pair(anchor, read) + read_tail_s.
+      it was before it commits. behind = behind_from_pair(anchor, read) + (commit wall - screencap wall), since
+      the picture stands still while the overlay is up.
     * `playhead(stick, now)`: after that, the stick's behind-live without another read: the playhead plays at 1x,
       so behind only changes when something holds the picture (a later read adds ~read_cost_s).
 
@@ -374,11 +375,19 @@ class LabelProbe:
     def _key(stick) -> str:
         return str(getattr(stick, "host", stick))
 
-    def arm(self, stick, behind_before_s: float = 0.0) -> None:
+    def arm(self, stick, behind_before_s: float = 0.0) -> bool:
         """The next bar-focused overlay read on this stick is its at-live anchor (call right before enter_buffer
-        on a stick tuned or re-linked to the live edge)."""
-        self.armed[self._key(stick)] = float(behind_before_s)
-        self.anchors.pop(self._key(stick), None)
+        on a stick tuned or re-linked to the live edge). Refuses (False, nothing armed) while the stick is marked
+        behind on a target (#391 Stick.behind_on: a same-channel deep link does NOT reset a stick that is behind
+        live, so its "live edge" probe would anchor short: asked 90, read 23). The scrub then runs unmeasured and
+        the caller fails closed."""
+        k = self._key(stick)
+        self.anchors.pop(k, None)
+        self.armed.pop(k, None)
+        if getattr(stick, "behind_on", None):
+            return False
+        self.armed[k] = float(behind_before_s)
+        return True
 
     async def _frame(self, stick, knob_offset_s: float):
         from redzone.tuners import yttv_seek
@@ -457,12 +466,15 @@ class LabelProbe:
             await press("DPAD_RIGHT")                    # knob back onto the playhead, then commit there
             await self.sleep(float(self._c("key_gap_s", 0.35)))
             await press("DPAD_CENTER")
+            committed_at = time.time()
         except RuntimeError as e:
             return ProbeResult(None, LabelRead("no_label"), keys, str(e))
         b = behind_from_pair(anchor, got, max_s=float(self._c("max_behind_s", MAX_BEHIND_S)))
         if b is None:
             return ProbeResult(None, got, keys, "pair out of range or new program")
-        b = round(b + float(self._c("read_tail_s", 0.0)), 2)
+        # The picture stands still while the overlay is up (scrub thread, Nov 7): every second between this
+        # screencap and the commit landing adds a second behind. Measured, not a constant.
+        b = round(b + max(0.0, committed_at - got.cap_wall), 2)
         self.held[k] = (b, got.cap_wall)
         return ProbeResult(b, got, keys, "measured")
 
