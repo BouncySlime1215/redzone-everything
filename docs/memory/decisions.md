@@ -1344,3 +1344,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   still off). The scrub bar starts at the program start, so when the LEFTs need more than the label the scrub fails
   closed before pressing any (back to live), with `room_s` (the label) in the result and the join row. No boundary
   retry for it. Capping the target at room - 15 instead is left to the planner (not done here).
+- 2026-11-07 (Nick, 12:08 PM ET "You can deploy whatever"; overseer's suggestion (a)): **new deploy gate option
+  `scripts/deploy.py deploy --if-paused` (deploy.yaml `if_paused`, default false = gate unchanged).** With it, live
+  games and games starting soon don't defer the switch while `/api/state` reports `mode.paused: true` (the phone's
+  Pause; only a literal true counts, and a "Watch this" hold is not a pause). The journal logs a `paused_gate` row
+  naming the live game it let through. Snapshot, 10-min health watch and auto-rollback run as usual. Reason: a paused
+  app switches nothing, so a restart moves nothing under its control, and the pause survives the restart; today's
+  RC6.3.1 deploy had to bypass busy() by hand.

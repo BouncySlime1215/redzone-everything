@@ -32,6 +32,7 @@ class FakeMac(D.System):
         self.behaviour = behaviour or {}
         self.games: list[dict] = []
         self.games_until: float | None = None    # games disappear at this time (for --wait)
+        self.app_mode: dict | None = None        # /api/state "mode" block (e.g. {"paused": True})
         self.restarts: list[tuple[str, str]] = []
         self.pushed: list[str] = []
         self.pid = 100
@@ -71,7 +72,7 @@ class FakeMac(D.System):
             return None
         games = self.games if self.games_until is None or self.t < self.games_until else []
         feeds_bad = self.restarts and self.mode() == "feeds"
-        return {"games": games,
+        return {"games": games, **({"mode": self.app_mode} if self.app_mode is not None else {}),
                 "health": {"sources": [{"name": "espn", "ok": not feeds_bad}, {"name": "nhl", "ok": True}],
                            "sticks": [{"host": "10.0.0.5", "state": "online"}]}}
 
@@ -685,6 +686,73 @@ def test_deploy_cli_at_break_flag(monkeypatch, tmp_path):
     assert D.main(["deploy", "--at-break", "--wait", "60"], system=FakeMac(tmp_path), root=tmp_path) == 0
     assert seen == {"at": True, "poll": 30.0}
     assert D.main(["deploy"], system=FakeMac(tmp_path), root=tmp_path) == 0 and seen["at"] is False
+
+
+def test_busy_if_paused_lets_live_games_through_only_while_paused():
+    """[Nick, Nov 7, suggestion (a)] --if-paused: auto-switching paused -> live games don't block."""
+    live = {"matchup": "A @ B", "phase": "live", "on_now": True, "status_text": "Q2 5:00"}
+    soon = {"matchup": "C @ D", "phase": "pre", "start_time": T0 + 60}
+    st = {"games": [live, soon], "mode": {"paused": True}}
+    assert D.busy(st, T0, 900, if_paused=True) == ""
+    assert "live" in D.busy(st, T0, 900)                                          # default unchanged
+    for mode in ({"paused": False}, {}, None, {"paused": "yes"}, "paused"):       # only a literal True
+        assert "live" in D.busy({"games": [live], "mode": mode}, T0, 900, if_paused=True)
+    assert "live" in D.busy({"games": [live]}, T0, 900, if_paused=True)          # no mode block at all
+    # combined with --at-break: paused passes; not paused falls back to the halftime rule
+    assert D.busy(st, T0, 900, at_break=True, if_paused=True) == ""
+    half = {**live, "status_text": "Halftime"}
+    assert D.busy({"games": [half], "mode": {"paused": False}}, T0, 900, at_break=True, if_paused=True) == ""
+    assert "not in halftime" in D.busy({"games": [live], "mode": {"paused": False}}, T0, 900,
+                                       at_break=True, if_paused=True)
+
+
+def test_if_paused_deploys_through_a_live_game_and_keeps_the_watch(world):
+    w = world
+    w.fake.games = [{"id": "1", "matchup": "DAL @ WSH", "phase": "live"}]
+    w.fake.app_mode = {"paused": True}
+    assert w.deployer().deploy(skip_tests=True) == D.EXIT_DEFERRED           # off by default
+    assert w.fake.head() == w.a and w.fake.restarts == []
+    w.s.if_paused = True
+    assert w.deployer().deploy(skip_tests=True) == D.EXIT_OK
+    assert w.fake.head() == w.b and w.fake.restarts
+    assert w.fake.t - T0 >= w.s.watch_s                                         # watched the whole window
+    steps = [j["step"] for j in _journal(w)]
+    assert "paused_gate" in steps and steps.index("paused_gate") < steps.index("switch") < steps.index("verdict")
+    gate = next(j for j in _journal(w) if j["step"] == "paused_gate")
+    assert "DAL @ WSH is live" in gate["msg"] and "paused" in gate["msg"]
+    st = json.loads((w.mac / "data/deploy/state.json").read_text())
+    assert st["good"]["commit"] == w.b and st["previous"]["snapshot"]           # snapshot kept
+
+
+def test_if_paused_still_rolls_back_a_bad_build(world):
+    w = world
+    w.fake.behaviour = {w.b: "errors"}
+    w.fake.games = [{"id": "1", "matchup": "DAL @ WSH", "phase": "live"}]
+    w.fake.app_mode = {"paused": True}
+    w.s.if_paused = True
+    assert w.deployer().deploy(skip_tests=True) == D.EXIT_ROLLED_BACK
+    assert w.fake.head() == w.a
+
+
+def test_if_paused_defers_when_not_paused(world):
+    w = world
+    w.fake.games = [{"id": "1", "matchup": "DAL @ WSH", "phase": "live"}]
+    w.fake.app_mode = {"paused": False}
+    w.s.if_paused = True
+    assert w.deployer().deploy(skip_tests=True) == D.EXIT_DEFERRED
+    assert w.fake.head() == w.a and w.fake.restarts == []
+    last = _journal(w)[-1]
+    assert last["step"] == "deferred" and "auto-switching isn't paused" in last["msg"]
+
+
+def test_deploy_cli_if_paused_flag(monkeypatch, tmp_path):
+    seen = {}
+    monkeypatch.setattr(D.Deployer, "deploy", lambda self, **kw: seen.update(p=self.s.if_paused) or 0)
+    assert D.main(["deploy", "--if-paused"], system=FakeMac(tmp_path), root=tmp_path) == 0 and seen["p"] is True
+    assert D.main(["deploy"], system=FakeMac(tmp_path), root=tmp_path) == 0 and seen["p"] is False
+    (tmp_path / "deploy").mkdir()
+    (tmp_path / "deploy/deploy.yaml").write_text("if_paused: true\n")
+    assert D.main(["deploy"], system=FakeMac(tmp_path), root=tmp_path) == 0 and seen["p"] is True
 
 
 # ---- the test step finishes: parallel workers, a log, a timeout that really stops (Nick, Nov 6) -----
