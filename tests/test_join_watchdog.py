@@ -516,3 +516,18 @@ def test_no_reprobe_on_a_failed_join_or_a_visible_stick():
     run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, read_behind=reader2, log_path="", cfg=cfg,
                         still_hidden=lambda: False))
     assert not n and not n2
+
+
+@pytest.mark.parametrize("target,predicted,measured", [(120, 112.5, 113.6), (120, 112.5, 112.0), (120, 112.5, 106.7),
+                                                       (30, 45.3, 46.1), (90, 95.7, 95.5)])
+def test_nicks_168_sweep_verifies_on_the_plan_not_the_target(target, predicted, measured):
+    """Nick 14:03Z (#405, 16.8 s per LEFT): T120 plans k=5 -> 112.5 and landed there; the old target check
+    (|read - target - read_s| <= 10.5) re-seeked both runs to live. With a plan, the margin is around predicted and
+    the target only catches gross misses (T30's one-LEFT floor ~46 s still passes)."""
+    v = jw.verify("youtubetv", target, measured, predicted, read_adds_s=7.5)
+    assert v.buffered, v.reason
+
+
+def test_a_gross_miss_of_the_target_is_still_off_target_even_on_plan():
+    assert jw.verify("youtubetv", 60, 85.0, 85.0, read_adds_s=7.5).status == "off_target"   # plan itself 25 s off
+    assert jw.verify("youtubetv", 120, 104.0, 112.5, read_adds_s=7.5).status == "off_target"  # 8.5 s short of plan

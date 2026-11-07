@@ -58,6 +58,10 @@ WATCHDOG_DEFAULTS = {
     "enabled": False,
     "margin_s": {"youtubetv": 6.0, "prime": 4.0},        # around the PREDICTED landing
     "target_band_s": {"youtubetv": 10.5, "prime": 5.0},  # around the TARGET (YouTube TV: half a 15 s step + 3 s)
+    # [Nick 14:03Z, #405's 16.8 s LEFTs: T120 plans k=5 -> 112.5, landed 112-114, was re-seeked to live] with a plan,
+    # the verdict is the PREDICTED margin; the target only catches gross misses (nearest step up to 8.4 s away, the
+    # one-LEFT floor ~46 s for T30)
+    "target_gross_s": {"youtubetv": 20.0, "prime": 8.0},
     "min_behind_s": 5.0,       # a "buffered" reading at or below this is the live edge
     "max_s": 150.0,            # join.max_s
     "over_s": 15.0,            # a reading past max_s + this is a misread / runaway (ACC Network stopped near 150 s)
@@ -130,7 +134,9 @@ def verify(app: str, target_s: float, measured_s: float | None, predicted_s: flo
            join_ok: bool = True, visible: bool = False, reseeks_left: int = 0, cfg=None,
            read_adds_s: float = 0.0) -> Verdict:
     """Is the stick where we meant it to be? Pure: no stick, no clock. See the module docstring.
-    predicted_s None (control's scrub entry plans its own presses): only the target band applies.
+    predicted_s given (join.plan_join): within margin_s of it, and within target_gross_s of the target (gross misses
+    only: the nearest YouTube TV step can sit 8.4 s from the target). predicted_s None (control's scrub entry plans
+    its own presses, the re-probe): only the target band applies.
     read_adds_s: how far the measuring read itself pushed the stick back (the YouTube TV label probe freezes the
     picture ~7.5 s and its reading INCLUDES that: Nick's Nov 7 run, planned 71.7 without it, read 79.52). The TARGET
     is moved by it before comparing; predicted_s already includes it (join.plan_join, JoinPlan.read_s)."""
@@ -153,8 +159,9 @@ def verify(app: str, target_s: float, measured_s: float | None, predicted_s: flo
     if m <= float(wcfg(cfg, "min_behind_s")) or m > float(wcfg(cfg, "max_s")) + float(wcfg(cfg, "over_s")):
         v.status = "out_of_range"
         v.reason = f"read {m:.1f}s behind live: the live edge or a runaway, not a buffer"
-    elif (predicted_s is not None and abs(m - pred) > float(wcfg(cfg, "margin_s", a))) \
-            or abs(m - float(target_s) - adds) > float(wcfg(cfg, "target_band_s", a)):
+    elif (abs(m - pred) > float(wcfg(cfg, "margin_s", a)) or abs(m - float(target_s)) > float(wcfg(cfg, "target_gross_s", a))
+          if predicted_s is not None else
+          abs(m - float(target_s) - adds) > float(wcfg(cfg, "target_band_s", a))):
         v.status = "off_target"
         v.reason = f"landed {m:.1f}s, planned {pred:.1f}s with the read (target {float(target_s):.0f}s)"
     else:

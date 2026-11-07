@@ -654,7 +654,8 @@ join:                      # [Join API] put a HIDDEN stick a chosen time behind 
   watchdog:                # [join watchdog, Nick Nov 7 item 1] verify every entry on the label / timecode (join_watchdog.py)
     enabled: false         # OFF: control's scrub entry and watched_join check it
     margin_s: {youtubetv: 6, prime: 4}            # |read - predicted| allowed (9 label runs: -4.4..+4.9; Prime +-1-2)
-    target_band_s: {youtubetv: 10.5, prime: 5}    # |read - target| allowed (YouTube TV lands on 15 s steps)
+    target_band_s: {youtubetv: 10.5, prime: 5}    # |read - target| allowed when there is no plan (control, re-probe)
+    target_gross_s: {youtubetv: 20, prime: 8}     # with a plan: |read - target| only for gross misses (16.8 s steps)
     min_behind_s: 5        # a reading at or below this is the live edge, not a buffer
     over_s: 15             # a reading past max_s + this is a runaway / misread
     max_reseeks: 1         # then fall back

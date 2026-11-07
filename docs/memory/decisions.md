@@ -1252,3 +1252,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   needs the depth to leave a separate band, new `join.drift.max_over_s` **{youtubetv: 20, prime: 10}** (deeper than
   target + that, or shallower than target - target_band_s). Before, any read past target +- 10.5 s re-entered, so a +6 s
   landing re-entered after every first read. Control now spends the read's measured wall time from the budget. Flags off.
+- 2026-11-07 (Nick's #405 sweep 14:03Z, 16.8 s per LEFT: T120 plans k=5 -> 112.5, landed 112.0 / 113.6, both re-seeked
+  to live): with a plan, the watchdog verdict is |read - predicted| <= margin_s (6 YTTV, 4 Prime) plus a gross target
+  check, new `join.watchdog.target_gross_s` **{youtubetv: 20, prime: 8}** (nearest step up to 8.4 s from the target;
+  T30's one-LEFT floor lands ~46 s). Without a plan (control's scrub entry, the re-probe) target_band_s still applies.
+  Flags off.
