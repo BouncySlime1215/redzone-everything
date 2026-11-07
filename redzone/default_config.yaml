@@ -564,7 +564,9 @@ yttv_seek:                 # [YTTV scrub buffer, item 1] enter the time-shift bu
   key_gap_s: 0.35          # between LEFT presses
   settle_s: 4              # after the commit the player must report PLAYING within this (its state only)
   poll_s: 0.25             # how often the player is read while it settles
-  overlay_wait_s: 0.8      # after CENTER, wait this long before reading the overlay
+  overlay_wait_s: 1.3      # after CENTER or a LEFT, wait this long before reading the overlay (live Nov 6: 0.8 too short)
+  open_tries: 4            # probe LEFT, no scrub label = close, reopen, retry; fail closed after this many (tune banner)
+  reopen_wait_s: 1.5       # between closing and reopening the overlay
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true

@@ -194,3 +194,29 @@ def test_live_banner_after_a_tune_is_closed_before_the_scrub():
 
     r = run(s, 60.0, read_overlay=read)
     assert r.ok and r.committed and r.presses == 4, r
+
+
+def _misses_probe_once(s):
+    base, seen = reader(s), []
+
+    async def read(st):
+        seen.append(1)
+        return None if len(seen) == 2 else await base(st)   # the probe landed but OCR missed its label
+    return read
+
+
+def test_a_blind_probe_close_makes_the_delay_unknown():
+    """The CENTER that closes an unread probe can commit that LEFT: the stick ends 75 s back, not the 60 s estimate."""
+    s = FakeYTTV()
+    r = run(s, 60.0, read_overlay=_misses_probe_once(s))
+    assert s.committed_back == 75.0
+    assert r.ok and r.committed and r.behind_live_s is None and r.behind_s is None and "unknown" in r.reason
+
+
+def test_a_blind_probe_close_is_fine_with_a_label_read():
+    s = FakeYTTV()
+
+    async def label(_s):
+        return 75.2
+    r = run(s, 60.0, read_overlay=_misses_probe_once(s), read_behind=label)
+    assert r.ok and r.measured and r.behind_s == 75.2

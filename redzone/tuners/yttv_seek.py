@@ -253,6 +253,7 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     # has the CC button), but keys do nothing there. The scrub label appears only after a LEFT lands on the bar, so
     # LEFT is the probe: no label means nothing moved, so close, reopen and probe again. Fail closed after open_tries.
     before = None
+    blind_closes = 0      # CENTERs sent after a LEFT whose result we could not read: each may have committed a step
     for attempt in range(int(_cfg(cfg, "open_tries"))):
         opened = await read_overlay(stick)
         if opened is not None and opened.row_focused:
@@ -269,6 +270,7 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
                 break
             before = None
             res.presses = 0
+            blind_closes += 1
             await _keys(stick, "KEYCODE_DPAD_CENTER", 1, 0.0)
             await asyncio.sleep(float(_cfg(cfg, "reopen_wait_s")))
         await _keys(stick, "KEYCODE_DPAD_CENTER", 1, 0.0)
@@ -321,5 +323,14 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
         if got is not None:
             res.behind_live_s, res.measured = float(got), True
             res.steps.append(f"label: {got:.1f}s behind live")
+    if blind_closes and not res.measured:
+        # A probe LEFT may have landed on the bar with the label missed by OCR; the CENTER that closed it then
+        # committed up to blind_closes x step_s we did not count. Without a label read the delay is unknown: the
+        # caller must not flip on a guess (Rule #1), so report None rather than an estimate that may be short.
+        res.behind_live_s = None
+        res.steps.append(f"{blind_closes} blind close(s): up to {blind_closes * step:.0f}s uncounted")
+        res.ok = True
+        res.reason = "behind-live unknown: a probe close may have committed; needs a label read"
+        return res
     res.ok = True
     res.reason = "measured by the label" if res.measured else "estimated from the knob (no label read)"

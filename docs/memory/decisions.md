@@ -1064,3 +1064,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   hidden-stick model (#374).** Measured only (a60c9cbd scrub spec): ready keys 10 s + read 8 s after the tune, lands
   15 N + 15 s behind live (B75 measured, B90 extrapolated). Both arms must pass. A pass is not a flip card: RC8 waits on
   a live stick test of a held scrub, per Nick.
+- 2026-11-07 (overseer's live hidden-stick runs, #377): `yttv_seek` follows the stick. After a tune a LIVE/title banner
+  looks like the overlay (it has CC too) and keys do nothing, and the scrub label shows only after a LEFT lands on the
+  bar, so the first LEFT is the probe: no label = close, reopen, retry, fail closed after `open_tries: 4`
+  (`reopen_wait_s: 1.5`, `overlay_wait_s` 0.8 -> 1.3). Live 3 of 3 entered at 60 s. A close after an unread probe may
+  commit that step, so then behind-live is reported unknown (None) unless the label reader measured it. Still OFF.
