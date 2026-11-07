@@ -554,6 +554,18 @@ redzone_mode:              # whip-around like NFL RedZone (scoring/drive.py; dec
   heat_points: 0           # NFL game score lift per unit of heat. 8 cost big plays and your-team plays on the NFL scorecard
   dead_damp: 0             # share of score lost to punt-fest signs. 0.25 cost big plays on the NFL scorecard
 
+yttv_seek:                 # [YTTV scrub buffer, item 1] enter the time-shift buffer on the HIDDEN YouTube TV stick by
+                           # scrubbing the player overlay (CENTER, LEFT x N, CENTER; overseer Nov 6: 7/7 held, pause
+                           # doesn't). OFF until the switch path (item 4) and a hidden-stick night prove it.
+  enabled: false
+  step_s: 15               # one LEFT on the focused bar moves the knob this far back (measured Nov 6)
+  max_back_s: 150          # never scrub further (ACC Network stopped near 2.5 min behind)
+  step_tol_s: 4            # the knob label must move N x step_s within this, or the scrub isn't committed
+  key_gap_s: 0.35          # between LEFT presses
+  settle_s: 4              # after the commit the player must report PLAYING within this (its state only)
+  poll_s: 0.25             # how often the player is read while it settles
+  overlay_wait_s: 0.8      # after CENTER, wait this long before reading the overlay
+
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true
   yours_first: true        # your team's missed big plays: replayed before other games' and over ordinary live play

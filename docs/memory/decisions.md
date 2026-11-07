@@ -1052,3 +1052,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   30-90 s pauses were back near live 20-30 s after resume, 120 s reset to 0, also with auto-switching OFF (so not
   STK-05). No seek path works yet. The EXP-601 grader keeps its registered defaults; no refreeze, no runs. EXP-601
   itself assumed a held stick stays held, which is now unproven, so its FAIL is if anything optimistic for RC8.
+- 2026-11-07 (Nick's Nov 6 10:15 PM order, item 1; overseer's scrub-buffer spec a60c9cbd): new `yttv_seek.*` group,
+  **enabled false**. `redzone/tuners/yttv_seek.enter_buffer` puts a HIDDEN YouTube TV stick N x 15 s further behind
+  by scrubbing the overlay (CENTER, LEFT x N, CENTER), because pause does not hold a buffer and rewind keys do not
+  seek (Nov 6 stick tests). It presses nothing unless the stick is hidden, YouTube TV is in front and playing; no
+  LEFT unless the overlay shows the bar focused (scrub label, no row button focused: the #356 guard); no commit
+  unless the knob label moved N x step_s +- step_tol_s; on any doubt it re-links to live. Behind-live comes from
+  the label reader (item 2) or the knob estimate, never media_session (wrong after a seek). Frames are deleted
+  as soon as they are read. The switch path that calls it is item 4's.
