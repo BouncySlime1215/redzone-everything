@@ -21,6 +21,7 @@ from redzone.reel import REEL_DIR
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
 from redzone.config import Config, ConfigError, for_league
 from redzone.control import Controller, Outcome
+from redzone.decider import whistle
 from redzone.decider.decider import REDZONE, REEL, Candidate, Decider, Decision, FocusMode, Missed, State
 from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
                                    leave_gate, leave_window, screen_evidence)
@@ -1581,7 +1582,8 @@ class Engine:
             if time.time() < d.at + float(getattr(d, "defer_s", 0.0) or 0.0):
                 return False   # [EXP-803 A1] the break's tail: cut at the planned moment, not before
             return self._entry_valid(d, target) and (time.time() >= replay_exit if replay_exit is not None
-                                                     else self.safe_to_leave(before, required_s=8.0))
+                                                     else self.safe_to_leave(before, required_s=8.0)) \
+                and self._flip_lands_whistle(d, target)
         self.control.submit(target, back, done, may_cut=may_cut,
                             replay_id=d.replay.pid if d.replay else None,
                             entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0,
@@ -1627,6 +1629,26 @@ class Engine:
         self.control.cancel_pending()
         done(Outcome(False, None, age,
                      f"switch timed out after {limit:.0f}s; playback not confirmed", False))
+
+    def _flip_lands_whistle(self, d: Decision, target: str | None) -> bool:
+        """[EXP-610] On the scrub path (the hidden stick seeks B s behind live before the flip), a basketball entry
+        in a whistle-timed league (decider.entry.hold_only) flips only while the destination's DELAYED picture is at
+        a clock-stopped dead ball (redzone/decider/whistle.py: lane 3's clock truth, +- decider.entry.whistle_band_s).
+        The decider timed the whistle before the scrub; the scrub takes 20-40 s, so without this the flip landed
+        wherever the picture was (Nov 7 finding). Off the scrub path, or another league: no change. The flip gives
+        up after MAX_SAFE_WAIT_S like any other and the decider picks again."""
+        if d.action != "switch" or not target or not self.control._scrub_wanted(target):
+            return True
+        g = self.merger.games.get(d.target or "")
+        lg = g.league.base.value if g is not None else ""
+        if lg not in whistle.WHISTLE_LEAGUES or lg not in (self.cfg.get("decider.entry.hold_only") or []):
+            return True
+        tl = self.decider.timelines.get(d.target or "")
+        if tl is None:
+            return False   # no play-by-play: no clock-stopped moment to prove
+        a = time.time() - self.delays.get(target).mu
+        return whistle.clock_stopped(sorted(tl.clock_events), a,
+                                     band=float(self.cfg.get("decider.entry.whistle_band_s", 3.0) or 0.0))
 
     def _entry_valid(self, d: Decision, target: str | None) -> bool:
         """Refresh the destination just before any visible mutation, not just at planning time."""
