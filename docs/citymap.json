@@ -3765,6 +3765,7 @@
     "redzone/lab/night/run.py",
     "redzone/recorded.py",
     "redzone/tuners/adb.py",
+    "redzone/tuners/prime_pause.py",
     "redzone/tuners/screen_prompts.py",
     "redzone/tuners/tuners.py",
     "redzone/tuners/yttv_label.py",
@@ -4174,6 +4175,7 @@
     "scripts/multiview_probe.py",
     "scripts/prime_flip_probe.py",
     "scripts/prime_multiview_probe.py",
+    "scripts/prime_pause_try.py",
     "scripts/prime_search_trial.py",
     "scripts/providers_check.py",
     "scripts/rz.py",
@@ -4236,6 +4238,25 @@
    ],
    "owner": "SWITCHING",
    "role": "Prime Video NBA multiview as a switch path (SWITCHING).",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/prime_pause.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/screen_ocr.py",
+    "redzone/tuners/yttv_seek.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/prime_pause_try.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[Prime buffer] Put a HIDDEN Prime Video stick a set time behind live by pausing it.",
    "serves": [
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -4428,6 +4449,7 @@
    "kind": "module",
    "outputs": [
     "redzone/control.py",
+    "redzone/tuners/prime_pause.py",
     "redzone/tuners/yttv_label.py",
     "scripts/yttv_scrub_try.py"
    ],
@@ -5738,6 +5760,20 @@
     "STK-04"
    ]
   },
+  "scripts/prime_pause_try.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/tuners/adb.py",
+    "redzone/tuners/prime_pause.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Run prime_pause.enter_buffer_pause once on the HIDDEN Prime stick and print the result row.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/prime_search_trial.py": {
    "contracts": [],
    "inputs": [
@@ -6292,10 +6328,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 344,
+  "modules": 346,
   "orphans": 14,
-  "unowned": 180,
-  "untagged": 285
+  "unowned": 181,
+  "untagged": 286
  },
  "version": 1
 }
