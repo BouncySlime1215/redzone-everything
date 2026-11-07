@@ -71,6 +71,7 @@ def test_yttv_join_sends_the_planned_presses_and_logs_the_error(tmp_path):
     row = json.loads(log.read_text().splitlines()[-1])
     assert row["stick"] == "stickB" and row["channel"] == "espn" and row["presses"] == 3 and row["lefts"] == 2 and row["error_s"] == 4.9 and row["read_s"] == 7.5
     assert not any(":" in str(v) and "." in str(v) for v in row.values() if isinstance(v, str))   # no address
+    assert "RIGHT probe" in row["steps"] and "LEFT x2" in row["steps"]   # the trace of what the helper did
 
 
 def test_yttv_join_without_a_label_is_never_a_measurement(tmp_path):

@@ -128,7 +128,10 @@ class JoinResult:
         d = {"ts": round(time.time(), 1), **{k: v for k, v in asdict(self.plan).items()},
              "ok": self.ok, "measured_s": self.measured_s, "estimate_s": self.estimate_s, "error_s": self.error_s,
              "pred_error_s": self.pred_error_s, "reason": self.reason[:160], "took_s": round(self.took_s, 2),
-             "verdict": self.verdict}
+             "verdict": self.verdict,
+             # [Nick's sweep, Nov 7 14:03Z: a T30 'no scrub label after the LEFT' with no trace] the helper's own steps
+             # (key names, labels in s, overlay seconds; never an address), ':' dropped so no step reads like host:port
+             "steps": " | ".join(str(x).replace(":", "") for x in self.steps)[:400]}
         d.update(extra)
         return d
 
