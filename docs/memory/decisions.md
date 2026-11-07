@@ -1134,3 +1134,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-07 (integrator, EXP-607 read): **The EXP-605 resync failure was a sim artifact (resync mid-play 19.0 -> 7.7
   per run with Prime pinned at its edge), but NBA stays FAIL:** clock-truth adds 1-2 on two seeds and the primary CI
   touches 0 on both harnesses. EXP-608 (Prime by pause) is the next read.
+- 2026-11-07 (Nick, POR@LAL on the hidden stick): on a live game's Prime detail page the first CENTER only wakes
+  the nav; focus needs one move, then a second CENTER starts it ("Watch", not "Watch Live"). Two switches aborted
+  "playback not confirmed" that night. New flag `tuners.prime_wake_nav` (default OFF) + `tuners.prime_wake_move_key`
+  (default DPAD_DOWN, only the four directions): one move + one CENTER, only on a screen OCR'd as the page itself,
+  never on the Watch Live / Resume panel, a loading stream or a player. Nick flips it after
+  scripts/prime_start_probe.py starts every try on the hidden stick.

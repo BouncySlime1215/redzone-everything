@@ -472,6 +472,9 @@ tuners:                    # per-app switch paths
   prime_tiles: 3           # games in one Prime multiview (1 main + 2 on the right)
   prime_tile_s: 1.0        # seconds for a tile switch, until data/prime_multiview_keys.json has timings
   prime_tile_p90_s: 2.0    # ...and its deadline bound
+  prime_wake_nav: false    # Prime detail page: first CENTER only wakes the nav -> move focus once, CENTER
+                           # again (Nov 7, POR@LAL). Off until Nick's hidden-stick run starts 2/2 games
+  prime_wake_move_key: KEYCODE_DPAD_DOWN   # the one focus move (DOWN/RIGHT/UP/LEFT only; else no move)
 autofix:                   # the watchdog files problems it can't fix as GitHub issues for Claude (docs/auto-fix.md)
   enabled: true            # kill switch on the Mac side (the repo variable AUTOFIX_ENABLED=false stops the GitHub side)
   max_per_day: 3           # at most this many issues a day

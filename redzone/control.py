@@ -60,7 +60,7 @@ from redzone import config
 from redzone.channels import ChannelMap
 from redzone.tuners.adb import STICK_HUNG, Stick, adb_available, playback_ready, same_stream
 from redzone.tuners import prime_multiview as pmv
-from redzone.tuners.tuners import TUNERS, PrimeMultiviewTuner, TuneResult, channel_matcher
+from redzone.tuners.tuners import TUNERS, PrimeMultiviewTuner, PrimeTuner, TuneResult, channel_matcher
 from redzone.tv import SamsungTV
 
 log = logging.getLogger(__name__)
@@ -1466,6 +1466,10 @@ class Controller:
                               screen_changed=False)
         self._tuned_on = stick.host
         self.tuned_at[stick.host] = time.time()
+        if isinstance(tuner, PrimeTuner):
+            # tuners.prime_wake_nav (off): the detail page's first CENTER only wakes the nav (Nov 7)
+            tuner.wake_nav_fix = bool(self.cfg.get("tuners.prime_wake_nav", False))
+            tuner.wake_move_key = str(self.cfg.get("tuners.prime_wake_move_key", "KEYCODE_DPAD_DOWN"))
         res = await tuner.tune(stick, ref, target, **({"may_cut": may_cut} if may_cut is not None else {}))
         if not res.ok and br is not None and br.state != "closed" and not res.error.startswith(STICK_HUNG):
             # The tune died because the stick hung, not because of the channel: say so, so the

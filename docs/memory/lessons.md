@@ -360,3 +360,6 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   behind live). On a stick scrubbed 60 s back that turns the believed delay 60 s too short: every cut would plan the
   dead ball a minute early. Lesson: a "reset to safe defaults" must keep what was MEASURED about this tune (its
   behind_live), and only throw away what was guessed.
+- 2026-11-07 (Prime start): the press-through assumed the detail page opens with its play button focused. Live
+  pages can open with focus asleep: the first CENTER only wakes the nav, so "two blind presses" never started the
+  game. Lesson: a blind key path must be checked against the screen it lands on after EACH press, not only the first.
