@@ -854,6 +854,7 @@ delay:                     # seconds your screen runs behind real life, per app;
       keep: 6              # median of the newest this many reads
       band_s: 10           # a read further than this from the prior is a misread (skipped, logged)
       max_label_gap_s: 120 # (capture - label) must sit this close past a :00/:30 boundary, else no boundary start
+      boundary_s: 1800     # EPG programs start on the :00 / :30
       after_tune_s: 2      # wait after the fresh tune before CENTER
       overlay_wait_s: 1.3  # after CENTER / RIGHT, wait this long before the screencap
   self_calibrate:          # [self-calibrating doubt] stated doubt learned from break-anchor innovations (NoiseCal), OFF

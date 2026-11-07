@@ -50,6 +50,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "delay.edge_prior.refresh.keep": (1, 50),
     "delay.edge_prior.refresh.band_s": (1, 30),
     "delay.edge_prior.refresh.max_label_gap_s": (10, 600),
+    "delay.edge_prior.refresh.boundary_s": (900, 3600),
     "delay.edge_prior.refresh": (0, 60),
     "delay.edge_prior.prior": (0.2, 180),
     "replay": (0, 7200),

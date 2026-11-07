@@ -35,8 +35,6 @@ from redzone.tuners import yttv_label
 
 log = logging.getLogger("redzone.yttv_edge_probe")
 
-BOUNDARY_S = 1800.0          # EPG programs start on the :00 / :30
-
 
 @dataclass
 class EdgeRead:
@@ -63,12 +61,19 @@ class EdgeRead:
 
 
 def edge_delay(cap_wall: float, label_s: float, *, prog_start: float | None = None,
-               max_gap_s: float = 120.0, boundary_s: float = BOUNDARY_S) -> tuple[float | None, float | None, str]:
+               max_gap_s: float | None = None, boundary_s: float | None = None
+               ) -> tuple[float | None, float | None, str]:
     """(delay_s, program start, 'epg' | 'boundary') from one live-edge label read.
 
     delay = (cap_wall - start) - label_s. With the EPG window read (prog_start) that start is used; otherwise the
     :00/:30 boundary just before cap_wall - label_s (Nick's rule). A result outside [0, max_gap_s] is not a live
-    edge on a program that started on the boundary (a 7:10 tip, a misread): (None, start, ...) and it is skipped."""
+    edge on a program that started on the boundary (a 7:10 tip, a misread): (None, start, ...) and it is skipped.
+    Defaults: delay.edge_prior.refresh.max_label_gap_s / boundary_s (EPG programs start on the :00 / :30)."""
+    from redzone import config
+    if max_gap_s is None:
+        max_gap_s = float(config.default("delay.edge_prior.refresh.max_label_gap_s"))
+    if boundary_s is None:
+        boundary_s = float(config.default("delay.edge_prior.refresh.boundary_s"))
     if not (math.isfinite(cap_wall) and math.isfinite(label_s)) or label_s < 0:
         return None, None, ""
     if prog_start is not None:
@@ -175,7 +180,8 @@ class EdgeProbe:
             return EdgeRead(st if st not in ("ok", "") else "no_label", app, channel, cap_wall=read.cap_wall if read
                             else 0.0, keys=keys, detail="no label read: skipped")
         delay, start, src = edge_delay(read.cap_wall, float(read.label_s), prog_start=read.prog_start,
-                                       max_gap_s=float(self._c("max_label_gap_s", 120)))
+                                       max_gap_s=float(self._c("max_label_gap_s", 120)),
+                                       boundary_s=float(self._c("boundary_s", 1800)))
         if delay is None:
             return EdgeRead("no_boundary", app, channel, label_s=read.label_s, prog_start=start, start_from=src,
                             cap_wall=read.cap_wall, keys=keys,
