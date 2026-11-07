@@ -491,6 +491,9 @@ tuners:                    # per-app switch paths
   prime_tiles: 3           # games in one Prime multiview (1 main + 2 on the right)
   prime_tile_s: 1.0        # seconds for a tile switch, until data/prime_multiview_keys.json has timings
   prime_tile_p90_s: 2.0    # ...and its deadline bound
+  relink_gap_s: 0          # [Nick Nov 7 11:50: two tunes back to back failed 1/10 "video never started", slow 2/10;
+                           # a 3 s gap fixed the delay probe, #408] wait this long between the reset tune and the tune
+                           # back (control's reset through another channel, the watchdog relink, the canary). 0 = off
   yttv_local_search: false # ABC/CBS/FOX/NBC locals by YouTube TV search (WRAL, ABC 11, CBS 17, FOX 50): channel
                            # page -> Select, accepted only on a media-session subtitle naming the station AND a
                            # live playhead. fox/cbs Sunday Ticket mirror codes are skipped except on Sundays (Nov 7)

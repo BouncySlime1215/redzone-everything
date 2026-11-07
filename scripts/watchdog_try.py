@@ -10,6 +10,7 @@ YouTube TV: start with the stick PLAYING <channel> at the live edge (tune anothe
 LabelProbe is armed there, so the read after the commit is MEASURED. A re-seek / fallback relinks by deep link
 through --reset (default: any other channel in data/channels.json) and back to <channel> (#391: a same-channel link
 does not reset a stick that is behind).
+--gap=S: wait S seconds between the reset tune and the tune back (tuners.relink_gap_s; Nick: 3 s fixed 1/10 fails).
 --reprobe: on an unmeasured committed join, read the label once more before falling back (join.watchdog.
 reprobe_unmeasured; adds ~7.5 s behind).
 --drift-min=M: after a verified join, keep the drift monitor running M minutes (reads only when due: first after
@@ -26,7 +27,7 @@ from redzone.tuners.adb import Stick
 
 
 async def main(host: str, app: str, target: float, channel: str, reset: str, drift_min: float, first_s: float,
-               reprobe: bool = False):
+               reprobe: bool = False, gap_s: float = 0.0):
     stick = Stick(host=host)
     if not await stick.connect():
         print(json.dumps({"error": "stick not connected", "state": stick.state}))
@@ -67,6 +68,8 @@ async def main(host: str, app: str, target: float, channel: str, reset: str, dri
                                   "steps": r.steps[-6:]}))
                 if not r.ok:
                     return False
+                if ch == other and gap_s > 0:
+                    await asyncio.sleep(gap_s)    # tuners.relink_gap_s: back-to-back tunes failed 1/10 (Nick Nov 7)
             return bool(probe.arm(stick)) if probe else True
 
         probe = LabelProbe()
@@ -102,4 +105,5 @@ if __name__ == "__main__":
     a = [x for x in sys.argv[1:] if not x.startswith("--")]
     opt = {x.split("=", 1)[0][2:]: x.split("=", 1)[1] for x in sys.argv[1:] if x.startswith("--") and "=" in x}
     asyncio.run(main(a[0], a[1], float(a[2]), a[3] if len(a) > 3 else "", opt.get("reset", ""),
-                     float(opt.get("drift-min", 0)), float(opt.get("first-s", 300)), "--reprobe" in sys.argv))
+                     float(opt.get("drift-min", 0)), float(opt.get("first-s", 300)), "--reprobe" in sys.argv,
+                     float(opt.get("gap", 0))))
