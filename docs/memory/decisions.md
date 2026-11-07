@@ -1097,3 +1097,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   max_s: 90}. A locked/held game we can't reach (no channel, or a tune that failed) says why, retries after retry_s,
   and after max_s the lock and hold are dropped with a toast. Off by default: Nick flips it. Nov 6: a hold on the ACC
   Network game sat 96 s and 261 s on "switch: you locked this game" (617 instant "no channel" attempts). Rule #1 unchanged.
+- 2026-11-07 (overseer's live hidden-stick runs, #377): `yttv_seek` follows the stick. After a tune a LIVE/title banner
+  looks like the overlay (it has CC too) and keys do nothing, and the scrub label shows only after a LEFT lands on the
+  bar, so the first LEFT is the probe: no label = close, reopen, retry, fail closed after `open_tries: 4`
+  (`reopen_wait_s: 1.5`, `overlay_wait_s` 0.8 -> 1.3). Live 3 of 3 entered at 60 s. A close after an unread probe may
+  commit that step, so then behind-live is reported unknown (None) unless the label reader measured it. Still OFF.
