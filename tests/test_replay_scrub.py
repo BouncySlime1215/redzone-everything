@@ -167,3 +167,14 @@ def test_an_old_or_unpaused_park_is_never_rolled(scrub, age, state):
     c.parked = Parked("p1", "youtubetv:fox", time.time() - age, True)
     c.hidden.playback_state = state
     assert not run(c._unpark(c.hidden)) and "KEYCODE_MEDIA_PLAY" not in c.hidden.log
+
+
+def test_a_failed_replay_scrub_is_not_retried_for_a_while(scrub):
+    """CI's simulated night: a park that failed was re-tried every ~5 s on the same channel (a key storm)."""
+    c, calls, result = scrub
+    result["r"] = Res(ok=False, behind_s=None, reason="no label read")
+    assert not run(c._park(c.hidden, "youtubetv:fox", 60.0, "p1")) and len(calls) == 1
+    assert not run(c._park(c.hidden, "youtubetv:fox", 60.0, "p1")) and len(calls) == 1   # backed off: no keys
+    c._replay_scrub_backoff["youtubetv:fox"] = 0.0
+    result["r"] = landing(0.1)
+    assert run(c._park(c.hidden, "youtubetv:fox", 60.0, "p1")) and len(calls) == 2
