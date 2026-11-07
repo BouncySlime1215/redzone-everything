@@ -105,6 +105,9 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--hs-entry", choices=("hold", "scrub"), default="hold",
                     help="[EXP-603] how the hidden stick gets behind live, with --hidden-stick: hold (pause B s, "
                          "EXP-601) or scrub (overlay scrub + one label read, ~18 s; B must be 75 or 90)")
+    ap.add_argument("--hs-recheck", action="store_true",
+                    help="[EXP-604] with --hidden-stick wait: after the wait, the cut waits for the next dead ball "
+                         "on the delayed picture as the app sees it (#378's post-scrub _wait_safe)")
     ap.add_argument("--behind-live", type=float, default=None, metavar="S",
                     help="[time-shift buffer] hold every stream S s behind its live edge: the screen runs "
                          "26 s (a YouTube TV channel) + S behind real life, so the feed arrives S s earlier "
@@ -121,7 +124,7 @@ def knobs(a: argparse.Namespace) -> dict:
                 pretune_dist=getattr(a, "pretune_dist", False), real_seek=getattr(a, "real_seek", False),
                 feed_lag_model="measured" if getattr(a, "real_lag", False) else None,
                 **({"hidden_stick": a.hidden_stick, "hold_overrun": a.hold_overrun,
-                    "hs_entry": getattr(a, "hs_entry", "hold"),
+                    "hs_entry": getattr(a, "hs_entry", "hold"), "hs_recheck": getattr(a, "hs_recheck", False),
                     "behind_live_s": float(getattr(a, "behind_live", None) or 0.0)}
                    if getattr(a, "hidden_stick", None) else {}),
                 **feed_lag_knobs(getattr(a, "feed_lag", None), getattr(a, "behind_live", None)))
