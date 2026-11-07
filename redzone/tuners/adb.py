@@ -29,6 +29,7 @@ import zlib
 import time
 from dataclasses import dataclass, field
 
+from redzone import config as _config
 from redzone.platform.breaker import Breaker
 
 log = logging.getLogger(__name__)
@@ -41,7 +42,8 @@ MAX_REPLY = 32 << 20   # biggest reply we'll buffer (a full UI dump is ~100 KB)
 AWAKE_TTL_S = 60.0     # trust "the stick is awake" this long before asking again
 STICK_HUNG = "stick not responding"   # detail prefix while a stick's breaker is open (not the target's fault)
 CONNECT_RETRY_MAX_S = 9.0   # a failed connect is retried at the next ~10 s keepalive tick, never later
-SCRUB_TRUST_S = 1200.0   # [scrub entry] a scrubbed stream is trusted this long (Nick Nov 6: one 20-minute hold proven on TNT)
+# [scrub entry] a scrubbed stream is trusted this long (Nick Nov 6: one 20-minute hold proven on TNT)
+SCRUB_TRUST_S = float(_config.default("timing.behind_live_s.scrub_trust_s", 1200))
 
 # Catch-up reel player: VLC if it's installed (plays a URL straight away), else Fire TV's Silk browser.
 REEL_PACKAGES = ["org.videolan.vlc", "com.amazon.cloud9"]

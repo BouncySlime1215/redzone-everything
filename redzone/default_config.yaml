@@ -645,6 +645,7 @@ timing:
     scrub_read_s: 8        # one label read adds this much delay: ask B - this so the picture lands near B
     scrub_over_s: 15       # a label reading above max_s + this fails closed (ACC Network stopped near 150 s)
     scrub_retry_s: 120     # a target whose scrub failed isn't scrubbed again for this long
+    scrub_trust_s: 1200    # a scrubbed stream counts as on its target this long (one 20-min hold proven), then re-tunes
     rc8_fixed_s: 0         # a league pinned to this B instead of the formula (0 = the formula)
     adaptive:              # [Nick 9:35 AM] B = feed-lag p95 + sync error + tune/seek + margin, never 0
       floor_s: 15          # hard floor: a play is always known before it's shown (Nick: ~10-15 s; gate v28: 15 in RC8,
