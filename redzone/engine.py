@@ -113,6 +113,10 @@ class Engine:
             log.warning("could not reload delay calibrations: %s", e)
         # [edge model, Nick Nov 6 item 3] delay = D_edge(channel) + behind_live off the overlay label (delay.edge_model, OFF)
         self.delays.edge_cfg = lambda key: self.cfg.get(f"delay.edge_model.{key}")
+        # [edge prior, Nick Nov 7] YouTube TV's one live-edge delay (34.9 s, delay.edge_prior)
+        self.delays.edge_prior_cfg = lambda key: self.cfg.get(f"delay.edge_prior.{key}")
+        for t in list(self.delays.book):   # entries reloaded above were priced before the live config was attached
+            self.delays._refresh(t)
         self.decider = Decider(self.cfg, self.delays)
         data_dir = getattr(self.cfg, "user_path", None)
         # [auto sync] every channel's delay tracked by a Kalman filter from the automatic signals

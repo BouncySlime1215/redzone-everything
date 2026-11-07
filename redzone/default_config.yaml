@@ -310,9 +310,6 @@ decider:
   # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.89 s) + the 1 s settle.
   # Replaced by your own measured times as you use it (see switch_speed).
   switch_cost: {youtubetv: 5.5, prime: 27, espn: 7.5, hdmi_flip: 3}
-  leave:
-    dead_windows: []       # [whistle detection] also leave on the play-by-play's dead windows in these leagues
-    tune_s: 6              # ...and the window must outlast this tune margin (a visit can't come back inside it)
   return_tolerance: 5      # go back to the previous game if it's within this many points
   break_destination_min: 25   # anything at least this good beats watching a commercial
   chase_max_deficit: 15
@@ -334,6 +331,8 @@ decider:
   # time holds). Crunch time always holds. Nick, Nov 4: ATL up 12 with 9:09 left held WSH all night.
   mine_late_max_lead_wp: 1.0
   leave:                   # [cut rules, Nick Nov 4 3:15 PM] never JOIN mid-play; LEAVING mid-play only at low leverage
+    dead_windows: []       # [whistle detection] also leave on the play-by-play's dead windows in these leagues
+    tune_s: 6              # ...and the window must outlast this tune margin (a visit can't come back inside it)
     low_leverage: []       # leagues where a low-leverage moment may be left mid-play ([] = never: today's rule)
     sticky_closeness: 0.5  # down the stretch is sticky: a late game at least this close is never left mid-play
     # [EXP-212] break floors on top of screen.MIN_BREAK_S, per league ({stoppage: s}; {} = off). With the
@@ -712,6 +711,20 @@ delay:                     # seconds your screen runs behind real life, per app;
     default_sd_s: 3
     label_sd_s: 1.5        # one overlay label read
     edge_max_sd_s: 6       # tonight's at-the-edge estimate counts as the channel's D_edge only when this sure
+  edge_prior:              # [Nick Nov 7, hidden stick] YouTube TV's live edge measured to sub-second on 11 channels
+                           # (ESPN, ESPN2, FS1, SECN, ACCN, NBA TV, TNT, FOX 50, CBS 17, ABC 11, WRAL): 28 reads
+                           # 34.3-35.5 s, mean 34.9, sd ~0.35; reruns 34.96 / 35.09. ONE delay for every channel.
+    enabled: false         # [HOTFIX Nov 7 12:40, Nick's live "no switches": CBSSN sigma 15 > uncalibrated_sigma_s 8 kept
+                           # the leave gate shut] on (/api/settings, undoable): an unmeasured YouTube TV channel starts at
+                           # this prior; stated doubt keeps the 4 s floor and grows at most drift_cap_s
+    prior:
+      youtubetv: {mu_s: 34.9, sd_s: 0.6}
+    drift_cap_s: 2         # the prior's stated doubt grows at most this much over a night (4 -> 6 s, under
+                           # decider.uncalibrated_sigma_s 8); a stall still widens it
+    refresh:               # the probe refresh itself is NOT on this branch (PR #408); these only age probe reads
+      max_age_s: 10800
+      keep: 6
+      band_s: 10
   self_calibrate:          # [self-calibrating doubt] stated doubt learned from break-anchor innovations (NoiseCal), OFF
     enabled: false         # sims only so far (eval_sports --break-anchors); live needs the pool persisted across nights
     min_n: 20              # residuals (first anchor after a tune) before it speaks
