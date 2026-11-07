@@ -327,7 +327,7 @@ def test_control_drift_tick_rereads_the_hidden_stick_and_reenters_on_drift(scrub
 
 # ------------------------------------------------------------------- Nick's stick test, Nov 7 11:35Z (FAIL)
 def test_nicks_nbatv_run_counts_the_reads_own_seven_and_a_half_seconds():
-    """.181, NBA TV, target 75: planned 71.7, read 79.52 (off 7.82). The label probe's reading includes its own ~7.5 s
+    """Hidden stick, NBA TV, target 75: planned 71.7, read 79.52 (off 7.82). The label probe's reading includes its own ~7.5 s
     freeze, so that is a good join, not a re-seek."""
     old = jw.verify("youtubetv", 75, 79.52, 71.7)
     assert old.status == "off_target"                                   # what the stick test hit
