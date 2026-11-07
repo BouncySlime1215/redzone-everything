@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick: no more schedules. Recurring sweep removed. Build spec committed: docs/sync/2026-11-06-yttv-scrub-buffer-spec.md. Working YTTV directly now.
+Scrub also holds on the on-screen input (.150, 71-79 s). Double tap on a game forces a switch (14 s once, stalled 41 s once). App preload overwrites a scrubbed hidden stick; needs code. Preview score anchors now bound delay; first: at least about 26 s on ACC Network.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
