@@ -664,13 +664,12 @@ join:                      # [Join API] put a HIDDEN stick a chosen time behind 
   drift:                   # [drift monitor, Nick Nov 7 item 3] rare, budgeted re-reads of the HIDDEN stick only
     enabled: false
     first_s: 300           # first check 5 min after a verified join, then x backoff while it holds
-    backoff: 2
+    backoff: 3             # [Nick 14:11Z: it holds, read rarely] 5 min, 15 min, then every 20 min
     max_interval_s: 1200   # scrub_trust_s: the longest hold proven (20 min)
-    budget_s_per_h: 30     # wall seconds of reads per stick per rolling hour (4 YouTube TV reads)
-    drift_margin_s: 6      # |read - believed| above this re-anchors and checks sooner
-    read_cost_s: {youtubetv: 7.5, prime: 8}       # wall time of one read (Nick's soak: 7.5 s)
-    read_adds_s: {youtubetv: 7.5, prime: 0}       # the frozen overlay pushes YouTube TV back by this per read
-    max_over_s: {youtubetv: 20, prime: 10}        # re-enter only when deeper than target + this (landing + reads)
+    budget_s_per_h: 45     # wall seconds of reads per stick per rolling hour (~4 YouTube TV reads at ~10.5 s)
+    drift_margin_s: 3      # |read - expected| above this re-enters; the depth each read adds is planned (in expected)
+    read_cost_s: {youtubetv: 10.5, prime: 8}      # wall time of one read (Nick Nov 7: 9.8, 10.4, 10.1 s)
+    read_adds_s: {youtubetv: 8.5, prime: 0}       # the frozen overlay pushes YouTube TV back by this per read
   calib:                   # [item 5, Nov 7] self-calibration per channel and stick (redzone/tuners/join_calib.py). OFF
     enabled: false         # on: each plan uses the calibrated lead (YouTube TV) / bias (Prime) from data/joins.jsonl
     window: 20             # newest measured joins per key (app -> app:channel -> app:channel:stick)

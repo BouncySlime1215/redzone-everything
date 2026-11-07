@@ -30,9 +30,10 @@ costs ~7.5 s on YouTube TV (the overlay freezes the picture, so each read also A
 Nov 7: 82, 89, ... 119 s at 5-min reads) and needs the overlay, so reads are only ever taken on the HIDDEN stick.
     * reads are rare: first after first_s, then the interval grows x backoff up to max_interval_s while it holds;
     * every read's wall time is counted against budget_s_per_h (rolling hour); no budget -> no read;
-    * a read is compared with what we believe (last reading + the read's own cost on YouTube TV):
-          ok        within drift_margin_s, and still within target_band_s of the target
-          reenter   off target by more than the band (drifted, or the read itself pushed it too far back)
+    * a read is compared with what we believe (last reading + the read's own freeze, read_adds_s, on YouTube TV);
+      the depth reads add is planned (Nick 14:11Z), so only drift counts:
+          ok        |drift_s| <= drift_margin_s (3 s) and not past join max_s
+          reenter   drifted more than that, or the reads have pushed it past max_s
           snapped   at the live edge (<= min_behind_s): the buffer is gone (the plain-pause snap, Nov 6)
           unknown   no reading (program boundary resets the label, banner, OCR): NOT buffered until re-entered
     * reenter / snapped / unknown -> the caller re-enters the buffer off screen (control.label_stale -> _rescrub).
@@ -75,15 +76,14 @@ WATCHDOG_DEFAULTS = {
 DRIFT_DEFAULTS = {
     "enabled": False,
     "first_s": 300.0,          # first check 5 min after a verified join (the soak read every 5 min and held)
-    "backoff": 2.0,            # then 10, 20, ... min while it holds
+    "backoff": 3.0,            # [Nick 14:11Z: it holds, read rarely] then 15 min, then every max_interval_s
     "max_interval_s": 1200.0,  # never trust longer than this without a read (scrub_trust_s, the 20-min proof)
-    "budget_s_per_h": 30.0,    # wall seconds of reads per stick per rolling hour (4 YouTube TV reads)
-    "drift_margin_s": 6.0,
-    "read_cost_s": {"youtubetv": 7.5, "prime": 8.0},    # wall time of one read (budget)
-    "read_adds_s": {"youtubetv": 7.5, "prime": 0.0},    # ...and how much it pushes the picture back (frozen overlay)
-    # [Nick 13:53Z] depth band: re-enter only when the stick is deeper than target + this (landing + every read so
-    # far) or shallower than target - target_band_s. Drift itself is judged on drift_s, not on the target band.
-    "max_over_s": {"youtubetv": 20.0, "prime": 10.0},
+    "budget_s_per_h": 45.0,    # wall seconds of reads per stick per rolling hour (~4 YouTube TV reads at ~10.5 s)
+    # [Nick 14:11Z] the depth each read adds is PLANNED (it is in expected_s); only a drift beyond this re-enters.
+    # His rerun: +1.0, +1.7 s per read with read_adds 7.5 (= the freeze running ~8.5 s), the stick itself ~+0.5 s.
+    "drift_margin_s": 3.0,
+    "read_cost_s": {"youtubetv": 10.5, "prime": 8.0},   # wall time of one read (budget; Nick: 9.8, 10.4, 10.1 s)
+    "read_adds_s": {"youtubetv": 8.5, "prime": 0.0},    # ...and how much it pushes the picture back (frozen overlay)
 }
 
 
@@ -374,7 +374,6 @@ class DriftMonitor:
         self.totals["read_cost_s"] = round(self.totals["read_cost_s"] + cost, 2)
         expected = round(t.behind_s + float(dcfg(self.cfg, "read_adds_s", t.app)), 2)
         v = DriftVerdict("unknown", expected, None if measured_s is None else round(float(measured_s), 2))
-        band = float(wcfg(self.cfg, "target_band_s", t.app))
         if measured_s is None:
             v.reason = "no reading (program boundary, banner, OCR): not buffered until re-entered"
         else:
@@ -383,17 +382,11 @@ class DriftMonitor:
             t.drifts.append(v.drift_s)
             if m <= float(wcfg(self.cfg, "min_behind_s")):
                 v.action, v.reason = "snapped", f"read {m:.1f}s: back at the live edge"
-            elif m > t.target_s + float(dcfg(self.cfg, "max_over_s", t.app)) or m < t.target_s - band:
-                # [Nick 13:53Z] depth, not drift: every YouTube TV read pushes the stick ~7.5-10 s deeper, so a +6
-                # landing crossed the target band on its first read while holding at +1.3 s drift
-                v.action, v.reason = "reenter", (f"read {m:.1f}s outside depth {t.target_s - band:.0f}-"
-                                                 f"{t.target_s + float(dcfg(self.cfg, 'max_over_s', t.app)):.0f}s "
-                                                 f"(drift {v.drift_s:+.1f}s)")
             elif abs(v.drift_s) > float(dcfg(self.cfg, "drift_margin_s")):
-                # still near target but not where we believed: trust the reading, check again sooner
-                v.action, v.reason = "ok", f"drift {v.drift_s:+.1f}s, re-anchored"
-                t.behind_s, t.at, t.interval = m, now, float(dcfg(self.cfg, "first_s"))
-                t.next_at = now + t.interval
+                # [Nick 14:11Z] the depth the reads add is planned (in expected); only real drift re-enters
+                v.action, v.reason = "reenter", f"drift {v.drift_s:+.1f}s (read {m:.1f}s, expected {expected:.1f}s)"
+            elif m > float(wcfg(self.cfg, "max_s")):
+                v.action, v.reason = "reenter", f"read {m:.1f}s: deeper than join.max_s after {t.reads} reads"
             else:
                 v.action, v.reason = "ok", f"held (drift {v.drift_s:+.1f}s)"
                 t.behind_s, t.at = m, now

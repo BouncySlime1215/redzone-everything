@@ -1247,11 +1247,13 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Nick's #404 run 13:19Z (12/12 buffered, but ESPN2 re-probe 55.44 re-seeked to 88 s): the re-probe is judged on the
   target band only (target + half a read_s, +-10.5 s for YTTV), not the plan margin, because the empty first read's
   freeze may or may not have pushed the stick back. 55.44 and 65.83 for target 60 both pass. Flag still off.
-- 2026-11-07 (Nick's drift stick run 13:53Z: ESPN target 60 buffered at 66.14, first read 74.98, drift +1.34 s, read
-  cost 9.8 s, yet the monitor re-entered): drift reads are judged on drift_s (read - (landing + reads so far)); a re-entry
-  needs the depth to leave a separate band, new `join.drift.max_over_s` **{youtubetv: 20, prime: 10}** (deeper than
-  target + that, or shallower than target - target_band_s). Before, any read past target +- 10.5 s re-entered, so a +6 s
-  landing re-entered after every first read. Control now spends the read's measured wall time from the budget. Flags off.
+- 2026-11-07 (Nick's drift stick runs 13:53Z and 14:11Z, ESPN target 60: buffered 66.14 / 64.03, reads drifted +1.3,
+  +1.0, +1.7 s with a 7.5 s freeze assumed, reads took 9.8-10.4 s, yet the monitor re-entered: first on the target band,
+  then on target + 20 after two reads): **the depth the reads add is planned**. A drift read re-enters only when
+  |read - (landing + read_adds_s per read)| > `join.drift.drift_margin_s` **3** (was 6, re-anchor), past join max_s,
+  snapped or unread. `read_adds_s.youtubetv` 7.5 -> **8.5**, `read_cost_s.youtubetv` 7.5 -> **10.5**, `backoff` 2 -> **3**
+  (reads at 5, 20, then every 20 min), `budget_s_per_h` 30 -> **45**. Control spends the read's measured wall time.
+  Flags off.
 - 2026-11-07 (Nick's #405 sweep 14:03Z, 16.8 s per LEFT: T120 plans k=5 -> 112.5, landed 112.0 / 113.6, both re-seeked
   to live): with a plan, the watchdog verdict is |read - predicted| <= margin_s (6 YTTV, 4 Prime) plus a gross target
   check, new `join.watchdog.target_gross_s` **{youtubetv: 20, prime: 8}** (nearest step up to 8.4 s from the target;
