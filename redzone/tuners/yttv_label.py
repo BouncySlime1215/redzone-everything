@@ -69,7 +69,8 @@ class Obs:
 @dataclass(frozen=True)
 class LabelRead:
     status: str                       # ok | disabled | unsupported | capture_failed | ocr_failed |
-                                      # no_overlay | no_label | ambiguous | low_confidence | out_of_window
+                                      # no_overlay | banner | no_label | ambiguous | low_confidence |
+                                      # out_of_window
     cap_wall: float = 0.0             # epoch seconds, midpoint of the screencap
     label: str = ""                   # the matched time label only, e.g. '1:07:12'
     label_s: float | None = None      # playhead seconds since program start (knob offset applied)
@@ -149,6 +150,16 @@ def program_window(obs: Iterable[Obs], cap_wall: float, tz: dt.tzinfo | None = N
     return start, end
 
 
+_BANNER_WORDS = re.compile(r"^(?:LIVE|LIVI|LTVE|CC|HD|Multiview|\d*\s*Multiview|Networks|Episodes|More to watch)$",
+                           re.IGNORECASE)
+
+
+def is_banner(obs: Iterable[Obs]) -> bool:
+    """The post-tune LIVE/title banner or a button row is up, but no scrub time label: the scrubber is not
+    focused. Words only decide this; nothing is kept."""
+    return any(_BANNER_WORDS.match(o.text.strip()) for o in obs)
+
+
 def parse_label(obs: Iterable[Obs], cap_wall: float, *, knob_offset_s: float = 0.0,
                 tz: dt.tzinfo | None = None, min_conf: float = MIN_CONF) -> LabelRead:
     """Pure: OCR lines of one overlay frame -> LabelRead. knob_offset_s is added to the label when the
@@ -167,8 +178,11 @@ def parse_label(obs: Iterable[Obs], cap_wall: float, *, knob_offset_s: float = 0
         if s is not None:
             cands.append((o, s))
     if not cands:
-        return LabelRead("no_label" if start is not None else "no_overlay", cap_wall,
-                         prog_start=start, prog_end=end)
+        # Live Nov 6 (#377): after a tune a LIVE/title banner sits up 25+ s. It looks like the overlay (it even
+        # has CC) but the scrubber is not focused, keys do nothing and there is no label. Say so, so the seek
+        # path closes it, reopens and retries (LEFT is the probe), instead of treating it as "no overlay".
+        status = "banner" if is_banner(obs) else "no_label" if start is not None else "no_overlay"
+        return LabelRead(status, cap_wall, prog_start=start, prog_end=end)
     if len({s for _, s in cands}) > 1:
         return LabelRead("ambiguous", cap_wall, prog_start=start, prog_end=end,
                          detail=f"{len(cands)} time labels")
@@ -190,7 +204,10 @@ def parse_label(obs: Iterable[Obs], cap_wall: float, *, knob_offset_s: float = 0
 # ------------------------------------------------------------------------------- behind-live math
 def behind_from_pair(at_live: LabelRead, now: LabelRead, *, max_s: float = MAX_BEHIND_S) -> float | None:
     """Seconds `now` is behind the live head, from a read AT the live head and a later read.
-    Needs no program start; fails closed (None) across a program boundary or on a nonsense result."""
+    Needs no program start (live Nov 6: no program window is on screen with the scrub preview up), so this is
+    the method to use. The label only shows once a LEFT has landed on the bar, so the "at live" read is taken
+    with the knob one LEFT back: read it with knob_offset_s=15 (one uncommitted LEFT), and likewise for the
+    later probe read. Fails closed (None) across a program boundary or on a nonsense result."""
     if not (at_live.ok and now.ok) or now.cap_wall <= at_live.cap_wall:
         return None
     if at_live.prog_start is not None and now.prog_start is not None \
@@ -306,12 +323,21 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Manual, read-only: one overlay label read (no keys pressed). "
                                              "Open the overlay with the scrubber focused first.")
     ap.add_argument("--stick", required=True, help="adb host:port of the HIDDEN stick")
-    ap.add_argument("--knob-offset", type=float, default=0.0)
+    ap.add_argument("--knob-offset", type=float, default=0.0,
+                    help="seconds the knob sits before the playhead (15 = one uncommitted LEFT probe)")
+    ap.add_argument("--save", type=Path, help="write this read (numbers only) here: the at-live read")
+    ap.add_argument("--since", type=Path, help="an at-live read saved by --save: also print behind_live_s")
     args = ap.parse_args(argv)
     from redzone.tuners.adb import Stick
     stick = Stick(args.stick)
     r = asyncio.run(read_label(stick, enabled=True, knob_offset_s=args.knob_offset))
-    print(json.dumps(r.numbers()))
+    out = r.numbers()
+    if args.since:
+        live = LabelRead(**json.loads(args.since.read_text()))
+        out["behind_live_s"] = behind_from_pair(live, r)
+    if args.save and r.ok:
+        args.save.write_text(json.dumps(r.numbers()))
+    print(json.dumps(out))
     return 0 if r.ok else 1
 
 
