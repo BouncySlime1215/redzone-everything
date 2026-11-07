@@ -279,3 +279,61 @@ def test_unavailable_screen_backoff(scrub):
     c.cfg.update({"two_stick": {"unavailable_backoff_s": 900}})
     assert c._preload_backoff(res) == 900
     assert c._preload_backoff(TuneResult(False, "prime:x", 1.0, [], "video never started")) == ctl.PRELOAD_BACKOFF_S
+
+
+def test_label_probe_is_armed_and_shares_the_overlay_reader(scrub, monkeypatch):
+    """[label reader] with a LabelProbe wired, enter_buffer gets its read_overlay + read_behind and the stick is
+    armed at the live edge first (the probe there becomes the at-live anchor)."""
+    c, tuner, hid, calls, result, behind = scrub
+    seen = {}
+
+    class Probe:
+        armed = []
+
+        def arm(self, stick, behind_before_s=0.0):
+            self.armed.append(stick.host)
+            return not getattr(stick, "behind_on", None)
+
+        async def overlay_reader(self, stick):
+            return None
+
+        async def __call__(self, stick):
+            return 67.0
+    c.label_probe = Probe()
+    mod = sys.modules["redzone.tuners.yttv_seek"]
+    inner = mod.enter_buffer
+
+    async def spy(stick, seconds, **kw):
+        seen.update(kw)
+        return await inner(stick, seconds, **kw)
+    monkeypatch.setattr(mod, "enter_buffer", spy)
+    run(_preload(c, "youtubetv:fox"))
+    assert Probe.armed == ["b:5555"]
+    assert seen["read_overlay"] == c.label_probe.overlay_reader and seen["read_behind"] is c.label_probe
+
+
+
+def test_an_unarmed_probe_lets_the_scrub_run_unmeasured_and_fail_closed(scrub, monkeypatch):
+    """#391: arm() refuses a stick still behind on a target -> no read_behind is passed -> no measured reading."""
+    c, tuner, hid, calls, result, behind = scrub
+    seen = {}
+
+    class Probe:
+        def arm(self, stick, behind_before_s=0.0):
+            return False
+
+        async def overlay_reader(self, stick):
+            return None
+
+        async def __call__(self, stick):
+            raise AssertionError("never read when not armed")
+    c.label_probe = Probe()
+    mod = sys.modules["redzone.tuners.yttv_seek"]
+    inner = mod.enter_buffer
+
+    async def spy(stick, seconds, **kw):
+        seen.update(kw)
+        return await inner(stick, seconds, **kw)
+    monkeypatch.setattr(mod, "enter_buffer", spy)
+    run(_preload(c, "youtubetv:fox"))
+    assert "read_behind" not in seen and "read_overlay" not in seen

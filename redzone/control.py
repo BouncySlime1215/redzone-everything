@@ -300,6 +300,8 @@ class Controller:
         # [scrub entry] the overlay label reader (#375) as enter_buffer's read_behind (None = yttv_seek's own default)
         # and where a measured reading goes (engine.label_behind, #376: delay = D_edge(channel) + behind_live)
         self.read_behind: Callable[..., Any] | None = None
+        # [label reader] redzone.tuners.yttv_label.LabelProbe when timing.behind_live_s.label_reader is on (engine)
+        self.label_probe: Any = None
         self.on_label: Callable[[str, float, float | None, float], None] | None = None
         self.dead_ball: Callable[[str], bool] = lambda target: True   # [STK-06] engine: is target's game dead now?
         self._buffer_bad: dict[str, float] = {}                      # target -> when its hold went bad
@@ -3004,6 +3006,13 @@ class Controller:
             try:
                 from redzone.tuners import yttv_seek
                 kw = {"read_behind": self.read_behind} if self.read_behind is not None else {}
+                if self.label_probe is not None:
+                    # [label reader] one screencap feeds the focus guard and the label; the probe at the live edge
+                    # is the at-live anchor, and one read after the commit measures behind-live (yttv_label)
+                    if self.label_probe.arm(stick):
+                        kw = {"read_overlay": self.label_probe.overlay_reader, "read_behind": self.label_probe}
+                    # not armed (#391: the stick is still behind on a target) -> no read_behind: the scrub runs
+                    # unmeasured and is refused below (fails closed)
                 res = await yttv_seek.enter_buffer(stick, ask, cfg=self.cfg, pkg=pkg, still_hidden=still_hidden, **kw)
             except asyncio.CancelledError:
                 raise
