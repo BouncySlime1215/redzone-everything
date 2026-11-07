@@ -148,7 +148,7 @@ class FixtureStick:
         if not desc:
             return ""
         return (f"    package={self.packages['youtubetv']}\n"
-                f"      state=PlaybackState {{state={self.fx.get('media_state', 3)}, position=1000, buffered position=0, speed=1.0, "
+                f"      state=PlaybackState {{state={self.fx.get('media_state', 3)}, position={self.fx.get('positions', {}).get(self.playing, 1000)}, buffered position=0, speed=1.0, "
                 f"updated={int(self.clock() * 1000)}, actions=0}}\n"
                 f"      metadata: size=3, description={desc}\n")
 
