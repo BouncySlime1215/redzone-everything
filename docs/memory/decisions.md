@@ -1288,3 +1288,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Select alone from the search page 0/4): **new flag `tuners.yttv_local_search: false`**. On: abc/cbs/fox/nbc tune by search (ABC 11 / CBS 17 /
   FOX 50 / WRAL), accepted only on a media-session subtitle naming the station AND a live playhead (>= 30 min),
   else BACK; fox/cbs ST mirror codes skipped except on Sundays. Off: routing unchanged. Nick flips it.
+- 2026-11-07 (Nick 12:08 PM ET: "You can deploy whatever" / "You can do whatever you want"; overseer deployed 12:11:34):
+  **RC6.3.1 = a8bf14f on integration/release** (tree claude/live-b490-locals 8841ebd0 = the live dev build b490ab86 +
+  #406), live on the Mac, with `tuners.yttv_local_search` ON through the Mac's settings API (undo history; the
+  shipped default stays false). Reason: 8 of 16 CFB games on ABC/CBS/FOX/NBC locals today; the smallest change on top
+  of what was live (an RC6.3-based point release would have rolled back boundary_retries). The deploy's live-game gate
+  was bypassed once, with auto-switching paused.
