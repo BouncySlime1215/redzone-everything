@@ -34,7 +34,7 @@ from typing import Callable
 
 from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S, PLAY_LEN_S, DelayBook, Event, Gate,
                                     Timeline, break_on_arrival, catchable, final_play_aired, leave_gate,
-                                    resume_lead, resume_play)
+                                    leave_window, resume_lead, resume_play)
 from redzone.decider.cuts import EntryPlan, plan_entry
 from redzone.decider.playbooks import Safety
 from redzone.decider.scenarios import Scenarios
@@ -105,7 +105,9 @@ START_RETRY_MAX_S = 60.0
 # to the dead ball before the play we'd otherwise join mid-way, or after waiting for one. Only a
 # switch you made by hand goes straight in.
 ENTRY_EXEMPT = {"user", "resume", "skip"}   # resume/skip land on a planned frame of the same tune
-PICK_KEEPS = {"user", "crunch", "home", "must_see", "live"}   # [noggin PICK] app-only switch kinds
+PICK_KEEPS = {"user", "crunch", "home", "must_see", "live"}
+# [jump mode] switches the normal decider makes that the rotation never overrides (they already go at once)
+JUMP_KEEPS = {"user", "crunch", "ended", "start", "chase", "must_see", "drive", "replay", "resume", "skip"}   # [noggin PICK] app-only switch kinds
 ENTRY_SLACK_S = 2.0       # the tune's own timing doubt, on top of the delay's 2 sigma
 # Once the delay's doubt grows (sigma drifts up between calibrations) no landing fits a 30 s huddle
 # with the full margin: then centre it in the dead window with this much doubt. A miss here joins a
@@ -189,6 +191,7 @@ class Decision:
     rewind_s: float = 0.0     # [cut timing] land this far behind live (whole seek steps) on a dead ball
     cue: str = ""             # [seek model] "pause": the hidden stick cues the rewind before the flip
     defer_s: float = 0.0      # [EXP-803 A1] cut this long after the decision (a break's tail inside one tick)
+    jump: dict | None = None  # [jump mode] why this jump: numbers and short codes only (data/jumps.jsonl)
 
 
 @dataclass
@@ -320,6 +323,10 @@ class Decider:
         self.lock_retry_at = 0.0
         self.lock_why = ""
         self.lock_expired: str | None = None   # gave up on this locked game: the engine releases it
+        # [jump mode, Nick Nov 7] rotation over every live game: when each game was last left, and why the
+        # rotation didn't jump on the ticks since the last jump (short codes, for data/jumps.jsonl)
+        self.jump_left_at: dict[str, float] = {}
+        self.jump_holds: Counter = Counter()
 
     # ----- inputs -----------------------------------------------------------
 
@@ -425,6 +432,15 @@ class Decider:
         d = self._time_entry(d, cands, now, home_before)
         d = self._dwell(d, cands, now, home_before)
         d = self._crunch_floor(d, d0, cands, now, home_before)
+        j = self._jump(d, cands, now)
+        if j is not None:
+            self.home_break_visit, self.home_return_at = None, None   # a rotation has no home to go back to
+            d = j
+        elif self._jump_owns(d, cands):
+            # [jump mode] the rotation owns every optional switch (a break visit, the way home, a better game):
+            # the normal decider's would fight it. Its hard switches (crunch, a finished game, a chase...) still go.
+            self.home_break_visit, self.home_return_at = None, None
+            d = Decision(now, "stay", self.current, f"jump mode: {d.reason}", d.state, d.gate, want=d.target)
         d = self._safe(d, cands, now, home_before)
         if not commit and d.action in ("switch", "replay"):
             # The simulator can commit synchronously. A real TV must confirm
@@ -2181,6 +2197,250 @@ class Decider:
                 nxt = max(nxt, start.lo + sure)
         return nxt + to_snap_air - now
 
+    # ----- [jump mode] --------------------------------------------------------
+    # Nick, Nov 7 12:52: "should be 4-5 switches every minute". The normal decider stays on the best game and
+    # leaves at safe breaks; jump mode is a rotation over every live tunable game instead. At each dead ball on
+    # the game on screen (the delay book, YouTube TV's 34.9 s edge prior when that flag is on, says when it is
+    # on screen) it flips to the game that's about to snap or just had a big moment, and no game keeps the
+    # screen for more than jump_mode.max_plays plays unless it's crunch time or a scoring drive inside the 20.
+    # Rule #1 is untouched: it leaves only at a strict dead ball (no low-leverage mid-play leave) and only
+    # picks a game whose picture comes up on a dead ball (jump_lands_dead, checked again at the flip).
+
+    def jump_on(self) -> bool:
+        return bool(self.cfg.get("jump_mode.enabled", False))
+
+    def _jump_league(self, x: Candidate | None) -> bool:
+        lgs = self.cfg.get("jump_mode.leagues") or []
+        return x is not None and (not lgs or x.scored.league.value in lgs)
+
+    def _jump_pool(self, cands: dict[str, Candidate]) -> dict[str, Candidate]:
+        """Every live tunable game the rotation may visit (its leagues, a timeline, not muted or stale)."""
+        u = self.user
+        return {gid: x for gid, x in cands.items()
+                if gid not in PSEUDO and x.target and not x.stale and gid not in u.muted and gid in self.timelines
+                and (x.scored.raw > 0 or x.scored.moment > 0 or x.scored.is_break) and self._jump_league(x)}
+
+    def _jump_hold(self, x: Candidate) -> str | None:
+        """Why the game on screen keeps the screen past its play budget (None: it doesn't)."""
+        s = x.scored
+        if s.crunch or s.crunch_now or s.lock in CRUNCH_LOCKS:
+            return "crunch"
+        if self.cfg.get("jump_mode.hold_rz_drive", True) and s.lock == "red zone drive" and not s.garbage:
+            return "rz_drive"
+        return None
+
+    def _jump_margin(self, d, now: float) -> float:
+        """Delay doubt each side of a jump's leave / landing: jump_mode.margin_sigmas x the delay's sigma
+        (2 = the rule every other entry uses)."""
+        return float(self.cfg.get("jump_mode.margin_sigmas", 2.0)) * d.current_sigma(now)
+
+    def _jump_gate(self, cur: Candidate, now: float, gid: str | None = None, required_s: float | None = None) -> Gate | None:
+        """[Nick Nov 7 1:05, "Rule #1 kept for JOINS"] May the rotation leave gid (default: the game on screen)?
+        The normal gate (official breaks, low-leverage leaves per decider.leave.low_leverage) or, in any jump
+        league, the play-by-play's dead window between plays: the feed lags the TV and goes quiet in the ads,
+        so a gate that waits for the data to 'cover' the screen almost never opens on the game on screen."""
+        gid = gid or self.current
+        tl = self.timelines.get(gid or "")
+        if tl is None:
+            return None
+        d = self.delays.get(cur.target or "unknown")
+        flip = float(self.cfg.get("jump_mode.flip_s", 3.2)) if required_s is None else required_s
+        if tl.dead.marks:
+            m = self._jump_margin(d, now)
+            until = tl.dead.dead_until(now - d.mu - m)
+            if until is not None and until >= now + flip - d.mu + m:
+                return Gate(True, "dead ball on screen (play-by-play)")
+        saved, self.current = self.current, gid
+        try:
+            return self._gate(cur, now)
+        finally:
+            self.current = saved
+
+    def jump_may_leave(self, gid: str | None, cands: dict[str, Candidate], now: float, required_s: float) -> bool:
+        """At the flip: the jump may cut away from gid now (the engine's may_cut for a jump)."""
+        x = cands.get(gid or "") or self._known.get(gid or "")
+        if not gid or gid in PSEUDO or x is None:
+            return True
+        g = self._jump_gate(x, now, gid=gid, required_s=required_s)
+        return bool(g and g.safe)
+
+    def _jump_plays_seen(self, gid: str, x: Candidate, now: float) -> int:
+        """Plays that started and finished airing on screen since we landed on gid."""
+        tl = self.timelines.get(gid)
+        if tl is None:
+            return 0
+        d = self.delays.get(x.target or "unknown")
+        plen = PLAY_LEN_S.get(tl.league, 0.0)
+        return sum(1 for e in tl.events if e.kind == "play" and e.play_kind != "kickoff"
+                   and e.lo + d.mu - plen >= self.since and e.seen + d.mu <= now)
+
+    def jump_lands_dead(self, gid: str, x: Candidate | None, now: float, cost: float | None = None) -> bool:
+        """Rule #1 for a jump: does gid's picture come up on a dead ball (not mid-play, not in an ad)? The
+        whole arrival, from the fastest flip to the target's cost plus jump_mode.land_dead_s, give or take the
+        delay doubt, must sit inside a play-by-play dead window (an open one only up to its shortest usual
+        length, cuts.FLOOR_S). No play-by-play dead windows: the target must be between plays on screen for
+        the whole switch (screen.leave_window). Never a rewind (jump_mode.allow_rewind is for later)."""
+        tl = self.timelines.get(gid)
+        if tl is None or x is None or not x.target:
+            return False
+        d = self.delays.get(x.target)
+        if cost is None:
+            cost = self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target)
+        if not math.isfinite(cost):
+            return False
+        if break_on_arrival(tl, d, now, now + cost):
+            return False   # a commercial on arrival: not where a rotation lands
+        if tl.dead.marks:
+            mu = d.mu - d.behind   # a fresh tune or a live standby shows the live edge
+            m = self._jump_margin(d, now)
+            lo = min(cost, float(self.cfg.get("decider.entry.fastest_s", ENTRY_FASTEST_S)))
+            x0 = now + lo - mu - m
+            x1 = now + cost + float(self.cfg.get("jump_mode.land_dead_s", 2.0)) - mu + m
+            return tl.dead.landing(x0, x1).state == "dead"
+        g = leave_window(tl, d, now, self.cfg.get("decider.uncalibrated_sigma_s"),
+                         cost + AFTER_PLAY_BUFFER_S)
+        return g.safe and not g.on_screen_break
+
+    def _jump_value(self, gid: str, x: Candidate, cands, now: float) -> tuple[float, dict] | None:
+        """Where the rotation goes next: priority (x.scored.score: your teams, close/late, red zone, big plays)
+        plus a bonus for a snap about to air on arrival, a big moment just now, and time since we last saw it.
+        None: its picture wouldn't come up on a dead ball right now."""
+        c = self.cfg
+        cost = self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target)
+        if gid in self._screen_break or not self.jump_lands_dead(gid, x, now, cost):
+            return None
+        tl = self.timelines[gid]
+        d = self.delays.get(x.target)
+        snap_in = self._jump_snap_wait(gid, x, cands, now, cost)   # seconds from landing to its next snap on screen
+        snap = 0.0 <= snap_in <= float(c.get("jump_mode.snap_window_s", 25))
+        recent = float(c.get("jump_mode.big_recent_s", 60))
+        big = any(e.kind == "play" and e.big and e.seen + d.mu >= now - recent for e in tl.events)
+        away = now - self.jump_left_at.get(gid, now - float(c.get("jump_mode.rotate_cap_s", 300)))
+        away = min(away, float(c.get("jump_mode.rotate_cap_s", 300)))
+        v = (x.scored.score + float(c.get("jump_mode.snap_bonus", 15)) * snap
+             + float(c.get("jump_mode.big_bonus", 20)) * big
+             + float(c.get("jump_mode.rotate_per_min", 6)) * away / 60.0)
+        return v, {"snap": snap, "snap_in_s": round(snap_in, 1), "big": big, "away_s": round(away),
+                   "cost_s": round(cost, 1), "score": round(x.scored.score, 1), "value": round(v, 1)}
+
+    def _jump_snap_wait(self, gid: str, x: Candidate, cands, now: float, after_s: float = 0.0) -> float:
+        """Seconds from now + after_s until gid's next snap shows on screen: the play-by-play's expected
+        restart (the logged next snap, else the dead window's usual length) when it has dead windows, else the
+        early-side estimate (_next_snap_s)."""
+        tl = self.timelines.get(gid)
+        if tl is not None and tl.dead.marks:
+            d = self.delays.get(x.target or "unknown")
+            at = now + after_s - (d.mu - (d.behind if gid != self.current else 0.0))
+            return tl.dead.resume_eta(at) - at
+        return self._next_snap_s(gid, cands, now) - after_s
+
+    def _jump_best(self, cands, now: float, exclude: str | None) -> tuple[str, dict] | None:
+        rows = []
+        for gid, x in self._jump_pool(cands).items():
+            if gid == exclude:
+                continue
+            r = self._jump_value(gid, x, cands, now)
+            if r is not None:
+                rows.append((r[0], gid, r[1]))
+        if not rows:
+            return None
+        _, gid, info = max(rows, key=lambda z: z[0])
+        return gid, info
+
+    def jump_next(self, cands: dict[str, Candidate], standby: str | None = None) -> str | None:
+        """The game the hidden stick should tune next: the rotation's best other game by priority and time away
+        (whether it's at a dead ball right now doesn't matter: by the time it's tuned, it will have moved on).
+        Keeps the standby's game unless another beats it by jump_mode.standby_margin (no re-tune churn)."""
+        now = self._clock()
+        c = self.cfg
+        pool = {gid: x for gid, x in self._jump_pool(cands).items() if gid != self.current}
+        if not pool:
+            return None
+        cap = float(c.get("jump_mode.rotate_cap_s", 300))
+        per = float(c.get("jump_mode.rotate_per_min", 6))
+
+        def val(gid: str) -> float:
+            away = min(cap, now - self.jump_left_at.get(gid, now - cap))
+            return pool[gid].scored.score + per * away / 60.0 - (100.0 if gid in self._screen_break else 0.0)
+        best = max(pool, key=val)
+        keep = next((gid for gid, x in pool.items() if standby and x.target == standby), None)
+        if keep is not None and val(keep) >= val(best) - float(c.get("jump_mode.standby_margin", 8)):
+            return keep
+        return best
+
+    def _jump_owns(self, d: Decision, cands: dict[str, Candidate]) -> bool:
+        """[jump mode] Is d an optional switch out of a rotation game, which the rotation decides instead?"""
+        if not self.jump_on() or d.action != "switch" or d.kind in JUMP_KEEPS or d.kind == "jump":
+            return False
+        u = self.user
+        if u.paused or u.locked_game or u.focus_mode != FocusMode.AUTOPILOT or self.safe_mode:
+            return False
+        cur = cands.get(self.current or "")
+        return cur is not None and self.current not in PSEUDO and self._jump_league(cur)
+
+    def _jump(self, d: Decision, cands: dict[str, Candidate], now: float) -> Decision | None:
+        """[jump mode] The rotation's switch for this tick, or None (keep the normal decision)."""
+        if not self.jump_on():
+            return None
+        u, c = self.user, self.cfg
+        if (self.safe_mode or u.paused or u.locked_game or now < u.manual_until or now < self._arrival_until
+                or u.focus_mode != FocusMode.AUTOPILOT or self.replaying or self.after_replay):
+            return None
+        if d.action in ("switch", "replay") and d.kind in JUMP_KEEPS:
+            return None   # crunch time, a finished game, your tap, a chase: the normal decider already goes
+        cur = cands.get(self.current or "")
+        if cur is None or self.current in PSEUDO or not self._jump_league(cur):
+            return None
+        hold = self._jump_hold(cur)
+        if hold:
+            self.jump_holds[hold] += 1
+            return None
+        g = self._jump_gate(cur, now)
+        if g is None or not g.safe:
+            self.jump_holds["play_on_screen"] += 1
+            return None
+        seen = self._jump_plays_seen(self.current, cur, now)
+        held = now - self.since
+        on_break = bool(g.on_screen_break or cur.scored.is_break)
+        due = on_break or seen >= int(c.get("jump_mode.max_plays", 2)) \
+            or held >= float(c.get("jump_mode.max_hold_s", 90))
+        best = self._jump_best(cands, now, exclude=self.current)
+        if best is None:
+            self.jump_holds["no_game_at_dead_ball"] += 1
+            return None
+        gid, info = best
+        hot = info["snap"] or info["big"]
+        # [Nick: "at EVERY dead ball ... flip if the other stick holds a game whose next snap is coming"] even with
+        # no play seen here yet, go where the next snap comes clearly sooner than ours (snap_gain_s): the
+        # rotation chases snaps across games instead of sitting through this huddle
+        mine = self._jump_snap_wait(self.current, cur, cands, now)
+        sooner = info["snap"] and info["snap_in_s"] + info["cost_s"] + float(c.get("jump_mode.snap_gain_s", 10)) < mine
+        info["here_snap_s"] = round(mine, 1)
+        if not due and not (seen >= int(c.get("jump_mode.min_plays", 1)) and hot) and not sooner:
+            self.jump_holds["budget_left"] += 1
+            return None
+        if on_break:
+            why = "break"
+        elif seen >= int(c.get("jump_mode.max_plays", 2)):
+            why = "play_budget"
+        elif held >= float(c.get("jump_mode.max_hold_s", 90)):
+            why = "max_hold"
+        elif seen >= int(c.get("jump_mode.min_plays", 1)) and hot:
+            why = "hot_target"
+        else:
+            why = "sooner_snap"
+        info = {**info, "why": why, "plays_seen": seen, "held_s": round(held, 1), "gate": g.why,
+                "holds": dict(self.jump_holds)}
+        self.jump_holds = Counter()
+        tags = [t for t, on in (("snap coming", info["snap"]), ("big moment", info["big"])) if on]
+        reason = (f"jump: dead ball after {seen} play{'s' if seen != 1 else ''} ({why.replace('_', ' ')})"
+                  f" -> {self._short_gid(gid)}" + (f": {', '.join(tags)}" if tags else ""))
+        return Decision(now, "switch", gid, reason, State.WATCHING, g.why, kind="jump", jump=info)
+
+    @staticmethod
+    def _short_gid(gid: str) -> str:
+        return gid.rsplit(":", 1)[-1][:24]
+
     # ----- helpers ----------------------------------------------------------
 
     def _chase_any(self, watchable, now: float, exclude: str | None, floor: float) -> tuple[str, Event] | None:
@@ -2850,6 +3110,8 @@ class Decider:
             self.home_return_at = None
         if kind == "user":
             self.home_break_visit = None
+        if self.current and self.current != target:
+            self.jump_left_at[self.current] = now
         self.current = target
         self.since = now
         self.start_fails, self.start_retry_at = 0, 0.0
