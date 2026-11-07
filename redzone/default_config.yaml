@@ -554,6 +554,25 @@ redzone_mode:              # whip-around like NFL RedZone (scoring/drive.py; dec
   heat_points: 0           # NFL game score lift per unit of heat. 8 cost big plays and your-team plays on the NFL scorecard
   dead_damp: 0             # share of score lost to punt-fest signs. 0.25 cost big plays on the NFL scorecard
 
+yttv_keyplays:             # [YTTV key plays, item 8] catch up on a missed play with YouTube TV's Key plays reel
+                           # (UP, CENTER opens Scores/Stats/Key plays; ~10 s per play; deep link back to live
+                           # ~0.4 s; overseer Nov 7). HIDDEN stick only, fail closed = re-link to live. The
+                           # 'Auto-play key plays?' prompt is only ever answered Ask later. OFF until a stick run.
+  enabled: false
+  open_tries: 3            # UP+CENTER with nothing recognisable on screen (post-tune banner): wait, try again
+  open_wait_s: 1.2         # between UP and CENTER
+  reopen_wait_s: 6         # before another open try (the banner sits up 25+ s after a tune)
+  read_wait_s: 0.9         # after a key, before the screen read
+  tab_tries: 4             # RIGHT/LEFT/CENTER steps to reach the Key plays tab
+  row_fix_tries: 3         # re-reads to correct the focused row before CENTER
+  scroll_max: 20           # DOWN presses looking for the wanted play
+  prompt_tries: 6          # focus moves looking for Ask later on the auto-play prompt
+  clock_tol_s: 20          # feed clock vs the list's clock for the same play
+  settle_s: 6              # after the select the player must report PLAYING within this
+  poll_s: 0.25
+  relink_settle_s: 6       # deep link back to live must be PLAYING within this
+  key_gap_s: 0.35
+
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true
   yours_first: true        # your team's missed big plays: replayed before other games' and over ordinary live play

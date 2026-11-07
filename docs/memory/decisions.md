@@ -1060,3 +1060,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Registered after EXP-603's interim NBA FAIL and a fit-night smoke (disclosed in the prereg). Known optimism: the
   re-check judges dead balls with the grader's dead_at on delivered plays, not the engine's may_cut, and skips the
   leave check; so a pass is a model pass that the shadow run must confirm before any card.
+- 2026-11-07 (item 8, #382): **New `yttv_keyplays` block, `enabled: false`.** YouTube TV Key plays catch-up on a
+  hidden stick (overseer's Nov 7 finding: UP+CENTER panel, ~10 s per play, deep link back to live ~0.4 s). Off and not
+  wired into the switch path until a stick run confirms the panel layout; the auto-play prompt is only ever answered
+  Ask later. No live default changes.

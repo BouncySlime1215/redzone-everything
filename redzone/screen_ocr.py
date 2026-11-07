@@ -137,8 +137,11 @@ def _number(value: object) -> float:
     return float(value)
 
 
-def parse_result(raw: str) -> OCRResult:
-    """Validate helper output strictly; malformed regions invalidate the read."""
+def parse_result(raw: str, focus_labels: str | None = None) -> OCRResult:
+    """Validate helper output strictly; malformed regions invalidate the read.
+
+    focus_labels: an extra fullmatch pattern of filled-button labels a caller accepts as focus evidence
+    (yttv_keyplays: Ask later, the panel tabs, key-play rows). None = only the built-in labels."""
     try:
         data = json.loads(raw)
         status = data["status"]
@@ -207,8 +210,8 @@ def parse_result(raw: str) -> OCRResult:
                                   r"|Watch key plays|Start from beginning"
                                   r"|Watch (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) "
                                   r"(?:[1-9]|[12][0-9]|3[01])\s*[•·]\s*[A-Z]{2,4} vs\.? [A-Z]{2,4})")
-                if not re.fullmatch(action_pattern,
-                                    text, flags=re.IGNORECASE):
+                if not re.fullmatch(action_pattern, text, flags=re.IGNORECASE) and not (
+                        focus_labels and re.fullmatch(focus_labels, text, flags=re.IGNORECASE | re.DOTALL)):
                     continue
             focus.append(FocusBox(x, y, w, h, confidence, text, source))
         unique = len(focus) == 1 and bool(rows)
@@ -268,7 +271,8 @@ def prepare(*, compile_timeout: float = 45.0) -> OCRPreparation:
         return OCRPreparation("error", str(exc), round(time.monotonic() - started, 3))
 
 
-def recognize(path: str | Path, *, timeout: float = 15.0, compile_timeout: float = 45.0) -> OCRResult:
+def recognize(path: str | Path, *, timeout: float = 15.0, compile_timeout: float = 45.0,
+              focus_labels: str | None = None) -> OCRResult:
     """Recognize one existing PNG. First use compiles locally; later calls reuse it.
 
     Run via asyncio.to_thread when used from an async engine. Timeouts stop the
@@ -291,7 +295,7 @@ def recognize(path: str | Path, *, timeout: float = 15.0, compile_timeout: float
             binary = _helper(compile_timeout)
             proc = subprocess.run([str(binary), str(image)], capture_output=True, text=True,
                                   timeout=timeout, check=False)
-            result = parse_result(proc.stdout)
+            result = parse_result(proc.stdout, focus_labels)
             if proc.returncode and result.status in {"ok", "empty"}:
                 result = OCRResult("error", error="OCR helper exited unsuccessfully")
     except subprocess.TimeoutExpired:
