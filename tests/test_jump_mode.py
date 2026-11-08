@@ -191,3 +191,89 @@ def test_standby_pick_skips_untunable_and_prefers_code_channels(cfg, clock):
     dec.slow_tune = lambda t: t == "youtubetv:b"
     assert dec.jump_next(cands(a=70, b=55, c=45)) == "c"
     assert dec.jump_next(cands(a=70, b=70, c=45)) == "b"
+
+
+def test_hold_codes_say_which_wait_it_was(cfg, clock):
+    """[overseer Nov 7 20:05] standby_not_ready and no_game_at_dead_ball were counted together on every tick:
+    one code per tick now (nothing ready / the ready game isn't at a dead ball)."""
+    dec = setup(cfg, clock)
+    t0 = clock.t
+    play(dec, "a", t0 + 10)
+    play(dec, "a", t0 + 40)
+    clock.t = t0 + 100
+    play(dec, "b", clock.t - MU - 2)   # b's play is on screen right now: not a dead ball to land on
+    fresh(dec, clock)
+    dec.standby_ready = lambda target: False
+    dec.decide(cands(a=70, b=50))
+    assert dict(dec.jump_holds) == {"standby_not_ready": 1}
+    dec.jump_holds.clear()
+    dec.standby_ready = lambda target: target == "youtubetv:b"
+    dec.decide(cands(a=70, b=50))
+    assert dict(dec.jump_holds) == {"ready_not_dead": 1}
+
+
+def test_a_ready_standby_goes_at_the_next_dead_ball(cfg, clock):
+    """[overseer Nov 7 20:05] Readiness is the bottleneck: when the standby's game is ready and lands dead, jump
+    after min_plays (1) here, not after the play budget (2)."""
+    dec = setup(cfg, clock)
+    t0 = clock.t
+    play(dec, "a", t0 + 40)
+    play(dec, "b", t0 + 20)
+    clock.t = t0 + 100        # one play of a aired, then a dead ball
+    fresh(dec, clock)
+    dec.jump_left_at["b"] = clock.t - 10   # b isn't "away long": no rotation pull, no snap/big hotness needed
+    dec.since = clock.t - 50   # under max_hold_s
+    cfg.data["jump_mode"]["snap_window_s"] = -1
+    cfg.data["jump_mode"]["go_when_ready"] = False
+    dec.standby_ready = lambda target: target == "youtubetv:b"
+    d = dec.decide(cands(a=70, b=50))
+    assert d.kind != "jump" and dec.jump_holds["budget_left"] == 1
+    cfg.data["jump_mode"]["go_when_ready"] = True
+    d = dec.decide(cands(a=70, b=50))
+    assert d.kind == "jump" and d.target == "b" and d.jump["why"] == "standby_ready" and d.jump["plays_seen"] == 1
+
+
+def test_a_timeout_on_screen_jumps_to_the_ready_standby(cfg, clock):
+    """[overseer Nov 8 01:16Z] A timeout on MIA@ND held the screen 46 s ('stay: timeout') with OU@FLA ready on the
+    standby. A break the fresh feed is still in, once on screen, is a dead ball for a jump: nothing to cut, no
+    return trip to fit. Rule #1 still governs the arrival on the other game."""
+    dec = setup(cfg, clock)
+    t0 = clock.t
+    play(dec, "a", t0 + 10)
+    dec.timelines["a"].events.append(Event(t0 + 15, "stop_start", "timeout"))
+    dec.timelines["a"]._lags.extend([30.0] * 5)   # a slow feed: the data doesn't 'cover' the screen
+    play(dec, "b", t0 + 60)
+    clock.t = t0 + 140        # the timeout aired ~90 s ago and runs on in the data (past its usual floor)
+    fresh(dec, clock)
+    dec.since = clock.t - 50
+    dec.standby_ready = lambda target: target == "youtubetv:b"
+    a = Scored("a", League.CFB, 70, 70, 70, 1.0, 0.0, "timeout", [], True, None, None, 1.0)
+    d = dec.decide({"a": Candidate(a, "youtubetv:a"), **cands(b=50)})
+    assert d.kind == "jump" and d.target == "b" and d.jump["why"] == "break", (d.reason, dict(dec.jump_holds))
+    assert d.jump["gate"].startswith("break on screen")
+
+
+def test_a_break_that_resumed_in_the_data_is_not_a_free_leave(cfg, clock):
+    dec = setup(cfg, clock)
+    t0 = clock.t
+    play(dec, "a", t0 + 10)
+    tl = dec.timelines["a"]
+    tl.events.append(Event(t0 + 15, "stop_start", "timeout"))
+    play(dec, "a", t0 + 100)   # the snap after the timeout is in the data
+    clock.t = t0 + 140
+    fresh(dec, clock)
+    a = Scored("a", League.CFB, 70, 70, 70, 1.0, 0.0, "timeout", [], True, None, None, 1.0)
+    assert not dec._jump_break_on_screen("a", Candidate(a, "youtubetv:a"), tl, dec.delays.get("youtubetv:a"), clock.t)
+
+
+def test_every_way_the_rotation_stands_aside_is_counted(cfg, clock):
+    """[overseer Nov 8 01:50Z] No jumps and no clue why: a tapped game, a pause or safe mode turned jump mode off
+    silently. Each is a hold code now (jump_status.jsonl)."""
+    dec = setup(cfg, clock)
+    dec.user.locked_game = "a"
+    dec.decide(cands(a=70, b=50))
+    assert dec.jump_holds["locked_game"] == 1
+    dec.user.locked_game = None
+    dec.safe_mode = True
+    dec.decide(cands(a=70, b=50))
+    assert dec.jump_holds["safe_mode"] == 1

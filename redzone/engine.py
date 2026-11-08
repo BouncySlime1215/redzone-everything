@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -20,7 +21,7 @@ from redzone import reel, standby, trace, userstate, views
 from redzone.reel import REEL_DIR
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
 from redzone.config import Config, ConfigError, for_league
-from redzone.control import Controller, Outcome
+from redzone.control import STANDBY_NOT_READY, Controller, Outcome
 from redzone.decider import whistle
 from redzone.decider.decider import REDZONE, REEL, Candidate, Decider, Decision, FocusMode, Missed, State
 from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
@@ -47,7 +48,7 @@ CLOCK_JUMP_S = 5.0     # wall clock moved this much more (or less) than time.mon
 # TV input. They neither cool the target down nor count against it.
 NOT_THE_TARGETS_FAULT = ("no safe moment", "safe exit window closed", "switch cancelled",
                          "TV input is unknown", "TV control was disabled", "no channel",
-                         "stick not responding", "no stick connected")
+                         "stick not responding", "no stick connected", STANDBY_NOT_READY)
 PEEK_HOLD_S = 90.0    # a game opened on the phone keeps the hidden stick this long (two_stick.pretune_on_open)
 SKIP_S = 300.0        # a skipped game stays off the TV this long after the TV leaves it
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
@@ -65,6 +66,14 @@ def _fastcast_ended(task: asyncio.Task) -> None:
 def _short_why(detail: str) -> str:
     """The first clause of a switch outcome, short enough for a status line."""
     return detail.split(";", 1)[0].strip()[:80] or "switch failed"
+
+
+_IPISH = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b|\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b", re.I)
+
+
+def _redact(detail: str) -> str:
+    """A failure's first clause for a public log row: no IP addresses, ports or MACs."""
+    return _IPISH.sub("<host>", _short_why(detail or ""))[:80]
 
 
 class Engine:
@@ -185,6 +194,11 @@ class Engine:
         self._bug_log_path = data_dir.parent / "scorebug_reads.jsonl" if data_dir else None
         # [jump mode] every jump with its reason: ids, numbers and short codes (data/jumps.jsonl)
         self._jump_log_path = data_dir.parent / "jumps.jsonl" if data_dir else None
+        # [jump mode] standby status rows go to their own file (overseer Nov 8: a status row in jumps.jsonl read
+        # as a jump with every field None)
+        self._jump_status_path = data_dir.parent / "jump_status.jsonl" if data_dir else None
+        self._jump_status_at = 0.0
+        self._jump_standby_note: dict = {"standby_plan": "not run yet"}
         from redzone.buffer_shadow import BufferShadow
         self.buffer_shadow = BufferShadow(self.cfg, self.decider, self._shadow_behind,
                                           data_dir.parent / "buffer_shadow.jsonl" if data_dir else None,
@@ -1430,6 +1444,7 @@ class Engine:
         self._hold_check()
         if self._shadow_buffer_on():
             self.buffer_shadow.tick(cands)   # never acts: what the buffered show would do right now
+        self._jump_status()   # [jump mode] heartbeat, also while a switch or replay is in flight
         if self._pending_decision is not None:
             return False  # score/feed updates continue; don't race a tune in flight
         if not dry and self.control.input_unknown and getattr(self.control, "live_control", False):
@@ -1602,6 +1617,13 @@ class Engine:
                 log.exception("switch trace failed")
             if d.kind == "jump":
                 self._log_jump(d, before, target, out, cmd_ts)
+                if out.ok and not out.dry_run:
+                    # [jump mode] refill the hidden stick right away with the rotation's next pick: the
+                    # game we just left is on it now, and readiness is the whole bottleneck
+                    try:
+                        self._jump_standby(cands, urgent=True)
+                    except Exception:
+                        log.exception("jump standby refill failed")
             self.store.switch(ts=cmd_ts, frm=before, to_game=d.target, target=target, kind=d.kind, reason=d.reason,
                               event_ts=event_ts, cmd_ts=cmd_ts, confirmed_ts=out.confirmed_at, ok=out.ok,
                               dry_run=out.dry_run, detail=detail)
@@ -1649,7 +1671,8 @@ class Engine:
         self.control.submit(target, back, done, may_cut=may_cut,
                             replay_id=d.replay.pid if d.replay else None,
                             entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0,
-                            entry_cue=getattr(d, "cue", "") if d.action == "switch" else "")
+                            entry_cue=getattr(d, "cue", "") if d.action == "switch" else "",
+                            preloaded_only=d.kind == "jump")   # [jump mode] a jump only flips to a ready standby
 
     def pending_age(self, now: float) -> float:
         """Seconds the pending switch has been running, as of wall-clock `now`. If the wall clock
@@ -1868,20 +1891,59 @@ class Engine:
         if pick:
             self.control.preload(pick.target, back_s=pick.back_s, replay_id=pick.replay_id)
 
-    def _jump_standby(self, cands: dict) -> bool:
+    def _jump_standby(self, cands: dict, urgent: bool = False) -> bool:
         """[jump mode] The hidden stick keeps re-tuning to the rotation's next game (Decider.jump_next).
         False: the rotation has nothing to tune (no other game), so the normal standby plan runs."""
         u = self.decider.user
         if u.locked_game or u.focus_mode != FocusMode.AUTOPILOT:
+            self._jump_standby_note = {"standby_plan": "locked or focus mode"}
             return False
         if self.cfg.get("jump_mode.replays", True) and self._replay_standby(cands) is not None:
+            self._jump_standby_note = {"standby_plan": "yields to a queued replay"}
             return False   # a big-play catch-up is queued: the normal plan parks it on the hidden stick (replay_park)
         gid = self.decider.jump_next(cands, standby=self.control.standby[0], tunable=self.control.can_tune)
         target = cands[gid].target if gid in cands else None
         if not target:
-            return False
-        self.control.preload(target)
+            self._jump_standby_note = {"standby_plan": "no other tunable game"}
+            # [overseer Nov 8 21:00] the normal plan then loaded ORL@GS (NBA, not in jump_mode.leagues) with UGA@MISS
+            # on screen: while the screen is in the rotation, the hidden stick only ever holds a game the rotation can
+            # jump to, so with none tunable right now it keeps what it has
+            return self.decider._jump_league(cands.get(self.decider.current or ""))
+
+        started = self.control.preload(target, urgent=urgent)
+        if not started and urgent:
+            log.info("jump refill of %s refused: %s", gid, self.control.preload_why)
+        self._jump_standby_note = {"standby_plan": "refill" if urgent else "rotation", "want": gid,
+                                   "want_ready": bool(self.control.standby_ready(target)),
+                                   "preload": "started" if started else (self.control.preload_why or "refused")}
+        if urgent:
+            self._jump_status(force=True)
         return True
+
+    def _jump_status(self, force: bool = False) -> None:
+        """[jump mode] Every ~30 s (and on each refill after a jump) one row in data/jump_status.jsonl: what the
+        standby holds, whether it's ready, what the standby plan did (and why a preload was refused), whether a
+        switch or replay is in flight, and why the rotation held. Kinds and codes only: no play text."""
+        now = time.time()
+        if self._jump_status_path is None or not self.cfg.get("jump_mode.log", True) or not self.decider.jump_on():
+            return
+        if not force and now - self._jump_status_at < 30.0:
+            return
+        self._jump_status_at = now
+        sb = self.control.standby[0]
+        pend, last = self._pending_decision, self.last_decision
+        rec = {"ts": round(now, 2), "on_screen": self.decider.current, "standby": self._game_on_target(sb),
+               "standby_ready": bool(self.control.standby_ready(sb)), **self._jump_standby_note,
+               "pending": f"{pend.action}:{pend.kind}" if pend is not None else None,
+               "pending_s": round(now - self._pending_since, 1) if pend is not None and self._pending_since else None,
+               "replaying": bool(self.decider.replaying),
+               "last": f"{last.action}:{last.kind}" if last is not None else None,
+               "holds": dict(self.decider.jump_holds)}
+        try:
+            with self._jump_status_path.open("a") as fh:
+                fh.write(json.dumps(rec) + "\n")
+        except OSError:
+            pass
 
     def _log_jump(self, d, before: str | None, target: str | None, out, cmd_ts: float) -> None:
         """One row per jump: who, why, and what it cost. No raw text (the repo is public)."""
@@ -1893,7 +1955,9 @@ class Engine:
                "standby": self._game_on_target(self.control.standby[0]), "standby_ready": bool(self.control.hidden_ready)}
         if not out.ok:
             rec["fail"] = "cancelled" if out.detail.startswith("switch cancelled") else "no_safe_moment" \
-                if "no safe moment" in out.detail else "other"
+                if "no safe moment" in out.detail else "standby_not_ready" \
+                if out.detail.startswith(STANDBY_NOT_READY) else "other"
+            rec["fail_detail"] = _redact(out.detail)
         try:
             with self._jump_log_path.open("a") as fh:
                 fh.write(json.dumps(rec) + "\n")
