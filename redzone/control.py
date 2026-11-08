@@ -270,6 +270,8 @@ class Controller:
         self.seek_log_path = None                # [calib.auto] data/seeks.jsonl: one row per measured seek
         self._last_seek_sent = 0
         self.parked: Parked | None = None        # ...parked on a replay instead of live
+        self._snap_park: Parked | None = None   # [buffered jump] the hidden stick paused just before its next snap
+        self._snap_task: asyncio.Task | None = None
         self.two_stick_ok = True                 # flips to False if an input flip ever fails
         self.latency = LatencyBook()
         self.latency_path = latency_path
@@ -1154,6 +1156,9 @@ class Controller:
 
     def _set_hidden(self, target: str | None, ready: bool, parked: Parked | None = None) -> None:
         self.hidden_target, self.hidden_ready, self.parked = target, ready, parked
+        sp = getattr(self, "_snap_park", None)
+        if sp is not None and (target != sp.target or not ready or parked is not None):
+            self._snap_park = None   # [buffered jump] the stick changed under the park: it's not paused there any more
 
     def _live_on_hidden(self, target: str) -> bool:
         return self.hidden_target == target and self.hidden_ready and self.parked is None
@@ -2236,6 +2241,13 @@ class Controller:
                     if playback_ready(pb0):
                         hid.remember(target, pb0, scrubbed_s=None if was is None else was + back)
                     self._hidden_entry_done = True
+                if self._snap_park is not None and self._snap_park.target == target:
+                    # [buffered jump] the hidden stick holds the line-up before its snap: PLAY, then flip
+                    if not await self._snap_roll(hid, target):
+                        self._set_hidden(None, False)
+                        return Outcome(False, target, time.time() - t0, "snap park lost; kept current game", False,
+                                       path=path, screen_unchanged=visible_untouched)
+                    self._mark("snap_roll")
                 # Cached readiness is not proof the stream survived a pause,
                 # app error, or a user change on the hidden stick.
                 pb = await hid.playback(self._package(hid, target))
@@ -2943,7 +2955,7 @@ class Controller:
     # --- the hidden stick between switches ---------------------------------------------
 
     def preload(self, target: str | None, back_s: float | None = None, replay_id: str | None = None,
-                *, refresh: bool = False, user: bool = False, urgent: bool = False) -> bool:
+                *, refresh: bool = False, user: bool = False, urgent: bool = False, rotate: bool = False) -> bool:
         """Put the hidden stick on `target`: live, or parked on a replay (back_s from the live edge,
         replay_id). Returns True if a preload started. WHAT to preload is the engine's call
         (standby.Planner); this only refuses what can't or shouldn't happen right now.
@@ -2953,7 +2965,9 @@ class Controller:
         preload gap and replaces a planner preload still loading, never a switch."""
         if not (self.live_control and self.two_stick and target) or self.input_unknown:
             return self._refused("no two-stick control" if not self.input_unknown else "TV input unknown")
-        if not user and self._scrub_protected(target):
+        # [buffered jump] the rotation may replace a scrubbed standby (every stick is scrubbed): its own rotate_due
+        # (redzone/decider/buffered.py) decides when, so a ping-pong partner isn't re-tuned every tick
+        if not user and not rotate and self._scrub_protected(target):
             self.preload_why = "a scrubbed standby is kept"
             # [scrub entry] Nick's live test (Nov 7): a preload overwrote a scrubbed hidden stick. A scrubbed standby
             # is kept until it's flipped to (or its anchor expires / its label goes stale); only a game you open on
@@ -3053,7 +3067,7 @@ class Controller:
     def _buffer_for(self, stick: Stick, target: str, res: TuneResult) -> float:
         """Seconds to hold this fresh hidden-stick tune behind live (0 = none)."""
         if not (config.any_league(self.cfg, "timing.behind_live_s.enabled")
-                or config.any_league(self.cfg, "timing.behind_live_s.rc8_on")):
+                or config.any_league(self.cfg, "timing.behind_live_s.rc8_on") or self._buffered_jump()):
             return 0.0   # [league overrides] behind_of (the engine) says 0 for a league that doesn't run it
         app = self._ref(target)[0]
         if app not in (self.cfg.get("timing.behind_live_s.apps") or ("youtubetv", "primevideo")):
@@ -3076,7 +3090,7 @@ class Controller:
         scrub_of), a YouTube TV target and two sticks. Ships off: nothing changes until both are on."""
         if not target or target.split(":", 1)[0] not in SCRUB_APPS or not self.two_stick:
             return False
-        if not self.cfg.get("yttv_seek.enabled", False):
+        if not self.cfg.get("yttv_seek.enabled", False) and not self._buffered_jump():
             return False
         try:
             if self.scrub_of is not None:
@@ -3085,6 +3099,120 @@ class Controller:
             log.exception("scrub: scrub_of(%s)", target)
             return False
         return bool(self.cfg.get("timing.behind_live_s.scrub_entry", False))
+
+    def _buffered_jump(self) -> bool:
+        """[buffered jump] jump_mode + buffered_jump on: both sticks scrubbed behind live (the engine's scrub_of /
+        behind_of say which targets)."""
+        return bool(self.cfg.get("jump_mode.enabled", False) and self.cfg.get("buffered_jump.enabled", False))
+
+    # --- [buffered jump] park the hidden stick just before its next snap (Nick 21:05 via the overseer) ---------
+    # The hidden stick plays behind live (scrubbed, label read); the engine asks for a PAUSE timed from the play-by-play
+    # (redzone/decider/buffered.park_in) so its picture holds on the line-up; the next dead ball on screen flips to it
+    # and PLAY rolls the snap. Each pause adds its length to the stick's behind-live (held + the delay book).
+
+    def snap_parked(self, target: str | None) -> float | None:
+        """Wall time the hidden stick paused on `target` (its picture is frozen since), or None."""
+        sp = self._snap_park
+        return sp.at if sp is not None and target and sp.target == target and self.hidden_target == target \
+            and self.hidden_ready else None
+
+    def snap_park(self, target: str, in_s: float) -> bool:
+        """Pause the hidden stick (playing `target`, scrubbed) in_s from now. True = scheduled."""
+        if not (self.live_control and self.two_stick and self._buffered_jump()) or self.hidden is None:
+            return False
+        if self.hidden_target != target or not self.hidden_ready or self.parked is not None \
+                or self._snap_park is not None or self.hidden.scrubbed(target) is None:
+            return False
+        if self._busy() or self._flipping or (self._snap_task is not None and not self._snap_task.done()):
+            return False
+        self._snap_task = asyncio.create_task(self._do_snap_park(self.hidden, target, time.time() + max(0.0, in_s)))
+        return True
+
+    async def _do_snap_park(self, hid: Stick, target: str, at: float) -> None:
+        def ours() -> bool:
+            return self.hidden is hid and self.hidden_target == target and self.hidden_ready and not self._flipping \
+                and self.parked is None
+        try:
+            while time.time() < at:
+                if not ours():
+                    return
+                await asyncio.sleep(min(0.1, max(0.0, at - time.time())))
+            if not ours() or self._busy():
+                return
+            async with self._lock:
+                if not ours():
+                    return
+                t_key = time.time()
+                sent = await hid.key("KEYCODE_MEDIA_PAUSE")
+                t_pause = (t_key + time.time()) / 2.0
+                if not sent or not getattr(sent, "ok", False):
+                    log.info("buffered jump: PAUSE not sent to %s on %s", target, hid.host)
+                    return
+                pkg = self._package(hid, target)
+                end, pb = time.time() + float(self.cfg.get("replay.pause_settle_s", 3.0)), {}
+                while True:
+                    pb = await hid.playback(pkg)
+                    if pb.get("state") == "paused" or time.time() >= end:
+                        break
+                    await asyncio.sleep(0.3)
+                if pb.get("state") != "paused":
+                    # the key may or may not have landed: the picture's place is unknown, so it's no buffered standby
+                    log.info("buffered jump: %s on %s reads %s after PAUSE: dropped", target, hid.host, pb.get("state"))
+                    self._set_hidden(None, False)
+                    return
+                self._snap_park = Parked("snap", target, t_pause, True)
+                self.latency.record("snap_park_key", round(time.time() - t_key, 2))
+                log.info("buffered jump: %s parked on %s (late %.2f s)", target, hid.host, t_pause - at)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("buffered jump: park of %s", target)
+
+    async def _snap_roll(self, hid: Stick, target: str) -> bool:
+        """PLAY a snap-parked hidden stick: its pause joins its behind-live (held, the delay book, the stick's anchor
+        for still_on). Called with the control lock held (the flip, or an expired park). False: not paused there."""
+        sp = self._snap_park
+        if sp is None or sp.target != target:
+            return True
+        self._snap_park = None
+        pkg = self._package(hid, target)
+        pb = await hid.playback(pkg)
+        if pb.get("state") != "paused":
+            log.info("buffered jump: the park of %s on %s reads %s, not paused", target, hid.host, pb.get("state"))
+            return False
+        sent = await hid.key("KEYCODE_MEDIA_PLAY")
+        if not sent or not getattr(sent, "ok", False):
+            return False
+        paused = max(0.0, time.time() - sp.at)
+        behind = round(self.held.get(target, 0.0) + paused, 1)
+        self._set_held(target, behind)
+        if self.on_label is not None:
+            try:
+                self.on_label(target, behind, None, time.time())
+            except Exception:
+                log.exception("buffered jump: on_label(%s)", target)
+        pb = await hid.playback(pkg)
+        if playback_ready(pb):
+            hid.remember(target, pb, scrubbed_s=behind)
+        self._buffer_log("snap_roll", target, hid.host, behind, None, paused_s=round(paused, 1))
+        return True
+
+    def snap_park_expire(self) -> bool:
+        """A park older than buffered_jump.park_max_age_s is rolled on the hidden stick (a long YouTube TV pause
+        can lose its place, Nov 6) and parks again at its next snap. True = rolling."""
+        sp = self._snap_park
+        if sp is None or self._busy() or self._flipping or self.hidden is None:
+            return False
+        if time.time() - sp.at <= float(self.cfg.get("buffered_jump.park_max_age_s", 45.0)):
+            return False
+        hid, target = self.hidden, sp.target
+
+        async def roll() -> None:
+            async with self._lock:
+                if self.hidden is hid and self._snap_park is sp and not await self._snap_roll(hid, target):
+                    self._set_hidden(None, False)
+        self._snap_task = asyncio.create_task(roll())
+        return True
 
     def _scrub_fallback_live(self) -> bool:
         """After a failed scrub: flip to the stream at the live edge (today's behavior, graded at B=0) or keep
@@ -3138,6 +3266,12 @@ class Controller:
         def still_hidden() -> bool:
             return self.hidden is stick and self.hidden_target == target and not self._flipping
 
+        if self.label_probe is None and self._buffered_jump():
+            try:   # [buffered jump] turned on at runtime: every scrub is label-read (a buffer is never placed blind)
+                from redzone.tuners.yttv_label import LabelProbe
+                self.label_probe = LabelProbe(self.cfg)
+            except Exception:
+                log.exception("buffered jump: no label probe")
         res, why = None, ""
         if time.time() < self._scrub_backoff.get(target, 0.0):
             why = "backoff after a failed scrub"
@@ -3330,6 +3464,12 @@ class Controller:
         state = pb.get("state")
         if state in ("playing", "buffering", "paused"):
             self._awake_at[hid.host] = time.time()
+        sp = self._snap_park
+        if sp is not None and sp.target == target and parked is None:
+            if state != "paused":   # [buffered jump] paused on purpose; anything else means its place is unknown
+                log.info("buffered jump: the park of %s reads %s: dropped", target, state)
+                self._set_hidden(None, False)
+            return
         lh = self._left_for(hid, target)
         if lh is not None and parked is None:
             self._watch_left(hid, target, pb, lh)   # STK-07: paused on purpose

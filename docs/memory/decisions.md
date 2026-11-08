@@ -1241,3 +1241,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   again for 120 s and leaves the catch-up queue after 2 failures; a YouTube TV replay that can't be parked (scrub
   backing off, or more LEFTs than yttv_max_lefts) is refused before the hidden stick is tuned (screen untouched);
   a replay decision is never acted on while replay.enabled is off. PR #419.
+- 2026-11-08 (Nick 20:45 + 21:05 ET via the overseer, "5-10 jumps per min ... idc about the decisions rn i just care
+  about the code"): **new flag `buffered_jump` (default OFF, needs jump_mode)**: both YouTube TV sticks scrubbed ~75 s
+  behind live (label read), the hidden stick PAUSES on the line-up just before its next logged snap (`park: true`),
+  and every dead ball on screen flips to it (PLAY rolls the snap; the pause joins its behind-live). Rule #1 kept at the
+  2-sigma margin. Sim on 37 NFL slates: 0.8 cuts/min, 1.35 plays/min shown (one game 0.79), 0 mid-play; 5/min only
+  huddle to huddle (`park: false, eager: true`). Stick test: scripts/buffered_jump_try.py. PR claude/buffered-jump.
