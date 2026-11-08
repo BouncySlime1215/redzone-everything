@@ -5,7 +5,16 @@
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git push origin main:*)",
-      "Bash(git push origin codex/resume-redzone:*)"
+      "Bash(git push origin codex/resume-redzone:*)",
+      "Read(./results/locked/**)",
+      "Read(./data/locked/**)",
+      "Read(./.rz_locked/**)",
+      "Read(~/redzone-vault/**)",
+      "Edit(./results/locked/**)",
+      "Edit(./results/ledger.jsonl)",
+      "Edit(./results/HEAD)",
+      "Edit(./results/summary/**)",
+      "Edit(~/redzone-vault/**)"
     ],
     "ask": [
       "Bash(git push *)"

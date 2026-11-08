@@ -1480,3 +1480,4 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   **`jump_mode.search_penalty` 20** (the standby prefers code channels, ~3-4 s, over locals by search, ~11-15 s,
   unless the local's moment is that much bigger). The standby pick also skips targets the hidden stick can't tune
   now (a failed tune's backoff), which had kept it empty. jump_mode.enabled itself unchanged (Nick's live setting).
+- 2026-11-08 (process gate G-08, W2-LOCKED; Nick asked for "testing and results all locked and hidden"): **public CI shows locked-split gates as PASS/FAIL/PENDING only, and the nightly North Star no longer scores locked nights (`--split dev`).** Why: the repo is public, so per-night locked scores on every PR and in `docs/northstar.md` were tuning feedback on the test set. Gates and thresholds are unchanged; a release-PR FAIL still fails. `docs/northstar.md` loses its locked section. Results now go in a hash-chained ledger (`scripts/results_ledger.py`).

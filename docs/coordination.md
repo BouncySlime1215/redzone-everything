@@ -57,9 +57,9 @@ A card without an expected delta or a "no regression" line does not start.
 | G3 | No adb (bare, quoted or by path), stick or TV scripts, or computer-use tools (the TV may be in use) | guard.py; Nick unlocks with `data/.agent_hw_ok` | Use `tests/fake_adb.py` or the simulator |
 | G4 | No training or calibration on the 8 GB Mac | guard.py | Kaggle or CI |
 | G5 | No real deploy | guard.py; Nick unlocks with `data/.agent_deploy_ok` | `scripts/deploy.py --dry-run` |
-| G6 | Protected paths are read-only to agents: `.claude/`, `.github/`, `tests/conftest.py`, release gate, leak check, northstar, eval scripts and locks, gate baseline, grader freeze | guard.py + `scripts/autofix_guard.py` in CI | Write BLOCKED, or open a separate grader PR for Nick touching nothing else |
+| G6 | Protected paths are read-only to agents: `.claude/`, `.github/`, `tests/conftest.py`, release gate, leak check, northstar, eval scripts and locks, gate baseline, grader freeze, results ledger | guard.py + `scripts/autofix_guard.py` in CI | Write BLOCKED, or open a separate grader PR for Nick touching nothing else |
 | G7 | Never Peacock | guard.py (+ code check, fix plan) | Pick another provider |
-| G8 | Nobody in a Claude session reads locked test data or results | guard.py (Read, Grep, Glob); full design is PLAN G-08 | Use CI's PASS/FAIL summary |
+| G8 | Nobody in a Claude session reads locked test data or results, scores the locked split, or downloads full CI artifacts | guard.py (Read, Grep, Glob, shell; the one rule that fails closed) + deny rules; design is [W2-LOCKED](agents/locked-results/2026-11-09-combined-design.md) | `results/summary/latest.json` or CI's PASS/FAIL summary |
 | R1 | Rule #1: never join mid-play; never leave a high-leverage moment | CI counters on replayed nights; `rule1-reviewer` on risky PRs | Ship the change OFF behind its flag |
 | W1 | Every state change says why | `redzone/fsm.py` (tests fail without a why) | Pass a short reason code |
 | M1 | A default or gate change adds a decisions line | `scripts/check_memory.py` | Add the fragment |

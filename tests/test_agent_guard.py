@@ -1,5 +1,7 @@
 """The PreToolUse guard (.claude/hooks/guard.py) blocks what CLAUDE.md says must never happen, and lets
 ordinary work through. docs/coordination.md G1-G7."""
+import importlib.util
+import io
 import json
 import subprocess
 import sys
@@ -212,3 +214,67 @@ def test_hardware_stays_unlockable_by_the_flag():
 def test_bad_input_fails_open():
     r = subprocess.run([sys.executable, str(GUARD)], input="not json", capture_output=True, text=True, timeout=10)
     assert r.returncode == 0
+
+
+@pytest.mark.parametrize("cmd", [
+    "cat results/locked/night.json",
+    "grep -r x data/locked/",
+    "python3 -c \"open('/Users/me/redzone-vault/x').read()\"",
+    "ls ~/redzone-vault",
+    "python scripts/ci_scorecard.py --split test --out x.json",
+    "python scripts/eval.py --n 99 --split=test",
+    ".venv/bin/python scripts/eval_sports.py nba --split test",
+    "python scripts/northstar.py",
+    "python scripts/northstar.py --split locked",
+    "python scripts/northstar.py --split both --no-write",
+    "gh run download 123",
+    "gh run download 123 -n scorecard",
+    "gh api repos/o/r/actions/artifacts/5/zip",
+])
+def test_g8_blocks_shell_routes_to_locked_results(root, cmd):
+    rc, err = run("Bash", root, command=cmd)
+    assert rc == 2 and "G8" in err
+
+
+@pytest.mark.parametrize("cmd", [
+    "git add docs/agents/locked-results/2026-11-09-combined-design.md",
+    "python scripts/ci_scorecard.py --split fit --out x.json",
+    "python scripts/northstar.py --split dev --no-write --json a.json",
+    "python scripts/northstar.py --delta a.json b.json --md n.md",
+    "sed -n 1,5p scripts/northstar.py",
+    "gh run download 123 -n lint",
+    "gh run download 123 --name pytest-3.12",
+    "gh run view 123 --log-failed",
+    'grep -rn "results/locked" docs',
+    "python scripts/results_ledger.py verify",
+    "python scripts/results_ledger.py append --kind live --suite hdmi1 --verdict PASS",
+])
+def test_g8_leaves_ordinary_work_alone(root, cmd):
+    rc, err = run("Bash", root, command=cmd)
+    assert rc == 0, err
+
+
+@pytest.mark.parametrize("path", ["results/ledger.jsonl", "results/HEAD", "results/summary/latest.json",
+                                  "results/locked/x.json", "scripts/results_ledger.py"])
+def test_the_ledger_is_written_only_by_its_script(root, path):
+    rc, err = run("Edit", root, file_path=path, new_string="x")
+    assert rc == 2 and "G6" in err
+
+
+def test_appending_to_the_ledger_by_hand_is_blocked(root):
+    rc, err = run("Bash", root, command="echo row >> results/ledger.jsonl")
+    assert rc == 2 and "G6" in err
+
+
+def test_g8_fails_closed_when_its_check_crashes(monkeypatch):
+    spec = importlib.util.spec_from_file_location("guard_under_test", GUARD)
+    guard = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(guard)
+
+    def crash(*_):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(guard, "check_g8", crash)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"tool_name": "Read", "tool_input": {"file_path": "x"}})))
+    with pytest.raises(SystemExit) as e:
+        guard.main()
+    assert e.value.code == 2

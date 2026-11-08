@@ -8,7 +8,7 @@ rule and the allowed alternative. Stdlib only.
 
 Failure policy (W1-HARNESS section 2.4 hole 4, decisions.md 2026-11-08):
   - The hook cannot start or times out: BLOCK (`onFailure: "block"` in .claude/settings.json).
-  - The hook runs but crashes or gets unreadable input: ALLOW, and append one line to
+  - The hook runs but crashes or gets unreadable input: ALLOW (except G8, which blocks), and append one line to
     data/guard_errors.log (tool name and error only, never the input). CI checks the same rules
     again, and a guard bug must not freeze every session.
 
@@ -21,7 +21,9 @@ Rules (ids match docs/coordination.md):
   G5 deploy      deploy.py only with --dry-run or status, unless data/.agent_deploy_ok exists
   G6 protected   no edits to the sealed grader, gates, eval locks, CI, hooks (docs/coordination.md "Protected")
   G7 peacock     never add Peacock as a provider
-  G8 locked      no Read, Grep or Glob of locked test data or results
+  G8 locked      no Read, Grep, Glob or shell access to locked test data or results, no local scoring of the locked
+                 split, no full CI artifact downloads. The one rule that fails CLOSED: if its check crashes, the call
+                 is blocked (W2-LOCKED, docs/agents/locked-results/2026-11-09-combined-design.md)
 Shell rules cover Bash, Monitor and the terminal panel (mcp__terminal__run_in_terminal).
 Escape hatches are files only Nick creates; an agent must not create them (G6 protects them).
 """
@@ -49,10 +51,19 @@ PROTECTED = [
     "scripts/ci_*.py", "scripts/eval*.py", "scripts/fetch_eval_data.py", "scripts/build_eval_data.py",
     "docs/gate_baseline.json", "docs/grader_freeze.json", "eval-data*.lock.json", "**/eval-data*.lock.json",
     "data/.agent_*",
+    "scripts/results_ledger.py", "results/ledger.jsonl", "results/HEAD", "results/summary/**", "results/locked/**",
 ]
 
 # The locked-results design's holding places (docs/agents/locked-results/2026-11-08-access.md).
 LOCKED = re.compile(r"(^|/)(results/locked|data/locked|\.rz_locked|redzone-vault)(/|$)")
+LOCKED_IN_CMD = re.compile(r"""(^|[\s'"=:/(])(results/locked|data/locked|\.rz_locked|redzone-vault)(?=[/\s'";|&)]|$)""")
+# Running a scorecard on the locked split prints its numbers into this session (and its saved tool output).
+_RUN = r"\bpython[\d.]*\s+(?:-\S+\s+)*(?:\S*/)?scripts/"
+LOCKED_RUN = re.compile(_RUN + r"(?:eval|eval_sports|ci_scorecard)\.py\b[^\n;&|]*--split[=\s]+test\b|"
+                        + _RUN + r"northstar\.py(?![^\n;&|]*(?:--split[=\s]+dev\b|--delta\b|--help\b))")
+# CI artifacts from before G-08 still hold raw locked scorecards for up to 90 days.
+GH_ARTIFACT = re.compile(r"\bgh\s+run\s+download\b(?![^\n;&|]*(?:-n|--name)[=\s]+(?:lint|pytest-))|"
+                         r"\bgh\s+api\b[^\n;&|]*actions/artifacts")
 
 SHELL_TOOLS = {"Bash", "Monitor", "mcp__terminal__run_in_terminal"}
 COMPUTER_USE = "mcp__computer-use__"
@@ -129,10 +140,11 @@ def check_bash(cmd: str) -> None:
     if DEPLOY.search(cmd) and not DEPLOY_SAFE.search(cmd) and not flag(".agent_deploy_ok"):
         block("G5 deploy", "a deploy restarts the live app.",
               "run `scripts/deploy.py --dry-run`, or ask Nick to create data/.agent_deploy_ok.")
-    m = re.search(r"(>|>>|tee\s+(-a\s+)?)\s*([^\s;&|]+)", cmd)
-    if m and is_protected(m.group(3)):
-        block("G6 protected", f"{m.group(3)} is a protected path (sealed grader, gates, CI, hooks).",
-              "open a separate grader PR for Nick; touch nothing else in it.")
+    # `>>` first: with `>` first, a `>> file` append read as a redirect to the path ">" and passed (found in G-08).
+    for m in re.finditer(r"(>>|>|tee\s+(-a\s+)?)\s*([^\s;&|]+)", cmd):
+        if is_protected(m.group(3)):
+            block("G6 protected", f"{m.group(3)} is a protected path (sealed grader, gates, CI, hooks).",
+                  "open a separate grader PR for Nick; touch nothing else in it.")
     if re.search(r"\b(sed\s+-i|perl\s+-pi|mv|cp|rm)\b", cmd):
         for tok in re.findall(r"[\w./*-]+", cmd):
             if "/" in tok and is_protected(tok):
@@ -159,8 +171,34 @@ def check_locked(path: str) -> None:
               "use the PASS/FAIL summary CI reports; nobody in a Claude session reads locked data.")
 
 
+def check_locked_cmd(cmd: str) -> None:
+    text = INERT_TEXT.sub(lambda m: m.group(1) + '""', cmd)
+    if LOCKED_IN_CMD.search(text):
+        block("G8 locked", "this command touches locked test data or results (docs/agents/locked-results/).",
+              "read results/summary/latest.json or CI's PASS/FAIL summary; nobody in a Claude session reads locked data.")
+    if LOCKED_RUN.search(text):
+        block("G8 locked", "this scores the locked split here, which prints locked numbers into the session.",
+              "use --split fit (or northstar --split dev); CI reports the locked verdict.")
+    if GH_ARTIFACT.search(text):
+        block("G8 locked", "CI artifacts from before G-08 still hold raw locked scorecards.",
+              "use `gh run view <id> --log-failed`, or `gh run download <id> -n lint` / `-n pytest-3.12`.")
+
+
+def check_g8(tool: str, inp: dict) -> None:
+    """Runs before every other rule, and main() blocks if it crashes (the only fail-closed rule)."""
+    if tool in SHELL_TOOLS:
+        check_locked_cmd(str(inp.get("command", "")))
+    elif tool == "Read":
+        check_locked(str(inp.get("file_path", "")))
+    elif tool == "Grep":
+        for t in filter(None, (str(inp.get("path") or ""), str(inp.get("glob") or ""))):
+            check_locked(t)
+    elif tool == "Glob":
+        for t in filter(None, (str(inp.get("path") or ""), str(inp.get("pattern") or ""))):
+            check_locked(t)
+
+
 def check_read(path: str) -> None:
-    check_locked(path)
     name = Path(path).name
     if SECRET_PAT.search(name) and not SECRET_OK.search(name) and not name.endswith((".py", ".md")):
         block("G1 secrets", f"{name} may hold a secret.", "don't read it; ask Nick if a value is needed.")
@@ -169,7 +207,6 @@ def check_read(path: str) -> None:
 def check_search(*targets: str) -> None:
     """Grep and Glob: a path or file pattern aimed at a secret. Grep's content pattern is not a path."""
     for t in filter(None, targets):
-        check_locked(t)
         r = rel(t)
         if SECRET_PAT.search(r) and not SECRET_OK.search(r) and not r.endswith((".py", ".md")):
             block("G1 secrets", f"{r} may match a secret file.", "search code and docs only; ask Nick if a value is needed.")
@@ -212,7 +249,16 @@ def main() -> None:
     try:
         ev = json.load(sys.stdin)
         tool = str(ev.get("tool_name", ""))
-        route(tool, ev.get("tool_input") or {})
+        inp = ev.get("tool_input") or {}
+        if isinstance(inp, dict):           # anything else is unreadable input: the policy above, in route()
+            try:
+                check_g8(tool, inp)
+            except SystemExit:
+                raise
+            except Exception as exc:
+                block("G8 locked", f"the locked-results check crashed ({type(exc).__name__}), and this rule fails closed.",
+                      "retry; if it repeats, stop and tell the coordinator.")
+        route(tool, inp)
     except SystemExit:
         raise
     except Exception as exc:  # the failure policy in the module docstring

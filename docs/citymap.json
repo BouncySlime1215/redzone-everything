@@ -919,6 +919,15 @@
     "scripts/media_pull.py"
    ]
   },
+  "ledger.jsonl": {
+   "readers": [
+    "scripts/results_ledger.py"
+   ],
+   "users": [],
+   "writers": [
+    "scripts/results_ledger.py"
+   ]
+  },
   "lock_gold.jsonl": {
    "readers": [
     "agent/kaggle/student_data.py"
@@ -1242,6 +1251,15 @@
     "scripts/buffer_sweep.py",
     "scripts/collect_live_test.py",
     "scripts/publish_live_nights.py"
+   ]
+  },
+  "summary/latest.json": {
+   "readers": [
+    "scripts/results_ledger.py"
+   ],
+   "users": [],
+   "writers": [
+    "scripts/results_ledger.py"
    ]
   },
   "supervisor.jsonl": {
@@ -14133,6 +14151,33 @@
     "untagged"
    ]
   },
+  "scripts/results_ledger.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "ledger.jsonl",
+     "summary/latest.json"
+    ],
+    "uses": [],
+    "writes": [
+     "ledger.jsonl",
+     "summary/latest.json"
+    ]
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Hash-chained, append-only ledger of test results, plus the verdict-only public view of locked gates.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/retrosheet_plays.py": {
    "calls": [
     "redzone/noggin/factory.py:EVAL_FIRST_NIGHT"
@@ -15211,12 +15256,12 @@
  },
  "summary": {
   "calls": 1544,
-  "data_files": 181,
+  "data_files": 183,
   "machines": 49,
-  "modules": 381,
+  "modules": 382,
   "orphans": 14,
-  "unowned": 208,
-  "untagged": 313
+  "unowned": 209,
+  "untagged": 314
  },
  "version": 2
 }

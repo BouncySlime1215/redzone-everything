@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**381 modules**, 313 untagged, 208 unowned, 14 orphans (no importer); 1544 call edges, 181 data files, 49 machines.
+**382 modules**, 314 untagged, 209 unowned, 14 orphans (no importer); 1544 call edges, 183 data files, 49 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -226,7 +226,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (208)
+## unowned (209)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -409,6 +409,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/reactgrade.py` (entry) | [EXP-301] Grade the delay-and-react arms (lane 2's EXP-209 rows) per league and condition. | lab.reactgrade -> - | untagged |
 | `scripts/release_gate.py` (entry) | The release gate ("95% good minimum", the user's rule of 2026-11-03), checked on HELD-OUT nights. | - -> - | untagged |
 | `scripts/replay_park_try.py` (entry) | Park the HIDDEN YouTube TV stick just before a big play's snap (redzone/tuners/replay_park.py), then PLAY on Enter. | tuners.adb, tuners.replay_park, tuners.yttv_label -> - | untagged |
+| `scripts/results_ledger.py` (entry) | Hash-chained, append-only ledger of test results, plus the verdict-only public view of locked gates. | - -> - | untagged |
 | `scripts/retrosheet_plays.py` (entry) | Retrosheet event files -> the ESPN-format MLB play dicts the tokenizer reads (Wave 1, green). | noggin.factory -> - | untagged |
 | `scripts/scout_ledger.py` (entry) | Data scout ledger: check docs/datasources/scout.json and render scout-ledger.md, ranked by new information per GB. | - -> - | untagged |
 | `scripts/scout_probe.py` (entry) | Data scout probe: for each scout.json source, read the host's robots.txt and fetch ONE probe URL. | - -> - | untagged |
@@ -439,7 +440,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 | `scripts/yttv_search_tune_try.py` (entry) | Tune the LOCAL stations by YouTube TV search on the HIDDEN stick, through the app's own routing and tuner as if tuners.yttv_local_search were on (ChannelMap.... | channels, tuners.adb, tuners.tuners -> - | untagged |
 
-## Untagged (313)
+## Untagged (314)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -717,6 +718,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/release_gate.py`
 - `scripts/replay_check.py`
 - `scripts/replay_park_try.py`
+- `scripts/results_ledger.py`
 - `scripts/retrosheet_plays.py`
 - `scripts/rz.py`
 - `scripts/scout_ledger.py`
@@ -802,7 +804,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/control.py:Controller` | 6 |
 | `redzone/lab/backtest.py:lag_of` | 6 |
 
-## Shared data files (76 of 181)
+## Shared data files (76 of 183)
 
 Files two or more modules name (the rest are in the JSON). Best effort from string literals: w = writes, r = reads, u = named but unclassified.
 
