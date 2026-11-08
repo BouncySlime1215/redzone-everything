@@ -15,6 +15,7 @@ sequenceNumber, and the NFL "end" situation (next snap's possession, down, dista
 Nights on or after the factory EVAL_FIRST_NIGHT cut are never written (scorecard and locked nights stay unseen); the
 moment builder then makes its own time split with a locked block of >= 25% of the remaining nights.
 Sources and terms: docs/data-sources.md (nflverse CC-BY 4.0 / NBA.com cdn via shufinskiy/nba_data, both green).
+Why: Builds green moment sources from nflverse and NBA.com play-by-play for the reasoner (EXP-102).
 """
 from __future__ import annotations
 

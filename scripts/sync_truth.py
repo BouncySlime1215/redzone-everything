@@ -11,6 +11,7 @@ i.e. the app's belief at that moment against an independent measurement. Manual 
 written (no training or grading signal from Nick). Rows with no stick (the input wasn't known) or no
 err are skipped. The night is the US/Eastern evening the row belongs to (before 6 AM counts as the
 night before). Nothing here reads or writes the LAN: the stick is its HDMI input.
+Why: Produces sync-truth rows for grader v10 from automatic anchors (RC7 req. 2, memory).
 """
 from __future__ import annotations
 

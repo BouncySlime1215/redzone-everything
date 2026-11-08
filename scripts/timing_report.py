@@ -6,6 +6,7 @@
     python scripts/timing_report.py --write-profile                  # refresh redzone/lab/feed_lag_profile.json
 
 Read-only on the recordings and data/redzone.db. See redzone/lab/timing.py for the definitions.
+Why: Dead-ball detection lag per source and league (docstring, timing-sim commit, memory 2026-11-04).
 """
 import argparse
 import json

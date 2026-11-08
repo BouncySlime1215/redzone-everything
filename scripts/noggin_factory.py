@@ -6,6 +6,7 @@
 Runs on free Kaggle CPU or GitHub Actions (noggin-factory.yml), never on the Mac. One season per process;
 each season's raw parquet is fetched, turned into windows, and deleted unless --keep-raw.
 Writes <out>/<league>_windows.parquet and <out>/manifest.json (rows / nights / games per split).
+Why: Builds labeled dead-ball moments from public play-by-play for the Noggin (docstring, factory commits).
 """
 from __future__ import annotations
 

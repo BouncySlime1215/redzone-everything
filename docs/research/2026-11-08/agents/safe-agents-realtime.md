@@ -1,3 +1,17 @@
+---
+id: R-SAFEAGENT
+title: "Safe and effective AI coding agents on real-time, hardware-in-the-loop, invariant-heavy code"
+date: 2026-11-08
+stream: rules
+author: "unrecorded (2026-11-08 rules research agent)"
+status: reviewed
+supersedes: []
+sources: 36
+verified: 21
+affects: []
+gate: []
+---
+
 # Safe and effective AI coding agents on real-time, hardware-in-the-loop, invariant-heavy code
 
 Nov 8, 2026. Read-only research; nothing here is a measured RedZone result. Hour figures are **(est.)** and are mine.

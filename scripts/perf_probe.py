@@ -7,6 +7,7 @@ Runs the real Engine (no network, no TV): builds it, loads N live games across l
 decide() K times while the clocks run, so scoring + the decider + candidates all run every tick.
 It measures the decision path, not the poll loop or the Mind. Numbers are only comparable between
 runs on the same machine (CI's PR-vs-base pair).
+Why: Times the live decide() tick and peak RSS for the PR comment (docstring, CI commit).
 """
 from __future__ import annotations
 

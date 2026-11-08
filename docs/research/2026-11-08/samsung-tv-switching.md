@@ -1,3 +1,17 @@
+---
+id: R-SAMSUNG
+title: "Samsung TV input switching and state reading: research (2026-11-08)"
+date: 2026-11-08
+stream: harness
+author: "unrecorded (2026-11-08 research agent)"
+status: reviewed
+supersedes: []
+sources: 35
+verified: 22
+affects: []
+gate: []
+---
+
 # Samsung TV input switching and state reading: research (2026-11-08)
 
 Scope: fastest reliable HDMI1/HDMI2 switching on a Samsung Tizen TV (Nick's is a "6 Series 55-inch",

@@ -16,6 +16,7 @@ reprobe_unmeasured; adds ~7.5 s behind).
 --drift-min=M: after a verified join, keep the drift monitor running M minutes (reads only when due: first after
 --first-s, default 300, then x2; each read costs ~7.5 s and pushes the picture ~7.5 s back).
 Prime: the timecode measures the pause; no relink is wired (on a fallback, re-tune it by hand).
+Why: Runs one watched join on the hidden stick, then optionally watches for drift (docstring).
 """
 import asyncio
 import json

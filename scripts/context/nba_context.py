@@ -11,6 +11,7 @@ Writes <out>/nba-stakes, nba-rest, nba-l2m: <season>.parquet (tokens.COLUMNS, se
 (16 buckets per numeric field fit on TRAIN games only: tip before 2022-10-01).
 --cdn-games: per NBA.com game id the first action time + tricodes (built from shufinskiy/nba_data cdnnba files by
 `cdn-games` mode below) -> nba_game_id crosswalk (2020-21 on), needed for the L2M join.
+Why: NBA context shards: stakes, rest and travel, referee facts (docstring, Data B NBA commit).
 """
 from __future__ import annotations
 

@@ -1,3 +1,17 @@
+---
+id: A-RULES
+title: "Audit 2026-11-08: the rules, the gates, the config defaults"
+date: 2026-11-08
+stream: audit
+author: "unrecorded (2026-11-08 audit agent)"
+status: reviewed
+supersedes: []
+sources: 0
+verified: 0
+affects: ["CLAUDE.md", "redzone/default_config.yaml", "redzone/contracts/flags.py", "scripts/release_gate.py", "scripts/northstar.py"]
+gate: []
+---
+
 # Audit 2026-11-08: the rules, the gates, the config defaults
 
 Scope: CLAUDE.md, architecture, northstar/roadmap, status, handoff, decisions, runbooks, north-star memory,

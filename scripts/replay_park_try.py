@@ -8,6 +8,7 @@ game: #391) and hidden from the TV. The script scrubs it (CENTER, RIGHT probe, k
 the overlay label, lets it play up to replay.park_lead_s (1.5 s) before the snap and pauses it. Then switch the TV to
 that stick and press Enter: it sends MEDIA_PLAY, and the snap should come 1-2 s later. Prints JSON only; frames are
 read for numbers, then deleted; the stick address is never printed. Nothing else on the Mac changes.
+Why: Parks the hidden YouTube TV stick before a big play's snap, then plays on Enter (docstring).
 """
 import asyncio
 import json

@@ -13,6 +13,7 @@ replay grades the cut at the ready time without that re-check (the pessimistic s
 
 usage: python scripts/scrub_flip_replay.py <eval_sports args...> [--scrub-s 18]
   (pass --hidden-stick wait --behind-live B; --split must be train/valid/fit)
+Why: Report only: EXP-601 replay with the hidden stick buffered by overlay scrub (docstring).
 """
 from __future__ import annotations
 

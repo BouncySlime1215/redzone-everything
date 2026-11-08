@@ -9,6 +9,7 @@ Extracting overwrites only the pinned files (data/archive/<league>/..., data/eva
 data/demo/<day>/, data/eval_pin.json); other nights in data/archive are left alone. On the Mac,
 where data/ is the live service's, it refuses to replace a file whose content differs unless you
 pass --force (the live recorder may have refreshed it; the pin wins for grading).
+Why: Pins one eval dataset so every thread and CI grades identical nights (eval-data-v1 commit).
 """
 import argparse
 import hashlib

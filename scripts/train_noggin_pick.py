@@ -9,6 +9,7 @@ Splits are whole nights, oldest -> newest: train seasons | calib seasons (early 
 margin) | test seasons (graded once). Forward CV over the train seasons reports the mean and worst fold.
 Every night is graded with the app's own grader (sportsgrade.grade) for the PICK rollout, the oracle, and
 a hand baseline (crunch first, then the closest game), on the FULL calib and test splits.
+Why: Trains Noggin Reflex PICK v1 by imitating the hindsight oracle, offline in the cloud (docstring).
 """
 from __future__ import annotations
 

@@ -24,6 +24,7 @@ Licence lines (plan B, personal use only, never for commercial release; docs/dat
     nba  NBA stats / cdn.nba.com public JSON: NBA.com terms, personal non-commercial use. B.
     yt   YouTube Data API v3 with Nick's own key: YouTube API Services ToS + Developer Policies (refresh or
          delete stored stats within 30 days; no sale; personal use). yellow-B.
+Why: Media metadata: which plays got clipped and how much people watched (docstring, Data C commit).
 """
 from __future__ import annotations
 

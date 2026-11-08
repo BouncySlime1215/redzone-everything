@@ -7,6 +7,7 @@ answer. lock_in, safe_to_leave, confidence and stay_s stay exactly as the export
 server's /score reads it with one prefill.
 
 Test nights are never touched or written here: the reasoner thread's chat_test.jsonl is the eval set.
+Why: Builds teacher-and-hindsight training sets for the game-reasoner student (Kaggle Mind pipeline).
 """
 from __future__ import annotations
 

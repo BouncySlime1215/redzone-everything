@@ -7,6 +7,7 @@ Reads the switches the app logged with path "prime_tile" (data/redzone.db) and t
 graded cuts (data/supervisor_cuts.jsonl, written ~90 s after each cut). Gate: >= 95% of tile
 switches confirmed on the right tile in under 2 s (>= 20 switches) and 0 mid-play entries on them.
 A switch whose cut isn't graded yet counts as unknown, and the gate refuses to pass on unknowns.
+Why: Grades a live Prime NBA multiview night against the turn-on gate (docstring, Prime multiview commit).
 """
 from __future__ import annotations
 

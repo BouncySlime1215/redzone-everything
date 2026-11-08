@@ -5,6 +5,7 @@
 
 It only reads and connects; it never changes settings on your Mac, sticks, or TV.
 Results are saved to data/devices.json for the app to use.
+Why: Phase 0 setup checker, to run whenever something seems off (docstring).
 """
 from __future__ import annotations
 

@@ -13,6 +13,7 @@ Grow each graded set to >= 60 decisions per gate. This grader reads per-night co
 counts.json: {"lines": [{"line": "big_live_nba", "league": "nba",
                          "nights": [{"night": "20251101", "hits": 6, "n": 8}, ...]}, ...]}
 Self-contained: no imports from training or decider code. Deterministic (seeded bootstrap).
+Why: Estimates how many nights a gate needs; a proposal, not frozen (docstring, test writers commit).
 """
 from __future__ import annotations
 

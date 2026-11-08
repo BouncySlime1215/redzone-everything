@@ -4,6 +4,7 @@
     .venv/bin/python scripts/eval_brain.py               # nfl nba nhl mlb
     .venv/bin/python scripts/eval_brain.py nba --games 30
     .venv/bin/python scripts/eval_brain.py --save        # also store it in brain_models/metrics.json
+Why: Compares the learned brain with the hand-written heuristics on recorded games (docstring, learned brain commit).
 """
 import argparse
 import json

@@ -7,6 +7,7 @@
 Five-fold season-level forward CV on the non-test nights (mean + worst fold vs the game-state baseline),
 then fit on train, isotonic calibration on calib, and ONE grade on the FULL test split. Writes
 <out>/predict_<league>.v1.npz and <data>/predict_<league>.report.json.
+Why: Trains Noggin Predict v1 for one league from the factory table, cloud only (docstring).
 """
 from __future__ import annotations
 

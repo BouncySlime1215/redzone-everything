@@ -1,3 +1,17 @@
+---
+id: R-CATCHUP
+title: "Catch-up and condensed viewing: research for the \"drive catch-up story\""
+date: 2026-11-08
+stream: context
+author: "unrecorded (2026-11-08 research agent)"
+status: reviewed
+supersedes: []
+sources: 24
+verified: 12
+affects: []
+gate: []
+---
+
 # Catch-up and condensed viewing: research for the "drive catch-up story"
 
 Date: 2026-11-08. Scope: research only, no code changes. Marks: **[V]** = I opened the page and read it;

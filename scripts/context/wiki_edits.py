@@ -12,6 +12,7 @@ history: MediaWiki API prop=revisions, rvprop=timestamp only, paged (rvlimit=max
          Coverage "*" for the 15-min bins of the span, written only if every title succeeded.
          Page moves carry their revision history, so the current title is enough.
 Signal metric "edits", bin 900 s. Facts (edit_rate_z, edit_rate_live_z) are built by run_buzz.py.
+Why: Wikipedia edit rate per team as buzz signals (docstring, Data B buzz commit).
 """
 from __future__ import annotations
 

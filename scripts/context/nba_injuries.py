@@ -21,6 +21,7 @@ Referee facts (game level, kind "new", source nba_ref_assignments, asof = the ru
     ref_crew_chief_id, ref_2_id, ref_3_id (value_str "ref_<NBA official id>" via the L2M name->id table when
     known, else "refname_<slug>"), ref_crew_chief_no (jersey number).
 Parsers are tested offline on a text fixture written from the known layout: NEEDS LIVE VERIFICATION.
+Why: Turns the NBA injury report and referee assignments into context facts (docstring, Data B commit).
 """
 from __future__ import annotations
 

@@ -16,6 +16,7 @@ Writes <out>/<league>/<season>/part-NNNN.parquet (float16 features, y, slate, la
 per part) and <out>/<league>/<season>.json (rows, slates, parts, complete). Parts that exist are skipped, so a
 season cut short by its budget resumes where it stopped.
 Locked/eval nights are never read (train_noggin_pick.season_nights drops the scorecard window).
+Why: Makes PICK training rows from the hindsight oracle on real and synthetic nights (docstring, NHL self-play commit).
 """
 from __future__ import annotations
 

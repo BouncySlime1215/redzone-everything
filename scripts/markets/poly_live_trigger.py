@@ -13,6 +13,7 @@ benchmarking/monitoring uses (§3.5); see docs/datasources/markets/kalshi.md.
 
     pip install websockets requests
     python scripts/markets/poly_live_trigger.py --league nfl --date 2026-11-05 --out out/markets_live --hours 5
+Why: Polymarket 'something just happened' trigger, shadow log only (Nick's Nov 5 request, docstring).
 """
 from __future__ import annotations
 

@@ -1,3 +1,17 @@
+---
+id: R-VIEWER
+title: "Viewer experience of automated multi-game sports (research, 2026-11-08)"
+date: 2026-11-08
+stream: context
+author: "unrecorded (2026-11-08 research agent)"
+status: reviewed
+supersedes: []
+sources: 24
+verified: 19
+affects: []
+gate: []
+---
+
 # Viewer experience of automated multi-game sports (research, 2026-11-08)
 
 Status: research only. No code changed, no default or gate changed. Date: 2026-11-08.

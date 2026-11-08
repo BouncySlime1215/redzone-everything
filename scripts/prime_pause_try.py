@@ -5,6 +5,7 @@
 Only on the hidden stick, with a live Prime game playing: it presses MEDIA_PAUSE, holds, then MEDIA_PLAY, and reads
 Prime's overlay timecode (frames deleted at once). No relink is wired here; on a failure, re-tune it by hand. Prints
 JSON only; the stick address is not printed.
+Why: Runs the buffer pause once on the hidden Prime stick, flag off (prime_pause commit, docstring).
 """
 import asyncio
 import json

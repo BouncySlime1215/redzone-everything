@@ -1,3 +1,17 @@
+---
+id: R-LEVERAGE
+title: "Leverage and excitement models: what is most worth watching right now (2026-11-08)"
+date: 2026-11-08
+stream: context
+author: "unrecorded (2026-11-08 research agent)"
+status: reviewed
+supersedes: []
+sources: 23
+verified: 19
+affects: []
+gate: []
+---
+
 # Leverage and excitement models: what is most worth watching right now (2026-11-08)
 
 Scope: research only. No code changed, no secrets read. Every source below was opened or returned by a

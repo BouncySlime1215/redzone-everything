@@ -1,3 +1,17 @@
+---
+id: R-FEEDS
+title: "Lowest-latency free live feeds per league (research, 2026-11-08)"
+date: 2026-11-08
+stream: context
+author: "unrecorded (2026-11-08 research agent)"
+status: reviewed
+supersedes: []
+sources: 24
+verified: 24
+affects: []
+gate: []
+---
+
 # Lowest-latency free live feeds per league (research, 2026-11-08)
 
 Scope: free play-by-play and game-state feeds, how late each is versus the action and the broadcast, how to read

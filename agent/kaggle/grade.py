@@ -3,6 +3,7 @@
     python agent/kaggle/grade.py --pack <pack dir> --work <dir with teacher_out.jsonl and students/>
 
 Writes report.json and report.md (the tables for the PR) into --work.
+Why: Phase 3 of the Kaggle Mind pipeline: grades teacher vs student on held-out nights (docstring).
 """
 from __future__ import annotations
 

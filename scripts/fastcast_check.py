@@ -8,6 +8,7 @@ The service runs the check by itself while sources.fastcast is off (redzone/sour
 FastCast in shadow on a few live games, never merged. This script is the same grade from the log
 (timing, coverage, play type; the live check also compares scores). Exit code 0 = pass, 1 = fail,
 2 = not decided yet. Read-only.
+Why: Grades ESPN FastCast against polling: no fastcast rows appeared Nov 2-4 (lessons log).
 """
 import argparse
 import json

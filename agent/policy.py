@@ -7,6 +7,7 @@ Two layers:
 
 The same rules label the fine-tuning data (agent/train/make_data.py), so the model learns this
 project's judgment, and the held-out test measures how well it carries over to new wordings.
+Why: The watchdog's decide step: what is wrong and what to do (watchdog agent commit).
 """
 from __future__ import annotations
 

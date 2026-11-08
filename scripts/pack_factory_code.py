@@ -2,6 +2,7 @@
 """Pack the code the Kaggle factory notebook needs into rz_factory_code.tar.gz (no data, no secrets).
 
     python scripts/pack_factory_code.py OUT_DIR      # -> OUT_DIR/rz_factory_code.tar.gz + kaggle_noggin_factory.ipynb
+Why: Packs factory code for the Kaggle notebook, with no data and no secrets (docstring).
 """
 from __future__ import annotations
 

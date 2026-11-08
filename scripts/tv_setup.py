@@ -10,6 +10,7 @@ Have the TV on, both sticks on, and the Mac on the home Wi-Fi. Watch the TV: it 
 the sticks four times, and asks you to confirm each time. Everything it learns goes to
 data/devices.json (tokens to data/tv_token.txt and data/smartthings_oauth.json, never git).
 See docs/instant-switching.md.
+Why: Makes the TV's own input change the default flip; HOME is the last resort (instant switching commit).
 """
 from __future__ import annotations
 

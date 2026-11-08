@@ -25,6 +25,7 @@ asof: archive rows use asof = kickoff - 1 min (the reanalysis value at the kicko
 forecast a viewer had at kickoff); forecast rows use asof = fetch time and are dropped when fetch >= kickoff.
 Dome / closed-roof games get no weather rows. Venues: redzone/context/venues.csv (lat/lon/tz/roof); CFB venues
 come from CFBD /venues (scripts/context/cfbd_context.py venues) in the same columns.
+Why: Hourly kickoff weather for outdoor games, as a context shard (docstring, Data B commit).
 """
 from __future__ import annotations
 

@@ -2,6 +2,7 @@
 
     python scripts/state_machines.py           # regenerate
     python scripts/state_machines.py --check   # CI: exit 1 if the doc is stale
+Why: Writes docs/state-machines.md from redzone/machines specs (docstring, state machines commit).
 """
 from __future__ import annotations
 

@@ -8,6 +8,7 @@ anything shown. Runs on Kaggle (the dev container's allowlist blocks polymarket 
 
     python scripts/markets/polymarket.py --league nba --start 2024-10-01 --end 2025-06-30 --out out/markets \
         [--max-markets N] [--tag-id 745]
+Why: Polymarket price history for game markets, the market tick source (docstring, Data Division D).
 """
 from __future__ import annotations
 

@@ -1,3 +1,17 @@
+---
+id: R-FIRETV
+title: "Fire TV app and channel switching over adb: research (2026-11-08)"
+date: 2026-11-08
+stream: harness
+author: "unrecorded (2026-11-08 research agent)"
+status: reviewed
+supersedes: []
+sources: 26
+verified: 25
+affects: []
+gate: []
+---
+
 # Fire TV app and channel switching over adb: research (2026-11-08)
 
 Scope: fastest and most reliable app/channel switching on Fire TV sticks driven by adb. Method: every source

@@ -14,6 +14,7 @@
     # 3. today vs head vs teacher vs student on held-out (test) nights
     python scripts/distill.py eval --rows-dir data/training/reasoner_llm --teacher data/distill/teacher_out.jsonl \
         [--student data/distill/student_out.jsonl] [--md data/distill/report.md]
+Why: Teacher-to-student distill end to end, light enough to run anywhere (docstring, Kaggle Mind commit).
 """
 from __future__ import annotations
 

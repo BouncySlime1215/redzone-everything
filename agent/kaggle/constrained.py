@@ -17,6 +17,7 @@ max_new_tokens, the shortest legal character is forced. Every answer parses, by 
     proc = JsonSchemaProcessor(tok, [schema_for(r["task"], r["messages"][1]["content"]) for r in part],
                                max_new_tokens=192)
     model.generate(..., logits_processor=LogitsProcessorList([proc]))
+Why: Mind V7 of the Kaggle pipeline: JSON-constrained decoding keeps the student's answer shape (docstring).
 """
 from __future__ import annotations
 

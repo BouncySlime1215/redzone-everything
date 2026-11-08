@@ -1,3 +1,17 @@
+---
+id: R-COORD
+title: "Coordinating many coding agents toward one goal: state of the art, late 2026"
+date: 2026-11-08
+stream: rules
+author: "unrecorded (2026-11-08 rules research agent)"
+status: reviewed
+supersedes: []
+sources: 52
+verified: 51
+affects: []
+gate: []
+---
+
 # Coordinating many coding agents toward one goal: state of the art, late 2026
 
 Research note, 2026-11-08. Goes beyond `docs/research/agent-coordination-and-rationale.md` (CAID, CooperBench,

@@ -24,6 +24,7 @@ Endpoints and facts (source ids cfbd-*, kind "new" unless noted; crew D owns /li
   /records (Y-1)  prev_season_win_pct per team
   /talent         talent (247 roster composite, roster-based and published pre-season)
 asof: kickoff - 1 h for every row. game_id = the CFBD game id (crosswalk to the play table in lane 1).
+Why: Builds CFB context shards from CollegeFootballData on Kaggle or Actions (docstring, Data B commit).
 """
 from __future__ import annotations
 

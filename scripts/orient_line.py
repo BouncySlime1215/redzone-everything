@@ -3,6 +3,7 @@
     python scripts/orient_line.py --db <mac repo>/data/redzone.db --on 2026-11-08 ... --off 2026-11-09 ...
 
 Read-only on the database (switches table only). Nights are ET nights, 6 AM to 6 AM (phone_v2.night_window).
+Why: EXP-038: prints the orientation-beat override line, phone.orient on vs off (docstring).
 """
 from __future__ import annotations
 

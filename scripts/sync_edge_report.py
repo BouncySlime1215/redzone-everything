@@ -8,6 +8,7 @@ spread: a tune that lands off the channel's usual position did not land on the l
 live edge (p95), the app's error (its belief minus the meter: p95 of |err|), and the rows where the stick
 sat > force_live_s behind without a hold (would_force) and the re-links made. Lane 3's syncgrade (#279)
 is the grader; this is the quick look.
+Why: Shows where each stick sat against its live edge, per app (docstring, SYNC A commit).
 """
 from __future__ import annotations
 

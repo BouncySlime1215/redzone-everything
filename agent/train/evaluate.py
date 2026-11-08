@@ -3,6 +3,7 @@
     .venv-agent/bin/python agent/train/evaluate.py [--adapter agent/model/adapter] [--limit N]
 
 Also reports how often the answer wasn't usable JSON (the runtime falls back to "notify" then).
+Why: Scores the watchdog model on its held-out test set (watchdog agent commit).
 """
 from __future__ import annotations
 

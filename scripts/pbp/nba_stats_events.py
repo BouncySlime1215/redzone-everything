@@ -9,6 +9,7 @@ Owner: Data Planner A.
 Game list and home/away come from the landed SportVU shard. One row per event (EVENTNUM order). SCORE is
 "AWAY - HOME" in the stats API. WCTIMESTRING is a local wall clock to the minute only, so wall_ts stays null (no
 invented time); clock_s is PCTIMESTRING. No description text is kept (fixed EVENTMSGTYPE vocab only).
+Why: Converts NBA.com stats play-by-play for the SportVU games (docstring, Data A commit).
 """
 from __future__ import annotations
 

@@ -6,6 +6,7 @@ Owner: lane 1 writes (after each factory run), lane 5 reads. Light: reads two sm
 
     python scripts/data_ledger.py                                   # print the table from the ledger
     python scripts/data_ledger.py --manifest out/manifest.json      # fold a factory manifest in, write, print
+Why: Folds a factory manifest into the data ledger and prints the cycle plan table (docstring, phone v2 commit).
 """
 from __future__ import annotations
 

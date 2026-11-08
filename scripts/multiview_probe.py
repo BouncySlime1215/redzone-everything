@@ -18,6 +18,7 @@ on, or after tapping Pause on the phone. It:
 Everything goes to data/lab/multiview/<time>/ (probe.json plus screenshots). Send probe.json to
 the coordinator. Its numbers become the multiview costs, and multiview.enabled goes on only if
 expand is fast and verifiable (redzone/tuners/multiview.py).
+Why: Measures YouTube TV multiview on a real stick, at home before games (docstring, multiview commit).
 """
 from __future__ import annotations
 

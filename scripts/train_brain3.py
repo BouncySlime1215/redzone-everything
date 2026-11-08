@@ -7,6 +7,7 @@ Cloud only (needs lightgbm, ~6M rows; never on the Mac):
 
 Writes redzone/scoring/brain_models/<league>.v3.npz (committed), metrics_v3.json and
 docs/brain3/calibration_<league>.png.
+Why: Trains Brain v3, one compact model per league (docstring, Brain v3 commit).
 """
 import argparse
 import json

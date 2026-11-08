@@ -7,6 +7,7 @@ Light: stdlib only, reads one small JSON file.
 
     python scripts/scout_ledger.py            # check + rewrite docs/datasources/scout-ledger.md
     python scripts/scout_ledger.py --check    # check only, exit 1 on a problem (CI-safe)
+Why: Ranks data sources by new information per GB, from scout.json (docstring, scout commit).
 """
 from __future__ import annotations
 

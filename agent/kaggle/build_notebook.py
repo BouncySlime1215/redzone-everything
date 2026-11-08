@@ -1,6 +1,7 @@
 """Turn a ``# %%`` percent-format script into a Kaggle/Jupyter notebook. Stdlib only.
 
     python agent/kaggle/build_notebook.py   # teacher_distill.py -> teacher_distill.ipynb
+Why: Kaggle Mind pipeline: turns percent-format scripts into notebooks, stdlib only (salvage commit).
 """
 from __future__ import annotations
 

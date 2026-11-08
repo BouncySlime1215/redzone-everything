@@ -14,6 +14,7 @@ any hold. For each burst onset (sync_probe.BurstWatch) it prints the last dead b
 real-life moment (onset - delay) and the gap, then the same for random moments as the null. A steady
 gap (sd well under the null's) after timeout-type plays is the evidence to turn sync.burst_anchor on
 with gap_s / gap_sd_s from here. Reads local files only; prints numbers, never addresses.
+Why: Checks whether YouTube TV bursts line up with feed TV timeouts (docstring, EXP-084 commit).
 """
 from __future__ import annotations
 

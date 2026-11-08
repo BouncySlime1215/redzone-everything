@@ -35,6 +35,7 @@ Exit codes: 0 deployed (or already current), 1 error/refused, 2 deferred (game l
 
 Every step goes to data/deploy/deploy.jsonl; outcomes also go to the phone (data/agent.jsonl and
 ntfy, the same channel the watchdog uses).
+Why: Safe Mac deploy: test off to the side, switch only with no live game, roll back on bad health (docstring).
 """
 from __future__ import annotations
 

@@ -3,6 +3,7 @@ present. No network, no account, no per-call cost. Loaded once; ~1 GB of memory.
 
 Greedy decoding and a short answer budget: the answer is one small JSON object, so a choice is
 deterministic for a given status and takes about a second.
+Why: Runs the local Qwen3 model on the Mac with no network and no per-call cost (docstring).
 """
 from __future__ import annotations
 

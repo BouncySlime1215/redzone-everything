@@ -23,6 +23,7 @@ CLI:
   python scripts/markets/lines_history.py --source sbro --in <dir of xlsx|csv> --league nba --out out/markets
   python scripts/markets/lines_history.py --source nflverse --in games.csv --out out/markets
   python scripts/markets/lines_history.py --source odds_api --in snapshot.json --league nba --out out/markets
+Why: Free pregame line history into market tick rows (docstring, Data Division D commit).
 """
 from __future__ import annotations
 

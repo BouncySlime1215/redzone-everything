@@ -1,3 +1,17 @@
+---
+id: A-SWITCH
+title: "Switch path review, 2026-11-08"
+date: 2026-11-08
+stream: audit
+author: "unrecorded (2026-11-08 audit agent)"
+status: reviewed
+supersedes: []
+sources: 0
+verified: 0
+affects: ["redzone/engine.py", "redzone/control.py"]
+gate: []
+---
+
 # Switch path review, 2026-11-08
 
 Scope: `redzone/engine.py` (decide loop, `_act`, `may_cut`, `_entry_valid`, `safe_to_leave`, `_preload_standby`,
