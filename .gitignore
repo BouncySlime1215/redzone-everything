@@ -4,7 +4,11 @@ data/
 __pycache__/
 *.pyc
 .pytest_cache/
-.claude/
+# Claude: keep personal and session files local; share the project rules (docs/coordination.md)
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+!.claude/agents/
 data/training/
 .venv-agent/
 .xfer/
