@@ -360,3 +360,11 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   behind live). On a stick scrubbed 60 s back that turns the believed delay 60 s too short: every cut would plan the
   dead ball a minute early. Lesson: a "reset to safe defaults" must keep what was MEASURED about this tune (its
   behind_live), and only throw away what was guessed.
+- 2026-11-07 (jump mode, overseer 20:01:50): a jump decided on a READY standby still went out "tuned" (30 s): at the
+  flip `_execute_two` needs the hidden stick steady-PLAYING (FLIP_STEADY_WAIT_S 3 s) and otherwise re-tunes it on the
+  spot. The readiness check in the decider and the one at the flip were different. Fix: a jump submits with
+  `preloaded_only`, which refuses ("standby not ready", screen unchanged) instead of re-tuning.
+- 2026-11-08 (jump mode): a long timeout blocked jumps because the leave gate only trusts a break with no resume in
+  the data while the data "covers" the screen or the break is under its usual length. A slow feed fails "covered",
+  so a timeout past its floor read as "play on screen". The feed is ~35 s ahead of the screen: if the fresh feed is
+  still in the break, the screen is too (once the play before it has aired). The jump gate uses that now.

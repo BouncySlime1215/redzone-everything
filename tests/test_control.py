@@ -1,5 +1,6 @@
 """The TV machine: confirmed input changes, safe exits, and uncertain-command recovery."""
 import asyncio
+import time
 
 import pytest
 
@@ -526,3 +527,33 @@ def test_paused_standby_at_flip_time_is_not_reread(two, monkeypatch, caplog):
     assert not out.ok and out.detail == "standby stream is no longer confirmed" and reads["n"] == 2
     assert out.screen_unchanged and c.main is on_screen and not c.hidden_ready
     assert "playbook=SAFE-08" in caplog.text
+
+
+def test_a_jump_never_retunes_a_standby_that_stopped(two):
+    """[jump mode, overseer Nov 7 20:01:50] A jump decided on a ready standby went out "tuned" (30 s) because the
+    stream wasn't steady-playing at the flip. preloaded_only refuses instead: the screen is untouched."""
+    c, tuner = two
+    c.hidden_target, c.hidden_ready = "youtubetv:fox", True
+    c.hidden.remember("youtubetv:fox", run(c.hidden.playback("yttv.pkg")))
+    c.hidden.playback_state = "buffering"
+    on_screen = c.main
+    c._preloaded_only = True
+    out = run(c.execute("youtubetv:fox", may_cut=lambda: True))
+    assert not out.ok and out.detail.startswith(ctl.STANDBY_NOT_READY) and out.path == "refused"
+    assert out.screen_unchanged and tuner.calls == [] and c.main is on_screen
+    # nothing on the hidden stick at all: refused before any key
+    c.hidden_target, c.hidden_ready = None, False
+    out = run(c.execute("youtubetv:espn", may_cut=lambda: True))
+    assert not out.ok and out.detail == ctl.STANDBY_NOT_READY and tuner.calls == []
+
+
+def test_a_refill_skips_the_preload_gap_and_says_why_one_is_refused(two):
+    c, tuner = two
+
+    async def go():
+        c._last_preload = time.time()
+        assert not c.preload("youtubetv:fox") and c.preload_why == "preload gap"
+        assert c.preload("youtubetv:fox", urgent=True) and c.preload_why == ""
+        assert not c.preload("youtubetv:espn", urgent=True) and c.preload_why == "a switch or preload is running"
+        await c._preload_task
+    run(go())

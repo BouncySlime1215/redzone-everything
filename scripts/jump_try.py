@@ -40,23 +40,37 @@ def rows(since: float) -> list[dict]:
     return out
 
 
+def standby_summary(ss: list[dict]) -> str:
+    """The "standby" rows: how often the hidden stick held a ready game, and why preloads were refused."""
+    if not ss:
+        return "standby: no status rows yet"
+    ready = sum(1 for r in ss if r.get("standby_ready"))
+    pre = Counter(r.get("preload", "?") for r in ss)
+    last = ss[-1]
+    return (f"standby ready {ready}/{len(ss)} checks | preload {dict(pre)} | now: {last.get('standby')} "
+            f"ready={last.get('standby_ready')} want={last.get('want')} ({last.get('preload')})")
+
+
 def summary(rs: list[dict], minutes: float) -> str:
+    ss = [r for r in rs if r.get("event") == "standby"]
+    rs = [r for r in rs if r.get("event") is None]
     if not rs:
-        return "no jumps yet"
+        return "no jumps yet | " + standby_summary(ss)
     ok = [r for r in rs if r.get("ok") and not r.get("dry_run")]
     why, holds, fail, path = Counter(), Counter(), Counter(), Counter()
     for r in rs:
         why[r.get("why", "?")] += 1
         holds.update(r.get("holds") or {})
         if not r.get("ok"):
-            fail[r.get("fail", "?")] += 1
+            fail[r.get("fail", "?") + (f" ({r['fail_detail']})" if r.get("fail") == "other" and r.get("fail_detail")
+                                       else "")] += 1
         else:
             path[r.get("path", "?")] += 1
     took = sorted(r.get("took_s", 0) for r in ok)
     med = took[len(took) // 2] if took else 0
     return (f"{len(rs)} jump tries, {len(ok)} on screen in {minutes:.1f} min = {len(ok) / max(minutes, 1e-9):.1f}/min "
             f"(median {med:.1f} s each) | why {dict(why)} | failed {dict(fail)} | path {dict(path)} | "
-            f"waited because (ticks) {dict(holds)}")
+            f"waited because (ticks) {dict(holds)} | " + standby_summary(ss))
 
 
 def main() -> None:
