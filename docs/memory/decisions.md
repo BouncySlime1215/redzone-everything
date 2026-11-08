@@ -1198,3 +1198,28 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   **`jump_mode.search_penalty` 20** (the standby prefers code channels, ~3-4 s, over locals by search, ~11-15 s,
   unless the local's moment is that much bigger). The standby pick also skips targets the hidden stick can't tune
   now (a failed tune's backoff), which had kept it empty. jump_mode.enabled itself unchanged (Nick's live setting).
+- 2026-11-07 (Nick 11:50 local: the app's tuner back to back, espn2 -> fs1/accn with no gap, failed 1/10 "video never
+  started" and was slow 2/10; a 3 s gap fixed the delay probe, #408 9/9): new shared `tuners.relink_gap_s`, **0 (off)**.
+  When set, it waits between the reset tune and the tune back in control's reset through another channel (scrub
+  fallback, watchdog re-seek), and between the canary's tune_away and tune. scripts/watchdog_try.py takes --gap=S.
+- 2026-11-07 (overseer's FOX 50 joins just after kickoff: label 5 s at the live edge, 'knob moved 5s, not 30s
+  (5s -> 0s)'; another run label 52 s went fine): **`yttv_seek.program_start_guard: true`** (flag `yttv_seek.enabled`
+  still off). The scrub bar starts at the program start, so when the LEFTs need more than the label the scrub fails
+  closed before pressing any (back to live), with `room_s` (the label) in the result and the join row. No boundary
+  retry for it. Capping the target at room - 15 instead is left to the planner (not done here).
+- 2026-11-07 (Nick, 12:08 PM ET "You can deploy whatever"; overseer's suggestion (a)): **new deploy gate option
+  `scripts/deploy.py deploy --if-paused` (deploy.yaml `if_paused`, default false = gate unchanged).** With it, live
+  games and games starting soon don't defer the switch while `/api/state` reports `mode.paused: true` (the phone's
+  Pause; only a literal true counts, and a "Watch this" hold is not a pause). The journal logs a `paused_gate` row
+  naming the live game it let through. Snapshot, 10-min health watch and auto-rollback run as usual. Reason: a paused
+  app switches nothing, so a restart moves nothing under its control, and the pause survives the restart; today's
+  RC6.3.1 deploy had to bypass busy() by hand.
+- **2026-11-07** New gate `tuners.yttv_local_search_live` (default **false**; `tuners.yttv_local_search` default
+  unchanged, false). On: the engine re-reads `tuners.yttv_local_search` every decide tick, so a POST /api/settings
+  change or Undo applies within ~0.5 s with no service restart (a tune in flight keeps its ref). Reason: turning the
+  locals flag on for RC6.3.1 needed a restart mid-game-day (overseer suggestion b). PR #412.
+- 2026-11-08 (overseer's stick re-run of the replay park on fd1ba542: to_snap_s 1.5, but ok false on 'player is none
+  after PAUSE' while media_session read PAUSED right after and at +10/+20 s): **new defaults
+  `replay.pause_settle_s: 3`, `replay.pause_poll_s: 0.4`.** After the park's MEDIA_PAUSE the player is re-read every
+  0.4 s for up to 3 s and the park counts as held on the first 'paused'. Reason: the first read after PAUSE can be a
+  transient 'none' (#356 family). PR #419.
