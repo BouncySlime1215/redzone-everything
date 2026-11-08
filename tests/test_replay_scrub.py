@@ -178,3 +178,47 @@ def test_a_failed_replay_scrub_is_not_retried_for_a_while(scrub):
     c._replay_scrub_backoff["youtubetv:fox"] = 0.0
     result["r"] = landing(0.1)
     assert run(c._park(c.hidden, "youtubetv:fox", 60.0, "p1")) and len(calls) == 2
+
+
+def test_nicks_espn_park_63s_lands_112_behind_and_is_1_5s_before_the_snap():
+    """Nick's stick run (Nov 8, ESPN, 63 s back): 5 LEFTs, label 111.8 s behind live. That is not 49 s too deep:
+    the scrub itself took ~37 s of wall time (17.3 s in the overlay + the label read + checks), so the snap was then
+    60 + 37 s behind live. The park waits until the picture is 1.5 s before it."""
+    from redzone.tuners import replay_park as rp
+
+    class Clock:
+        t = 1000.0
+
+        def __call__(self):
+            return self.t
+    clk = Clock()
+
+    class Stick:
+        log, host = [], "b:5555"
+
+        async def key(self, k):
+            self.log.append(k)
+            return types.SimpleNamespace(ok=True)
+
+        async def playback(self, pkg=None):
+            return {"state": "paused"}
+
+    async def enter_buffer(stick, seconds, **kw):
+        clk.t += 41.0                      # the scrub's wall time
+        return Res(ok=True, behind_s=111.8, presses=5)
+
+    async def sleep(dt):
+        clk.t += dt
+    mod = types.ModuleType("redzone.tuners.yttv_seek")
+    mod.enter_buffer = enter_buffer
+    sys.modules["redzone.tuners.yttv_seek"], old = mod, sys.modules.get("redzone.tuners.yttv_seek")
+    import redzone.tuners as _t
+    oldattr = getattr(_t, "yttv_seek", None)
+    _t.yttv_seek = mod
+    try:
+        r = run(rp.park(Stick(), 63.0, probe=Probe(), clock=clk, sleep=sleep))
+    finally:
+        sys.modules["redzone.tuners.yttv_seek"] = old
+        _t.yttv_seek = oldattr
+    assert r.ok and r.lefts == 5 and r.to_snap_s == pytest.approx(1.5, abs=0.3)
+    assert r.waited_s == pytest.approx(111.8 - 60 - 1.5 - 41.0, abs=0.3)      # played ~9.3 s, then paused
