@@ -1598,6 +1598,12 @@ class Controller:
                 log.info("buffer: resuming %s on %s on time; a switch holds the lock", target, stick.host)
             sent = await stick.key("KEYCODE_MEDIA_PLAY")
             pb = await stick.playback(pkg) if sent and sent.ok else {}
+            # [overseer Nov 7 23:14] Prime on the hidden stick reads 'stopped' for a moment after PLAY (re-buffering):
+            # three 75 s holds were thrown away as "didn't resume". Give it resume_settle_s to come back.
+            end = time.monotonic() + float(self.cfg.get("timing.behind_live_s.resume_settle_s", 6.0))
+            while sent and sent.ok and pb.get("state") != "playing" and time.monotonic() < end and ours():
+                await asyncio.sleep(0.5)
+                pb = await stick.playback(pkg)
             if not ours():
                 return False
             if pb.get("state") != "playing":
@@ -3463,8 +3469,16 @@ class Controller:
         ask = max(self._bj_min_behind() + 10.0, min(float(self.cfg.get("buffered_jump.behind_s", 75.0)),
                                                   float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
         ok = False
+        # [overseer Nov 7 23:14] one 75 s pause came back 'stopped' 3/3 on the hidden Prime stick: hold in short pauses
+        chunk = max(5.0, float(self.cfg.get("buffered_jump.hold_chunk_s", 25.0)))
         try:
-            ok = await self._hold(hid, target, ask)
+            done = 0.0
+            while done < ask - 1.0:
+                step = min(chunk, ask - done)
+                ok = await self._hold(hid, target, step, base_s=done)
+                if not ok:
+                    break
+                done = self.held.get(target, done + step)
         except asyncio.CancelledError:
             raise
         except Exception:

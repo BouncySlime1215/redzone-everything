@@ -419,13 +419,13 @@ def test_a_prime_standby_is_pause_held_not_left_unbuffered(cfg, tmp_path, monkey
     c.sticks = [FakeStick("a:5555"), FakeStick("b:5555")]
     c.hdmi = {"a:5555": "HDMI1", "b:5555": "HDMI2"}
     c.scrub_of = lambda t: True
-    asked, results = [], [True, False]
+    asked, results = [], [True, True, True, False]
 
     async def hold(stick, target, behind_s, base_s=0.0):
-        asked.append(behind_s)
+        asked.append((behind_s, base_s))
         ok = results.pop(0)
         if ok:
-            c._set_held(target, behind_s)
+            c._set_held(target, base_s + behind_s)
         return ok
     monkeypatch.setattr(c, "_hold", hold)
 
@@ -434,7 +434,7 @@ def test_a_prime_standby_is_pause_held_not_left_unbuffered(cfg, tmp_path, monkey
         c._set_hidden(t, True)
         assert c.buffer_standby(t) and not c.hidden_ready and c.bj_buffer_why == "hold_start"
         await c._preload_task
-        assert c.hidden_ready and asked == [75.0] and c.held[t] == 75.0
+        assert c.hidden_ready and asked == [(25.0, 0.0), (25.0, 25.0), (25.0, 50.0)] and c.held[t] == 75.0   # short pauses
         assert not c.buffer_standby(t) and c.bj_buffer_why == "already_held"
         u = "prime:amzn1.dv.gti.y"
         c._set_hidden(u, True)
@@ -443,3 +443,29 @@ def test_a_prime_standby_is_pause_held_not_left_unbuffered(cfg, tmp_path, monkey
         assert c.hidden_ready and u not in c.held          # failed: left at the live edge, still a usable standby
         assert not c.buffer_standby(u) and c.bj_buffer_why == "scrub_backoff"
     asyncio.run(go())
+
+
+def test_hold_waits_for_a_prime_resume_that_reads_stopped_first(cfg, tmp_path):
+    """[overseer Nov 7 23:14] Prime read 'stopped' right after PLAY on the hidden stick: the hold waits resume_settle_s
+    for 'playing' instead of reloading at the live edge."""
+    import asyncio
+
+    from tests.test_control import ChannelMap, FakeStick, ctl
+
+    cfg.update({"mode": {"dry_run": False}, "timing": {"behind_live_s": {"resume_settle_s": 3.0}}})
+    c = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+
+    class Slow(FakeStick):
+        def __init__(self, host):
+            super().__init__(host)
+            self.states = ["paused", "stopped", "stopped", "playing"]
+
+        async def playback(self, package=None):
+            st = self.states.pop(0) if len(self.states) > 1 else self.states[0]
+            return {"state": st, "pkg": package, "position": 1000, "updated": 1000}
+    c.sticks = [FakeStick("a:5555"), Slow("b:5555")]
+    c.hdmi = {"a:5555": "HDMI1", "b:5555": "HDMI2"}
+    hid = c.hidden
+    t = "prime:amzn1.dv.gti.x"
+    c._set_hidden(t, True)
+    assert asyncio.run(c._hold(hid, t, 0.1)) is True

@@ -417,6 +417,7 @@ buffered_jump:             # [overseer Nov 8 01:50Z / Nick 20:45 "play by play m
                            # dead balls; a made basket's inbound is too short for the delay margin). Others: jump mode's rules
   behind_s: 75             # scrub depth asked of each fresh YouTube TV tune (lands ~79 s: 16.8 k + 28.5, k=3)
   min_behind_s: 45         # a stick less behind than this (label) isn't a buffered picture: jump mode's own rules run
+  hold_chunk_s: 25         # [overseer Nov 7] a Prime standby is pause-held in pauses this short (75 s in one came back 'stopped' 3/3)
   flip_s: 3.2              # slowest input flip to the ready standby (live tonight 2.5-3.7 s)
   flip_fast_s: 2.0         # fastest
   margin_sigmas: 2         # delay doubt each side of a leave / landing (sim: 2 sigma at the 4 s floor = 0 mid-play)
@@ -736,6 +737,7 @@ timing:
     by_league: {nfl: 60, cfb: 60, nba: 90, cbb: 90, wcbb: 90, nhl: 90}
     default: 60
     max_s: 90              # Nick's cap (~1 min behind live accepted, 90 s at most)
+    resume_settle_s: 6     # [overseer Nov 7] a hold's PLAY may read 'stopped' for a moment (Prime re-buffering): wait this long for 'playing'
     shadow: true           # [Nick 9:10 AM Nov 5, buffer = main architecture] with enabled off: an editor decider runs
                            # every game B s behind live and logs each decision to data/buffer_shadow.jsonl; no stick
                            # or screen change (redzone/buffer_shadow.py). Lane 3 grades it vs live for the RC8 gate

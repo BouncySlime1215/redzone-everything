@@ -1284,3 +1284,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-07 (overseer 22:25 ET, runtime only): jump_mode.leagues narrowed to [cfb, nfl] for the buffered-jump test
   (buffered_jump.leagues is nfl/cfb, so NBA/NHL standbys could never be cut to). Restore [cfb, nfl, nba, nhl, cbb] when
   NBA/CBB join buffered mode or the test ends.
+- 2026-11-07 (overseer 23:20 ET): new defaults buffered_jump.hold_chunk_s 25 and timing.behind_live_s.resume_settle_s 6.
+  A Prime standby is pause-held in short pauses (one 75 s pause read 'stopped' after PLAY 3/3 on the hidden stick) and
+  a hold's resume waits up to 6 s for 'playing' before reloading at the live edge.
