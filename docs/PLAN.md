@@ -30,7 +30,7 @@ Each section names who may write it. Started 2026-11-08 from Nick's brief (quote
 
 | Id | Finding (link) | Fix | Back-filled? | Closed |
 |---|---|---|---|---|
-| G-01 | Organization standard for every report and finding (docs/STANDARD.md, Nick 2026-11-08) | `scripts/doc_index.py` + CI; wave-1 moved to docs/agents/<stream>/ | Nov 8 research/audits still in old layout: back-fill pending | open |
+| G-01 | Organization standard for every report and finding (docs/STANDARD.md, Nick 2026-11-08) | `scripts/doc_index.py` + CI; wave-1 moved to docs/agents/<stream>/ | Nov 8 research/audits still in old layout: back-fill pending | closed: Nov 8 research and audits have front matter and are in the generated index |
 | G-02 | W1-RULES: a fix needs a regression test (not only auto-fix PRs) | `scripts/fix_needs_test.py` + CI + PR template Repro/Root-cause | — | closed |
 | G-03 | W1-RULES: Stop hook so a turn can't end with checks failing | `.claude/hooks/stop_gate.py` + settings | — | closed |
 | G-04 | W1-RULES: debugging protocol (reproduce, bisect, root cause) | runbook `debugging.md`, `scripts/bisect_test.sh`, `debugger` subagent, lessons `Repro:`/`Bisected-to:` | lessons back-fill | closed |

@@ -1,7 +1,7 @@
 # CLAUDE.md: rules for every AI working on RedZone
 
 RedZone for every sport on Nick's Samsung TV: two Fire TV sticks, switching only at dead balls.
-League order NFL > CFB > NBA > NCAA basketball > NHL > MLB; his teams (WSH, UNC) first; crunch time first.
+League order NFL > CFB (equal only when both are in crunch) > NBA > NCAA basketball > NHL > MLB; his teams (WSH, UNC) first; crunch time first.
 Spec: [redzone-north-star](docs/context/claude-memory/redzone-north-star.md). Gap to perfect:
 [docs/northstar.md](docs/northstar.md). Next work: [docs/roadmap.md](docs/roadmap.md).
 
@@ -12,8 +12,9 @@ Index of all docs: [docs/README.md](docs/README.md). How agents work together: [
 
 ## Rule #1
 
-Join a game only at a dead ball. Leave mid-play only at low leverage (after a score, in transition, early,
-not close); never leave a high-leverage moment (close and late, or overtime: `redzone/lab/leverage.py`).
+Join a game only at a dead ball. Do not leave mid-play (Nick's pass bar, Nov 7); never leave a high-leverage moment
+(close and late, or overtime: `redzone/lab/leverage.py`). Basketball may join right after a made or missed shot, unless
+that moment is a transition play. Pace follows the events: docs/research/2026-11-08/redzone-numbers.md.
 Checked by: CI counters on replayed nights (entries_mid_play must stay 0; high-leverage mid-play leaves,
 plays_missed_entry and dead_air may not rise without a measured reason at the top of the PR).
 If your change and a Rule #1 test disagree: stop and write `BLOCKED: <reason>`. Do not edit the test.

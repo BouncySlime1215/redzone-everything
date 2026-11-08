@@ -15,3 +15,6 @@ data/training/
 .rz_tmp/
 .claude-xfer/
 .rz.bundle
+# Results: full dev detail and the reserved locked folder never enter git (W2-LOCKED)
+results/dev/
+results/locked/

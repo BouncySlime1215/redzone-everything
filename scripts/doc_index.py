@@ -8,6 +8,7 @@ A hand-kept index drifts; this one is generated from each report's front matter.
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -33,8 +34,16 @@ def front_matter(text: str) -> dict | None:
     return d if isinstance(d, dict) else None
 
 
-def reports(root: Path = AGENTS) -> list[Path]:
-    return sorted(p for p in root.rglob("*.md") if p.name not in SKIP)
+# Reports from before the standard: indexed, but they keep their paths (other docs link to them).
+LEGACY = ("docs/research/2026-11-08", "docs/audits")
+
+
+def reports(root: Path | None = None) -> list[Path]:
+    root = AGENTS if root is None else root
+    out = [p for p in root.rglob("*.md") if p.name not in SKIP]
+    for d in LEGACY:
+        out += [p for p in (ROOT / d).rglob("*.md") if p.name not in SKIP and p.name[:10] != "REVIEW_BRI"]
+    return sorted(out)
 
 
 def problems(paths: list[Path]) -> tuple[list[dict], list[str]]:
@@ -52,7 +61,8 @@ def problems(paths: list[Path]) -> tuple[list[dict], list[str]]:
             errs.append(f"{rel}: status {fm.get('status')!r} not in {sorted(STATUSES)}")
         if fm.get("stream") not in STREAMS:
             errs.append(f"{rel}: stream {fm.get('stream')!r} not in {sorted(STREAMS)}")
-        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}-[a-z0-9-]+\.md", p.name):
+        legacy = any(rel.startswith(d) for d in LEGACY)
+        if not legacy and not re.fullmatch(r"\d{4}-\d{2}-\d{2}-[a-z0-9-]+\.md", p.name):
             errs.append(f"{rel}: file name must be YYYY-MM-DD-slug.md")
         rid = str(fm.get("id", ""))
         if rid in ids:
@@ -66,7 +76,7 @@ def problems(paths: list[Path]) -> tuple[list[dict], list[str]]:
                 errs.append(f"{rel}: verified > sources")
         except (TypeError, ValueError):
             errs.append(f"{rel}: sources/verified must be numbers")
-        rows.append({**fm, "path": p.relative_to(AGENTS).as_posix()})
+        rows.append({**fm, "path": os.path.relpath(p, AGENTS).replace(os.sep, "/")})
     return rows, errs
 
 

@@ -7,18 +7,34 @@ Standard: [docs/STANDARD.md](../STANDARD.md). Plan and process gate: [docs/PLAN.
 
 | id | date | title | status | sources (verified) | gate items |
 |---|---|---|---|---|---|
+| A-DECIDER | 2026-11-08 | [Decider review, 2026-11-08](../audits/2026-11-08-decider.md) | reviewed | 0 (0) | - |
+| A-DEVICES | 2026-11-08 | [Device-control review, 2026-11-08](../audits/2026-11-08-devices.md) | reviewed | 0 (0) | - |
+| A-FEEDS | 2026-11-08 | [Review 2026-11-08: data in and how it is judged (feeds, scoring, grader, gates)](../audits/2026-11-08-feeds-scoring.md) | reviewed | 0 (0) | - |
+| A-PLATFORM | 2026-11-08 | [Platform review, 2026-11-08: keeping it running](../audits/2026-11-08-platform.md) | reviewed | 0 (0) | - |
+| A-RULES | 2026-11-08 | [Audit 2026-11-08: the rules, the gates, the config defaults](../audits/2026-11-08-rules-and-config.md) | reviewed | 0 (0) | - |
+| A-SWITCH | 2026-11-08 | [Switch path review, 2026-11-08](../audits/2026-11-08-switch-path.md) | reviewed | 0 (0) | - |
 | P1-BOTTLENECKS | 2026-11-08 | [Switching bottlenecks, measured (Nov 5-8 2026 data)](audit/2026-11-08-p1-bottlenecks.md) | draft | 0 (0) | - |
+| P1-ROOTCAUSE | 2026-11-08 | [Root causes of the P1 switching bottlenecks (Nov 7 slate)](audit/2026-11-08-p1-root-causes.md) | draft | 0 (0) | P1-ROOTCAUSE-01, P1-ROOTCAUSE-02, P1-ROOTCAUSE-03, P1-ROOTCAUSE-04, P1-ROOTCAUSE-05, P1-ROOTCAUSE-07, P1-ROOTCAUSE-08, P1-ROOTCAUSE-09 |
 
 ## context
 
 | id | date | title | status | sources (verified) | gate items |
 |---|---|---|---|---|---|
+| R-CATCHUP | 2026-11-08 | [Catch-up and condensed viewing: research for the "drive catch-up story"](../research/2026-11-08/catch-up-story.md) | reviewed | 24 (12) | - |
+| R-FEEDS | 2026-11-08 | [Lowest-latency free live feeds per league (research, 2026-11-08)](../research/2026-11-08/live-data-feeds.md) | reviewed | 24 (24) | - |
+| R-LEVERAGE | 2026-11-08 | [Leverage and excitement models: what is most worth watching right now (2026-11-08)](../research/2026-11-08/leverage-excitement.md) | reviewed | 23 (19) | - |
+| R-NUMBERS | 2026-11-08 | [How busy is a RedZone Sunday? (measured, 2026-11-08)](../research/2026-11-08/redzone-numbers.md) | reviewed | 0 (0) | - |
+| R-PERCEPT | 2026-11-08 | [On-device perception for live sports (2026-11-08)](../research/2026-11-08/on-device-perception.md) | reviewed | 28 (23) | - |
+| R-VIEWER | 2026-11-08 | [Viewer experience of automated multi-game sports (research, 2026-11-08)](../research/2026-11-08/viewer-experience.md) | reviewed | 24 (19) | - |
 | W1-CONTEXT | 2026-11-08 | [Why / routes / relied-on context whenever an agent reads code](context/2026-11-08-code-context-on-read.md) | draft | 24 (20) | - |
 
 ## harness
 
 | id | date | title | status | sources (verified) | gate items |
 |---|---|---|---|---|---|
+| R-DELAY | 2026-11-08 | [Measuring and controlling stream delay (research, 2026-11-08)](../research/2026-11-08/stream-delay-sync.md) | reviewed | 22 (11) | - |
+| R-FIRETV | 2026-11-08 | [Fire TV app and channel switching over adb: research (2026-11-08)](../research/2026-11-08/firetv-switching.md) | reviewed | 26 (25) | - |
+| R-SAMSUNG | 2026-11-08 | [Samsung TV input switching and state reading: research (2026-11-08)](../research/2026-11-08/samsung-tv-switching.md) | reviewed | 35 (22) | - |
 | W1-HARNESS | 2026-11-08 | [Claude on the Mac with the least user interaction](harness/2026-11-08-mac-harness.md) | draft | 23 (22) | - |
 
 ## locked-results
@@ -30,8 +46,24 @@ Standard: [docs/STANDARD.md](../STANDARD.md). Plan and process gate: [docs/PLAN.
 | W1-TAMPER | 2026-11-08 | [Tamper-evident storage for test and experiment results](locked-results/2026-11-08-tamper-evident.md) | draft | 30 (0) | - |
 | W2-LOCKED | 2026-11-09 | [Locked test data and results, one combined design](locked-results/2026-11-09-combined-design.md) | draft | 3 (3) | W2-LOCKED-01, W2-LOCKED-02, W2-LOCKED-03, W2-LOCKED-04, W2-LOCKED-05, W2-LOCKED-06, W2-LOCKED-07, W2-LOCKED-08, W2-LOCKED-09, W2-LOCKED-10 |
 
+## planner
+
+| id | date | title | status | sources (verified) | gate items |
+|---|---|---|---|---|---|
+| R-POLICY | 2026-11-08 | [How to learn a RedZone switching policy safely](../research/2026-11-08/policy-learning.md) | reviewed | 38 (36) | - |
+
+## process
+
+| id | date | title | status | sources (verified) | gate items |
+|---|---|---|---|---|---|
+| R-HOMEREL | 2026-11-08 | [Home reliability: what to do next for RedZone on an 8 GB Mac](../research/2026-11-08/home-reliability.md) | reviewed | 29 (24) | - |
+
 ## rules
 
 | id | date | title | status | sources (verified) | gate items |
 |---|---|---|---|---|---|
+| R-COORD | 2026-11-08 | [Coordinating many coding agents toward one goal: state of the art, late 2026](../research/2026-11-08/agents/coordination-sota.md) | reviewed | 52 (51) | - |
+| R-MEMORY | 2026-11-08 | [Long-horizon memory and handoffs for coding agents](../research/2026-11-08/agents/memory-and-handoffs.md) | reviewed | 37 (35) | - |
+| R-RULES | 2026-11-08 | [Agent rule files in practice: what changes behaviour, what gets ignored](../research/2026-11-08/agents/rule-files.md) | reviewed | 45 (45) | - |
+| R-SAFEAGENT | 2026-11-08 | [Safe and effective AI coding agents on real-time, hardware-in-the-loop, invariant-heavy code](../research/2026-11-08/agents/safe-agents-realtime.md) | reviewed | 36 (21) | - |
 | W1-RULES | 2026-11-08 | [Debugging, validation, merge and organization rules for coding agents](rules/2026-11-08-debug-validate-merge.md) | draft | 28 (25) | - |
