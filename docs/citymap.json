@@ -202,6 +202,7 @@
    "users": [],
    "writers": [
     "agent/watchdog.py",
+    "redzone/canary.py",
     "scripts/deploy.py"
    ]
   },
@@ -227,6 +228,14 @@
     "scripts/buffered_jump_try.py"
    ],
    "users": [],
+   "writers": []
+  },
+  "data/canary.jsonl": {
+   "readers": [],
+   "users": [
+    "redzone/canary.py",
+    "scripts/canary.py"
+   ],
    "writers": []
   },
   "data/channels.json": {
@@ -334,6 +343,15 @@
     "agent/watchdog.py"
    ],
    "users": [],
+   "writers": []
+  },
+  "data/joins.jsonl": {
+   "readers": [
+    "redzone/tuners/join_calib.py"
+   ],
+   "users": [
+    "redzone/canary.py"
+   ],
    "writers": []
   },
   "data/jump_rows.jsonl": {
@@ -542,6 +560,7 @@
   },
   "deploy/deploy.yaml": {
    "readers": [
+    "scripts/canary.py",
     "scripts/deploy.py"
    ],
    "users": [],
@@ -651,6 +670,20 @@
    "users": [],
    "writers": []
   },
+  "drift.jsonl": {
+   "readers": [
+    "redzone/platform/night_ops.py"
+   ],
+   "users": [],
+   "writers": []
+  },
+  "edge_probe.jsonl": {
+   "readers": [],
+   "users": [
+    "redzone/tuners/yttv_edge_probe.py"
+   ],
+   "writers": []
+  },
   "entry_cal.json": {
    "readers": [],
    "users": [],
@@ -695,6 +728,15 @@
     "redzone/lab/evaldata.py"
    ],
    "users": [],
+   "writers": []
+  },
+  "fallbacks.jsonl": {
+   "readers": [
+    "redzone/platform/night_ops.py"
+   ],
+   "users": [
+    "redzone/engine.py"
+   ],
    "writers": []
   },
   "families.json": {
@@ -799,6 +841,16 @@
     "scripts/deploy.py"
    ]
   },
+  "joins.jsonl": {
+   "readers": [
+    "redzone/platform/night_ops.py"
+   ],
+   "users": [
+    "redzone/control.py",
+    "redzone/tuners/join.py"
+   ],
+   "writers": []
+  },
   "jump_gold.jsonl": {
    "readers": [],
    "users": [
@@ -829,6 +881,13 @@
    "readers": [
     "scripts/why.py"
    ],
+   "users": [
+    "redzone/engine.py"
+   ],
+   "writers": []
+  },
+  "ladder.jsonl": {
+   "readers": [],
    "users": [
     "redzone/engine.py"
    ],
@@ -1180,6 +1239,7 @@
    "readers": [
     "redzone/observability.py",
     "redzone/platform/autofix.py",
+    "redzone/platform/night_ops.py",
     "redzone/supervisor.py",
     "scripts/collect_live_test.py",
     "scripts/fault_drill.py"
@@ -2972,6 +3032,49 @@
     "STK-06"
    ]
   },
+  "redzone/canary.py": {
+   "calls": [
+    "redzone/channels.py:ChannelMap",
+    "redzone/tuners/adb.py:Stick",
+    "redzone/tuners/adb.py:playback_ready",
+    "redzone/tuners/join_calib.py:JoinCalib",
+    "redzone/tuners/join_calib.py:safe_name",
+    "redzone/tuners/tuners.py:YouTubeTVTuner",
+    "redzone/tuners/yttv_label.py:LabelProbe"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [
+     "data/canary.jsonl",
+     "data/joins.jsonl"
+    ],
+    "writes": [
+     "data/agent.jsonl"
+    ]
+   },
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/tuners/adb.py",
+    "redzone/tuners/join.py",
+    "redzone/tuners/join_calib.py",
+    "redzone/tuners/tuners.py",
+    "redzone/tuners/yttv_label.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/canary.py"
+   ],
+   "owner": "unowned",
+   "role": "[Canary, Nick's Nov 7 order item 8] A daily stick self-test before games, on the HIDDEN stick only, that fails loud.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/channels.py": {
    "calls": [],
    "contracts": [],
@@ -2994,6 +3097,7 @@
    },
    "outputs": [
     "redzone/autonomy.py",
+    "redzone/canary.py",
     "redzone/control.py",
     "redzone/demo/engine.py",
     "redzone/discovery/providers.py",
@@ -3006,6 +3110,7 @@
     "redzone/sync_edge.py",
     "redzone/tuners/tuners.py",
     "redzone/web/server.py",
+    "scripts/edge_probe_try.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
@@ -3015,6 +3120,7 @@
     "scripts/plan_tonight.py",
     "scripts/rz.py",
     "scripts/tv_practice.py",
+    "scripts/watchdog_try.py",
     "scripts/yttv_search_tune_try.py"
    ],
    "owner": "SWITCHING",
@@ -3091,10 +3197,14 @@
     "redzone/supervisor.py",
     "redzone/sync_probe.py",
     "redzone/tuners/adb.py",
+    "redzone/tuners/join.py",
+    "redzone/tuners/join_calib.py",
+    "redzone/tuners/yttv_edge_probe.py",
     "redzone/web/phone_v2.py",
     "redzone/web/server.py",
     "scripts/backtest.py",
     "scripts/build_reasoner_data.py",
+    "scripts/canary.py",
     "scripts/delay_report.py",
     "scripts/eval.py",
     "scripts/eval_reasoner.py",
@@ -3971,6 +4081,8 @@
     "redzone/config.py:default",
     "redzone/contracts/switching.py:flip_bound",
     "redzone/contracts/switching.py:seek_model",
+    "redzone/fallback_ladder.py:FallbackLadder",
+    "redzone/fallback_ladder.py:Step",
     "redzone/fsm.py:MachineMap",
     "redzone/machines/control.py:ADOPT",
     "redzone/machines/control.py:COMMAND",
@@ -3983,10 +4095,17 @@
     "redzone/tuners/adb.py:adb_available",
     "redzone/tuners/adb.py:playback_ready",
     "redzone/tuners/adb.py:same_stream",
+    "redzone/tuners/join_watchdog.py:DriftMonitor",
+    "redzone/tuners/join_watchdog.py:dcfg",
+    "redzone/tuners/join_watchdog.py:enabled",
+    "redzone/tuners/join_watchdog.py:verify",
+    "redzone/tuners/join_watchdog.py:wcfg",
     "redzone/tuners/prime_multiview.py:load_keys",
     "redzone/tuners/prime_multiview.py:needs_rebuild",
     "redzone/tuners/replay_park.py:lefts_for",
     "redzone/tuners/replay_park.py:park",
+    "redzone/tuners/session_guard.py:SessionGuard",
+    "redzone/tuners/session_guard.py:settle_banner",
     "redzone/tuners/tuners.py:TUNERS",
     "redzone/tuners/tuners.py:TuneResult",
     "redzone/tuners/tuners.py:channel_matcher",
@@ -4003,7 +4122,8 @@
      "data/devices.json"
     ],
     "uses": [
-     "held.json"
+     "held.json",
+     "joins.jsonl"
     ],
     "writes": []
    },
@@ -4011,11 +4131,14 @@
     "redzone/channels.py",
     "redzone/config.py",
     "redzone/contracts/switching.py",
+    "redzone/fallback_ladder.py",
     "redzone/fsm.py",
     "redzone/machines/control.py",
     "redzone/tuners/adb.py",
+    "redzone/tuners/join_watchdog.py",
     "redzone/tuners/prime_multiview.py",
     "redzone/tuners/replay_park.py",
+    "redzone/tuners/session_guard.py",
     "redzone/tuners/tuners.py",
     "redzone/tuners/yttv_label.py",
     "redzone/tuners/yttv_seek.py",
@@ -4308,9 +4431,9 @@
     "redzone/decider/screen.py:resume_lead",
     "redzone/decider/screen.py:resume_play",
     "redzone/fsm.py:MachineMap",
+    "redzone/machines/decider.py:DECIDER_HOME",
     "redzone/machines/decider.py:DECIDER_SCREEN",
     "redzone/machines/decider.py:ENTRY_WAIT",
-    "redzone/machines/decider.py:HOME",
     "redzone/machines/decider.py:LOCK_WAIT",
     "redzone/machines/decider.py:OVERRIDE",
     "redzone/machines/decider.py:OWNER",
@@ -4602,6 +4725,36 @@
     "Your-team crunch live"
    ]
   },
+  "redzone/decider/whistle.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/engine.py",
+    "redzone/lab/backtest.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-610] A basketball clock-stopped dead ball, judged from play-by-play (wall time, period, game clock, type).",
+   "serves": [
+    "Crunch live, NBA",
+    "Crunch live, NFL",
+    "Crunch live, NHL",
+    "Entries at a possession start (dead ball, no play missed)",
+    "Landings in dead time",
+    "Mid-play entries (per 100 landings)",
+    "Your-team crunch live"
+   ]
+  },
   "redzone/demo/__init__.py": {
    "calls": [],
    "contracts": [],
@@ -4848,6 +5001,7 @@
     "redzone/tuners/profiles.py",
     "redzone/tuners/providers.py",
     "redzone/tuners/screen_prompts.py",
+    "redzone/tuners/session_guard.py",
     "redzone/tuners/tuners.py",
     "redzone/tuners/yttv_search.py",
     "scripts/plan_tonight.py",
@@ -5072,6 +5226,7 @@
     "redzone/decider/screen.py:catchable",
     "redzone/decider/screen.py:leave_window",
     "redzone/decider/screen.py:screen_evidence",
+    "redzone/decider/whistle.py:clock_stopped",
     "redzone/discovery/runtime.py:DiscoveryRuntime",
     "redzone/fantasy.py:boosts",
     "redzone/fantasy.py:fetch",
@@ -5145,6 +5300,7 @@
     "redzone/trace.py:emit",
     "redzone/tuners/prime_multiview.py:TileCandidate",
     "redzone/tuners/prime_multiview.py:plan_tiles",
+    "redzone/tuners/yttv_edge_probe.py:EdgeProbe",
     "redzone/tuners/yttv_label.py:LabelProbe",
     "redzone/userstate.py:apply",
     "redzone/userstate.py:capture",
@@ -5170,9 +5326,11 @@
      "buffer.jsonl",
      "buffer_shadow.jsonl",
      "data/config.yaml",
+     "fallbacks.jsonl",
      "fastcast_check.json",
      "jump_status.jsonl",
      "jumps.jsonl",
+     "ladder.jsonl",
      "scorebug_reads.jsonl",
      "seeks.jsonl",
      "switch_times.json",
@@ -5199,6 +5357,7 @@
     "redzone/decider/decider.py",
     "redzone/decider/screen.py",
     "redzone/decider/sync.py",
+    "redzone/decider/whistle.py",
     "redzone/discovery/runtime.py",
     "redzone/fantasy.py",
     "redzone/fsm.py",
@@ -5239,6 +5398,7 @@
     "redzone/sync_probe.py",
     "redzone/trace.py",
     "redzone/tuners/prime_multiview.py",
+    "redzone/tuners/yttv_edge_probe.py",
     "redzone/tuners/yttv_label.py",
     "redzone/userstate.py",
     "redzone/views.py",
@@ -5273,6 +5433,29 @@
     "SAFE-01",
     "SAFE-03",
     "STK-06"
+   ]
+  },
+  "redzone/fallback_ladder.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/control.py"
+   ],
+   "owner": "unowned",
+   "role": "Per-stick fallback ladder (Nick's Nov 7 sync order, item 2).",
+   "serves": [
+    "untagged"
    ]
   },
   "redzone/fantasy.py": {
@@ -5508,6 +5691,8 @@
     "redzone/decider/decider.py:Decider",
     "redzone/decider/screen.py:DelayBook",
     "redzone/decider/screen.py:NoiseCal",
+    "redzone/decider/whistle.py:clock_secs",
+    "redzone/decider/whistle.py:clock_stopped",
     "redzone/grading.py:Lags",
     "redzone/grading.py:SwitchLog",
     "redzone/grading.py:dead_at",
@@ -5548,6 +5733,7 @@
     "redzone/contracts/switching.py",
     "redzone/decider/decider.py",
     "redzone/decider/screen.py",
+    "redzone/decider/whistle.py",
     "redzone/grading.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/evaldata.py",
@@ -5590,6 +5776,7 @@
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/exp607_trace_prime_belief.py",
+    "scripts/ladder_replay.py",
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
     "scripts/noggin_selfplay.py",
@@ -8184,6 +8371,62 @@
     "untagged"
    ]
   },
+  "redzone/platform/mac_health.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/supervisor.py"
+   ],
+   "owner": "PLATFORM",
+   "role": "Mac health alerts: tell Nick's phone when the Mac itself is about to cost him the night.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/platform/night_ops.py": {
+   "calls": [
+    "redzone/supervisor.py:night_of",
+    "redzone/supervisor.py:night_window"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "drift.jsonl",
+     "fallbacks.jsonl",
+     "joins.jsonl",
+     "supervisor.jsonl"
+    ],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/supervisor.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/supervisor.py"
+   ],
+   "owner": "PLATFORM",
+   "role": "Night ops report: joins, errors, fallbacks, drift and Mac health for one night (Nick's Nov 7 order, item 7).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/platform/wake.py": {
    "calls": [],
    "contracts": [],
@@ -8199,7 +8442,8 @@
     "drives": []
    },
    "outputs": [
-    "redzone/engine.py"
+    "redzone/engine.py",
+    "redzone/supervisor.py"
    ],
    "owner": "PLATFORM",
    "role": "The Mac slept, or moved networks: everything that held a connection is stale (hardening.mac).",
@@ -8920,6 +9164,7 @@
     "redzone/lab/night/run.py",
     "redzone/recorded.py",
     "redzone/tuners/adb.py",
+    "redzone/tuners/prime_pause.py",
     "redzone/tuners/screen_prompts.py",
     "redzone/tuners/tuners.py",
     "redzone/tuners/yttv_label.py",
@@ -9384,6 +9629,14 @@
     "redzone/observability.py:watchdog_actions",
     "redzone/platform/autofix.py:night_lines",
     "redzone/platform/health.py:PlatformHealth",
+    "redzone/platform/mac_health.py:MacHealth",
+    "redzone/platform/mac_health.py:Snapshot",
+    "redzone/platform/mac_health.py:options",
+    "redzone/platform/night_ops.py:lines",
+    "redzone/platform/night_ops.py:options",
+    "redzone/platform/night_ops.py:phone_line",
+    "redzone/platform/night_ops.py:summarize",
+    "redzone/platform/wake.py:WakeWatch",
     "redzone/store.py:Store",
     "redzone/trace.py:of_row",
     "redzone/tuners/adb.py:_adb",
@@ -9423,6 +9676,9 @@
     "redzone/platform/agent_fix.py",
     "redzone/platform/autofix.py",
     "redzone/platform/health.py",
+    "redzone/platform/mac_health.py",
+    "redzone/platform/night_ops.py",
+    "redzone/platform/wake.py",
     "redzone/store.py",
     "redzone/trace.py",
     "redzone/tuners/adb.py",
@@ -9446,6 +9702,7 @@
     "redzone/engine.py",
     "redzone/lab/night/run.py",
     "redzone/observability.py",
+    "redzone/platform/night_ops.py",
     "redzone/trace.py",
     "redzone/web/phone_v2.py",
     "scripts/export_decision_records.py",
@@ -9617,6 +9874,7 @@
    },
    "outputs": [
     "redzone/autonomy.py",
+    "redzone/canary.py",
     "redzone/control.py",
     "redzone/discovery/stickio.py",
     "redzone/discovery/yttv.py",
@@ -9628,20 +9886,26 @@
     "redzone/tuners/prime_search.py",
     "redzone/tuners/providers.py",
     "redzone/tuners/screen_prompts.py",
+    "redzone/tuners/session_guard.py",
     "redzone/tuners/tuners.py",
     "redzone/tuners/yttv_label.py",
     "redzone/tuners/yttv_search.py",
     "redzone/tvsetup.py",
     "scripts/doctor.py",
+    "scripts/edge_probe_try.py",
     "scripts/find_yttv_code.py",
+    "scripts/join_try.py",
     "scripts/multiview_probe.py",
     "scripts/prime_flip_probe.py",
     "scripts/prime_multiview_probe.py",
+    "scripts/prime_pause_try.py",
     "scripts/prime_search_trial.py",
     "scripts/providers_check.py",
     "scripts/replay_park_try.py",
     "scripts/rz.py",
     "scripts/screen_lab.py",
+    "scripts/session_drill.py",
+    "scripts/watchdog_try.py",
     "scripts/yttv_scrub_try.py",
     "scripts/yttv_search_tune_try.py"
    ],
@@ -9672,6 +9936,117 @@
    "outputs": [],
    "owner": "SWITCHING",
    "role": "Conservative matchup evidence from fresh provider metadata.",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/join.py": {
+   "calls": [
+    "redzone/tuners/join_calib.py:JoinCalib",
+    "redzone/tuners/join_calib.py:enabled",
+    "redzone/tuners/join_watchdog.py:verify",
+    "redzone/tuners/join_watchdog.py:wcfg",
+    "redzone/tuners/prime_pause.py:enter_buffer_pause",
+    "redzone/tuners/yttv_seek.py:enter_buffer"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [
+     "joins.jsonl"
+    ],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/config.py",
+    "redzone/tuners/join_calib.py",
+    "redzone/tuners/join_watchdog.py",
+    "redzone/tuners/prime_pause.py",
+    "redzone/tuners/yttv_seek.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/canary.py",
+    "redzone/tuners/join_calib.py",
+    "redzone/tuners/join_watchdog.py",
+    "scripts/join_try.py",
+    "scripts/watchdog_try.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[Join API] Put a HIDDEN stick a chosen time behind live, say where it should land, measure where it did, log both.",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/join_calib.py": {
+   "calls": [
+    "redzone/tuners/join.py:_cfg"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "data/joins.jsonl"
+    ],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/config.py",
+    "redzone/tuners/join.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/canary.py",
+    "redzone/tuners/join.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[Join self-calibration, Nick's Nov 7 order item 5] Per channel and stick: join-error and delay stats, and a bias that updates itself from data/joins.jsonl, i...",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/join_watchdog.py": {
+   "calls": [
+    "redzone/tuners/join.py:_default_log"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/tuners/join.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/control.py",
+    "redzone/tuners/join.py",
+    "scripts/watchdog_try.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[Join watchdog + drift monitor] Nick's Nov 7 sync order, items (1) and (3).",
    "serves": [
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -9735,6 +10110,40 @@
    ],
    "owner": "SWITCHING",
    "role": "Prime Video NBA multiview as a switch path (SWITCHING).",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/prime_pause.py": {
+   "calls": [
+    "redzone/tuners/yttv_seek.py:_fail",
+    "redzone/tuners/yttv_seek.py:_keys",
+    "redzone/tuners/yttv_seek.py:_relink"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/screen_ocr.py",
+    "redzone/tuners/yttv_seek.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/tuners/join.py",
+    "scripts/prime_pause_try.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[Prime buffer] Put a HIDDEN Prime Video stick a set time behind live by pausing it.",
    "serves": [
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -9925,10 +10334,48 @@
    "outputs": [
     "redzone/lab/night/run.py",
     "redzone/supervisor.py",
+    "redzone/tuners/session_guard.py",
     "redzone/tuners/tuners.py"
    ],
    "owner": "SWITCHING",
    "role": "Clear YouTube TV's own prompts from a screenshot: \"Who's watching?\" and \"Still watching?\".",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/session_guard.py": {
+   "calls": [
+    "redzone/discovery/providers.py:classify_screen",
+    "redzone/discovery/providers.py:is_purchase_screen",
+    "redzone/tuners/adb.py:Stick",
+    "redzone/tuners/screen_prompts.py:lit",
+    "redzone/tuners/screen_prompts.py:read_frame"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/discovery/providers.py",
+    "redzone/tuners/adb.py",
+    "redzone/tuners/screen_prompts.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/control.py",
+    "scripts/session_drill.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[sync hardening, item 4] Session safety: what is this stick's session doing, is its buffer still true, and what is the ONE safe thing to do about it.",
    "serves": [
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -9989,20 +10436,58 @@
    },
    "outputs": [
     "redzone/autonomy.py",
+    "redzone/canary.py",
     "redzone/control.py",
     "redzone/discovery/runtime.py",
     "redzone/platform/faults.py",
     "redzone/tuners/providers.py",
     "redzone/tuners/yttv_search.py",
+    "scripts/edge_probe_try.py",
     "scripts/multiview_probe.py",
     "scripts/prime_flip_probe.py",
     "scripts/prime_multiview_probe.py",
     "scripts/providers_check.py",
     "scripts/rz.py",
+    "scripts/watchdog_try.py",
     "scripts/yttv_search_tune_try.py"
    ],
    "owner": "SWITCHING",
    "role": "Tuners: one class per streaming app.",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/yttv_edge_probe.py": {
+   "calls": [
+    "redzone/config.py:default",
+    "redzone/tuners/yttv_label.py:read_label"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [
+     "edge_probe.jsonl"
+    ],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/config.py",
+    "redzone/tuners/yttv_label.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/engine.py",
+    "scripts/edge_probe_try.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[edge prior, Nick Nov 7] Measure YouTube TV's live-edge delay on the HIDDEN stick, numbers only.",
    "serves": [
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -10033,9 +10518,12 @@
     "drives": []
    },
    "outputs": [
+    "redzone/canary.py",
     "redzone/control.py",
     "redzone/engine.py",
+    "redzone/tuners/yttv_edge_probe.py",
     "scripts/replay_park_try.py",
+    "scripts/watchdog_try.py",
     "scripts/yttv_scrub_try.py"
    ],
    "owner": "SWITCHING",
@@ -10124,8 +10612,11 @@
    },
    "outputs": [
     "redzone/control.py",
+    "redzone/tuners/join.py",
+    "redzone/tuners/prime_pause.py",
     "redzone/tuners/replay_park.py",
     "redzone/tuners/yttv_label.py",
+    "scripts/session_drill.py",
     "scripts/yttv_scrub_try.py"
    ],
    "owner": "SWITCHING",
@@ -10924,6 +11415,40 @@
     "untagged"
    ]
   },
+  "scripts/canary.py": {
+   "calls": [
+    "redzone/canary.py:Canary",
+    "redzone/canary.py:EXIT",
+    "redzone/canary.py:done_today",
+    "redzone/canary.py:real_env",
+    "redzone/config.py:Config"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "deploy/deploy.yaml"
+    ],
+    "uses": [
+     "data/canary.jsonl"
+    ],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/canary.py",
+    "redzone/config.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[Canary, item 8] Daily pre-game self-test of the HIDDEN stick.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/catchup_ratchet.py": {
    "calls": [],
    "contracts": [],
@@ -11510,6 +12035,36 @@
    "outputs": [],
    "owner": "PLATFORM",
    "role": "Download a past NFL regular season (scoreboards + play-by-play) for the training lab.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/edge_probe_try.py": {
+   "calls": [
+    "redzone/channels.py:ChannelMap",
+    "redzone/tuners/adb.py:Stick",
+    "redzone/tuners/yttv_edge_probe.py:EdgeProbe"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/tuners/adb.py",
+    "redzone/tuners/tuners.py",
+    "redzone/tuners/yttv_edge_probe.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[edge prior, Nick Nov 7] Measure YouTube TV's live-edge delay on the HIDDEN stick, Nick's way, and print JSON rows.",
    "serves": [
     "untagged"
    ]
@@ -12345,6 +12900,33 @@
     "STK-07"
    ]
   },
+  "scripts/join_try.py": {
+   "calls": [
+    "redzone/tuners/adb.py:Stick",
+    "redzone/tuners/join.py:join"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/tuners/adb.py",
+    "redzone/tuners/join.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Run one join (redzone/tuners/join.py) on the HIDDEN stick and print its row (also appended to data/joins.jsonl).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/jump_try.py": {
    "calls": [],
    "contracts": [],
@@ -12440,6 +13022,29 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Context-only label leak check (grader freeze v17; Nick, Nov 5 1:50 AM).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/ladder_replay.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/backtest.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[fallback ladder, item 2] REPORT ONLY, not a grader: what the ladder changes when a YouTube TV buffer entry fails.",
    "serves": [
     "untagged"
    ]
@@ -13132,6 +13737,33 @@
     "STK-04"
    ]
   },
+  "scripts/prime_pause_try.py": {
+   "calls": [
+    "redzone/tuners/adb.py:Stick",
+    "redzone/tuners/prime_pause.py:enter_buffer_pause"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/tuners/adb.py",
+    "redzone/tuners/prime_pause.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Run prime_pause.enter_buffer_pause once on the HIDDEN Prime stick and print the result row.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/prime_search_trial.py": {
    "calls": [
     "redzone/screen_ocr.py:OCRResult",
@@ -13625,6 +14257,40 @@
    "outputs": [],
    "owner": "PLATFORM",
    "role": "launchd entry point.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/session_drill.py": {
+   "calls": [
+    "redzone/tuners/adb.py:RunResult",
+    "redzone/tuners/session_guard.py:Row",
+    "redzone/tuners/session_guard.py:SessionGuard",
+    "redzone/tuners/session_guard.py:Snapshot",
+    "redzone/tuners/session_guard.py:settle_banner",
+    "redzone/tuners/yttv_seek.py:OverlayRead",
+    "redzone/tuners/yttv_seek.py:enter_buffer",
+    "redzone/tuners/yttv_seek.py:parse_overlay"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/tuners/adb.py",
+    "redzone/tuners/session_guard.py",
+    "redzone/tuners/yttv_seek.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Session drill (sync hardening item 4): the real yttv_seek.enter_buffer against the Nov 6 post-tune banner, with and without the session guard's banner wait,...",
    "serves": [
     "untagged"
    ]
@@ -14249,6 +14915,41 @@
     "untagged"
    ]
   },
+  "scripts/watchdog_try.py": {
+   "calls": [
+    "redzone/channels.py:ChannelMap",
+    "redzone/tuners/adb.py:Stick",
+    "redzone/tuners/join.py:_default_log",
+    "redzone/tuners/join_watchdog.py:DriftMonitor",
+    "redzone/tuners/join_watchdog.py:watched_join",
+    "redzone/tuners/yttv_label.py:LabelProbe"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/tuners/adb.py",
+    "redzone/tuners/join.py",
+    "redzone/tuners/join_watchdog.py",
+    "redzone/tuners/tuners.py",
+    "redzone/tuners/yttv_label.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Run one WATCHED join (join -> read -> verify -> re-seek once -> fall back to live) on the HIDDEN stick, then optionally watch it for drift.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/why.py": {
    "calls": [],
    "contracts": [],
@@ -14412,13 +15113,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 1470,
-  "data_files": 173,
+  "calls": 1544,
+  "data_files": 180,
   "machines": 49,
-  "modules": 359,
+  "modules": 377,
   "orphans": 14,
-  "unowned": 194,
-  "untagged": 298
+  "unowned": 204,
+  "untagged": 309
  },
  "version": 2
 }

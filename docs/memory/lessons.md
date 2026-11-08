@@ -377,3 +377,30 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   deploy (e5876ea0); the rollback itself was logged "rollback_failed" because the app was still frozen. Lesson: check
   swap/load before blaming a build; `deploy.py confirm` clears an interrupted watch.
 - 2026-11-07 (overseer tooling): macOS has no `timeout`; `perl -e 'alarm N; exec @ARGV' cmd` instead.
+- 2026-11-07 (session guard, sync hardening item 4): **"no evidence" read as "fine" in every session check we had.**
+  An adb drop, an unread playback state or an unreadable screen left a scrubbed stick's buffer looking valid, the
+  post-tune LIVE banner (Nov 6) passed as the overlay, and a reboot hidden inside an adb drop was never noticed because
+  the drop wiped the last uptime. Fix: `session_guard.classify` gives every unknown the buffer state "unknown" (never
+  "valid"), keeps the last read uptime / process id across a drop, and holds on any dialog-shaped text it has no rule
+  for. Runbook: runbooks/stick-session.md.
+- 2026-11-07 (Mac health): on Nov 5-6 the app went 66-145 min without a single switch row while up to 10 games were live; the supervisor logged stuck command locks and stale feeds every few minutes but nothing reached the phone, because each fault on its own was 'only a warning'. Lesson: alert on the OUTCOME (no switch in 20 min with games on autopilot), not only on each cause. Signals: no_switches, stuck_lock, stale_feed.
+
+## A join that "worked" was not where we said (Nov 5-7)
+- **Symptom:** six different buffer entries reported success while the stick was somewhere else (2026-11-07 join watchdog).
+- **Cause:** media_session read flat after a seek (75 s "hold" VOID), a plain pause snapped back to live 20-30 s after resume, the overlay held open for 37.6 s turned an asked 90 into 130.8, a same-channel deep link left a stick behind (asked 90, read 23), a blind CENTER committed an uncounted step, and the label reset at a program boundary.
+- **Fix:** a position is only what the label / Prime timecode READ after the entry; anything else is "unknown", never "buffered", and a re-read is rare, budgeted and only on the hidden stick (each YouTube TV read adds 7.5 s). Runbook: [join-watchdog.md](runbooks/join-watchdog.md).
+- **Signals:** watchdog off_target, drift_reenter, drift_snapped, drift_unknown
+
+## The watchdog counted its own read as a miss (Nick's stick test, Nov 7 11:35Z)
+- **Symptom:** hidden stick (HDMI2), NBA TV, target 75: state unknown, fallback live_failed, planned 71.7, read 79.52; the stick kept
+  playing NBA TV (79 s behind); data/joins.jsonl had no rows.
+- **Cause:** the label probe's reading includes its own ~7.5 s frozen overlay, so a good join read 7.8 s "off"; the test
+  script never identify()'d the stick, so every relink tune failed at once ("youtubetv app not found"); the run was
+  from a scratch worktree, so its rows went to that worktree's data/joins.jsonl.
+- **Fix:** join.yttv_read_s in join.plan_join (predicted includes the read; old rows corrected in join_calib), identify() and printed relink
+  steps in scripts/watchdog_try.py, RZ_JOINS_LOG for the log path. Runbook: [join-watchdog.md](runbooks/join-watchdog.md).
+- **Signals:** live_failed, youtubetv app not found, off_pred_s near 7.5
+- 2026-11-07: Live mode with every stick offline (the Mac asleep) returned a dry-run style success from
+  control._execute ("no stick connected", ok=True, 0 s) and set on_target: the switch log filled with phantom
+  "start ALA@LSU ok=True took 0 s" rows that inflated switch counts. Only mode.dry_run is a simulated success now;
+  no stick is a refused switch (ok=False, screen_unchanged, not the target's fault).

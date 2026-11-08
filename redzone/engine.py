@@ -21,8 +21,9 @@ from redzone import fsm, reel, standby, trace, userstate, views
 from redzone.reel import REEL_DIR
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
 from redzone.config import Config, ConfigError, for_league
-from redzone.control import STANDBY_NOT_READY, Controller, Outcome
+from redzone.control import NO_STICK, STANDBY_NOT_READY, Controller, Outcome
 from redzone.decider import buffered as bj
+from redzone.decider import whistle
 from redzone.decider.decider import REDZONE, REEL, Candidate, Decider, Decision, FocusMode, Missed, State
 from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
                                    leave_gate, leave_window, screen_evidence)
@@ -50,7 +51,7 @@ CLOCK_JUMP_S = 5.0     # wall clock moved this much more (or less) than time.mon
 # TV input. They neither cool the target down nor count against it.
 NOT_THE_TARGETS_FAULT = ("no safe moment", "safe exit window closed", "switch cancelled",
                          "TV input is unknown", "TV control was disabled", "no channel",
-                         "stick not responding", STANDBY_NOT_READY)
+                         "stick not responding", STANDBY_NOT_READY, NO_STICK)
 PEEK_HOLD_S = 90.0    # a game opened on the phone keeps the hidden stick this long (two_stick.pretune_on_open)
 SKIP_S = 300.0        # a skipped game stays off the TV this long after the TV leaves it
 SUPERSEDED = "switch cancelled: superseded"   # an in-flight switch replaced by a newer one (_act): resolved, recorded
@@ -190,7 +191,7 @@ class Engine:
             log.warning("could not reload delay calibrations: %s", e)
         # [edge model, Nick Nov 6 item 3] delay = D_edge(channel) + behind_live off the overlay label (delay.edge_model, OFF)
         self.delays.edge_cfg = lambda key: self.cfg.get(f"delay.edge_model.{key}")
-        # [edge prior, Nick Nov 7] YouTube TV's one live-edge delay (34.9 s, delay.edge_prior)
+        # [edge prior, Nick Nov 7] YouTube TV's one live-edge delay (34.9 s) + its probe refresh (delay.edge_prior, OFF)
         self.delays.edge_prior_cfg = lambda key: self.cfg.get(f"delay.edge_prior.{key}")
         for t in list(self.delays.book):   # entries reloaded above were priced before the live config was attached
             self.delays._refresh(t)
@@ -244,10 +245,17 @@ class Engine:
             self.control.label_probe = LabelProbe(self.cfg)   # [label reader] off by default
         if hasattr(self.delays, "on_label_stale"):
             self.delays.on_label_stale = self.control.label_stale
+        if self.cfg.get("delay.edge_prior.enabled", False) and self.cfg.get("delay.edge_prior.refresh.enabled", False):
+            from redzone.tuners.yttv_edge_probe import EdgeProbe
+            self.control.edge_probe = EdgeProbe(self.cfg)   # [edge prior] probe the hidden stick's live edge, <= 1/30 min
+        self.control.on_edge_read = self.edge_read
         self.control.on_behind = self._on_behind
         # [buffer.watchdog STK-06] a lost hold is rebuilt only while that game is in a dead ball
         self.control.dead_ball = self._target_dead
         self.control.buffer_log_path = data_dir.parent / "buffer.jsonl" if data_dir else None
+        # [fallback ladder] every climb (buffered -> live -> other stick -> hold), one row each: data/ladder.jsonl
+        self.control.ladder.log_path = data_dir.parent / "ladder.jsonl" if data_dir else None
+        self.control.ladder.steps_path = data_dir.parent / "fallbacks.jsonl" if data_dir else None
         # [EXP-741 E] a waiting tap's Prime score-bug clock reads, numbers only: data/tap_bug.jsonl
         from redzone.screen.tap_bug import TapBug
         self.tap_bug = TapBug(data_dir.parent / "tap_bug.jsonl" if data_dir else None)
@@ -640,6 +648,14 @@ class Engine:
                  f", edge {e[0]:.1f}±{e[1]:.1f} s {e[2]}" if e else "", d.mu, d.sigma,
                  "on" if self.delays.edge_model else "off, logged only")
 
+    def edge_read(self, app: str, delay_s: float, ts: float | None = None) -> bool:
+        """[edge prior] One edge probe read: the app's live edge delay right now (yttv_edge_probe)."""
+        ok = self.delays.add_edge_read(app, delay_s, ts=ts)
+        e = self.delays.app_edge(app)
+        log.info("edge prior: %s live edge read %.1f s %s%s", app, float(delay_s), "kept" if ok else "dropped",
+                 f" -> {e[0]:.1f}±{e[1]:.1f} s ({e[2]})" if e else " (flag off)")
+        return ok
+
     def _on_behind(self, target: str, new_s: float, old_s: float) -> None:
         """The controller held (or freed) this target's stream: shift its delay by the difference."""
         d = self.delays.get(target)
@@ -973,6 +989,10 @@ class Engine:
         last_push = 0.0
         while True:
             try:
+                self._apply_live_settings()
+            except Exception:
+                log.exception("could not apply live settings")
+            try:
                 self._mic_calibrate()
                 changed = self.decide()
             except Exception:
@@ -991,6 +1011,21 @@ class Engine:
                 # A phone-view bug is not a switching error: it must not put the TV in safe mode.
                 log.exception("broadcast failed")
             await self._next_tick(DECIDE_EVERY_S)
+
+    def _apply_live_settings(self) -> bool:
+        """[tuners.yttv_local_search_live] Settings that otherwise apply only at startup, re-read each
+        decide tick so a POST /api/settings (or Undo) takes effect without a restart. Gate off (default):
+        nothing changes. Only between ticks: a tune already running resolved its ref (Control._ref) at
+        its start and keeps it. Returns whether anything changed."""
+        if not self.cfg.get("tuners.yttv_local_search_live", False):
+            return False
+        want = bool(self.cfg.get("tuners.yttv_local_search", False))
+        if self.channels.local_search == want:
+            return False
+        log.info("settings: tuners.yttv_local_search %s -> %s (applied live, no restart)",
+                 self.channels.local_search, want)
+        self.channels.local_search = want
+        return True
 
     async def _next_tick(self, seconds: float) -> None:
         """Sleep until the next decision, or less when pushed data just arrived: a big play
@@ -1866,7 +1901,8 @@ class Engine:
                     d.jump["veto"], d.jump["veto_cost_s"] = veto, round(cost, 1)
                 return not veto
             return self._entry_valid(d, target) and (time.time() >= replay_exit if replay_exit is not None
-                                                     else self.safe_to_leave(before, required_s=8.0))
+                                                     else self.safe_to_leave(before, required_s=8.0)) \
+                and self._flip_lands_whistle(d, target)
         self.control.submit(target, back, done, may_cut=may_cut,
                             replay_id=d.replay.pid if d.replay else None,
                             entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0,
@@ -1913,6 +1949,26 @@ class Engine:
         self.control.cancel_pending()
         done(Outcome(False, None, age,
                      f"switch timed out after {limit:.0f}s; playback not confirmed", False))
+
+    def _flip_lands_whistle(self, d: Decision, target: str | None) -> bool:
+        """[EXP-610] On the scrub path (the hidden stick seeks B s behind live before the flip), a basketball entry
+        in a whistle-timed league (decider.entry.hold_only) flips only while the destination's DELAYED picture is at
+        a clock-stopped dead ball (redzone/decider/whistle.py: lane 3's clock truth, +- decider.entry.whistle_band_s).
+        The decider timed the whistle before the scrub; the scrub takes 20-40 s, so without this the flip landed
+        wherever the picture was (Nov 7 finding). Off the scrub path, or another league: no change. The flip gives
+        up after MAX_SAFE_WAIT_S like any other and the decider picks again."""
+        if d.action != "switch" or not target or not self.control._scrub_wanted(target):
+            return True
+        g = self.merger.games.get(d.target or "")
+        lg = g.league.base.value if g is not None else ""
+        if lg not in whistle.WHISTLE_LEAGUES or lg not in (self.cfg.get("decider.entry.hold_only") or []):
+            return True
+        tl = self.decider.timelines.get(d.target or "")
+        if tl is None:
+            return False   # no play-by-play: no clock-stopped moment to prove
+        a = time.time() - self.delays.get(target).mu
+        return whistle.clock_stopped(sorted(tl.clock_events), a,
+                                     band=float(self.cfg.get("decider.entry.whistle_band_s", 3.0) or 0.0))
 
     def _entry_valid(self, d: Decision, target: str | None) -> bool:
         """Refresh the destination just before any visible mutation, not just at planning time."""

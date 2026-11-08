@@ -254,7 +254,7 @@ class Decider:
         self.screen_m = M.DECIDER_SCREEN.new(clock=clock)        # unknown / tuning / live / replaying / after_replay
         self.start_m = M.START.new(clock=clock)          # the first pick after a (re)start, and its backoff
         self.gone_m = M.SCREEN_GONE.new(clock=clock)     # [buffered jump] keeping a buffered standby (was _bj_gone_since)
-        self.home_m = M.HOME.new(clock=clock)            # a break visit (home_break_visit / home_return_at)
+        self.home_m = M.DECIDER_HOME.new(clock=clock)            # a break visit (home_break_visit / home_return_at)
         self.safe_m = M.SAFE.new(clock=clock)            # safe mode (safe_mode / safe_since)
         self.override_m = M.OVERRIDE.new(clock=clock)    # your strongest override this tick
         self.lock_m = M.LOCK_WAIT.new(clock=clock)       # [lock wait]
@@ -369,7 +369,7 @@ class Decider:
     _start_retry_at: float = 0.0
     _entry_last: float = 0.0
     home_leaks: int = 0
-    _LAZY = {"owner_m": M.OWNER, "screen_m": M.DECIDER_SCREEN, "start_m": M.START, "gone_m": M.SCREEN_GONE, "home_m": M.HOME,
+    _LAZY = {"owner_m": M.OWNER, "screen_m": M.DECIDER_SCREEN, "start_m": M.START, "gone_m": M.SCREEN_GONE, "home_m": M.DECIDER_HOME,
              "safe_m": M.SAFE, "override_m": M.OVERRIDE, "lock_m": M.LOCK_WAIT, "entry_m": M.ENTRY_WAIT}
 
     def __getattr__(self, name: str):

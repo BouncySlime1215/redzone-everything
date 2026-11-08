@@ -118,6 +118,8 @@ DEFAULTS = {
     "ntfy_topic": "",              # set to push the nightly summary to the ntfy app (ntfy.sh/<topic>)
     "ntfy_server": "https://ntfy.sh",
     "budget": {},                  # error budget objectives (redzone/observability.BUDGET_DEFAULTS)
+    "mac_health": {},              # Mac health alerts (redzone/platform/mac_health.py; enabled: false)
+    "night_ops": {},               # sync + health section of the nightly report (redzone/platform/night_ops.py)
 }
 
 # How often each fix may run: (minimum gap in seconds, at most this many per hour), per key.
@@ -357,6 +359,8 @@ class Supervisor:
         self.health = PlatformHealth(engine, fixes=self.contract_fixes, data_dir=self.root)
         self._faults_logged: set[tuple[str, str]] = set()
         self.last_faults: list = []
+        self.mac_health = None                           # redzone/platform/mac_health.MacHealth, made when enabled
+        self._wake = None
 
     # --- config / helpers -------------------------------------------------------------
 
@@ -532,7 +536,7 @@ class Supervisor:
 
     RULES = ("rule_stuck_switch", "rule_screen", "rule_failures", "rule_safe_mode", "rule_idle", "rule_feeds",
              "rule_adb", "rule_delay_doubt", "rule_finished_hold", "rule_logs", "track_moments", "track_episodes",
-             "grade_cuts", "maybe_report", "rule_invariants")
+             "grade_cuts", "maybe_report", "rule_invariants", "rule_mac_health")
 
     def _gate(self, state: str, why: str) -> None:
         if not self.loop.is_("stopped"):   # step() called on its own (tests, one-shot) has no loop to show
@@ -1186,7 +1190,7 @@ class Supervisor:
         if path.exists():
             return
         rep = night_report(prev, getattr(self.e, "store", None), self.root, now=now,
-                           budget_cfg=self.opt("budget"))
+                           budget_cfg=self.opt("budget"), ops_cfg=self.opt("night_ops"))
         write_report(path, rep["text"])
         write_metrics(path.with_suffix(".json"), rep["metrics"])
         self._record({"kind": "report", "rule": "report", "key": prev.isoformat(), "path": str(path)})
@@ -1255,6 +1259,60 @@ class Supervisor:
             self._faults_logged.discard(k)
             self._record({"kind": "invariant_cleared", "code": k[0], "component": k[1]})
 
+    def _mac_snapshot(self, now: float):
+        """What the Mac health alerts look at this tick (redzone/platform/mac_health.py)."""
+        import sys
+        from redzone.platform.mac_health import Snapshot
+        from redzone.platform.wake import WakeWatch
+        e = self.e
+        if self._wake is None:
+            mono = time.monotonic if self.clock is time.time else self.clock   # tests: one fake clock
+            self._wake = WakeWatch(wall=self.clock, mono=mono, expect_s=float(self.opt("every_s")))
+        snap = Snapshot(live_games=len(self._live()), slept_s=self._wake.check())
+        s = getattr(getattr(e, "governor", None), "last", None)
+        if s is not None:
+            snap.on_battery, snap.battery_pct = s.on_battery, s.battery_pct
+            snap.mem_pressure, snap.swap_used_mb = s.mem_pressure, s.swap_used_mb
+        if sys.platform == "darwin" and hasattr(e, "_caffeinate"):
+            c = e._caffeinate
+            snap.keep_awake = c is not None and c.poll() is None
+        u = getattr(getattr(e, "decider", None), "user", None)
+        snap.paused = bool(getattr(u, "paused", False))
+        snap.held = bool(getattr(u, "locked_game", None) or getattr(e, "hold", None))
+        store = getattr(e, "store", None)
+        if store is not None:
+            try:
+                rows = store.recent_switches(1)
+                snap.last_switch_ts = float(rows[0]["ts"]) if rows else None
+            except Exception:
+                snap.last_switch_ts = None
+        return snap
+
+    async def rule_mac_health(self, now: float) -> None:
+        """Mac health alerts to the phone (battery, sleep, memory, paused, no switches). OFF by default."""
+        from redzone.platform import mac_health as mh
+        opts = mh.options(self.opt("mac_health"))
+        if not opts["enabled"]:
+            self.mac_health = None
+            return
+        if self.mac_health is None:
+            self.mac_health = mh.MacHealth(opts)
+        self.mac_health.opts = opts
+        for a in self.mac_health.check(self._mac_snapshot(now), now):
+            self._record(a.row())
+            if a.cleared:
+                self._toast(a.text, "info")
+                continue
+            if a.level == "info":
+                continue                      # logged for the night report only
+            self._toast(a.text, "error" if a.level in mh.PUSH_LEVELS else "warn")
+            if a.level in mh.PUSH_LEVELS and opts["push"]:
+                try:
+                    await self.send_push(f"RedZone Mac: {a.code.replace('_', ' ')}", a.text,
+                                         priority="urgent" if a.level == "urgent" else "high", tags="warning,computer")
+                except Exception:
+                    log.exception("couldn't push Mac alert %s", a.code)
+
     def contract_fixes(self) -> list:
         """Tonight's fixes in the contract's shape (contracts/health.py Fix)."""
         from redzone.contracts.health import Fix as HFix
@@ -1279,7 +1337,8 @@ class Supervisor:
                 "machines": {"loop": self.loop.view(now, history=0), "screen": self.screen.view(now, history=0),
                              "targets": self.targets.view(now), "apps": self.apps.view(now)},
                 "faults": [{"code": f.code, "severity": f.severity.value, "component": f.component,
-                            "detail": f.detail} for f in self.last_faults]}
+                            "detail": f.detail} for f in self.last_faults],
+                "mac_health": self.mac_health.active() if self.mac_health is not None else None}
 
 
 # --- file housekeeping ----------------------------------------------------------------------
@@ -1468,7 +1527,7 @@ def write_metrics(path: Path, m: dict) -> None:
 
 
 def night_report(night: date, store: Any, root: Path, now: float | None = None,
-                 budget_cfg: dict | None = None) -> dict:
+                 budget_cfg: dict | None = None, ops_cfg: dict | None = None) -> dict:
     """text (markdown), summary (one line), phone (the push body), metrics (the .json sidecar), budget."""
     budget_cfg = budget_cfg if isinstance(budget_cfg, dict) else {}
     t0, t1 = night_window(night)
@@ -1608,6 +1667,20 @@ def night_report(night: date, store: Any, root: Path, now: float | None = None,
         needs.append(f"{len(limited)} fixes hit their rate limit (problem kept coming back): "
                      + ", ".join(sorted({str(x.get('rule')) for x in limited})[:5]))
     lines += rest
+    ops = None
+    from redzone.platform import night_ops
+    o = night_ops.options(ops_cfg)
+    if o["enabled"]:   # joins, fallbacks, drift, errors, Mac health (supervisor.night_ops, default OFF)
+        try:
+            ops = night_ops.summarize(root, t0, t1, margin=o["join_margin_s"])
+            lines += night_ops.lines(ops)
+            nm["ops"] = ops
+            for code, text in ops["mac_last"].items():
+                if code != "slept" or "live game" in text:
+                    needs.append(f"Mac {code.replace('_', ' ')}: {text}")
+        except Exception:
+            log.exception("night ops section failed")
+            ops = None
     if nm["left_mid_play"]:
         needs.insert(0, f"{nm['left_mid_play']} cut(s) left a play on screen: see 'Cuts' above")
     lines += ["## Needs you", ""]
@@ -1616,6 +1689,8 @@ def night_report(night: date, store: Any, root: Path, now: float | None = None,
                            len(obs.watchdog_actions(root, t0, t1)))
     if autofix:
         phone += f"\nAuto-fix: {len(autofix)} problem(s) sent to Claude; a draft PR follows."
+    if ops is not None:
+        phone += "\n" + night_ops.phone_line(ops)
     return {"text": "\n".join(lines), "summary": summary, "phone": phone, "metrics": nm, "budget": bud}
 
 

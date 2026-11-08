@@ -61,13 +61,16 @@ from redzone.channels import ChannelMap
 from redzone.fsm import MachineMap
 from redzone.machines.control import (ADOPT, CEC, COMMAND, OFFSET, PRELOAD_SLOT, CONTROL_SCREEN, STANDBY, STANDBY_READY,
                                       TWO_STICK, VISIBLE)
+from redzone.fallback_ladder import FallbackLadder, Step as LadderStep
 from redzone.tuners.adb import STICK_HUNG, Stick, adb_available, playback_ready, same_stream
+from redzone.tuners import join_watchdog as jw
 from redzone.tuners import prime_multiview as pmv
 from redzone.tuners.tuners import TUNERS, PrimeMultiviewTuner, TuneResult, channel_matcher
 from redzone.tv import SamsungTV
 
 log = logging.getLogger(__name__)
 DEVICES = Path(__file__).resolve().parent.parent / "data" / "devices.json"
+NO_STICK = "no stick connected"   # live mode, no stick online: a refused switch, never a success
 MAX_SAFE_WAIT_S = 25.0     # how long a flip may wait for a safe moment before giving up
 SAFE_POLL_S = 0.2          # re-check for that moment this often (a cheap local computation)
 PRELOAD_BACKOFF_S = 120.0  # a preload that failed isn't retried for this long
@@ -376,6 +379,9 @@ class Controller:
         # [SYNC A] stick host -> wall time of its last tune command, and -> seconds it plays behind its live
         # edge as MEASURED (sync_edge.py via the probe; `held` is what the app asked for)
         self.tuned_at: dict[str, float] = {}
+        # [session guard, sync hardening item 4] redzone/tuners/session_guard.py: off unless session_guard.enabled
+        from redzone.tuners.session_guard import SessionGuard
+        self.session_guard = SessionGuard(cfg)
         self.behind_live: dict[str, float] = {}
         # ...and -> seconds its picture runs behind REAL LIFE, where the app stamps frames with the wall clock
         # (Prime's epoch positions, overseer Nov 5 3:15 AM)
@@ -389,13 +395,23 @@ class Controller:
         self.read_behind: Callable[..., Any] | None = None
         # [label reader] redzone.tuners.yttv_label.LabelProbe when timing.behind_live_s.label_reader is on (engine)
         self.label_probe: Any = None
+        self.drift: Any = None   # [drift monitor] join_watchdog.DriftMonitor, made on first use (join.drift.enabled)
         self.on_label: Callable[[str, float, float | None, float], None] | None = None
+        # [edge prior, Nick Nov 7] yttv_edge_probe.EdgeProbe when delay.edge_prior(.refresh).enabled (engine), and
+        # where a read goes (engine.edge_read -> DelayBook.add_edge_read): (app, delay s, capture wall)
+        self.edge_probe: Any = None
+        self.on_edge_read: Callable[[str, float, float | None], Any] | None = None
         self.dead_ball: Callable[[str], bool] = lambda target: True   # [STK-06] engine: is target's game dead now?
         self._buffer_bad: dict[str, float] = {}                      # target -> when its hold went bad
         self._scrub_backoff: dict[str, float] = {}                   # [scrub entry] target -> no scrub before this
         self._replay_scrub_backoff: dict[str, float] = {}            # [replay scrub] target -> no replay park before
         self._tuned_at: dict[str, float] = {}                        # host -> its last confirmed tune (banner wait)
+        self._scrub_why: dict[str, str] = {}                         # [fallback ladder] target -> last scrub failure
         self.buffer_log_path: Path | None = None
+        # [fallback ladder, Nick's Nov 7 sync order item 2] buffered -> live -> other stick -> hold, per stick, every
+        # step logged (data/ladder.jsonl) and on the phone. Flag fallback_ladder.enabled, off.
+        self.ladder = FallbackLadder(cfg, None, label=self._stick_label)
+        self._ladder_pending = None   # a climb that handed this switch to the other stick (settled in _execute)
         self.on_behind: Callable[[str, float, float], None] | None = None   # (target, new s, old s)
         # [SYNC 1] stick host -> ((target, stick `updated` ms), first monotonic seen): how long a stick
         # has provably played its stream with no state change (_note_steady).
@@ -814,6 +830,14 @@ class Controller:
         await self.verify_standby()
         await self._watch_visible()
         self._maybe_reseek()
+        try:
+            await self._drift_tick()
+        except Exception:   # the drift check must never break keepalive
+            log.exception("drift tick")
+        try:
+            await self._edge_probe_tick()
+        except Exception:   # nor the edge probe
+            log.exception("edge probe tick")
 
     async def _maybe_reassert(self) -> None:
         """The TV input is unknown (a flip that wasn't confirmed, someone's remote, CEC lost).
@@ -1962,6 +1986,10 @@ class Controller:
         if not res.ok:
             return TuneResult(False, target, res.took, list(res.steps), f"reset through {other_t} failed: {res.error}")
         stick.behind_on = None
+        gap = float(self.cfg.get("tuners.relink_gap_s", 0) or 0)
+        if gap > 0:
+            # [Nick Nov 7] a tune right after another failed 1/10 ("video never started"); a short gap fixed it
+            await asyncio.sleep(gap)
         return None
 
     def _ref(self, target: str) -> tuple[str, str]:
@@ -2000,6 +2028,7 @@ class Controller:
                 return reset
         self._tuned_on = stick.host
         self.tuned_at[stick.host] = time.time()
+        self.session_guard.note_tune(stick.host)
         res = await tuner.tune(stick, ref, target, **({"may_cut": may_cut} if may_cut is not None else {}))
         if res.ok and getattr(stick, "behind_on", None) not in (None, target):
             stick.behind_on = None   # it plays another channel now; that one starts at its live edge
@@ -2640,9 +2669,13 @@ class Controller:
         if not target:
             return Outcome(False, None, 0.0, "no channel for this game", True)
         if not self.live_control:
-            why = "dry run" if self.cfg.get("mode.dry_run", True) else "no stick connected"
-            self.on_target = target
-            return Outcome(True, target, 0.0, why, True, time.time())
+            if self.cfg.get("mode.dry_run", True):
+                self.on_target = target
+                return Outcome(True, target, 0.0, "dry run", True, time.time())
+            # [Nov 7 overseer] Live mode with no stick online (the Mac asleep, sticks off the network): nothing
+            # reached the TV. A success here logged phantom starts ("start ALA@LSU ok=True took 0 s") that
+            # inflated switch counts, and set on_target to a game the TV never showed.
+            return Outcome(False, target, 0.0, NO_STICK, False, screen_unchanged=True)
         if self.input_unknown:
             return Outcome(False, target, 0.0, "TV input is unknown; verify the visible stick before resuming", False)
         if getattr(self, "_preloaded_only", False) and not replay_back_s \
@@ -2661,13 +2694,23 @@ class Controller:
         # Recheck after waiting for the controller lock and after a failed
         # HDMI attempt: the safe gap may have closed during those operations.
         self._mark("safe_start")
+        pending, self._ladder_pending = self._ladder_pending, None
         if await self._wait_safe(may_cut) is None:
+            if pending is not None:
+                self.ladder.record(pending.host, target, "hold", False, "no safe moment for the other stick",
+                                   reason="other_stick settled")
             return Outcome(False, target, time.time() - t0,
                            "no safe moment to cut — kept the current game", False, screen_unchanged=True)
         self._mark("safe_done")
         if not self.live_control:
             return Outcome(False, target, 0.0, "TV control was disabled", True)
-        return await self._execute_one(target, replay_back_s, t0, back_at)
+        out = await self._execute_one(target, replay_back_s, t0, back_at)
+        if pending is not None and self.main is not None:
+            # [fallback ladder] the other stick's in-place tune is the rung's real result: one more row
+            self.ladder.record(self.main.host, target, "other_stick", out.ok, "" if out.ok else out.detail[:80],
+                               reason="other_stick settled")
+            out.detail += "; fallback: other stick"
+        return out
 
     async def _execute_tile(self, mv: PrimeMultiviewTuner, target: str, may_cut, t0: float) -> Outcome | None:
         """The game is a tile of the Prime multiview on screen: at a safe moment, make it main
@@ -2780,6 +2823,20 @@ class Controller:
             if not res.ok:
                 self._set_hidden(None, False)
                 self._blackout_check(target, res)
+                if self.ladder.enabled and not replay:
+                    # [fallback ladder] the standby couldn't tune it at all: the other stick (in place, at a safe
+                    # moment) if allowed for this app, else hold. The failed live tune is logged as the live step.
+                    err = res.error
+
+                    async def failed_live() -> LadderStep:
+                        return LadderStep(False, err[:80])
+                    steps = self._ladder_steps(hid, target, 0.0, flip=True)
+                    steps["live"] = failed_live
+                    climb = await self.ladder.climb(hid.host, target, steps, start="live", reason="standby tune failed")
+                    self._note("ladder", climb.rung)
+                    if climb.rung == "other_stick" and visible_untouched:
+                        self._ladder_pending = climb
+                        return None
                 return Outcome(False, target, time.time() - t0, res.error, False, path=path,
                                screen_unchanged=visible_untouched)
             self._set_hidden(target, True)
@@ -2799,7 +2856,21 @@ class Controller:
             # dead ball on that delayed picture (the engine's may_cut reads the delay book, which _set_held
             # shifted by the measured label). Never a flip to a stream whose offset we didn't read.
             b = self._buffer_for(hid, target, TuneResult(True, target, 0.0, [], ""))
-            if b > 0:
+            if b > 0 and self.ladder.enabled:
+                # [fallback ladder] buffered -> live (same stick, known position) -> other stick -> hold
+                self._mark("scrub_start")
+                climb = await self.ladder.climb(hid.host, target, self._ladder_steps(hid, target, b, flip=True),
+                                                reason="join")
+                self._mark("scrub_done")
+                self._note("scrub", self.held.get(target) if climb.rung == "buffered" else "failed")
+                self._note("ladder", climb.rung)
+                if climb.rung == "other_stick":
+                    self._ladder_pending = climb
+                    return None   # _execute tunes the visible stick in place at a safe moment (one-stick path)
+                if climb.rung == "hold":
+                    return Outcome(False, target, time.time() - t0, "buffer entry failed; kept the current game",
+                                   False, path=path, screen_unchanged=visible_untouched)
+            elif b > 0:
                 self._mark("scrub_start")
                 ok = await self._scrub_into(hid, target, b)
                 self._mark("scrub_done")
@@ -3660,7 +3731,12 @@ class Controller:
                     if hold and self._scrub_wanted(target):
                         # [scrub entry] the overlay scrub, off screen, before anything can flip to it; a pause
                         # doesn't hold on YouTube TV (Nick, Nov 6). Fails closed at the live edge or not ready.
-                        await self._scrub_into(hid, target, hold)   # sets the hidden stick's state itself
+                        if self.ladder.enabled:
+                            # [fallback ladder] buffered -> live standby -> (no other stick for a preload) -> not ready
+                            await self.ladder.climb(hid.host, target, self._ladder_steps(hid, target, hold, flip=False),
+                                                    reason="preload")
+                        else:
+                            await self._scrub_into(hid, target, hold)   # sets the hidden stick's state itself
                         hold = 0.0
                     if hold:
                         self._set_hidden(target, False)   # not flippable until it's held
@@ -3672,9 +3748,11 @@ class Controller:
                         return
                 self._verified_at = time.time()
             if replay_id is None and hold:
-                await self._hold(hid, target, hold)
+                held_ok = await self._hold(hid, target, hold)
                 if self.hidden is hid and self.hidden_target == target:
                     self._set_hidden(target, True)
+                if self.ladder.enabled:
+                    await self._ladder_note_pause(hid, target, held_ok)
         except asyncio.CancelledError:
             self._set_hidden(None, False)   # stopped mid-tune: we don't know what it's showing
             raise
@@ -3868,7 +3946,7 @@ class Controller:
         p90 = samples[min(len(samples) - 1, math.ceil(len(samples) * .9) - 1)] if samples else 0.0
         return max(float(self.cfg.get("timing.behind_live_s.scrub_cost_s", 28.0)), p90)
 
-    async def _scrub_into(self, stick: Stick, target: str, seconds: float) -> bool:
+    async def _scrub_into(self, stick: Stick, target: str, seconds: float, _attempt: int = 0) -> bool:
         """[scrub entry] Put the hidden stick's fresh tune of `target` about `seconds` behind live by the overlay
         scrub (CENTER, N x LEFT, CENTER), off screen. Called with the control lock held. True = playing that far
         behind live as READ off the overlay's time label: `held` and the delay book get the measured value
@@ -3904,9 +3982,12 @@ class Controller:
             await asyncio.sleep(min(0.25, settle))
             settle -= 0.25
         res, why = None, ""
+        guard_lost = False
         if time.time() < self._scrub_backoff.get(target, 0.0):
             why = "backoff after a failed scrub"
-        else:
+        elif self.session_guard.enabled:
+            why, guard_lost = await self._session_preflight(stick, target, pkg, still_hidden)
+        if not why:
             try:
                 from redzone.tuners import yttv_seek
                 kw = {"read_behind": self.read_behind} if self.read_behind is not None else {}
@@ -3927,7 +4008,7 @@ class Controller:
                 why = f"crashed: {e}"
         took = round(time.monotonic() - t0, 1)
         if res is None or getattr(res, "presses", 1) or getattr(res, "committed", True) or why.startswith("crashed"):
-            if not why.startswith("backoff"):
+            if not why.startswith(("backoff", "session guard")):   # neither pressed a key
                 stick.behind_on = target   # keys may have moved it: the next tune of target must reset first
         behind = getattr(res, "behind_s", None) if res is not None and getattr(res, "ok", False) else None
         if behind is not None and getattr(res, "measured", True) is False:
@@ -3937,6 +4018,22 @@ class Controller:
         if behind is not None and not (0.0 < float(behind) <= cap + float(
                 self.cfg.get("timing.behind_live_s.scrub_over_s", 15.0))):
             why, behind = f"label read {float(behind):.0f}s behind live, outside (0, max_s]", None
+        if behind is not None and jw.enabled(self.cfg):
+            # [join watchdog, Nick Nov 7 item 1] the READ landing must be near the target, or re-seek once from the
+            # live edge (_tune resets through another channel: behind_on is set), then fail closed as below.
+            v = jw.verify(target, float(seconds), float(behind), None, cfg=self.cfg,
+                          reseeks_left=int(jw.wcfg(self.cfg, "max_reseeks")) - _attempt)
+            self._buffer_log("watchdog", target, stick.host, float(behind), v.off_target_s, status=v.status,
+                             action=v.action, attempt=_attempt)
+            self._ladder_record(stick, target, v.buffered, f"watchdog {v.status}: {v.reason}",
+                                float(behind) if v.buffered else None)
+            if v.action == "reseek" and still_hidden():
+                again = await self._tune(stick, target)
+                if again.ok and still_hidden():
+                    return await self._scrub_into(stick, target, seconds, _attempt + 1)
+                why, behind = f"watchdog: re-seek tune failed ({v.reason})", None
+            elif not v.buffered:
+                why, behind = f"watchdog: {v.status}: {v.reason}", None
         if behind is not None and still_hidden():
             pb = await stick.playback(pkg)
             if pb.get("state") == "playing" and playback_ready(pb) and still_hidden():
@@ -3952,6 +4049,8 @@ class Controller:
                         log.exception("scrub: on_label(%s)", target)
                 self._buffer_log("scrubbed", target, stick.host, behind, round(behind - float(seconds), 1), took=took,
                                  asked_s=round(ask, 1))
+                if jw.dcfg(self.cfg, "enabled"):
+                    self._drift().anchor(self._drift_key(stick, target), target, float(seconds), behind)
                 log.info("scrub: %s on %s is %.1fs behind live by the overlay label (%.1fs)", target, stick.host,
                          behind, took)
                 return True
@@ -3959,6 +4058,7 @@ class Controller:
         if not why:
             why = "the stick is no longer the hidden one"
         self._buffer_log("scrub_failed", target, stick.host, 0.0, None, took=took, why=why[:120])
+        self._scrub_why[target] = why[:60]
         log.warning("scrub: %s on %s failed (%s): fail closed", target, stick.host, why)
         if not why.startswith("backoff"):
             # a banner / focus miss says nothing about the channel: retry it soon, not after the full backoff
@@ -3969,7 +4069,7 @@ class Controller:
         if not still_hidden() and self.hidden is not stick:
             return False   # it's on screen (or gone): never pressed or re-tuned from here
         self._set_held(target, 0.0)
-        if res is not None or stick.tuned is None or stick.tuned.get("target") != target:
+        if res is not None or guard_lost or stick.tuned is None or stick.tuned.get("target") != target:
             # keys were (or may have been) pressed: the position is unknown. A fresh live tune is a known one.
             again = await self._tune(stick, target)
             if not again.ok:
@@ -4100,6 +4200,297 @@ class Controller:
         self._failed[target] = now + PRELOAD_BACKOFF_S
         self._last_preload = 0.0
         return True
+
+    def _ladder_record(self, stick: Stick, target: str, ok: bool, why: str, behind_s: float | None) -> None:
+        """[fallback ladder seam, item 2 thread] log this join's "buffered" rung on control.ladder when that branch
+        is in (duck-typed: absent = nothing). The ladder's own descend takes the control lock, so the watchdog never
+        calls it from here (we hold the lock): a failed join already falls back to a fresh live tune below, which
+        is the ladder's hidden-stick "live" rung."""
+        lad = getattr(self, "ladder", None)
+        if lad is None or not hasattr(lad, "record"):
+            return
+        try:
+            lad.record(stick.host, target, "buffered", bool(ok), why[:120], behind_s, behind_s is not None)
+        except Exception:
+            log.exception("ladder record")
+
+    # --- [drift monitor, Nick Nov 7 item 3] rare, budgeted label reads of the HIDDEN scrubbed stick ----------------
+
+    def _drift(self) -> "jw.DriftMonitor":
+        if self.drift is None:
+            path = (self.buffer_log_path.parent / "joins.jsonl") if self.buffer_log_path is not None else ""
+            self.drift = jw.DriftMonitor(self.cfg, log_path=path)
+        return self.drift
+
+    @staticmethod
+    def _drift_key(stick: Stick, target: str) -> str:
+        return f"{stick.host}|{target}"   # in memory only: rows carry the HDMI name, never the address
+
+    async def _drift_tick(self) -> None:
+        """From keepalive: if the hidden stick's verified buffer is due a check (join.drift: interval, budget), read
+        its label once (LabelProbe.probe: ~7.5 s, adds ~7.5 s behind). ok -> held = the reading; anything else ->
+        not buffered (held 0, not ready) and re-entered off screen (label_stale), or re-tuned on the next preload.
+        The stick on screen is never read: the overlay would show and freeze Nick's picture."""
+        if not jw.dcfg(self.cfg, "enabled") or self.label_probe is None or not self.two_stick:
+            return
+        hid, t = self.hidden, self.hidden_target
+        if hid is None or not t or hid.scrubbed(t) is None or self._busy() or self._flipping:
+            return
+        dm, key = self._drift(), self._drift_key(hid, t)
+        if not dm.due(key, hidden=True):
+            return
+        verdict = None
+        async with self._lock:
+            if self.hidden is not hid or self.hidden_target != t or hid.scrubbed(t) is None:
+                return
+            self._set_hidden(t, False)   # not ready while the overlay is up: nothing flips to it mid-read
+
+            def still_hidden() -> bool:
+                return self.hidden is hid and self.hidden_target == t and not self._flipping
+            r0 = time.monotonic()
+            try:
+                pr = await self.label_probe.probe(hid, still_hidden=still_hidden)
+                got = pr.behind_live_s
+            except Exception:
+                log.exception("drift: probe on %s", t)
+                got = None
+            # [Nick 13:53Z] spend what the read really took (9.8 s on his run, not the 7.5 s default)
+            verdict = dm.record(key, got, cost_s=time.monotonic() - r0, channel=t,
+                                label=str(self.hdmi.get(hid.host, "")))
+            if verdict.action == "ok" and still_hidden():
+                pb = await hid.playback(self._package(hid, t))
+                if pb.get("state") == "playing" and playback_ready(pb):
+                    hid.remember(t, pb, scrubbed_s=float(got))
+                    self._set_held(t, round(float(got), 1))
+                    if self.on_label is not None:
+                        try:
+                            self.on_label(t, round(float(got), 1), None, time.time())
+                        except Exception:
+                            log.exception("drift: on_label(%s)", t)
+                    self._set_hidden(t, True)
+                    return
+                verdict.action = "unknown"
+                dm.forget(key)
+            hid.behind_on = t            # keys moved it: the next tune of t resets through another channel
+            self._set_held(t, 0.0)       # never shown as buffered on a failed / missing check
+        self._buffer_log("drift_" + verdict.action, t, hid.host, 0.0, verdict.drift_s, measured_s=verdict.measured_s)
+        if not (still_hidden() and self.label_stale(t)):
+            if self.hidden is hid and self.hidden_target == t:
+                self._set_hidden(None, False)   # the next preload re-tunes it (at the live edge, then re-enters)
+
+    async def _edge_probe_tick(self) -> None:
+        """[edge prior, Nick Nov 7] From keepalive, at most once per delay.edge_prior.refresh.min_gap_s: measure
+        YouTube TV's live-edge delay on the HIDDEN stick (yttv_edge_probe: fresh live edge through another channel,
+        CENTER, RIGHT, one label read, BACK; ~15 s). Only on a ready hidden stick that sits at the live edge on a
+        YouTube TV target: never on a scrubbed / held buffer (the fresh tune would throw it away), never on the stick
+        on screen. Not ready while it runs; ready again only if the player is back PLAYING, else the next preload
+        re-tunes it. A read with no label is skipped (logged), never guessed."""
+        ep = self.edge_probe
+        if ep is None or not self.two_stick or self._busy() or self._flipping or not ep.due():
+            return
+        hid, t = self.hidden, self.hidden_target
+        if hid is None or not t or t.split(":", 1)[0] != "youtubetv" or not self.hidden_ready \
+                or self.parked is not None or hid.scrubbed(t) is not None or self.held.get(t, 0.0) \
+                or getattr(hid, "behind_on", None):
+            return
+        async with self._lock:
+            if self.hidden is not hid or self.hidden_target != t or not self.hidden_ready \
+                    or hid.scrubbed(t) is not None or self.held.get(t, 0.0):
+                return
+            self._set_hidden(t, False)   # not ready while the overlay is up: nothing flips to it mid-read
+
+            def still_hidden() -> bool:
+                return self.hidden is hid and self.hidden_target == t and not self._flipping
+
+            async def relink() -> bool:
+                # through another channel first (#391: a same-channel deep link does not reset the stick), so the
+                # label is read at a fresh live edge, as in Nick's method. [Nick's 61fdcc84 run, Nov 7: 2/12 tunes
+                # back right after the reset said "video never started"] a relink_gap_s pause between the two.
+                tuner = TUNERS.get("youtubetv")
+                if tuner is None or await self._reset_through_other(hid, t, tuner) is not None or not still_hidden():
+                    return False
+                await asyncio.sleep(float(self.cfg.get("delay.edge_prior.refresh.relink_gap_s", 3.0) or 0.0))
+                return still_hidden() and bool((await self._tune(hid, t)).ok) and still_hidden()
+            try:
+                r = await ep.measure(hid, relink=relink, still_hidden=still_hidden, channel=t.split(":", 1)[1])
+            except Exception:
+                log.exception("edge probe on %s", t)
+                r = None
+            if getattr(hid, "behind_on", None) == t:
+                hid.behind_on = None   # it was at the live edge before; a failed reset left it there or elsewhere
+            if r is not None and r.ok and self.on_edge_read is not None:
+                try:
+                    self.on_edge_read("youtubetv", float(r.delay_s), r.cap_wall)
+                except Exception:
+                    log.exception("edge probe: on_edge_read")
+            if r is not None and r.status != "tune_failed" and still_hidden():   # a failed tune may sit elsewhere
+                pb = await hid.playback(self._package(hid, t))
+                if pb.get("state") == "playing" and playback_ready(pb):
+                    hid.remember(t, pb)
+                    self._set_hidden(t, True)
+                    return
+            if self.hidden is hid and self.hidden_target == t:
+                self._set_hidden(None, False)   # the next preload re-tunes it at the live edge
+
+    async def _session_preflight(self, stick: Stick, target: str, pkg: str | None,
+                                 still_hidden: Callable[[], bool]) -> tuple[str, bool]:
+        """[session guard] Before the scrub's first key: look at the screen (no key) and wait while the post-tune
+        LIVE/title banner is up (Nov 6: it looks like the overlay, keys do nothing there, the probe burns its tries),
+        polling every 2 s, at most banner_wait_max_s; the last look (adb facts + screen) must be ok.
+        ("", False) = go. (why, lost) = fail closed with no key pressed; lost = the session itself is gone (crash,
+        reboot, home, wrong app), so the fallback re-tunes instead of trusting the old tune."""
+        from redzone.tuners import session_guard as sg
+        g = self.session_guard
+
+        def since_tune() -> float | None:
+            at = self.tuned_at.get(stick.host)
+            return time.time() - at if at else None
+        try:
+            v = await sg.settle_banner(g, stick, pkg or "", since_tune, still_hidden=still_hidden)
+        except Exception as e:   # the guard must never crash the switch path: no evidence = no scrub
+            log.exception("session guard: look at %s", stick.host)
+            return f"session guard: look failed ({e!r})"[:120], False
+        if not still_hidden():
+            return "session guard: the stick is no longer the hidden one", False
+        if v.ok or v.kind == sg.BANNER:   # past the wait cap: the scrub's own LEFT probe still guards focus
+            return "", False
+        self._buffer_log("session_guard", target, stick.host, 0.0, None, guard=v.kind, action=v.action,
+                         buffer=v.buffer)
+        return f"session guard: {v.kind}: {v.reason}"[:160], v.buffer == "lost"
+
+    # --- [fallback ladder] Nick's Nov 7 sync order, item 2 (redzone/fallback_ladder.py) ---------------------------
+
+    def _stick_label(self, host: str) -> str:
+        """What the phone and the logs call a stick: its HDMI input, never its address (the repo is public)."""
+        h = self.hdmi.get(host)
+        if h:
+            return f"Stick on {h}"
+        for i, s in enumerate(self.sticks):
+            if s.host == host:
+                return f"Stick {i + 1}"
+        return "stick"
+
+    def _other_stick_ok(self, target: str) -> bool:
+        """The other-stick rung (the visible stick tunes the target in place at a dead ball) is only for apps whose
+        in-app tune is short: a Prime tune is ~32 s of spinner on screen (fallback_ladder.other_stick_apps)."""
+        app = target.split(":", 1)[0]
+        apps = self.cfg.get("fallback_ladder.other_stick_apps", None)
+        apps = ("youtubetv",) if apps is None else tuple(apps)
+        main = self.main
+        return bool(app in apps and main is not None and self._plays(main, target) and self.can_tune(target))
+
+    def _ladder_steps(self, hid: Stick, target: str, seconds: float, flip: bool) -> dict:
+        """The rung callables for the HIDDEN stick, before any flip (called with the control lock held).
+        buffered = the measured overlay scrub (_scrub_into; never trusted without a label reading), live = the same
+        stick re-tuned at the live edge (through another channel if it was behind: #391) and made a ready standby,
+        other_stick = hand the switch to the visible stick (flip=True only; the caller returns None), hold = keep."""
+        steps: dict = {}
+
+        async def buffered() -> LadderStep:
+            ok = await self._scrub_into(hid, target, seconds)
+            b = self.held.get(target) if ok else None
+            return LadderStep(bool(ok and b), "" if ok else self._last_scrub_why(target), behind_s=b, measured=bool(ok))
+
+        async def live() -> LadderStep:
+            if self.hidden is not hid or self.hidden_target not in (None, target):
+                return LadderStep(False, "the stick is no longer the hidden one")
+            self._set_held(target, 0.0)
+            fresh = self.hidden_target == target and self.parked is None and hid.behind_on != target and \
+                (hid.tuned or {}).get("target") == target and hid.scrubbed(target) is None
+            if not fresh:   # _scrub_into's fail-closed re-tune already put it at a known live position
+                res = await self._tune(hid, target)
+                if not res.ok:
+                    self._set_hidden(None, False)
+                    return LadderStep(False, res.error[:80])
+            pb = await hid.playback(self._package(hid, target))
+            if pb.get("state") != "playing" or not playback_ready(pb):
+                self._set_hidden(None, False)
+                return LadderStep(False, f"not playing at the live edge ({pb.get('state')})")
+            self._set_hidden(target, True)
+            return LadderStep(True, "")
+
+        async def other() -> LadderStep:
+            if not self._other_stick_ok(target):
+                return LadderStep(False, "not for this app" if self.main is not None else "no visible stick")
+            return LadderStep(True, "visible stick tunes it in place at a dead ball", host=self.main.host)
+
+        if seconds > 0:
+            steps["buffered"] = buffered
+        steps["live"] = live
+        if flip:
+            steps["other_stick"] = other
+        return steps
+
+    async def _ladder_note_pause(self, hid: Stick, target: str, held_ok: bool) -> None:
+        """[fallback ladder] The pause buffer (_hold: Prime, or a league on the pause path) already fails to the live
+        edge by itself; log its outcome on the same ladder (buffered measured on the stick clock, else live)."""
+        b = self.held.get(target) if held_ok else None
+
+        async def buffered() -> LadderStep:
+            return LadderStep(bool(held_ok and b), "" if held_ok else "pause did not hold", behind_s=b,
+                              measured=bool(held_ok))
+
+        async def live() -> LadderStep:
+            ok = self._live_on_hidden(target) and not self.held.get(target)
+            return LadderStep(ok, "" if ok else "standby lost")
+        await self.ladder.climb(hid.host, target, {"buffered": buffered, "live": live}, reason="preload pause")
+
+    def _last_scrub_why(self, target: str) -> str:
+        """Why the last scrub of `target` failed (its data/buffer.jsonl row reason, kept in memory)."""
+        return self._scrub_why.get(target, "buffer entry failed")
+
+    async def ladder_descend(self, target: str, from_rung: str, why: str,
+                             may_cut: Callable[[], bool] | None = None):
+        """[fallback ladder] For the join watchdog (item 1): `from_rung` didn't hold for `target` (the position read
+        after entry is off target by more than its margin and its re-seek didn't fix it). Climbs from the rung below.
+
+        Target on the HIDDEN stick (verify before the flip): live = re-tune that stick at the live edge as a ready
+        standby; hold = drop it from ready. Target ON SCREEN: never pressed except at a safe moment (Rule #1):
+        live = at a dead ball, re-tune the visible stick at the live edge; other_stick = re-tune the hidden stick
+        at live as a standby (the next dead-ball flip takes it); hold = keep the picture but stop calling it
+        buffered (held = 0, the phone and delay book no longer claim a delay we can't read). None = flag off."""
+        if not self.ladder.enabled or not target:
+            return None
+        async with self._lock:
+            hid, main = self.hidden, self.main
+            if hid is not None and self.hidden_target == target:
+                steps = self._ladder_steps(hid, target, 0.0, flip=False)
+
+                async def hold_hidden() -> LadderStep:
+                    self._set_held(target, 0.0)
+                    self._set_hidden(None, False)
+                    return LadderStep(True, "standby dropped")
+                steps["hold"] = hold_hidden
+                return await self.ladder.descend(hid.host, target, steps, from_rung, why)
+            if main is None or self.on_target != target:
+                return None
+            steps = {}
+
+            async def live_visible() -> LadderStep:
+                if await self._wait_safe(may_cut) is None:
+                    return LadderStep(False, "no safe moment")
+                self._set_held(target, 0.0)
+                res = await self._tune(main, target, may_cut)
+                return LadderStep(bool(res.ok), "" if res.ok else res.error[:80])
+
+            async def other_visible() -> LadderStep:
+                if hid is None or not self._plays(hid, target):
+                    return LadderStep(False, "no standby stick for it")
+                res = await self._tune(hid, target)
+                if not res.ok:
+                    self._set_hidden(None, False)
+                    return LadderStep(False, res.error[:80])
+                self._set_hidden(target, True)
+                return LadderStep(True, "standby at the live edge; flips at the next dead ball", host=hid.host)
+
+            async def hold_visible() -> LadderStep:
+                self._set_held(target, 0.0)
+                return LadderStep(True, "kept; no longer shown as buffered")
+            steps["live"] = live_visible
+            if self.two_stick:
+                steps["other_stick"] = other_visible
+            steps["hold"] = hold_visible
+            return await self.ladder.descend(main.host, target, steps, from_rung, why)
 
     def label_stale(self, target: str) -> bool:
         """[scrub entry] The delay model says this target's label reading went stale (stalls widened it, #376

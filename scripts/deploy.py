@@ -100,6 +100,7 @@ class Settings:
     live_wait_s: float = 0.0          # 0: defer at once if a game is live; else poll this long
     live_poll_s: float = 300.0
     at_break: bool = False            # --at-break: allow live games while the one on screen is at halftime
+    if_paused: bool = False           # --if-paused: allow live games while the app reports auto-switching paused
     soon_s: float = 900.0             # a game starting this soon counts as live
     error_ratio: float = 2.0          # watch errors > baseline*ratio + slack -> worse
     error_slack: int = 5
@@ -522,14 +523,29 @@ def long_break(g: dict) -> bool:
     return "end of" not in text.lower() or g.get("league") == "nhl"
 
 
-def busy(st: dict | None, now: float, soon_s: float, at_break: bool = False) -> str:
+def paused(st: dict | None) -> bool:
+    """Does the app report auto-switching paused (the phone's Pause)? Only a literal True counts:
+    a missing or odd "mode" block reads as not paused, so the gate stays shut."""
+    mode = (st or {}).get("mode")
+    return isinstance(mode, dict) and mode.get("paused") is True
+
+
+def busy(st: dict | None, now: float, soon_s: float, at_break: bool = False, if_paused: bool = False) -> str:
     """Why a restart now would hurt, or "" if it wouldn't. A down API means nothing is on screen
     under our control, so it doesn't block (that is when a fix is most wanted).
 
     at_break (Nick, Nov 4 6:50 PM: RC6 at halftime): live games are allowed while the game on screen
     is in a long break (halftime / intermission); games starting soon don't block. Off screen, a live
-    game loses only feed polling for the ~1-2 min restart."""
+    game loses only feed polling for the ~1-2 min restart.
+
+    if_paused (Nick, Nov 7 12:08 PM, suggestion (a)): live games are allowed while the app reports
+    auto-switching paused (mode.paused). Paused, the app switches nothing, so a restart moves nothing
+    under its control, and the pause survives the restart (userstate.py). A "Watch this" hold is not
+    a pause (it clears mode.paused) and still blocks. Off by default; the snapshot, the health watch
+    and the auto-rollback run as usual."""
     if st is None:
+        return ""
+    if if_paused and paused(st):
         return ""
     if at_break:
         live = [g for g in st.get("games") or [] if g.get("phase") == "live"]
@@ -776,8 +792,14 @@ class Deployer:
         """"" when it's safe to restart; otherwise why not (after waiting up to live_wait_s)."""
         deadline = self.sys.now() + self.s.live_wait_s
         while True:
-            why = busy(self.sys.fetch_state(self.s.api), self.sys.now(), max(self.s.soon_s, self.s.watch_s),
-                       self.s.at_break)
+            st, soon = self.sys.fetch_state(self.s.api), max(self.s.soon_s, self.s.watch_s)
+            why = busy(st, self.sys.now(), soon, self.s.at_break, self.s.if_paused)
+            if why and self.s.if_paused:
+                why += " and auto-switching isn't paused"
+            elif not why and self.s.if_paused and paused(st):
+                live = busy(st, self.sys.now(), soon, self.s.at_break)
+                if live:   # the journal says the pause let it through, and why the plain gate wouldn't
+                    self.journal("paused_gate", msg=f"{live}, but auto-switching is paused: switching anyway")
             if not why or self.sys.now() >= deadline:
                 return why
             self.journal("waiting", msg=why)
@@ -1145,6 +1167,8 @@ def main(argv: list[str] | None = None, system: System | None = None, root: Path
     d.add_argument("--wait", type=float, metavar="MIN", help="wait up to MIN minutes for live games to end")
     d.add_argument("--at-break", action="store_true",
                    help="switch while games are live if the game on screen is at halftime/intermission")
+    d.add_argument("--if-paused", action="store_true",
+                   help="switch while games are live if the app reports auto-switching paused")
     d.add_argument("--test-timeout", type=float, metavar="MIN", help="test step timeout in minutes (default 60)")
     d.add_argument("--test-workers", type=int, metavar="N",
                    help="pytest-xdist workers for the test step (default auto: half the cores, max 4; 1 = serial)")
@@ -1173,6 +1197,8 @@ def main(argv: list[str] | None = None, system: System | None = None, root: Path
         if getattr(a, "at_break", False):
             s.at_break = True
             s.live_poll_s = min(s.live_poll_s, 30.0)   # a halftime is short: look every 30 s
+        if getattr(a, "if_paused", False):
+            s.if_paused = True
         dep = Deployer(s, system or System(root), root)
         if a.cmd == "deploy":
             return dep.deploy(dry_run=a.dry_run, skip_tests=a.skip_tests, deps_ok=a.deps_ok)

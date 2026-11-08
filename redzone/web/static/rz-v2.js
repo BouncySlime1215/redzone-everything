@@ -129,18 +129,27 @@ function watchStrip() {
 
 /* Crunch vs crunch: what the hidden stick holds, how far behind, and what comes back when (display only). */
 let heldV = null;
+let ladderV = null;   // [fallback ladder] last join that fell back: "Stick on HDMI2: buffered failed (...) -> live edge ok"
+function ladderLine() {
+  const v = ladderV;
+  if (!v) return "";
+  const rows = [];
+  if (v.last) rows.push(`<span><b>${v.last.ok ? "Fallback" : "Kept the game"}</b> ${esc(v.last.text)}</span>`);
+  for (const c of arr(v.cooling)) rows.push(`<span><b>Paused</b> ${esc(c.rung)} on ${esc(c.stick)} for ${esc(fmtDur(c.s))}</span>`);
+  return `<div class="v2-held" data-key="v2-ladder" role="status">${icon("alert")}<div>${rows.join("")}</div></div>`;
+}
 function pollHeld() {
-  api("/api/v2/held").then((r) => { const v = (r && r.view) || null; if (JSON.stringify(v) !== JSON.stringify(heldV)) { heldV = v; hooks.renderScreen("now"); } })
+  api("/api/v2/held").then((r) => { const v = (r && r.view) || null; const l = (r && r.ladder) || null; if (JSON.stringify([v, l]) !== JSON.stringify([heldV, ladderV])) { heldV = v; ladderV = l; hooks.renderScreen("now"); } })
     .catch(() => {}).finally(() => setTimeout(pollHeld, 10000));
 }
 function heldLine() {
   const v = heldV;
-  if (!v || (!v.held && !v.back && !v.catchup)) return "";
+  if (!v || (!v.held && !v.back && !v.catchup)) return ladderLine();
   const rows = [];
   if (v.held) rows.push(`<span><b>Holding</b> ${esc(v.held.matchup)}${v.held.behind_s ? ` · ${esc(fmtDur(v.held.behind_s))} behind live` : ""}${v.held.ready ? "" : " · loading"}</span>`);
   if (v.back) rows.push(`<span><b>Coming back</b> ${esc(v.back.text)}</span>`);
   if (v.catchup) rows.push(`<span><b>Next catch-up</b> ${esc(v.catchup.matchup)}: ${esc(v.catchup.label || v.catchup.kind)}${v.catchup.due_in_s != null ? ` · within ${esc(fmtDur(v.catchup.due_in_s))}` : ""}${v.queued > 1 ? ` (+${num(v.queued - 1)} more)` : ""}</span>`);
-  return `<button class="v2-held" data-key="v2-held" data-act="v2-catchup" aria-label="Catch-up queue">${icon("hourglass")}<div>${rows.join("")}</div></button>`;
+  return `<button class="v2-held" data-key="v2-held" data-act="v2-catchup" aria-label="Catch-up queue">${icon("hourglass")}<div>${rows.join("")}</div></button>${ladderLine()}`;
 }
 
 function alertLine() {

@@ -357,3 +357,21 @@ def test_a_scrubbed_stick_is_marked_behind_and_a_different_channel_clears_it(scr
     assert hid.behind_on == "youtubetv:fox"
     run(c._tune(hid, "youtubetv:espn"))
     assert hid.behind_on is None
+
+
+@pytest.mark.parametrize("gap,slept", [(0, []), (3.0, [3.0])])
+def test_relink_gap_between_the_reset_tune_and_the_tune_back(scrub, monkeypatch, gap, slept):
+    """tuners.relink_gap_s (Nick Nov 7: back-to-back tunes failed 1/10 'video never started'; 3 s fixed it). Off: 0."""
+    c, tuner, hid, calls, result, behind = scrub
+    c.cfg.update({"tuners": {"relink_gap_s": gap}})
+    seen = []
+    real_sleep = asyncio.sleep
+
+    async def sleep(s, *a, **k):
+        seen.append(s)
+        await real_sleep(0)
+    monkeypatch.setattr(ctl.asyncio, "sleep", sleep)
+    hid.behind_on = "youtubetv:espn"
+    run(c._tune(hid, "youtubetv:espn"))
+    assert tuner.calls[-2:] == [("b:5555", "youtubetv:fox"), ("b:5555", "youtubetv:espn")]
+    assert [s for s in seen if s == gap and s > 0] == slept

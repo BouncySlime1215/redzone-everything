@@ -64,7 +64,7 @@ SCREEN_GONE = Spec(
     edges={"present": ("keeping",), "keeping": ("let_go", "present"), "let_go": ("present",)},
     initial="present")
 
-HOME = Spec(
+DECIDER_HOME = Spec(
     "decider.home", owner="decider.Decider.home_m",
     doc="A break visit: the game we left only for its break (home_break_visit) and when to head back",
     states={

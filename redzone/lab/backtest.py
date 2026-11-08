@@ -28,6 +28,7 @@ from redzone.channels import REDZONE_TARGET, redzone_on
 from redzone.config import Config
 from redzone.decider.decider import REDZONE, Candidate, Decider, FocusMode
 from redzone.decider.screen import DelayBook
+from redzone.decider.whistle import clock_stopped as whistle_stopped
 from redzone.grading import Lags, SwitchLog, idx as _bisect, lag_of  # noqa: F401  [one brain] moved, step 3
 from redzone.grading import restart_before
 from redzone.models import REAL_BREAKS, League, Phase
@@ -324,12 +325,20 @@ HS_SCRUB = {"keys_s": 10.0, "read_s": 8.0, "step_s": 15.0, "land_s": 15.0}
 # [EXP-605] Nick's Nov 7 stick runs (integration/next 8d765bf5): enter_buffer 2/2 at 15 s each; one label read
 # costs 7.5 s and adds 7.5 s (31-min ESPN soak: 82, 89, ... 119 s at 5-min reads, no snap). Read once, then trust.
 HS_SCRUB_MEASURED = {"keys_s": 15.0, "read_s": 7.5}
-HS_ENTRIES = ("hold", "scrub", "scrub_measured")
+# [EXP-610] Nick's Nov 7 05:54Z 90 s stick test: asked 90, 6 presses took 37.6 s and landed 130.8 s behind (the scrub
+# overshoots by its overlay time; the SEEK_TO fix asks for the target net of it). So the 90 s entry costs 37.6 s of
+# keys plus the one 7.5 s read, and lands at B once the press count is fixed.
+HS_SCRUB_90_MEASURED = {"keys_s": 37.6, "read_s": 7.5}
+HS_ENTRIES = ("hold", "scrub", "scrub_measured", "scrub_90_measured")
+HS_RECHECK_RULES = ("dev_dead", "whistle")
 # [EXP-608] Nick's Nov 7 05:26Z stick run (live Prime POR@LAL, stick .150): MEDIA_PAUSE 60 s then MEDIA_PLAY put the
 # picture 67.7 s behind (from 6.6 at the edge, so +61.1 s) and Prime's own timecode held it for the full 4 min checked
 # (02:20:54 -> 02:24:44 over 230 s wall). So Prime CAN buffer: pause B s, resume. Cost = the hold time (B) + resume;
 # the 1.1 s overshoot is left out (lands within the 3 s sync noise). Rewind (continuous, 214/665 s) is not used.
-HS_PRIME_ENTRIES = ("edge", "pause")
+# [EXP-609] Nick's Nov 7 05:45Z repeats: pauses of 30/60/90 s landed +31/+61.6/+91.3 s and then held real time; the
+# #389 tool on live Prime gained 63.6 s (timecode) and took 67.9 s. So getting B behind costs B + 4.3 s of stick time.
+HS_PRIME_PAUSE_MEASURED = {"overhead_s": 67.9 - 63.6}
+HS_PRIME_ENTRIES = ("edge", "pause", "pause_measured")
 HS_NO_BUFFER = ("replay", "resume", "skip")   # catch-up footage needs no hold (as live)
 
 
@@ -352,7 +361,7 @@ class HiddenStick:
             raise ValueError(f"hidden_stick must be None, 'wait' or 'live_edge', not {arm!r}")
         if entry not in HS_ENTRIES:
             raise ValueError(f"hidden-stick entry must be one of {HS_ENTRIES}, not {entry!r}")
-        if entry in ("scrub", "scrub_measured"):
+        if entry in ("scrub", "scrub_measured", "scrub_90_measured"):
             n = (behind - HS_SCRUB["land_s"]) / HS_SCRUB["step_s"]
             if n < 1 or abs(n - round(n)) > 1e-9:
                 raise ValueError(f"[EXP-603] a scrub lands at 15 N + 15 s behind live (75, 90, ...), not {behind:g}")
@@ -362,6 +371,8 @@ class HiddenStick:
         self.prime_entry = prime_entry   # [EXP-608] edge: Prime airs at its live edge (B = 0); pause: holds B
         self.true_sync = False         # [EXP-605] a re-sync reading sees an edge-aired picture at the edge
         self.recheck = None            # [EXP-604] (by_id, lag_belief, feed_lag, tune_s) when the re-check is on
+        self.recheck_rule = "dev_dead"  # [EXP-610] whistle: basketball needs a clock-stopped dead ball (as live)
+        self._clock_ev: dict[str, list] = {}
         self.rechecked = self.recheck_late = self.recheck_none = 0
         self.recheck_s: list[float] = []
         from redzone import standby
@@ -389,10 +400,14 @@ class HiddenStick:
         prime = (target or "").startswith("prime:")
         if prime and self.prime_entry == "pause":
             return self.B + HS_PREREG["resume"]   # [EXP-608] MEDIA_PAUSE B s, MEDIA_PLAY
+        if prime and self.prime_entry == "pause_measured":
+            return self.B + HS_PRIME_PAUSE_MEASURED["overhead_s"]   # [EXP-609] #389 measured: 67.9 s for 63.6 s
         if self.entry == "scrub":
             return 0.0 if prime else HS_SCRUB["keys_s"] + HS_SCRUB["read_s"]
         if self.entry == "scrub_measured":
             return 0.0 if prime else HS_SCRUB_MEASURED["keys_s"] + HS_SCRUB_MEASURED["read_s"]
+        if self.entry == "scrub_90_measured":
+            return 0.0 if prime else HS_SCRUB_90_MEASURED["keys_s"] + HS_SCRUB_90_MEASURED["read_s"]
         return (0.0 if prime else self.B * self.overrun) + HS_PREREG["resume"]   # EXP-601 exactly as frozen
 
     def load(self, gid: str, target: str, now: float) -> None:
@@ -497,7 +512,11 @@ class HiddenStick:
                 return float(e)   # before the game started on screen: nothing to judge
             if n < len(dst.wall) and (n == 0 or st >= dst.wall[n - 1]):
                 continue   # the app hasn't seen what's on screen yet: no safe call (conservative)
-            if dead_at(dst.league, dst.wall[:n], dst.plays[:n], st)[0]:
+            if self.recheck_rule == "whistle" and dst.league.base == League.NBA:
+                ok = whistle_stopped(self._clock_events(dst)[:n], st)
+            else:
+                ok = dead_at(dst.league, dst.wall[:n], dst.plays[:n], st)[0]
+            if ok:
                 self.rechecked += 1
                 self.recheck_late += e > 25
                 if e:
@@ -506,8 +525,22 @@ class HiddenStick:
         self.recheck_none += 1
         return 0.0
 
+    def _clock_events(self, dst) -> list:
+        """[EXP-610] (wall, period, clock s left, type text) per play of dst, index-aligned with dst.wall."""
+        ev = self._clock_ev.get(dst.gid)
+        if ev is None:
+            from redzone.decider.whistle import clock_secs
+            ev = []
+            for w, p in zip(dst.wall, dst.plays):
+                c = clock_secs((p.get("clock") or {}).get("displayValue"))
+                ev.append((w, int((p.get("period") or {}).get("number") or 0), c if c is not None else float("nan"),
+                           str((p.get("type") or {}).get("text") or "").lower()))
+            self._clock_ev[dst.gid] = ev
+        return ev
+
     def card(self) -> dict:
-        return {"arm": self.arm, "entry": self.entry, **({"prime_entry": "pause"} if self.prime_entry == "pause" else {}),
+        return {"arm": self.arm, **({"recheck_rule": self.recheck_rule} if self.recheck_rule != "dev_dead" else {}),
+                "entry": self.entry, **({"prime_entry": self.prime_entry} if self.prime_entry != "edge" else {}),
                 "behind_live_s": self.B, "hold_overrun": self.overrun, "switches": self.n,
                 "buffered": self.buffered, "buffered_pct": round(100.0 * self.buffered / self.n, 1) if self.n else None,
                 "waits": len(self.waits), "wait_s": round(sum(self.waits), 1),
@@ -532,7 +565,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         calibrate_targets: bool = False,
         hidden_stick: str | None = None, hold_overrun: float = 1.0, behind_live_s: float | None = None,
         hs_entry: str = "hold", hs_recheck: bool = False, hs_prime_edge: bool = False,
-        hs_resync_prime_edge: bool = False, hs_prime_pause: bool = False,
+        hs_resync_prime_edge: bool = False, hs_prime_pause: bool | str = False, hs_recheck_rule: str = "dev_dead",
         on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
@@ -655,7 +688,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             behind_live_s = config_behind_live(cfg, replays[0].league.value)
         stick = HiddenStick(hidden_stick, float(behind_live_s or 0.0), hold_overrun, cfg, clock, seed,
                             {lg: set(my_teams) for lg in League}, entry=hs_entry,
-                            prime_entry="pause" if hs_prime_pause else "edge")
+                            prime_entry=("pause_measured" if hs_prime_pause == "measured" else "pause")
+                            if hs_prime_pause else "edge")
         stick.true_sync = hs_prime_edge
         if hs_recheck:
             if hidden_stick != "wait":
@@ -665,6 +699,11 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
                 known = max(feed_lag, float((cfg.get("timing.behind_live_s.adaptive.feed_lag_p95_s") or {})
                                             .get(replays[0].league.value, feed_lag)))
             stick.recheck = ({r.gid: r for r in replays}, lag_total, known, tune_s)
+        if hs_recheck_rule not in HS_RECHECK_RULES:
+            raise ValueError(f"hs_recheck_rule must be one of {HS_RECHECK_RULES}, not {hs_recheck_rule!r}")
+        if hs_recheck_rule != "dev_dead" and not hs_recheck:
+            raise ValueError("[EXP-610] hs_recheck_rule needs hs_recheck")
+        stick.recheck_rule = hs_recheck_rule
     sampler = None
     if feed_lag_model == "measured":
         from redzone.lab.timing import LagSampler, sources_in_use

@@ -1,6 +1,6 @@
 {
-  "version": 44,
-  "frozen_at": "2026-11-07T05:34Z",
+  "version": 46,
+  "frozen_at": "2026-11-07T06:25Z",
   "by": "integrator",
   "files": {
     "redzone/grading.py": "21a8eb98d3ea01ecb9002e4718cab69d4db38024b9cf7c97ed03a32d471cb7ad",
@@ -27,7 +27,7 @@
     "scripts/data_landing_grade.py": "47e38dce1a30e1c649797d326eb03c5e7df69cc610d0d8c4447ca939881c3654",
     "scripts/family_holm.py": "d590b8e455d2d54b646a2ddcdbc5eede8f86aa70cf3a7016f690019a67207ef6",
     "docs/families.json": "37b415727721f4372b05d6753ea2059c34f26fc38d4f825bad7dc6f4ad3e276c",
-    "redzone/lab/backtest.py": "c689fda1c90f1dd4d0e227ed58830bf7fbc348b8edcb22a9083281c639a08290",
+    "redzone/lab/backtest.py": "2c900132af5c3e55534f50e7a501fa35f0f452762242f9b160c0932f777a264c",
     "redzone/lab/cutgrade.py": "16e3f7dfbbe12aa08af71189258a2bcf53aab18ceca33661e941d70aafa7720e",
     "redzone/lab/sportsgrade.py": "b4defd64bf2d796392aedae6de73010b00f3099304b9a80a9862f5bf14fba622",
     "redzone/lab/oracle.py": "9b19515d315310019186773fc8c344f1867ffc99ed382dba6113c5a1fef38faf",
@@ -41,7 +41,7 @@
     "scripts/northstar.py": "e1d6e9a70c858cbed598d8ca01f653e4ca7ee26eb1092700c07b8d0b30c2f799",
     "scripts/release_gate.py": "75cb3a17e1831ca8d8b0592918beee6b43ea722cb081e514bc9c8522f711c2cc",
     "scripts/eval.py": "0953782b105e415f84e256ff4836d5b32a112d23adf65335e05c7127094ecc09",
-    "scripts/eval_sports.py": "f230360de8a6d2c4db0aeb3bbeec9806fb0077cb087476d9d6a6b935b7b9cd42",
+    "scripts/eval_sports.py": "0b57e2cfe43233f623afe0be85b8a842688b0c5c56cf5587651c286f1051a962",
     "scripts/ci_scorecard.py": "0cf746adc8cb6a79cf9dbe198aa1f070081e5381b19c3213c3df184ce64b6139",
     "scripts/leak_check.py": "dfa6a7007ab659f9da2e25fcddb25f1a2c297a5fdd7939ef03995f7e1411222a",
     "scripts/grading_check.py": "2f4704cdc30c111ab8ad4ed35c4d045623e2055b911fac75aca94cf738b88403",

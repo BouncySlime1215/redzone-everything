@@ -18,6 +18,9 @@ exact `integration/next` SHA the Integrator handed over into `integration/releas
 | RC6.1 | 9322c28 | Nov 4 23:39 | live 9:14 PM ET Nov 4; two false health rollbacks (benched feeds counted as failing; #232) |
 | RC6.2 | 1bf4150 | Nov 5 03:40 | tree = next 90b6c98; #232 health fix, #227, #229, #231, grader v10 lines; deployed 10:55 PM ET Nov 4, TV off |
 | RC6.3 | 39597ea | Nov 5 20:58 | tree = next 88a3b0b, graders v31; RC7 gates not met, so a point release. NHL EXP-303 package, #310 YTTV timed taps, #281 edge reader and fast_feeds in shadow, rc8_on off; Nick yes on the card 3:55 PM ET |
+| RC6.3.1 | a8bf14f | Nov 7 17:20 | tree = claude/live-b490-locals 8841ebd0: the live **dev build** b490ab86 (integration/stick-test-20261107b, not an integration/next SHA) + #406 locals by search; deployed 12:11:34 PM ET by the overseer on Nick's go (12:08 PM), live-game gate bypassed while auto-switching was paused; `tuners.yttv_local_search` on via the Mac settings API, false in the tree |
+| RC6.3.2 | 932a636 | Nov 7 20:25 | tree = claude/leave-dead-windows 322b71b7 = hotfix/local-search-joinlive be1ed253 (on RC6.3.1: #407 settle, FOX 50 live-row walk + Join live, purchase-guard fixes, edge prior 34.9 s) + the decider.leave double-block fix; deployed 2:49 PM ET by the overseer on Nick's go, HEALTHY. Runtime flags on the Mac only: delay.edge_prior.enabled, decider.leave.dead_windows [cfb, nfl, nhl, nba, cbb], tuners.yttv_local_search, replay, margin 1 |
+| RC6.3.3 | cb772c7 | Nov 7 21:20 | tree = claude/live-jump 1a31d40d = RC6.3.2 322b71b7 + jump mode (#415 379c80d4 cherry-picked); live since 3:42 PM ET, healthy; `jump_mode.enabled` true on the Mac. NOT in it: the quiet-break code (#414, on integration/next); only its decisions line came along |
 | RC7 | | | after the sync, Prime and mid_break gates pass |
 
 Add a row here **and** a `"<sha7>": "RCx"` line to `docs/releases.json` (the phone's "Last night" card) at every cut.

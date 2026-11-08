@@ -92,6 +92,18 @@ def test_dry_run_never_touches_sticks(cfg, tmp_path):
     assert out.ok and out.dry_run and c.sticks[0].log == []
 
 
+def test_live_mode_with_no_stick_is_not_a_success(cfg, tmp_path):
+    """[Nov 7 overseer] The Mac awake in live mode with every stick offline: the switch is refused, not
+    logged as a 0 s success, and on_target stays where the TV really is."""
+    cfg.update({"mode": {"dry_run": False}})
+    c = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    c.sticks = []
+    c.on_target = "youtubetv:espn"
+    out = run(c.execute("youtubetv:fs1"))
+    assert not out.ok and not out.dry_run and out.screen_unchanged and out.detail == ctl.NO_STICK
+    assert c.on_target == "youtubetv:espn"
+
+
 def test_two_stick_tunes_hidden_then_flips(two):
     c, tuner = two
     assert c.two_stick and c.main.host == "a:5555" and c.hidden.host == "b:5555"

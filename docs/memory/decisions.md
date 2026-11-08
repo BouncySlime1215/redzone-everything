@@ -1136,6 +1136,17 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   two seeds and the primary CI touches 0. On resync, Prime entries double (54 vs 23 over 3 seeds) for a reason not yet
   shown; T9's guess is the re-sync prior pulling Prime's belief back to the buffered lag. A diagnosis is info-only;
   any grader change from it is a new EXP, registered before it runs. No card until a live stick holds a scrub.
+- 2026-11-07 (overseer's stick numbers): `yttv_seek.step_tol_s` 4 -> 6. Scrub entry went 47 of 48 at 60 s across ESPN,
+  TNT, NBA TV, BTN, ACCN, FS1, ESPN2 and TBS (about 15 s each); the one failure failed closed on "knob moved 40s, not
+  45s", one second outside the old tolerance. 6 is still well under one 15 s step, so a missed or extra LEFT is caught.
+  Flag stays off.
+- 2026-11-07 (Nick's 12:26 AM order 2): new `prime_pause.*` group, **enabled false**. `redzone/tuners/prime_pause`
+  puts a HIDDEN Prime stick behind live with MEDIA_PAUSE, a hold, then MEDIA_PLAY, because on Prime pause holds
+  (overseer: 60 s pause, timecode 02:20:54 -> 02:24:44 over 230 s wall, no snap in 4 min). It never uses
+  MEDIA_REWIND (continuous on Prime: 214 s / 665 s back) or media_session (stale). Prime's overlay timecode is the
+  truth: the paused timecode must not move during the hold, and the gain after PLAY must match the hold within 3 s,
+  else it fails closed (un-pause, then the caller's relink to live). A stick that turns visible mid-hold is
+  un-paused, not re-linked. The entry-path wiring and the regrade are other threads.
 - 2026-11-07 (integrator): **Grader freeze v43: EXP-607 (#386) pins Prime's re-sync prior at its live edge.** T9's
   trace: resync believed Prime 116 s vs true 26 s on 34/36 decisions because _attach_resync pinned every target at the
   buffered lag. Diagnostic of the sim only; NBA stays FAIL on EXP-605's shipped breaches.
@@ -1145,6 +1156,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-07 (integrator, EXP-607 read): **The EXP-605 resync failure was a sim artifact (resync mid-play 19.0 -> 7.7
   per run with Prime pinned at its edge), but NBA stays FAIL:** clock-truth adds 1-2 on two seeds and the primary CI
   touches 0 on both harnesses. EXP-608 (Prime by pause) is the next read.
+- 2026-11-07 (integrator, EXP-608 read + v45 freeze): **EXP-608 FAILS both leagues; grader freeze v45 registers EXP-609
+  (Prime pause at the measured B + 4.3 s) as the verdict for the Prime-pause model, 608 report-only.** NBA: the main
+  grader's mid-play falls 9.7 -> 3.7 and big seen rises 67 -> 78%, but clock-truth adds entries on every seed and plays
+  missed doubles; the two graders disagree and T9 diffs them, info-only. NFL unchanged in kind (switches 1.72x).
 - 2026-11-07 (integrator, T9 trace of #378 at 8452ba4): **Rule #1 risk on the scrub path: timing.behind_live_s.scrub_entry
   must stay OFF for NBA (and every hold_only league) until EXP-610's live fix lands.** After the scrub the flip never
   checks the destination's delayed picture for a dead ball (NBA isn't cut-timed; the whistle wait runs before the
@@ -1161,12 +1176,136 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   which stays off).** A knob check that fails because the label reset at a new program ("knob moved 39s, not 60s")
   retries the scrub once from the live edge, only after a re-link to live with nothing committed; otherwise it fails
   closed as before. Merged with #385 + #391 so --label gives measured reads.
+- 2026-11-07 (integrator, EXP-609 read): **EXP-609 (Prime pause at the measured B + 4.3 s) FAILS both leagues, as
+  EXP-608; RC8 stays OFF.** NBA's blockers are clock-truth entries the re-check's lenient dead ball lets through, plays
+  missed ~2.3x and (resync) your-team crunch 54.8%; EXP-610 addresses the first. NFL's are switches 1.72x and plays
+  missed ~3x.
+- 2026-11-07 (integrator): **Grader freeze v46: EXP-610 (#392). Live: on the scrub path only, a basketball flip in a
+  hold_only league waits for a clock-stopped dead ball on the delayed picture (decider.entry.whistle_band_s: 3);
+  sim: the re-check uses the same rule, worst measured 90 s scrub 37.6 s.** scrub_entry stays off; the scrub's
+  landing overshoot (130.8 s for 90 asked, Nick 05:54Z) waits on the SEEK_TO fix and is not covered by a pass.
+- 2026-11-07 (integrator, EXP-610 read): **EXP-610 FAILS on the resync harness only; the shipped harness holds every
+  gate.** With the clock-stopped flip, NBA B90 drops dev-grader mid-play on every seed (11/10/10 -> 4/3/4) and plays
+  missed falls 16 -> 11. Resync fails on your-team crunch 17/31 (the Oct 24 WSH leave-gate night already known from
+  the #363 sweep; decider.leave.low_leverage=[nba], #258, took it to 31/31 and waits on Nick's RC6.3 pick) and plays
+  missed 12 -> 14. Unmodelled: 14-19 re-checks/run past 25 s (live drops and re-picks) and the live landing overshoot.
+- 2026-11-07 (integrator, correction to the EXP-610 lines): **the scrub overshoot fix is #391 (in integration/next at
+  d936ff31).** Nick's stick run at 28286690: asked 90, landed 91.3 / 91.5 s in 17.5-28 s, 3 of 3 ok (one "probe close
+  may have committed"). Those landings were estimated from the knob, not label-read; the label-measured landing waits
+  on a run with #385 + #391 together (b490ab86 / d936ff31).
+- 2026-11-07 (integrator, EXP-610 diagnostic, report-only, not a verdict): **the EXP-610 resync failure is the known NBA
+  leave-gate blocker.** Trace: on 20261024 a GS@PHX Q1 leave gate held 930 s while WSH played 2:09 -> 0:02 of Q4.
+  The resync arm re-run with decider.leave.low_leverage=[nba] on both arms holds every gate (dev mid-play 10/9/11 ->
+  6/4/3, clock-truth 9/8/9 -> 2/2/0, your-team crunch 100%, switches 1.29x, primary +8.9 [1.5]). Read after the
+  verdict, so it decides nothing; the default stays on Nick's RC6.3 card. NBA RC8 still needs: Nick's low_leverage
+  call, the shadow run, live drop-and-re-pick past 25 s modelled, and a label-measured #391 landing.
+- 2026-11-07 (Nick's goal via the overseer, 2:07 AM ET: "join a chosen spot accurately; the model handles which plays
+  later"): new `join.*` group, **enabled false**. `redzone/tuners/join.py` takes a target behind_live, plans it, runs it
+  on the hidden stick, and logs target, predicted landing, measured landing and both errors to data/joins.jsonl.
+  YouTube TV: n = round((T - 10) / 15) LEFTs (fixed, passed to enter_buffer as `presses`), predicted 15 n + 11.7 s
+  (9 label-measured runs landed T - 3.3 s on average, +-3 s); targets are 15 s steps and the overlay is never held
+  to hit one in between (that measured +2..+10 s and one -18.7 s). Prime: pause for the gap (prime_pause), +-1-2 s.
+- 2026-11-07 (Nick's sync order via the overseer, 2:33 AM ET, items 1 and 3; build thread "Verify every join with a
+  watchdog"): new `join.watchdog.*` and `join.drift.*`, both **enabled false**. Watchdog: every entry is checked on the
+  label / Prime timecode (never media_session); |read - predicted| <= 6 s YouTube TV / 4 s Prime and |read - target|
+  <= 10.5 / 5 s, else ONE re-seek from the live edge (through another channel, #391), then fall back to live.
+  control.held (what the phone shows) is written only from a verified reading. Drift: the HIDDEN stick only, first
+  read 5 min after the join, then x2 up to 20 min, at most 30 s of reads per stick per hour (4 YouTube TV reads);
+  each YouTube TV read is expected to add 7.5 s (soak); off band, at the edge or unread -> not buffered, re-entered.
+- **2026-11-07 (Nick's Nov 7 07:33 UTC sync-hardening order, item 4 session safety): new flags
+  `session_guard.enabled` and `session_guard.act`, default false (OFF).** redzone/tuners/session_guard.py classifies
+  each stick session (post-tune banner, YouTube TV / Fire OS profile pickers, Still watching, auto-play prompt, app
+  crash, reboot, adb drop, Prime detail page, program-boundary label reset, unexpected dialog text) and fails closed:
+  no key on an unknown screen, keys only on the hidden stick except prompts that already cover the picture, the
+  auto-play prompt only ever gets "Ask later", no account settings. With `enabled`, the scrub waits out the banner
+  and refuses on a broken session (no key pressed). Runbook: docs/memory/runbooks/stick-session.md. Rule #1 unchanged.
+- 2026-11-07 (Nick's sync order, items 6 + 7): **new `supervisor.mac_health` and `supervisor.night_ops` blocks ship OFF (`enabled: false`).** Mac health alerts to the phone (battery <= 20% / 10%, on battery 2 min with games, slept 60 s+, caffeinate missing, memory critical or swap >= 8 GB, paused 10 min, no switch row 20 min with 2+ live games on autopilot) and a 'Sync and health' section in the nightly report (joins, fallbacks, drift, faults, Mac alerts). Why: every one of these happened Nov 4-6 (battery 13-19% during games, 10 GB swap, 66-145 min with no switch and up to 10 live games) and nobody heard until morning. They see and say only; Nick turns them on (all flags off per his order). Thresholds from the Mac's own logs: swap 3-6 GB is this Mac's normal evening, so 8 GB.
+- 2026-11-07 (Nick's 2:33 AM ET sync order, items 5, 8, 9): new `join.calib.*` group, **enabled false**, and a new
+  `canary.*` group (a manual / launchd script, nothing runs it by itself). Calibration: per app, app:channel and
+  app:channel:stick, the YouTube TV scrub lead (shipped 11.7 s) and the Prime pause bias (shipped 0) are re-estimated
+  from measured rows of data/joins.jsonl (label / timecode only, never an estimate or media_session): last 20 rows,
+  rows off by > 12 s counted not used, residuals clipped to +-2x the expected error, shrunk toward the parent with
+  4 pseudo-rows, clamped to shipped +-5 s (YouTube TV) / +-3 s (Prime); a SHIFT alert when the newest 3 all land > 5 s
+  off the same side. At the shipped lead the plan is exactly Nick's n = round((T - 10) / 15). Canary: daily on the
+  HIDDEN stick only, never with a game live or within 90 min, tunes away then ESPN, joins 60 s with the label reader,
+  must land within 6 s of the predicted 56.7 s, then puts the stick back on live; FAIL / WARN go to the phone loud.
+  Why: Nick's order "self-calibration ... with bounds" and "a daily stick self-test before games that fails loud".
+- 2026-11-07 (Nick's sync order item 2, fallback ladder thread): **fallback_ladder.enabled: false (new).** Per stick,
+  a join that can't be made as planned climbs buffered (measured only) -> live edge on the same stick -> other stick
+  in place (other_stick_apps [youtubetv]) -> hold, each step in data/ladder.jsonl and on the phone; a rung that failed
+  2x in 10 min on a stick is skipped there 5 min. Every flip still waits for may_cut. Off until a hidden-stick night.
+- 2026-11-07 08:05Z (coordinator, Rule #1): **fallback_ladder.skip_rungs: [live, other_stick] (default).** Replay with
+  the 25 s dead-ball re-check on the live rung (scripts/ladder_replay.py, B75 scrub_measured, fit, seeds 0-2): NFL
+  mid-play keep -> ladder 59.3 -> 61.0 (10% scrub failures), 66.0 -> 68.7 (25%); NBA 24.67 both. A failed buffered
+  entry holds; the live and other-stick rungs stay off until a grader shows 0 added.
+- 2026-11-07 (Nick's watchdog stick test FAIL, 11:35Z: hidden stick, NBA TV, target 75, planned 71.7, read 79.52): new
+  `join.yttv_read_s` 7.5 (in join.plan_join, the ONE place: predicted = before + 15 n + lead + read; the canary and
+  the watchdog both read predicted_s; JoinPlan.read_s goes into each join row). The label probe's reading includes its
+  own ~7.5 s frozen overlay (Nick's 4 runs: measured - predicted +5.9, +6.5, +6.5, +7.8 without it). join_calib takes it
+  off youtubetv rows logged without read_s. The watchdog moves only the TARGET by read_s. Margins stay 6 s. Flags off.
+  Open: landings run ~+4.7 s over the target (Nick's 3 reruns) -> a later lead trim.
+- 2026-11-07 (Nick's canary run 1, 11:50Z: 3 presses, landed 52.12 vs predicted 64.2, row said ok: true): a join
+  row's `ok` now means the READ landing passed the watchdog verdict (join_watchdog.verify, same 6 s margin either
+  way); a new `verdict` field says why. Off target -> ok false, reason names "a lost press?" when one 15 s step short.
+  The watchdog still re-seeks such a READ landing once (it is a measurement, not a failed join), and join_calib keeps
+  it as a measurement (its gross filter decides). The pre-commit knob guard is the seek thread's. Flags off.
+- 2026-11-07 (Nick's cross-channel run 13:02Z: 25/26 joins verified at 61.2-67.5 s for target 60, the 1 miss an empty
+  post-commit label read): new `join.watchdog.reprobe_unmeasured`, **false**. On, an unmeasured COMMITTED join reads the
+  label once more before falling back to live. One re-probe per join, never on a failed join or a visible stick.
+  Nick's #404 run 13:19Z (12/12 buffered, but ESPN2 re-probe 55.44 re-seeked to 88 s): the re-probe is judged on the
+  target band only (target + half a read_s, +-10.5 s for YTTV), not the plan margin, because the empty first read's
+  freeze may or may not have pushed the stick back. 55.44 and 65.83 for target 60 both pass. Flag still off.
+- 2026-11-07 (Nick's drift stick runs 13:53Z and 14:11Z, ESPN target 60: buffered 66.14 / 64.03, reads drifted +1.3,
+  +1.0, +1.7 s with a 7.5 s freeze assumed, reads took 9.8-10.4 s, yet the monitor re-entered: first on the target band,
+  then on target + 20 after two reads): **the depth the reads add is planned**. A drift read re-enters only when
+  |read - (landing + read_adds_s per read)| > `join.drift.drift_margin_s` **3** (was 6, re-anchor), past join max_s,
+  snapped or unread. `read_adds_s.youtubetv` 7.5 -> **8.5**, `read_cost_s.youtubetv` 7.5 -> **10.5**, `backoff` 2 -> **3**
+  (reads at 5, 20, then every 20 min), `budget_s_per_h` 30 -> **45**. Control spends the read's measured wall time.
+  Flags off.
+- 2026-11-07 (Nick's #405 sweep 14:03Z, 16.8 s per LEFT: T120 plans k=5 -> 112.5, landed 112.0 / 113.6, both re-seeked
+  to live): with a plan, the watchdog verdict is |read - predicted| <= margin_s (6 YTTV, 4 Prime) plus a gross target
+  check, new `join.watchdog.target_gross_s` **{youtubetv: 20, prime: 8}** (nearest step up to 8.4 s from the target;
+  T30's one-LEFT floor lands ~46 s). Without a plan (control's scrub entry, the re-probe) target_band_s still applies.
+  Flags off.
+- 2026-11-07 (overseer's canary on 5f80eb94, run 1: espn target 60, 3 presses, landed 52.12 vs 64.2 predicted, one
+  15 s step short, row said ok): lost-press guard in `yttv_seek` (flag still off). At the live edge the probe is now
+  a RIGHT (`probe_key: RIGHT`), which shows the scrub label without moving the knob (pinned at live), so the knob
+  check covers every LEFT; behind live, or if RIGHT shows no label, the LEFT probe is used as before. Before the
+  commit, a knob one whole step short gets one more LEFT (`topup_max: 1`), a re-read and the same check; anything
+  else off still fails closed. The watchdog's off-target re-seek (#401) stays as the backstop.
+- 2026-11-07 (overseer's #403 stick run, 0/10 via the watchdog): **`yttv_seek.probe_key` back to LEFT** (8/8 on
+  5f80eb94); RIGHT is opt-in. Mode B: with the RIGHT probe all LEFTs move, landing one step deeper than the shared
+  join predictor (78 vs 64.2), because the LEFT probe at the live edge usually only reveals the label. A fixed press
+  count after a RIGHT probe now sends n-1 LEFTs, the same motion as the LEFT probe. Mode A ("knob moved 0s", 7/10)
+  is not explained yet; its reason now carries both labels for a trace. The top-up fires only for a knob exactly one
+  step short (+-2 s) and only if that extra LEFT moves exactly one step; a 10 s app or a label reset still fails closed.
+- 2026-11-07 (overseer's 12f405ab runs: RIGHT probe 8/8, mean 63.0; LEFT probe 6/6, mean 62.1; predicted 64.2):
+  **`yttv_seek.probe_key` is RIGHT again** (flag `yttv_seek.enabled` still off). Model fixed: at the live edge
+  NEITHER probe moves the knob (the LEFT only reveals the label), so a fixed count n moves n-1 steps on both and the
+  join predictor (yttv_lead_s 11.7 + yttv_read_s 7.5) is unchanged. Behind live a LEFT probe is still assumed to
+  move one step (unmeasured). Rig note in runbooks/join-watchdog.md: retune before every run.
+- 2026-11-07 (overseer's depth sweep, ESPN, #403 RIGHT probe, retuned before each join: k = 1, 2, 4, 6 real LEFTs
+  landed 45.3, 62.1, 95.7, 129.3 on average; T30 sent zero LEFTs and landed 10-14 s): **YouTube TV join model is
+  16.8 s per real LEFT** (`join.yttv_left_s: 16.8`, `join.yttv_lead_s` 11.7 -> 21.0, `yttv_n_offset_s` removed;
+  `join.enabled` still off). predicted = before + 16.8 k + 21.0 + 7.5 read; k = round((T - before - 28.5) / 16.8),
+  at least 1, so the shallowest scrub join is ~45 s and achievable() says so. Each LEFT also keeps the frozen overlay
+  up ~1.4-1.8 s; 15 n + 19.2 drifted -3.9 .. +4.9 s with depth (the T120 off_target). Calibration converts old rows.
 - 2026-11-07 (overseer's hidden-stick check before college football: channels.json fox/cbs are the Sunday Ticket
   mirror codes, 'SIGN OFF | NFL ST - FOX'; 'NBC' search never started; ABC had no route; no local leaks a provable
   watch code; station-name search -> channel page -> DOWN -> Select played FOX 50, CBS 17, WRAL, ABC 11 live, 4/4;
   Select alone from the search page 0/4): **new flag `tuners.yttv_local_search: false`**. On: abc/cbs/fox/nbc tune by search (ABC 11 / CBS 17 /
   FOX 50 / WRAL), accepted only on a media-session subtitle naming the station AND a live playhead (>= 30 min),
   else BACK; fox/cbs ST mirror codes skipped except on Sundays. Off: routing unchanged. Nick flips it.
+- **2026-11-07 (overseer's hidden-stick reads, Nov 7 ~10:55-11:00 ET: YouTube TV live edge on 11 channels, ESPN, ESPN2,
+  FS1, SECN, ACCN, NBA TV, TNT + FOX 50, CBS 17, ABC 11, WRAL by search, 28 reads 34.3-35.5 s, mean 34.9, sd ~0.35;
+  3 empty label reads skipped): new flags `delay.edge_prior.enabled` and `delay.edge_prior.refresh.enabled`, both
+  false.** On: every YouTube TV channel without its own tap / score-bug sample tonight starts at
+  `delay.edge_prior.prior.youtubetv` (mu 34.9, sd 0.6) + behind_live, in place of other nights' per-channel taps
+  (`youtubetv:fs1` 42 +-8), calib.auto and the edge model's 25 s default. The stated doubt keeps the 4 s floor (the
+  gates' tested floor; the probe measures the edge against the EPG schedule clock, not the arena). Refresh: Nick's probe
+  (fresh live edge through another channel, CENTER, RIGHT, one label read, BACK; delay = (capture - EPG start) - label,
+  start = the :00/:30 boundary) on the HIDDEN stick at the live edge only, at most every 30 min; empty reads and reads
+  further than 10 s from the prior are skipped; median of the newest 6 reads, back to the prior after 3 h.
 - **2026-11-07 12:40 ET HOTFIX (Nick's live "no switches": CBSSN sigma 15 > decider.uncalibrated_sigma_s 8 kept the leave
   gate shut, "delay not calibrated yet"): new setting `delay.edge_prior.enabled`, default false; Nick turns it on
   at runtime (/api/settings, undoable).** On: every YouTube TV channel without its own tap / score-bug sample tonight
@@ -1180,6 +1319,34 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   by the label probe, then it plays to `park_lead_s` 1.5 s before the snap and pauses; the flip un-pauses it.
   Never rewound on screen (a single-stick replay is refused). No label probe / no read / past the snap -> kept the
   current game. yttv_seek.py ported from integration/next (#403 RIGHT probe, lost-press guard). "keys" = old path.
+  current game. "keys" = old path.
+- 2026-11-07 (Nick 12:08 PM ET: "You can deploy whatever" / "You can do whatever you want"; overseer deployed 12:11:34):
+  **RC6.3.1 = a8bf14f on integration/release** (tree claude/live-b490-locals 8841ebd0 = the live dev build b490ab86 +
+  #406), live on the Mac, with `tuners.yttv_local_search` ON through the Mac's settings API (undo history; the
+  shipped default stays false). Reason: 8 of 16 CFB games on ABC/CBS/FOX/NBC locals today; the smallest change on top
+  of what was live (an RC6.3-based point release would have rolled back boundary_retries). The deploy's live-game gate
+  was bypassed once, with auto-switching paused.
+- 2026-11-07 ~12:40 PM ET (Nick live, RC6.3.1: "havent seen any switches / i want more switches", "do whatever you
+  want"; stuck on UNC@CONN through the Q1-end ads): the overseer changed **runtime config on the Mac only** via
+  /api/settings (undo history); **the tree defaults are unchanged**: `decider.switch_margin` 10 -> 4,
+  `decider.return_tolerance` 5 -> 2, `decider.break_destination_min` 25 -> 10, `score.personal.my_team` 25 -> 10,
+  `decider.uncalibrated_sigma_s` 8 -> 25, `decider.sticky_visit_needs_calibration` true -> false. Causes: FOX didn't tune
+  (UCLA@MINN, best game), the leave gate waited on an uncalibrated CBSSN delay (sigma 15 > 8), and the stale-data guard
+  ("no fresh data 103-128 s") blocked leaving during the commercial with the quarter end never flagged as a break.
+  Rule #1 note: the last two loosen calibration guards (more switches land on a less certain delay); they are Nick's
+  call for today and are not graded. Code follow-ups (hotfix/local-search-joinlive): YouTube TV edge prior 34.9 s on,
+  stale data after a period end / 0:00 / scoring play counts as a break, the FOX fix.
+- 2026-11-07 (Nick, live CFB 1:10 PM: 'fix the jump logic... maybe the games identify safe points to jump'): default_config.yaml defined decider.leave twice; YAML kept only the second block, so decider.leave.dead_windows and decider.leave.tune_s never existed at runtime and the play-by-play dead-window leave path (cuts.DeadTracker) could not be turned on. Merged into one block; defaults unchanged (dead_windows [], tune_s 6). Nick's Mac turns dead_windows on at runtime for cfb, nfl, nhl, nba, cbb so autopilot leaves between plays. Rule #1 (joins) unchanged.
+- 2026-11-07 (Nick via the overseer, after RC6.3.2's deploy at 14:49 ET: the full suite at 3 workers pushed the Mac's
+  load to 18-21 and starved the app during live games): **during games, never run the full test suite on the Mac.**
+  Run it elsewhere (CI, the integrator's cloud run) and deploy a commit that already passed there. The 1:10-2:50 PM
+  stall was mostly the Mac in clamshell sleep on battery (~56 of 88 min dead, sticks dropped on every wake).
+- **2026-11-07 12:40 ET HOTFIX (Nick's live "no switches": CBSSN sigma 15 > decider.uncalibrated_sigma_s 8 kept the leave
+  gate shut, "delay not calibrated yet"): new setting `delay.edge_prior.enabled`, default false; Nick turns it on
+  at runtime (/api/settings, undoable).** On: every YouTube TV channel without its own tap / score-bug sample tonight
+  starts at `delay.edge_prior.prior.youtubetv` (34.9 s; Nick's hidden-stick probe, 28 reads on 11 channels, 34.3-35.5,
+  reruns 34.96 / 35.09) with stated doubt 4 s growing at most `drift_cap_s` 2 s (stays under 8 all night). Prior only;
+  the probe refresh is PR #408 (integration/next, off).
 - 2026-11-07 (Nick 12:40 PM live report: UNC@CONN stuck in the end-of-Q1 ads, leave gate said "no fresh data for
   103-128s" and "delay not calibrated yet"): **new `decider.leave.quiet_break` (enabled: true, floor_s
   {period_end: 120, score: 40})**. When the newest entry on a game is a period end / 0:00 clock, or a score in a
@@ -1302,3 +1469,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-07 (overseer 23:50 ET): new default buffered_jump.keep_standby_s 120: with the screen game gone or unknown, a
   'start'/'ended' switch to another game waits up to 120 s so it can't re-tune a ready buffered standby away.
   delay.scorebug_hidden set on at runtime (Prime standby delay synced by its score bug).
+- 2026-11-07 19:05 ET (overseer, first live jump row 18:55: ALA@LSU -> ORE@OSU on CBS 17 tuned on the spot by search,
+  30 s, lost the dead ball; the standby sat empty): **new `jump_mode.ready_only` true** (with two sticks a jump goes
+  only onto the hidden stick's ready game; otherwise it waits for the standby and jumps at the next dead ball) and
+  **`jump_mode.search_penalty` 20** (the standby prefers code channels, ~3-4 s, over locals by search, ~11-15 s,
+  unless the local's moment is that much bigger). The standby pick also skips targets the hidden stick can't tune
+  now (a failed tune's backoff), which had kept it empty. jump_mode.enabled itself unchanged (Nick's live setting).
