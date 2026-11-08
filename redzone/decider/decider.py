@@ -2548,6 +2548,28 @@ class Decider:
         self.jump_holds["bj_screen_gone_no_landing"] += 1
         return None
 
+    def _bj_keep_standby(self, d: Decision, cands: dict[str, Candidate], now: float) -> Decision | None:
+        """[overseer Nov 7 23:43] Screen game unknown or gone, a buffered standby ready: the normal decider's 'start' /
+        'ended' switch to ANOTHER game re-tunes that stick and throws the buffer away (live: a held Prime standby lost to
+        a WVU tune that never started). Hold it for buffered_jump.keep_standby_s while the free cut waits for its dead
+        ball; after that the normal switch goes."""
+        if d.action != "switch" or d.kind not in ("start", "ended"):
+            return None
+        ready = self.standby_ready
+        held = [gid for gid, x in self._jump_pool(cands).items() if gid != d.target and gid != self.current
+                and (ready is None or ready(x.target)) and self._bj_pic(gid, x, now) is not None]
+        if not held:
+            self._bj_gone_since = None
+            return None
+        since = getattr(self, "_bj_gone_since", None)
+        if since is None:
+            since = self._bj_gone_since = now
+        if now - since > float(self.cfg.get("buffered_jump.keep_standby_s", 120.0)):
+            return None
+        self.jump_holds["bj_keep_standby"] += 1
+        return Decision(now, "stay", self.current, f"jump mode: keeping the buffered standby ({d.reason})", d.state,
+                        d.gate, want=held[0])
+
     def _buffered_jump(self, cur: Candidate, cands: dict[str, Candidate], now: float):
         """The editor's call: a jump Decision, False (holds; counted as bj_<why>) or None (not both buffered: jump
         mode's own rules decide)."""
@@ -2640,7 +2662,11 @@ class Decider:
             # normal 'ended' switch, which doesn't time the landing on a buffered picture)
             gone = self._bj_screen_gone(cands, now)
             if gone is not None:
+                self._bj_gone_since = None
                 return gone
+            keep = self._bj_keep_standby(d, cands, now)
+            if keep is not None:
+                return keep
         if d.action in ("switch", "replay") and d.kind in JUMP_KEEPS:
             self.jump_holds[f"normal_{d.kind}"] += 1
             return None   # crunch time, a finished game, your tap, a chase: the normal decider already goes

@@ -418,6 +418,7 @@ buffered_jump:             # [overseer Nov 8 01:50Z / Nick 20:45 "play by play m
   behind_s: 75             # scrub depth asked of each fresh YouTube TV tune (lands ~79 s: 16.8 k + 28.5, k=3)
   min_behind_s: 45         # a stick less behind than this (label) isn't a buffered picture: jump mode's own rules run
   hold_chunk_s: 25         # [overseer Nov 7] a Prime standby is pause-held in pauses this short (75 s in one came back 'stopped' 3/3)
+  keep_standby_s: 120      # [overseer Nov 7] screen game gone/unknown: a 'start' to another game waits this long for the buffered standby's free cut
   flip_s: 3.2              # slowest input flip to the ready standby (live tonight 2.5-3.7 s)
   flip_fast_s: 2.0         # fastest
   margin_sigmas: 2         # delay doubt each side of a leave / landing (sim: 2 sigma at the 4 s floor = 0 mid-play)

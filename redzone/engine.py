@@ -1660,12 +1660,18 @@ class Engine:
                 now = time.time()
                 cost = self.control.deadline_cost(target)
                 g = self.merger.games.get(d.target or "")
-                if not g or g.phase != Phase.LIVE or self.feeds.stale(g.game_id) \
-                        or getattr(self.where.get(g.game_id), "target", None) != target:
-                    return False
-                return self.decider.jump_lands_dead(
-                    d.target, cands.get(d.target), now, cost) and self.decider.jump_may_leave(
-                    before, cands, now, float(self.cfg.get("jump_mode.flip_s", 3.2)))
+                # [overseer Nov 7 23:43] every veto is named (data/jumps.jsonl 'veto', one log line per change): two
+                # buffered cuts waited 25 s on a bare 'no safe moment to cut'
+                veto = ("not_live" if not g or g.phase != Phase.LIVE else "feed_stale" if self.feeds.stale(g.game_id)
+                        else "target_moved" if getattr(self.where.get(g.game_id), "target", None) != target
+                        else "landing" if not self.decider.jump_lands_dead(d.target, cands.get(d.target), now, cost)
+                        else "leave" if not self.decider.jump_may_leave(
+                            before, cands, now, float(self.cfg.get("jump_mode.flip_s", 3.2))) else "")
+                if veto and (d.jump or {}).get("veto") != veto:
+                    log.info("jump to %s vetoed at the flip: %s (cost %.1f s)", d.target, veto, cost)
+                if d.jump is not None:
+                    d.jump["veto"], d.jump["veto_cost_s"] = veto, round(cost, 1)
+                return not veto
             return self._entry_valid(d, target) and (time.time() >= replay_exit if replay_exit is not None
                                                      else self.safe_to_leave(before, required_s=8.0))
         self.control.submit(target, back, done, may_cut=may_cut,

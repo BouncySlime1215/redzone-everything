@@ -522,3 +522,16 @@ def test_a_switch_does_not_cancel_a_standby_pause_hold(cfg, tmp_path, monkeypatc
         gate.set()
         await task
     asyncio.run(go())
+
+
+def test_an_unknown_screen_keeps_a_buffered_standby_from_a_start_switch(cfg, clock):
+    """[overseer Nov 7 23:43] a 'start' to another game re-tuned the held Prime standby away; it waits keep_standby_s."""
+    from redzone.decider.decider import Decision, State
+    dec, delays = setup(cfg, clock)
+    scene(dec, clock)
+    dec.current = None
+    start = Decision(clock.t, "switch", "c", "start", State.WATCHING, "", kind="start")
+    k = dec._bj_keep_standby(start, cands(b=50), clock.t)
+    assert k is not None and k.action == "stay" and k.want == "b"
+    clock.t += 121
+    assert dec._bj_keep_standby(start, cands(b=50), clock.t) is None   # then the normal switch goes

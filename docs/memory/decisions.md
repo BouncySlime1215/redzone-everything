@@ -1291,3 +1291,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   check 107 paired plays, 100% coverage, 19 s median lead over polling, 0 disagreements); timing.behind_live_s.scrub_fallback
   live (a failed scrub leaves a ready live-edge standby, not an unusable one); jump_mode.leagues restored to
   [cfb, nfl, nba, nhl, cbb] (basketball is in buffered mode now).
+- 2026-11-07 (overseer 23:50 ET): new default buffered_jump.keep_standby_s 120: with the screen game gone or unknown, a
+  'start'/'ended' switch to another game waits up to 120 s so it can't re-tune a ready buffered standby away.
+  delay.scorebug_hidden set on at runtime (Prime standby delay synced by its score bug).
