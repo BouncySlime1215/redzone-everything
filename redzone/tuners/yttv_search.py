@@ -720,12 +720,15 @@ def step_toward(focus, target) -> str:
 async def hunt_channel(stick, observe, *, key: str, table, query: str = "", profile: str = "",
                        sleep=asyncio.sleep, clock=time.monotonic, wall=time.time, max_moves: int = 14,
                        budget_s: float = HUNT_BUDGET_S, lounge=None, collect_codes: bool = True,
-                       channel_page: bool = False) -> ChannelHunt:
+                       channel_page: bool = False, before_key=None) -> ChannelHunt:
     """Search YouTube TV for one channel, select its live tile, confirm it plays, collect code candidates.
 
     ``observe`` returns a fresh CapturedScreen (screencap + Vision OCR). ``lounge`` is an optional
     async host -> now-playing video id (discovery.lounge.now_playing). Candidates still need
     prove_code(). Never raises.
+
+    ``before_key`` (DEV-08) is called right before every key or search link that changes the screen; it
+    raises (CutWindowClosed) when the safe switching window has closed, which ends the hunt as "stopped".
 
     ``channel_page`` (ABC 11, Nov 7): the search opens the station's channel page, but OCR can't read
     the focus ring there. Then, per path in CHANNEL_PAGE_PATHS (DOWN, Select; else reopen the
@@ -766,6 +769,8 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
 
     async def press(code):
         budget()
+        if before_key is not None:
+            before_key()
         sent = await stick.key(code)
         record("key", code)
         if not getattr(sent, "ok", False):
@@ -774,6 +779,8 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
 
     async def open_search():
         nonlocal search_at
+        if before_key is not None:
+            before_key()
         search_at = clock()
         launched = await stick.view("https://tv.youtube.com/search?q=" + quote(query, safe=""), pkg, wait=True)
         record("open_search", f"{query!r} ok={launched.ok}")

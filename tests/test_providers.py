@@ -86,6 +86,21 @@ class FakeStick(Stick):
         return [c for c in self.cmds if c.startswith("am start")]
 
 
+class PeacockLike(more.AppTuner):
+    """A TEST DOUBLE (not registered, not in EXTRA_TUNERS): the real PeacockTuner was removed (never Peacock,
+    DEV-01). Peacock's shape (a component activity, a timed OK) is the generic AppTuner case these tests cover."""
+    app = role = "peacock"
+    name = "Peacock"
+    components = {"com.peacock.peacockfiretv": "com.peacock.peacocktv.AmazonMainActivity"}
+    press_after = (12.0,)
+
+    def url(self, ref: str) -> str:
+        if ref.startswith("https://"):
+            return ref
+        data = json.dumps({"pvid": ref, "type": "SLE", "action": "PLAY"}, separators=(",", ":"))
+        return "https://www.peacocktv.com/deeplink?deeplinkData=" + more.quote(data, safe="")
+
+
 def tuner(cls, clock):
     return cls(sleep=clock.sleep, clock=clock)
 
@@ -159,7 +174,7 @@ def _punch(p):
 def test_peacock_link_matches_apples_exactly():
     pl = APPLE["events"]["umc.cse.1xkb26oj1fnifcpnmf5r15w14"]["data"]["playables"]
     apple_url = next(_punch(p) for p in pl.values() if p["externalId"] == OKC_CLE_MAIN)
-    t = more.PeacockTuner()
+    t = PeacockLike()
     assert t.url(OKC_CLE_MAIN) == apple_url
     assert t.url(apple_url) == apple_url                              # a full link passes through
     fire = t.command(OKC_CLE_MAIN, "com.peacock.peacockfiretv")
@@ -211,7 +226,7 @@ def test_shell_quoting_guard():
 async def test_tune_plays_first_try():
     clock = Clock()
     st = FakeStick({"peacock": "com.peacock.peacockfiretv"}, playing=lambda s: bool(s.launches))
-    res = await tuner(more.PeacockTuner, clock).tune(st, OKC_CLE_MAIN, f"peacock:{OKC_CLE_MAIN}")
+    res = await tuner(PeacockLike, clock).tune(st, OKC_CLE_MAIN, f"peacock:{OKC_CLE_MAIN}")
     assert res.ok and len(st.launches) == 1 and st.keys == ["KEYCODE_WAKEUP"]
 
 
@@ -225,13 +240,13 @@ async def test_external_event_link_cannot_leave_its_provider(url):
 
 async def test_unchanged_previous_video_never_confirms_new_provider_game():
     st = FakeStick({"peacock": "com.peacock.peacockfiretv"}, playing=lambda s: True)
-    res = await tuner(more.PeacockTuner, Clock()).tune(st, OKC_CLE_MAIN, "peacock:new-game")
+    res = await tuner(PeacockLike, Clock()).tune(st, OKC_CLE_MAIN, "peacock:new-game")
     assert not res.ok and st.tuned is None
 
 
 async def test_generic_live_label_does_not_authorize_a_selection():
     st = FakeStick({"peacock": "com.peacock.peacockfiretv"}, screen="Home | Live | Sports | Play")
-    res = await tuner(more.PeacockTuner, Clock()).tune(st, OKC_CLE_MAIN, "peacock:new-game")
+    res = await tuner(PeacockLike, Clock()).tune(st, OKC_CLE_MAIN, "peacock:new-game")
     assert not res.ok and "KEYCODE_DPAD_CENTER" not in st.keys
 
 
@@ -252,7 +267,7 @@ async def test_tune_stops_at_profile_picker_without_configured_identity():
 async def test_tune_stops_at_walls_without_pressing_ok(screen, kind, err):
     clock = Clock()
     st = FakeStick({"peacock": "com.peacock.peacockfiretv"}, screen=screen)
-    res = await tuner(more.PeacockTuner, clock).tune(st, OKC_CLE_MAIN, f"peacock:{OKC_CLE_MAIN}")
+    res = await tuner(PeacockLike, clock).tune(st, OKC_CLE_MAIN, f"peacock:{OKC_CLE_MAIN}")
     assert not res.ok and err in res.error
     assert "KEYCODE_DPAD_CENTER" not in st.keys and len(st.launches) == 1     # no retry into a wall
     assert prov.parse_verdict(res.error).kind == kind
@@ -281,7 +296,7 @@ async def test_missing_activity_falls_back_to_plain_view_without_force_stop():
     st = FakeStick({"peacock": "com.peacock.peacockfiretv"},
                    launch_out=lambda cmd: "Error: Activity class {x} does not exist." if " -n " in cmd else "Status: ok",
                    playing=lambda s: len(s.launches) >= 2)
-    res = await tuner(more.PeacockTuner, clock).tune(st, OKC_CLE_MAIN, "peacock:x")
+    res = await tuner(PeacockLike, clock).tune(st, OKC_CLE_MAIN, "peacock:x")
     assert res.ok and " -n " in st.launches[0] and " -n " not in st.launches[1]
     assert not any(c.startswith("am force-stop") for c in st.cmds)
 
@@ -297,10 +312,10 @@ async def test_video_never_starts_retries_once_without_force_stop():
 async def test_refuses_missing_app_and_odd_links():
     clock = Clock()
     st = FakeStick({})
-    res = await tuner(more.PeacockTuner, clock).tune(st, OKC_CLE_MAIN, "peacock:x")
+    res = await tuner(PeacockLike, clock).tune(st, OKC_CLE_MAIN, "peacock:x")
     assert not res.ok and "isn't installed" in res.error and st.cmds == []
     st = FakeStick({"peacock": "com.peacock.peacockfiretv"})
-    res = await tuner(more.PeacockTuner, clock).tune(st, "x'; reboot; '", "peacock:x")
+    res = await tuner(PeacockLike, clock).tune(st, "x'; reboot; '", "peacock:x")
     assert not res.ok and "doesn't look right" in res.error and st.cmds == []
 
 
@@ -332,8 +347,8 @@ def test_register_adds_tuners_and_wraps_builtins_once():
     assert isinstance(tuners["youtubetv"], more.DiagnosingTuner)
     more.register(tuners)
     assert not isinstance(tuners["youtubetv"].inner, more.DiagnosingTuner)       # no double wrap
-    # Peacock still has a registered tuner (redzone/tuners/providers.py, another card removes it) but is not a TUNER_APP
-    assert (set(more.EXTRA_TUNERS) - {"peacock"}) | {"youtubetv", "prime", "espn"} == prov.TUNER_APPS
+    assert "peacock" not in more.EXTRA_TUNERS and not hasattr(more, "PeacockTuner")   # DEV-01
+    assert set(more.EXTRA_TUNERS) | {"youtubetv", "prime", "espn"} == prov.TUNER_APPS
 
 
 # --- 4. reading the screen -------------------------------------------------------------------
@@ -779,7 +794,7 @@ async def test_backgrounded_app_gets_the_link_resent_as_a_fresh_task():
     st = FakeStick({"peacock": "com.peacock.peacockfiretv"},
                    launch_out=lambda cmd: "Status: ok\n" + ("" if "0x14000000" in cmd else FRONT),
                    playing=lambda s: any("0x14000000" in c for c in s.launches))
-    res = await tuner(more.PeacockTuner, Clock()).tune(st, OKC_CLE_MAIN, "peacock:x")
+    res = await tuner(PeacockLike, Clock()).tune(st, OKC_CLE_MAIN, "peacock:x")
     assert res.ok and len(st.launches) == 2
     assert st.launches[1].startswith("am start -W -f 0x14000000 -n com.peacock.peacockfiretv/")
     assert any("resent the link as a new task" in s for s in res.steps)
@@ -821,6 +836,6 @@ async def test_app_tuner_never_stops_or_presses_on_the_launcher():
     async def launcher():
         return "com.amazon.tv.launcher/.ui.HomeActivity"
     st.foreground = launcher
-    res = await tuner(more.PeacockTuner, Clock()).tune(st, OKC_CLE_MAIN, "peacock:x")
+    res = await tuner(PeacockLike, Clock()).tune(st, OKC_CLE_MAIN, "peacock:x")
     assert not res.ok and prov.parse_verdict(res.error) is None and not st.keys[1:]
     assert any("not in front" in s for s in res.steps)

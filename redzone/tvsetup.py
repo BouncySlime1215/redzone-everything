@@ -556,7 +556,7 @@ async def run(home: Home, *, path: Path = DEVICES, ip: str | None = None, ask: b
                 tv["local_input_verified"] = local_ok
                 tv["local_input_test"] = {"at": time.time(), "results": res}
                 if local_ok:
-                    tv["input_method"] = tv.get("input_method") or "local"
+                    tv["input_method"] = "local"   # proven now: wins over an old "smartthings" (DEV-05)
                     rep.ok.append("local")
                     rep.say(OK, "The TV's own input keys work: this is now the default flip"
                             + (f" (median {sorted(lat)[len(lat)//2]:.2f}s key -> stick on screen)" if lat else ""))

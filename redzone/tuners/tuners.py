@@ -421,7 +421,8 @@ class YouTubeTVTuner(Tuner):
         query = LOCAL_SEARCH_QUERY.get(key, "") if local else SEARCH_QUERY.get(key, "")
         hunt = await hunt_channel(stick, observe, key=key, table=_yttv_table(), query=query,
                                   profile=getattr(self, "preferred_profile", "") or "", collect_codes=False,
-                                  channel_page=local)
+                                  channel_page=local,
+                                  before_key=lambda: require_cut(may_cut, steps, mutating=True))
         steps += [f"{x['action']}: {x['detail'][:60]}" for x in hunt.steps[-6:]]
         if hunt.status != "confirmed":
             return TuneResult(False, target, time.monotonic() - t0, steps, f"search tune: {hunt.reason}")
