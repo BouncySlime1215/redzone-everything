@@ -940,3 +940,28 @@ def test_jump_refill_is_urgent_and_logs_why_the_standby_waits(eng, tmp_path, mon
     assert not e._jump_standby(cands)
     e._jump_status(force=True)
     assert json.loads(e._jump_status_path.read_text().splitlines()[-1])["standby_plan"] == "yields to a queued replay"
+
+
+def test_jump_standby_never_loads_a_game_outside_the_rotation(eng, monkeypatch):
+    """[overseer Nov 8 21:00] With UGA@MISS (CFB) on screen and no other rotation game tunable, the normal standby plan
+    loaded ORL@GS (NBA): the rotation can't jump there. While the screen is in the rotation, the standby keeps what
+    it has instead."""
+    from conftest import nfl
+    from redzone.decider.decider import Candidate
+    from redzone.models import League
+    from redzone.scoring.engine import Scored
+    e, _ = eng
+    e.cfg.update({"jump_mode": {"enabled": True, "leagues": ["cfb"]}})
+    sc = lambda gid, lg: Scored(gid, lg, 50, 50, 50, 1.0, 0.0, "r", [], False, None, None, 1.0)
+    cands = {"uga_miss": Candidate(sc("uga_miss", League.CFB), "youtubetv:espn"),
+             "orl_gs": Candidate(sc("orl_gs", League.NBA), "youtubetv:fox")}
+    e.merger.games["uga_miss"] = nfl("uga_miss", "MISS", "UGA")
+    e.decider.current = "uga_miss"
+    monkeypatch.setattr(e, "_replay_standby", lambda c: None)
+    loads = []
+    monkeypatch.setattr(e.control, "preload", lambda target, **kw: loads.append(target) or True)
+    assert e.decider.jump_next(cands) is None   # NBA isn't in the rotation
+    assert e._jump_standby(cands) is True        # handled: the normal plan doesn't run
+    assert loads == [] and e._jump_standby_note["standby_plan"] == "no other tunable game"
+    e.decider.current = "orl_gs"                 # an NBA game on screen: not the rotation's business
+    assert e._jump_standby(cands) is False
