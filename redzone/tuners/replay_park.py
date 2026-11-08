@@ -24,7 +24,7 @@ from typing import Callable
 
 log = logging.getLogger("redzone.replay_park")
 
-PARK_DEFAULTS = {"back_lead_s": 3.0, "park_lead_s": 1.5, "scrub_slack_s": 4.0, "park_wait_max_s": 40.0,
+PARK_DEFAULTS = {"back_lead_s": 3.0, "park_lead_s": 1.5, "scrub_slack_s": 4.0, "park_wait_max_s": 40.0, "pause_settle_s": 3.0, "pause_poll_s": 0.4,
                  "yttv_max_lefts": 8}
 
 
@@ -46,6 +46,7 @@ class ParkResult:
     lefts: int = 0
     behind_s: float | None = None     # label-read behind-live after the scrub
     waited_s: float = 0.0             # played toward the snap before the pause
+    to_snap_s: float | None = None    # at the pause: how far the picture is BEFORE the snap (PLAY -> snap after this)
     paused: bool = False              # the player reported paused after MEDIA_PAUSE
     moved: bool = False               # keys may have moved the stick (caller marks it behind, #391)
     reason: str = ""
@@ -111,11 +112,21 @@ async def _park(stick, back_s, probe, cfg, pkg, still_hidden, clock, sleep, t0, 
     if not still_hidden():
         res.reason = "stick became visible before the pause"
         return
+    # behind-live B is NOT the distance to the snap: live moved on during the scrub (overlay up, label read), so the
+    # snap is (back_s - back_lead_s) + the scrub's wall time behind live, and a 63 s replay needs B ~110 s
+    res.to_snap_s = round(t_snap - (clock() - float(behind)), 2)
     sent = await stick.key("KEYCODE_MEDIA_PAUSE")
     if not sent or not getattr(sent, "ok", False):
         res.reason = "PAUSE not sent"
         return
-    pb = await stick.playback(pkg)
+    # [Nick, Nov 8 fd1ba542] the first read right after PAUSE can be a transient 'none' (the post-tune family, #356)
+    # while the player is paused (state 2 at +0, +10, +20 s): re-read for pause_settle_s before calling it lost
+    end = clock() + float(_cfg(cfg, "pause_settle_s"))
+    while True:
+        pb = await stick.playback(pkg)
+        if pb.get("state") == "paused" or clock() >= end:
+            break
+        await sleep(float(_cfg(cfg, "pause_poll_s")))
     if pb.get("state") not in ("playing", "paused"):
         res.reason = f"player is {pb.get('state')} after PAUSE"
         return
