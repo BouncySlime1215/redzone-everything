@@ -38,6 +38,19 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-04: **New `hardening:` config block (`smartthings`, `sticks`, `feeds`, `mac`), all false.** Each is read with a False default, so the code PRs for sticks/feeds/mac work in any merge order. `hardening.smartthings`: SmartThings 5xx/timeouts open a breaker (30 s doubling to 2 min, probed by the keepalive, not by a flip), a 429 waits its Retry-After (cap 300 s), and a refused sign-in stops the cloud path until `tv_setup.py --smartthings` rewrites the OAuth file, raising Health `tv_auth` and one phone push. Off by default because no live night has proven it yet (the overnight plan: anything unproven ships off). Drill `st_outage`: with it off, 3 of 10 flips during an outage wait out 216 s of timeouts; on, 1 flip waits 16 s and the rest go straight to HOME/CEC.
 - 2026-11-04: **`hardening.watchdog: false` (C17).** The watchdog may ask the app (POST /api/agent/fix) to resume, clear a prompt on or re-tune the stick on screen while its screen has been dead 90 s+, refresh or restart the feeds, restart the push feed, or leave safe mode. Every fix goes through the supervisor's rate limits, and the watchdog judges each one (worked or failed within 2 checks), climbs a ladder and then tells a person. Off by default: no live night has proven it, so with it off the watchdog only notifies. Stick fixes act only on a screen that is already not playing, so they can't cut a live play.
 
+- 2026-11-08: **Platform safety before the watchdog comes back (fix-plan package D, P-02 to P-17).** (1) The watchdog judges
+  "hung" from the app's own heartbeat (`health.supervisor.heartbeat_age_s`, 120 s), not log silence: the log was quiet 4-17 min
+  39 times on healthy live nights. (2) One adb reconnect owner: the app (120 s); the watchdog reconnects only after 4 min offline
+  and never while a switch is in flight. (3) **`governor.swap_eco_mb` 1500 is replaced by `swap_growth_mb` 300 over `swap_window_s`
+  600 (eco only while memory pressure >= warn) and `swap_critical_pct` 90 (critical)**: swap size alone is not a signal (this Mac
+  sat at 5.9 of 7 GB). Eco no longer slows score-bug OCR (SCALE ocr eco 2.0 -> 1.0); only critical stops it. The app's memory is
+  the larger of RSS and `footprint`. (4) **Deploy:** the test suite no longer starts on the Mac while a game is live or the governor
+  is not normal (`test_when_busy: false`; run it on CI and use --skip-tests), automatic rollbacks wait for a break like a deploy
+  (`rollback_wait_s` 7200, then go ahead), the rollback grace is 300 s, a feed counts as failing only when the same feed is down
+  through the last 180 s and was not down before, and a rollback snapshots and names the settings it overwrites. (5) Phone Undo
+  never wipes the saved settings; `server.port` is no longer phone-editable; `/api/settings` hides the ntfy topic. Nick N2/N4
+  unaffected.
+
 ## Process and budget
 
 - 2026-11-08: **Process gates G-02 to G-06 and G-09 built from the wave-1 reports.** A fix needs a regression test and a

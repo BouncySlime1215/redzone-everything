@@ -117,6 +117,9 @@ DEFAULTS = {
     "max_jsonl_bytes": 10 * 1024 ** 2, "keep_jsonl_lines": 20000,
     "max_imgcache_bytes": 200 * 1024 ** 2, "keep_imgcache_bytes": 150 * 1024 ** 2,
     "max_wal_bytes": 64 * 1024 ** 2,
+    "paused_alert_s": 600.0,       # auto-switching paused this long with a live game -> toast + push (P-11)
+    "watchdog_beat_s": 300.0,      # the watchdog's heartbeat file older than this with a live game -> push (P-02)
+    "watchdog_alert_repeat_s": 1800.0,
     "ntfy_topic": "",              # set to push the nightly summary to the ntfy app (ntfy.sh/<topic>)
     "ntfy_server": "https://ntfy.sh",
     "budget": {},                  # error budget objectives (redzone/observability.BUDGET_DEFAULTS)
@@ -355,6 +358,9 @@ class Supervisor:
         self._cuts_judged: OrderedDict[str, None] = OrderedDict()
         self.safe_episode = SUPERVISOR_SAFE_EPISODE.new(clock=clock)   # safe mode as recorded episodes
         self.last_step = 0.0
+        self.last_beat = 0.0                             # the loop's heartbeat: /api/health health.supervisor.heartbeat_age_s (P-03)
+        self._paused_alerted = 0.0                       # when the "paused with a live game" alert last went out
+        self._wd_alerted = 0.0                           # ... and the "watchdog isn't running" one
         self.loop = SUPERVISOR_LOOP.new(clock=clock)    # is run() alive, and is it acting?
         # Runtime invariants + the contract's HealthReport (redzone/platform/health.py): sees, never fixes.
         from redzone.platform.health import PlatformHealth
@@ -538,13 +544,15 @@ class Supervisor:
 
     RULES = ("rule_stuck_switch", "rule_screen", "rule_failures", "rule_safe_mode", "rule_idle", "rule_feeds",
              "rule_adb", "rule_delay_doubt", "rule_finished_hold", "rule_logs", "track_moments", "track_episodes",
-             "grade_cuts", "maybe_report", "rule_invariants", "rule_mac_health")
+             "grade_cuts", "maybe_report", "rule_invariants", "rule_mac_health", "rule_paused_alert",
+             "rule_watchdog_beat")
 
     def _gate(self, state: str, why: str) -> None:
         if not self.loop.is_("stopped"):   # step() called on its own (tests, one-shot) has no loop to show
             self.loop.to(state, why)
 
     async def step(self) -> None:
+        self.last_beat = self.clock()   # before any gate: the loop is alive even when the supervisor is off or yielded
         if not self.opt("enabled"):
             self._gate("disabled", "supervisor.enabled is off")
             return
@@ -555,6 +563,7 @@ class Supervisor:
         self._gate("running", "acting on its rules")
         self.last_step = self.clock()
         for name in self.RULES:
+            self.last_beat = self.clock()   # one slow rule must block the loop for the whole stale limit to look hung
             try:
                 await getattr(self, name)(self.clock())
             except Exception:
@@ -968,6 +977,8 @@ class Supervisor:
                 continue
             if held < float(self.opt("adb_offline_s")):
                 continue
+            if getattr(self.e, "_pending_decision", None) is not None:
+                continue   # one adb owner: never drop a transport under a switch in flight (P-09); next step
 
             async def reconnect(s=s):
                 s.drop_session()
@@ -1315,6 +1326,58 @@ class Supervisor:
                 except Exception:
                     log.exception("couldn't push Mac alert %s", a.code)
 
+    async def rule_paused_alert(self, now: float) -> None:
+        """Auto-switching paused while a game is live for paused_alert_s: say so (P-11). One forgotten tap on
+        Saturday used to leave Sunday on one channel with nothing but the phone banner saying so. Skipped when
+        the Mac-health alerts are on (they carry the same alert, mac_health.paused)."""
+        if self.mac_health is not None:
+            return
+        u = getattr(getattr(self.e, "decider", None), "user", None)
+        live = self._live()
+        held = self._held("paused_live", bool(getattr(u, "paused", False)) and bool(live), now)
+        if held < float(self.opt("paused_alert_s")):
+            self._paused_alerted = 0.0
+            return
+        if self._paused_alerted and now - self._paused_alerted < float(self.opt("watchdog_alert_repeat_s")):
+            return
+        self._paused_alerted = now
+        text = (f"Auto-switching has been paused {held / 60:.0f} min with {len(live)} live game"
+                f"{'s' if len(live) != 1 else ''}. Tap Resume to put it back on autopilot.")
+        self._record({"kind": "paused_alert", "rule": "paused", "minutes": round(held / 60, 1), "live": len(live)})
+        self._toast(text, "warn")
+        try:
+            await self.send_push("RedZone: paused", text, priority="high", tags="warning,tv")
+        except Exception:
+            log.exception("couldn't push the paused alert")
+
+    def watchdog_beat_age(self, now: float | None = None) -> float | None:
+        """Seconds since the watchdog last touched data/agent.heartbeat; None when it never has."""
+        try:
+            return round((self.clock() if now is None else now) - (self.root / "agent.heartbeat").stat().st_mtime, 1)
+        except OSError:
+            return None
+
+    async def rule_watchdog_beat(self, now: float) -> None:
+        """The watchdog is a separate launchd job nothing watched: it ran no check from Nov 3 to Nov 8 (P-02).
+        With a live game, a heartbeat file older than watchdog_beat_s (or none) is a push."""
+        age = self.watchdog_beat_age(now)
+        stale = age is None or age > float(self.opt("watchdog_beat_s"))
+        held = self._held("watchdog_down", stale and bool(self._live()), now)
+        if held < 60.0:
+            self._wd_alerted = 0.0
+            return
+        if self._wd_alerted and now - self._wd_alerted < float(self.opt("watchdog_alert_repeat_s")):
+            return
+        self._wd_alerted = now
+        text = ("The watchdog has never run (no heartbeat). Install it: python -m agent.install"
+                if age is None else f"The watchdog has not checked in for {age / 60:.0f} min: it is not running")
+        self._record({"kind": "watchdog_down", "rule": "watchdog", "age_s": age})
+        self._toast(text, "warn")
+        try:
+            await self.send_push("RedZone: watchdog down", text, priority="high", tags="warning,computer")
+        except Exception:
+            log.exception("couldn't push the watchdog alert")
+
     def contract_fixes(self) -> list:
         """Tonight's fixes in the contract's shape (contracts/health.py Fix)."""
         from redzone.contracts.health import Fix as HFix
@@ -1328,6 +1391,9 @@ class Supervisor:
     def status(self) -> dict:
         now = self.clock()
         return {"running": self.running, "last_step": self.last_step or None,
+                "heartbeat_age_s": round(now - self.last_beat, 1) if self.last_beat else None,
+                "switch_in_flight": getattr(self.e, "_pending_decision", None) is not None,
+                "watchdog_beat_age_s": self.watchdog_beat_age(now),
                 "fixes_tonight": dict(self.counts),
                 "recent": [{"rule": f.rule, "action": f.action, "ok": f.ok, "detail": f.detail}
                            for f in list(self.fixes)[-5:]],
@@ -1375,12 +1441,24 @@ def rotate_log(path: Path, keep_bytes: int) -> tuple[bool, str]:
 
 
 def trim_jsonl(path: Path, keep_lines: int) -> tuple[bool, str]:
-    lines = path.read_bytes().splitlines(keepends=True)
+    """Keep the last `keep_lines`. Other processes append to some of these files (the watchdog, deploy.py): rows
+    written while the rewrite was being prepared are carried over instead of lost (P-16)."""
+    raw = path.read_bytes()
+    lines = raw.splitlines(keepends=True)
     kept = lines[-keep_lines:]
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_bytes(b"".join(kept))
+    try:
+        with path.open("rb") as f:   # whatever was appended since the read above
+            f.seek(len(raw))
+            late = f.read()
+    except OSError:
+        late = b""
+    if late:
+        with tmp.open("ab") as f:
+            f.write(late)
     tmp.replace(path)
-    return True, f"{len(lines)} -> {len(kept)} lines"
+    return True, f"{len(lines)} -> {len(kept)} lines" + (f" (+{len(late)} bytes written meanwhile)" if late else "")
 
 
 def prune_dir(d: Path, keep_bytes: int) -> tuple[bool, str]:

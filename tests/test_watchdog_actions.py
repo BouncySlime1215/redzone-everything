@@ -26,7 +26,7 @@ ON = "10.0.0.150:5555"
 KIND_CASES = {
     "core_loop": Obs(api_ok=False, api_fail_streak=2),
     "component": Obs(live_games=1, components=["fastcast"]),
-    "stick_link": Obs(sticks_offline=["10.0.0.181:5555"]),
+    "stick_link": Obs(sticks_offline=["10.0.0.181:5555"], offline_min=5),
     "storage": Obs(disk_free_mb=300),
     "person": Obs(person="SmartThings sign-in expired: run scripts/tvsetup.py"),
     "upstream": Obs(live_games=2, feed_stale_s=400),
@@ -353,3 +353,37 @@ def test_endpoint_is_local_only_and_never_crashes(monkeypatch):
     c = TestClient(server.build_app(fake_engine()))
     r = c.post("/api/agent/fix", json={"fix": "refresh_feed", "target": "feeds"})
     assert r.json()["ok"] is False and "crashed" in r.json()["message"] and called
+
+
+def test_observe_reads_the_heartbeat_and_switch_in_flight(w, monkeypatch):
+    st = {"games": [{"phase": "live"}], "now": {}, "health": {"supervisor": {"heartbeat_age_s": 4.5,
+                                                                              "switch_in_flight": True}}}
+    monkeypatch.setattr(watchdog, "fetch_state", lambda *a, **k: st)
+    monkeypatch.setattr(watchdog, "recent_errors", lambda **k: {})
+    o = w.observe()
+    assert o.heartbeat_age_s == 4.5 and o.switch_in_flight is True
+    st["health"]["supervisor"] = {}                                   # an older app: unknown, never a hang
+    o = w.observe()
+    assert o.heartbeat_age_s == -1.0 and o.switch_in_flight is False
+
+
+def test_a_standing_notify_is_journaled_once_per_15_min_not_every_check(w, monkeypatch):
+    """Repro: a persistent notify wrote one agent.jsonl row per minute (about 1.4k a day, P-16)."""
+    monkeypatch.setattr(watchdog, "fetch_state", lambda *a, **k: {"games": [], "now": {}, "health": {}})
+    monkeypatch.setattr(watchdog, "recent_errors", lambda *a, **k: {})
+    monkeypatch.setattr(watchdog, "rules", lambda o: Verdict("notify", "stick x has been offline 20 min"))
+    for _ in range(20):
+        w.t[0] += 61
+        w.tick()
+    checks = [r for r in w.rows if r.get("kind") == "check"]
+    assert 1 <= len(checks) <= 2
+
+
+def test_tick_touches_the_heartbeat_file_only_when_a_path_is_set(w, monkeypatch, tmp_path):
+    monkeypatch.setattr(watchdog, "fetch_state", lambda *a, **k: {"games": [], "now": {}, "health": {}})
+    monkeypatch.setattr(watchdog, "recent_errors", lambda *a, **k: {})
+    w.tick()
+    assert not (tmp_path / "agent.heartbeat").exists()
+    w.beat_path = tmp_path / "agent.heartbeat"
+    w.tick()
+    assert w.beat_path.read_text()

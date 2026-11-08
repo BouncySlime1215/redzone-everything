@@ -31,6 +31,33 @@ IMG_PATH = re.compile(r"[A-Za-z0-9_/.\-]{3,200}\.(png|jpg|jpeg|svg|webp)")
 IMG_TYPES = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "svg": "image/svg+xml", "webp": "image/webp"}
 
 
+# Settings the phone page may not change: server.port is read from the PORT env var in the plist, so editing it
+# did nothing, and a re-rendered plist without PORT would have moved the app off the 8778 that the watchdog and
+# deploy.py hard-code (P-19).
+READ_ONLY = ("server.port",)
+SECRET_KEY = re.compile(r"topic|token|secret|password|passwd|api_?key|credential", re.I)
+
+
+def redact(node):
+    """GET /api/settings without secrets: the ntfy topic is the only thing between the public ntfy.sh server and
+    this Mac's pushes, so any guest on the Wi-Fi could read it (P-14). A set secret reads "(set)", an empty one ""."""
+    if isinstance(node, dict):
+        return {k: (("(set)" if v else "") if SECRET_KEY.search(str(k)) and isinstance(v, str) else redact(v))
+                for k, v in node.items()}
+    if isinstance(node, list):
+        return [redact(v) for v in node]
+    return node
+
+
+def _changes_key(changes, dotted: str) -> bool:
+    node = changes
+    for part in dotted.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return False
+        node = node[part]
+    return True
+
+
 def _private(host: str | None) -> bool:
     if not host:
         return False
@@ -198,10 +225,14 @@ def build_app(engine: Engine) -> FastAPI:
 
     @app.get("/api/settings")
     async def get_settings():
-        return {"config": engine.cfg.data, "limits": {k: list(v) for k, v in LIMITS.items()}}
+        return {"config": redact(engine.cfg.data),
+                "limits": {k: list(v) for k, v in LIMITS.items() if k not in READ_ONLY}}
 
     @app.post("/api/settings")
     async def set_settings(body: dict):
+        locked = [k for k in READ_ONLY if _changes_key(body.get("changes"), k)]
+        if locked:   # a control that would do nothing (the port comes from the plist) or could look like an outage
+            return {"ok": False, "message": f"{locked[0]} can't be changed from the phone"}
         try:
             engine.cfg.update(body.get("changes") or {})
         except ConfigError as e:
@@ -214,7 +245,8 @@ def build_app(engine: Engine) -> FastAPI:
     @app.post("/api/settings/rollback")
     async def rollback():
         ok = engine.cfg.rollback()
-        return {"ok": ok, "message": "Undid the last change" if ok else "Nothing to undo"}
+        note = getattr(engine.cfg, "rollback_note", "") or ("Undid the last change" if ok else "Nothing to undo")
+        return {"ok": ok, "message": note}
 
     @app.get("/api/channels")
     async def channels():
