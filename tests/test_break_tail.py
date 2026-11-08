@@ -57,8 +57,8 @@ def test_defer_keeps_the_old_game_on_screen_until_the_cut():
     assert w3 == [(t, "new")] and s3[0].leave_dt == 0.0
 
 
-def test_exp739_start_timed_ships_off():
-    assert config.default("decider.entry.start_timed") is False
+def test_exp739_start_timed_ships_on():
+    assert config.default("decider.entry.start_timed") is True   # [D-02] every restart emits kind "start"
 
 
 def test_lag_floor_off_by_default_and_narrows_coverage():

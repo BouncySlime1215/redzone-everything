@@ -194,6 +194,8 @@ def test_scorecard_counts_power_play_time_and_goals():
 
 def test_crunch_last_two_minutes_plans_a_rewind_landing_but_never_waits(dec):  # noqa: F811
     dec.cfg.defaults["league_overrides"] = dec.cfg.data["league_overrides"] = {}   # live behavior (decider.entry.crunch_now live)
+    # [D-01] the go-in-live exits need the fallback key (default false); this pins what that key brings back
+    dec.cfg.update({"decider": {"entry": {"allow_live_fallback": True, "crunch_now": "rewind"}}}, record=False)
     from redzone.decider.decider import Decision, State
     d = Decision(0, "switch", "b", "crunch time", State.WATCHING, kind="crunch")
     now = nsc("b", 70, crunch=True)

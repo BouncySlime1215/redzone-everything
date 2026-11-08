@@ -187,6 +187,14 @@ FROZEN_HOLD_S = 300.0        # after a frozen-wallclock stretch, distrust window
 LEARNED_MAX_S = 1800.0       # a learned restart further out than this is a broken reading
 # How long before play resumes the picture should come up: the line-up / set / faceoff circle.
 LEAD_S = {League.NFL: 6.0, League.NBA: 4.0, League.NHL: 5.0, League.MLB: 4.0}
+# [Nick 2026-11-08 landing bars] jump_mode.join: basketball may join mid-possession only in the walk up court right
+# after a shot, never into a transition play; football joins after the play, preferably after its replay.
+LANDING_DEFAULTS = {"after_shot": ["nba", "cbb"],   # leagues whose picture may come up in the walk up court after a shot
+                 "walk_s": 14.0,                 # the walk: the picture is up within this long after the shot/rebound
+                 "transition_s": 7.0,            # the next action this soon after the shot: a transition play, no landing
+                 "after_play_s": 18.0,           # football: prefer the picture up this long after the whistle (the replay)
+                 "walk_after_s": 1.0,            # the shot (or rebound) is stamped ~1 s before the ball is clear
+                 "walk_guard_s": 2.0}            # the next action's stamp can lead its start: the walk ends this far before it
 
 
 def _lg(league: League) -> League:
@@ -195,6 +203,40 @@ def _lg(league: League) -> League:
     if league.base == League.NFL:
         return League.NFL
     return league
+
+
+def join_cfg(cfg, key: str):
+    """[landing bars] jump_mode.join.<key>, or its default."""
+    v = cfg.get(f"jump_mode.join.{key}") if cfg is not None and hasattr(cfg, "get") else None
+    return LANDING_DEFAULTS[key] if v is None else v
+
+
+Walk = tuple[float, float, float, float]   # (walk_s, transition_s, walk_after_s, walk_guard_s)
+
+
+def walk_params(cfg, league: League) -> Walk | None:
+    """(walk_s, transition_s, walk_after_s, walk_guard_s) when this league's picture may come up in the walk after a shot, else None."""
+    if league.base != League.NBA or league.value not in (join_cfg(cfg, "after_shot") or []):
+        return None
+    return (float(join_cfg(cfg, "walk_s")), float(join_cfg(cfg, "transition_s")),
+            float(join_cfg(cfg, "walk_after_s")), float(join_cfg(cfg, "walk_guard_s")))
+
+
+def shot_kind(league: League, kind: str, text: str = "", ttext: str = "") -> str | None:
+    """Basketball: "made" / "miss" for a shot (a last free throw counts, earlier ones are dead balls),
+    "dreb" / "oreb" for a player rebound, else None."""
+    if league.base != League.NBA:
+        return None
+    k, t, tt = (kind or "").lower(), (text or "").lower(), (ttext or "").lower()
+    if "team_rebound" in k or "team rebound" in t or "timeout" in tt:
+        return None
+    if "rebound" in tt or "rebound" in k:
+        return "oreb" if "offensive" in tt or "offensive" in k else "dreb" if "defensive" in tt or "defensive" in k else None
+    if " makes " in f" {t} " or " made " in f" {t} ":
+        return "made"
+    if " misses " in f" {t} " or " missed " in f" {t} ":
+        return "miss"
+    return None
 
 
 def _strongest(a: str | None, b: str | None) -> str | None:
@@ -219,6 +261,7 @@ class Mark:
     clock: float | None = None
     period: int | None = None
     faceoff: bool = False
+    shot: str | None = None   # basketball: made / miss / dreb / oreb (shot_kind)
 
 
 @dataclass
@@ -283,6 +326,7 @@ class DeadTracker:
         # [EXP-211] the feed lag a landing assumes at least (decider.entry.lag_floor_s, set per plan by the
         # decider): until a game's lag is measured it reads 10 s, but NHL's real feed lag runs ~50 s.
         self.lag_floor = 0.0
+        self._walks: dict[Walk, list[Window]] = {}
 
     # ---- input
     def add(self, pid: str, lo: float, hi: float, kind: str, text: str, type_text: str,
@@ -306,12 +350,15 @@ class DeadTracker:
                     and last[1] is not None and abs(last[1] - clock) >= 5.0):
                 self.frozen_until = max(self.frozen_until, hi + FROZEN_HOLD_S)
             self._last_stamp = (lo, clock, period)
-        self.marks[pid] = Mark(pid, lo, hi, after, clock, period, faceoff=tt in ("face off", "faceoff"))
+        self.marks[pid] = Mark(pid, lo, hi, after, clock, period, faceoff=tt in ("face off", "faceoff"),
+                               shot=shot_kind(self.league, kind, text, type_text))
         self._sorted = self._windows = None
+        self._walks.clear()
         if len(self.marks) > 600:   # keep the recent past only
             for m in self._order()[:200]:
                 self.marks.pop(m.pid, None)
             self._sorted = None
+            self._walks.clear()
 
     def learn(self, at: float | None, entry_q) -> None:
         """Brain v3's (p10, p50, p90) seconds from the event stamped `at` until play resumes."""
@@ -455,8 +502,82 @@ class DeadTracker:
             return max(x, table)
         return x
 
-    def landing(self, x0: float, x1: float) -> Landing:
-        """What the screen shows across real times [x0, x1] (the arrival, give or take the delay doubt)."""
+    def walks(self, walk: Walk) -> list[Window]:
+        """[landing bars] Basketball: the walk up court after each made shot or defensive rebound, in real time. Each
+        window needs its next action in the data (or a fresh feed covering the whole window with none logged): a next
+        action inside transition_s makes it a transition play, and no window. Never a dead window: nothing may LEAVE on
+        one (dead_until and windows() don't see these)."""
+        ms = self._order()
+        cached = self._walks.get(walk)
+        if cached is None:
+            cached = self._walks[walk] = self._closed_walks(ms, walk)
+        tail = self._open_walk(ms, walk)
+        return cached if tail is None else cached + [tail]
+
+    def _walk_opener(self, ms: list[Mark], i: int) -> bool:
+        m = ms[i]
+        return m.shot in ("made", "dreb") and m.hi > self.frozen_until
+
+    def _next_action(self, ms: list[Mark], i: int) -> Mark | None:
+        """The next entry after ms[i] that ends the walk: substitutions and the like happen during it."""
+        for m in ms[i + 1:]:
+            if m.hi > ms[i].hi and m.after != "substitution":
+                return m
+        return None
+
+    def _closed_walks(self, ms: list[Mark], walk: Walk) -> list[Window]:
+        walk_s, transition_s, after_s, guard_s = walk
+        out: list[Window] = []
+        for i in range(len(ms)):
+            if not self._walk_opener(ms, i):
+                continue
+            nxt = self._next_action(ms, i)
+            if nxt is None:
+                continue               # the open tail: _open_walk (the data can't rule out a transition yet)
+            t = ms[i].hi
+            if nxt.lo - t < transition_s:
+                continue               # a transition play: never land here (the prior safe point instead)
+            start = t + after_s
+            end = min(t + walk_s, nxt.lo - guard_s)
+            if end > start:
+                out.append(Window(start, end, "walk", exact=True))
+        return out
+
+    def _open_walk(self, ms: list[Mark], walk: Walk) -> Window | None:
+        """The newest shot with nothing logged after it, only once the feed proves no action followed for the whole walk."""
+        walk_s, after_s = walk[0], walk[2]
+        i = len(ms) - 1
+        while i >= 0 and ms[i].after == "substitution":
+            i -= 1
+        if i < 0 or not self._walk_opener(ms, i):
+            return None
+        covered = self._covered()
+        t = ms[i].hi
+        if covered is None or covered < t + walk_s:
+            return None
+        return Window(t + after_s, t + walk_s, "walk", exact=True)
+
+    def entry_windows(self, walk: Walk | None = None) -> list[Window]:
+        """Every window a picture may come up in: the dead windows, plus the walks after shots when walk is given."""
+        ws = self.windows()
+        if not walk or _lg(self.league) != League.NBA:
+            return ws
+        return sorted([*ws, *self.walks(walk)], key=lambda w: w.start)
+
+    def landing(self, x0: float, x1: float, walk: Walk | None = None) -> Landing:
+        """What the screen shows across real times [x0, x1] (the arrival, give or take the delay doubt). walk: also
+        count the walk up court after a shot as a landing ("dead", kind "walk"): entries only, never a leave."""
+        got = self._landing(x0, x1)
+        if got.state != "dead" and walk and _lg(self.league) == League.NBA:
+            for w in reversed(self.walks(walk)):
+                if w.start > x0:
+                    continue
+                if x1 <= w.end:
+                    return Landing("dead", "walk", w.end, "the walk up court after a shot")
+                break
+        return got
+
+    def _landing(self, x0: float, x1: float) -> Landing:
         lg = _lg(self.league)
         if lg in (League.NFL, League.MLB):
             plen = PLAY_S[lg]
@@ -482,7 +603,8 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
                relaxed: float | None = None, cost_lo: float | None = None,
                urgent: float | None = None, lag: float = 0.0, possession: bool = False,
                stall: tuple[float, float] = (0.0, 0.0), unknown_ok: bool = True,
-               floor: float = 0.0) -> EntryPlan:
+               floor: float = 0.0, walk: Walk | None = None,
+               after_play_s: float = 0.0) -> EntryPlan:
     """How to come into this game: as is (the picture lands on a dead ball), with a short rewind so
     it lands on the dead ball just before the restart we'd otherwise join mid-play, or not yet.
 
@@ -508,7 +630,13 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
 
     floor: [EXP-024 conformal floor] no pass lands on less doubt than this (s): the centred, urgent and
     possession passes are raised to it, and an unknown landing never enters as is. The plan's `slack`
-    is scored either way, for calibration."""
+    is scored either way, for calibration.
+
+    walk: [landing bars] walk_params: basketball may also land in the walk up court after a shot, as is or
+    by a rewind to the nearest earlier safe point (a transition play is skipped, whichever safe point is soonest).
+
+    after_play_s: [landing bars] football: a landing this soon after the whistle would catch the replay's first seconds:
+    wait while a later landing in the same window still fits (a preference: it never blocks the only landing)."""
     if floor > 0:
         unknown_ok = False
         margin = max(margin, floor)
@@ -516,7 +644,12 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
         urgent = None if urgent is None else max(urgent, floor)
     plan = _plan_entry(dt, mu, margin, now, cost, can_rewind=can_rewind, step=step, max_back=max_back,
                        relaxed=relaxed, cost_lo=cost_lo, urgent=urgent, lag=lag, possession=possession,
-                       stall=stall, unknown_ok=unknown_ok, floor=floor)
+                       stall=stall, unknown_ok=unknown_ok, floor=floor, walk=walk)
+    if plan.ok and not plan.rewind_s and after_play_s > 0 and plan.landing is not None \
+            and plan.landing.state == "dead" and plan.landing.kind != "walk":
+        wait = settle_wait(dt, now + cost - mu, margin, after_play_s, plan.landing)
+        if wait > 0:
+            return EntryPlan(False, 0.0, plan.landing, f"waiting {wait:.0f}s for the replay ({plan.landing.why})")
     if plan.ok:
         x1 = now + cost - mu
         a = now + min(cost, cost if cost_lo is None else cost_lo) - mu - lag
@@ -526,6 +659,18 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
             a, x1 = a - k - shi, x1 - k - slo
         plan.slack = landing_slack(dt, a, x1)
     return plan
+
+
+def settle_wait(dt: DeadTracker, x1: float, margin: float, after_play_s: float, land: Landing) -> float:
+    """[landing bars] Seconds to hold a football landing that would come up in the replay after the whistle, if the
+    same dead window still has room for a landing after it; 0: go now (the preference never blocks the only landing)."""
+    for w in reversed(dt.windows()):
+        if w.start > x1:
+            continue
+        settled = w.start + after_play_s
+        until = w.end if w.end is not None else dt._open_until(w)
+        return max(0.0, settled - x1) if x1 < settled and settled + margin <= until else 0.0
+    return 0.0
 
 
 def landing_slack(dt: DeadTracker, a: float, b: float, cap: float = 60.0) -> float:
@@ -544,23 +689,23 @@ def landing_slack(dt: DeadTracker, a: float, b: float, cap: float = 60.0) -> flo
 def _plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: float, *,
                 can_rewind: bool, step: float, max_back: float, relaxed: float | None, cost_lo: float | None,
                 urgent: float | None, lag: float, possession: bool, stall: tuple[float, float],
-                unknown_ok: bool, floor: float) -> EntryPlan:
+                unknown_ok: bool, floor: float, walk: Walk | None = None) -> EntryPlan:
     x1 = now + cost - mu
     x00 = now + min(cost, cost if cost_lo is None else cost_lo) - mu
 
     def lo(m: float) -> float:              # the early edge for margin m, widened to cover the landing lag
         return x00 - max(0.0, lag - m)
     x0 = lo(margin)
-    here = dt.landing(x0 - margin, x1 + margin)
+    here = dt.landing(x0 - margin, x1 + margin, walk=walk)
     if here.state == "dead" or (here.state == "unknown" and not can_rewind and unknown_ok):
         # Football/baseball with no play known to be on screen: the leave gate's own rule.
         return EntryPlan(True, 0.0, here, here.why)
-    strict = _rewind(dt, x0, x1, margin, step, max_back, stall) if can_rewind else None
+    strict = _rewind(dt, x0, x1, margin, step, max_back, stall, walk) if can_rewind else None
     if relaxed is not None and relaxed < margin:
-        soft = dt.landing(lo(relaxed) - relaxed, x1 + relaxed)
+        soft = dt.landing(lo(relaxed) - relaxed, x1 + relaxed, walk=walk)
         if soft.state == "dead" and (strict is None or strict.rewind_s > step + stall[1]):
             return EntryPlan(True, 0.0, soft, soft.why + " (centred)")
-        loose = _rewind(dt, lo(relaxed), x1, relaxed, step, max_back, stall) if can_rewind else None
+        loose = _rewind(dt, lo(relaxed), x1, relaxed, step, max_back, stall, walk) if can_rewind else None
         # The full margin wins unless it costs more than one extra seek step.
         if loose is not None and (strict is None or strict.rewind_s > loose.rewind_s + step):
             loose.why += " (centred)"
@@ -570,15 +715,15 @@ def _plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: flo
     if urgent is not None and urgent < min(margin, relaxed if relaxed is not None else margin):
         # Crunch time / your team: every second waiting is a play missed. Take the dead ball the
         # data puts the landing on even if the delay's doubt can't rule out a few seconds' error.
-        last = dt.landing(lo(urgent) - urgent, x1 + urgent)
+        last = dt.landing(lo(urgent) - urgent, x1 + urgent, walk=walk)
         if last.state == "dead":
             return EntryPlan(True, 0.0, last, last.why + " (urgent)")
-        quick = _rewind(dt, lo(urgent), x1, urgent, step, max_back, stall) if can_rewind else None
+        quick = _rewind(dt, lo(urgent), x1, urgent, step, max_back, stall, walk) if can_rewind else None
         if quick is not None:
             quick.why += " (urgent)"
             return quick
     if possession and can_rewind:
-        cue = _rewind(dt, lo(floor), x1, floor, step, max_back, stall)
+        cue = _rewind(dt, lo(floor), x1, floor, step, max_back, stall, walk)
         if cue is not None:
             cue.why += " (possession start)"
             return cue
@@ -588,14 +733,14 @@ def _plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: flo
 
 
 def _rewind(dt: DeadTracker, x0: float, x1: float, m: float, step: float, max_back: float,
-            stall: tuple[float, float] = (0.0, 0.0)) -> EntryPlan | None:
+            stall: tuple[float, float] = (0.0, 0.0), walk: Walk | None = None) -> EntryPlan | None:
     """The shortest rewind k (whole seek steps) that puts all of [x0 - k - stall, x1 - k - stall] on a
     dead ball, doubt m. [seek model] each seek also stalls the picture stall[0]..stall[1] s, which lands
     it that much further behind: the plan holds the whole range and rewind_s is k + the mid stall."""
     slo, shi = stall
     if max_back < step:
         return None
-    for w in reversed(dt.windows()):
+    for w in reversed(dt.entry_windows(walk)):
         if w.start > x1:
             continue
         until = w.end if w.end is not None else dt._open_until(w)
@@ -607,7 +752,7 @@ def _rewind(dt: DeadTracker, x0: float, x1: float, m: float, step: float, max_ba
             break
         if x0 - k - shi - m < w.start:
             continue
-        land = dt.landing(x0 - k - shi - m, x1 - k - slo + m)
+        land = dt.landing(x0 - k - shi - m, x1 - k - slo + m, walk=walk)
         if land.state != "dead":
             continue
         back = k + (slo + shi) / 2

@@ -28,7 +28,7 @@ from redzone.decider.cuts import DeadTracker
 
 BJ_DEFAULTS = {
     "enabled": False,
-    "leagues": ["nfl", "cfb", "nba", "cbb", "wcbb"],   # every entry has a wallclock; basketball's dead balls are fouls,
+    "leagues": ["nfl", "cfb", "nba", "cbb"],   # every entry has a wallclock; basketball's dead balls are fouls,
                                  # free throws, timeouts, violations, reviews, period ends (cuts.after_kind)
     "behind_s": 75.0,            # scrub depth asked of each fresh tune (join landing 16.8 k + 28.5: k=3 -> ~79 s)
     "min_behind_s": 45.0,        # a stick less behind than this (read off the label) is not a buffered picture
@@ -64,6 +64,7 @@ class Pic:
     mu: float          # screen delay: live edge + behind live (label read)
     sigma: float       # its doubt (1 sd)
     gid: str = ""
+    walk: tuple | None = None   # [landing bars] cuts.walk_params: basketball may land in the walk after a shot
 
 
 @dataclass
@@ -98,6 +99,8 @@ def lands(p: Pic, now: float, flip_fast: float, flip: float, lead_min: float, k:
     x0 = now + flip_fast - p.mu - m
     x1 = now + flip + lead_min - p.mu + m
     ok = p.dt.landing(x0, x1).state == "dead"
+    if not ok and p.walk:   # [landing bars] the walk up court after a shot: no line-up to reach, so no lead_min
+        ok = p.dt.landing(x0, x1 - lead_min, walk=p.walk).state == "dead"
     return ok, next_snap_in(p, now + flip)
 
 
@@ -114,7 +117,7 @@ def cut_now(v: Pic, h: Pic, now: float, cfg=None, plays_seen: int = 0) -> Cut:
     if not ok:
         return Cut(False, "lands_live", info)
     long_dead = here >= float(cfg_get(cfg, "long_dead_s"))
-    if long_dead and h_snap + flip < here:
+    if long_dead and h_snap + flip < here and h_snap < float(cfg_get(cfg, "long_dead_s")):
         return Cut(True, "long_dead", info)   # V is in a break and H snaps sooner (never from one break into another)
     if plays_seen < int(cfg_get(cfg, "min_plays")):
         return Cut(False, "min_plays", info)
@@ -128,8 +131,9 @@ def cut_now(v: Pic, h: Pic, now: float, cfg=None, plays_seen: int = 0) -> Cut:
 
 
 def _closed_window(p: Pic, x: float):
-    """The dead window covering real time x if the data already logged its restart (the snap), else None."""
-    for w in reversed(p.dt.windows()):
+    """The dead window (or, with p.walk, the walk after a shot) covering real time x if the data already logged its
+    restart (the snap), else None."""
+    for w in reversed(p.dt.entry_windows(p.walk)):
         if w.start > x:
             continue
         return w if w.end is not None and w.end > x else None
@@ -150,8 +154,16 @@ def park_in(h: Pic, now: float, cfg=None) -> float | None:
     w = _closed_window(h, x)
     if w is None:
         return None
-    wait = (w.end - park_lead_s(h, cfg)) - x
     m = _m(h, float(cfg_get(cfg, "margin_sigmas")))
+    if w.kind == "walk":
+        # the latest pause the whole doubt band and the flip still fit inside the walk (no line-up lead to keep)
+        flip, fast = float(cfg_get(cfg, "flip_s")), float(cfg_get(cfg, "flip_fast_s"))
+        pause_at = w.end - flip - m
+        if pause_at + fast - m < w.start:
+            return None
+        wait = pause_at - x
+        return wait if wait >= -0.5 else None
+    wait = (w.end - park_lead_s(h, cfg)) - x
     if w.end - park_lead_s(h, cfg) < w.start + m:
         return None   # the window is too short to park inside it with the margin
     return wait if wait >= -0.5 else None
@@ -160,7 +172,7 @@ def park_in(h: Pic, now: float, cfg=None) -> float | None:
 def frozen(h: Pic, now: float, paused_at: float) -> Pic:
     """The hidden stick paused at wall time paused_at: its picture stopped at paused_at - mu, so right now it runs
     mu + (now - paused_at) behind real life (PLAY rolls it on from there)."""
-    return Pic(h.dt, h.mu + max(0.0, now - paused_at), h.sigma, h.gid)
+    return Pic(h.dt, h.mu + max(0.0, now - paused_at), h.sigma, h.gid, h.walk)
 
 
 def cut_parked(v: Pic, h_parked: Pic, now: float, cfg=None, plays_seen: int = 0) -> Cut:

@@ -111,6 +111,7 @@ def test_already_held_stream_is_not_counted_twice():
 
 def test_stay_leave_rows_carry_context_and_adaptive_terms(engine, tmp_path, monkeypatch):  # noqa: F811
     _live(engine)
+    engine.decider.cfg.update({"decider": {"entry": {"allow_live_fallback": True}}}, record=False)   # [D-01] _live has no play-by-play
     monkeypatch.setattr(engine.control, "submit", lambda *a, **k: None)
     engine.buffer_shadow.log_path = tmp_path / "s.jsonl"
     for _ in range(3):
@@ -130,9 +131,9 @@ def test_stay_leave_rows_carry_context_and_adaptive_terms(engine, tmp_path, monk
         assert r["floor_s"] <= r["behind_adaptive_s"] <= r["cap_s"] == 90
 
 
-def test_editor_times_its_first_pick_live_decider_untouched(engine):  # noqa: F811
+def test_editor_and_live_decider_both_time_their_first_pick(engine):  # noqa: F811
     assert engine.buffer_shadow.editor.cfg.get("decider.entry.start_timed") is True
-    assert engine.decider.cfg.get("decider.entry.start_timed") is False
+    assert engine.decider.cfg.get("decider.entry.start_timed") is True   # [D-02] on everywhere since Nov 8
 
 
 def test_a_switch_away_is_logged_as_a_leave_of_the_old_game(tmp_path):
