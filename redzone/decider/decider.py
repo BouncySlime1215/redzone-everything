@@ -34,7 +34,7 @@ from typing import Callable
 
 from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S, PLAY_LEN_S, DelayBook, Event, Gate,
                                     Timeline, break_on_arrival, catchable, final_play_aired, leave_gate,
-                                    leave_window, resume_lead, resume_play)
+                                    leave_window, resume_lead, resume_play, STALE_DATA_S)
 from redzone.decider.cuts import EntryPlan, plan_entry
 from redzone.decider import buffered as bj
 from redzone.decider.playbooks import Safety
