@@ -1889,10 +1889,16 @@ class Engine:
         next LOGGED snap (redzone/decider/buffered.park_in); a park older than park_max_age_s is rolled and parks
         again. The next dead ball on screen flips to it (Decider._buffered_jump)."""
         dec, ctl = self.decider, self.control
-        if not dec.buffered_on() or not bj.cfg_get(self.cfg, "park") or not ctl.two_stick or dec.replaying:
+        if not dec.buffered_on() or not ctl.two_stick or dec.replaying:
             return
         target = ctl.standby[0]
         if not target:
+            return
+        # [bootstrap, overseer Nov 8 21:47] sticks tuned before the flag went on are never scrubbed: re-tune + scrub
+        # the hidden one; and a standby stuck not-ready with nothing running is let go for the rotation's next pick
+        if ctl.drop_stuck_standby(target, float(bj.cfg_get(self.cfg, "stuck_s"))) or ctl.buffer_standby(target):
+            return
+        if not bj.cfg_get(self.cfg, "park"):
             return
         if ctl.snap_parked(target) is not None:
             ctl.snap_park_expire()

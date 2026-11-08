@@ -281,6 +281,7 @@ class Controller:
         self._preloading: tuple[str, str | None] | None = None   # (target, replay_id) being loaded
         self._last_preload = 0.0
         self._failed: dict[str, float] = {}      # target -> don't preload before
+        self._stuck_since: tuple[str, float] | None = None   # [buffered jump] standby not ready, nothing running
         self._repaused: dict[tuple[str, str], list[float]] = {}   # [APP-04] (host, target) -> STK-05 drop times
         self.on_preload_fail: Callable[..., None] | None = None   # (target, detail, host=): teach discovery
         # Discovery's per-stick answer (host, target) -> bool: one stick can be signed out of an
@@ -3691,6 +3692,43 @@ class Controller:
                 steps["other_stick"] = other_visible
             steps["hold"] = hold_visible
             return await self.ladder.descend(main.host, target, steps, from_rung, why)
+
+    def buffer_standby(self, target: str) -> bool:
+        """[buffered jump bootstrap, overseer Nov 8 21:47] A ready hidden stick on `target` that was tuned before the flag
+        went on (never scrubbed) is re-tuned and scrubbed off screen, so the next flip puts a buffered picture on screen.
+        True = started. Never touches the stick on screen."""
+        hid = self.hidden
+        if not self._buffered_jump() or hid is None or self.hidden_target != target or not self.hidden_ready \
+                or self.parked is not None or hid.scrubbed(target) is not None or self._busy() or self._flipping:
+            return False
+        if not self._scrub_wanted(target) or time.time() < self._scrub_backoff.get(target, 0.0):
+            return False
+        log.info("buffered jump: %s on the hidden stick %s isn't scrubbed: re-tune + scrub", target, hid.host)
+        self._set_hidden(target, False)
+        self._preloading = (target, None)
+        self._preload_task = asyncio.create_task(self._rescrub(hid, target))
+        return True
+
+    def drop_stuck_standby(self, target: str, stuck_s: float) -> bool:
+        """[buffered jump, overseer Nov 8 21:47: 'MIA @ ND' sat not-ready 10+ min] A hidden stick that has held `target`
+        not ready, with nothing running on it, for stuck_s is let go (no key pressed) and the target backs off, so the
+        rotation's next pick (a code channel first) is tuned instead. True = dropped."""
+        if self.hidden_target != target or self.hidden_ready or self._busy() or self._flipping:
+            self._stuck_since = None
+            return False
+        now = time.time()
+        if self._stuck_since is None or self._stuck_since[0] != target:
+            self._stuck_since = (target, now)
+            return False
+        if now - self._stuck_since[1] < stuck_s:
+            return False
+        log.info("buffered jump: standby %s not ready for %.0f s with nothing running: dropped", target,
+                 now - self._stuck_since[1])
+        self._stuck_since = None
+        self._set_hidden(None, False)
+        self._failed[target] = now + PRELOAD_BACKOFF_S
+        self._last_preload = 0.0
+        return True
 
     def label_stale(self, target: str) -> bool:
         """[scrub entry] The delay model says this target's label reading went stale (stalls widened it, #376

@@ -259,3 +259,46 @@ def test_control_parks_rolls_and_counts_the_pause(cfg, tmp_path, monkeypatch):
         async with c._lock:
             assert not await c._snap_roll(hid, target)
     asyncio.run(go())
+
+
+def test_bootstrap_flips_from_a_live_edge_screen_onto_the_buffered_standby(cfg, clock):
+    """[overseer Nov 8 21:47] the screen's stick was tuned before the flag: it is never scrubbed, so the first cut goes
+    from the live-edge picture onto the buffered hidden stick (jump mode's leave gate), and both are buffered after."""
+    dec, delays = setup(cfg, clock)
+    scene(dec, clock)                       # b: buffered, its snap ~12 s after the picture would come up
+    delays.set_behind("youtubetv:a", 0.0)   # a: at the live edge
+    delays.held.pop("youtubetv:a")
+    x = clock.t - EDGE                      # what a's live-edge picture shows: a dead ball there too
+    whistle(dec.timelines["a"], "a3", x - 15)
+    whistle(dec.timelines["a"], "a4", x + 50)
+    d = dec.decide(cands(a=60, b=50))
+    assert d.kind == "jump" and d.target == "b" and d.jump["why"] == "bj_bootstrap", (d.reason, dict(dec.jump_holds))
+
+
+def test_control_rescrubs_an_unscrubbed_standby_and_lets_a_stuck_one_go(cfg, tmp_path, monkeypatch):
+    import asyncio
+
+    from tests.test_control import ChannelMap, FakeStick, ctl
+
+    cfg.update({"mode": {"dry_run": False}, "jump_mode": {"enabled": True}, "buffered_jump": {"enabled": True}})
+    c = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    c.sticks = [FakeStick("a:5555"), FakeStick("b:5555")]
+    c.hdmi = {"a:5555": "HDMI1", "b:5555": "HDMI2"}
+    c.scrub_of = lambda t: True
+    started = []
+
+    async def rescrub(hid, target):
+        started.append(target)
+    monkeypatch.setattr(c, "_rescrub", rescrub)
+
+    async def go():
+        c._set_hidden("youtubetv:fox", True)          # tuned at the live edge before the flag: never scrubbed
+        assert c.buffer_standby("youtubetv:fox") and not c.hidden_ready
+        await c._preload_task
+        assert started == ["youtubetv:fox"]
+        c._set_hidden("youtubetv:nbc", False)          # stuck not ready, nothing running
+        assert not c.drop_stuck_standby("youtubetv:nbc", 0.05)
+        await asyncio.sleep(0.1)
+        assert c.drop_stuck_standby("youtubetv:nbc", 0.05)
+        assert c.hidden_target is None and not c.can_tune("youtubetv:nbc")
+    asyncio.run(go())

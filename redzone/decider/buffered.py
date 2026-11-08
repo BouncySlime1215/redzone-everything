@@ -44,6 +44,7 @@ BJ_DEFAULTS = {
     "rotate_every_s": 600.0,     # the hidden stick re-tunes to another game after the pair has been on this long
     "rotate_dead_s": 120.0,       # ...or right away when its game's next snap is this far off (a break)
     "park_guard_s": 1.5,         # cuts.landing calls a play on screen from 1 s before its snap: park a little earlier
+    "stuck_s": 60.0,             # a standby not ready (nothing running on it) this long is let go for the next pick
     "prep_s": 60.0,              # tune + scrub + label read before a re-tuned hidden stick is ready (sim only)
 }
 

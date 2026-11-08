@@ -47,7 +47,7 @@ def bj_summary(since: float, minutes: float) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["on", "off", "watch", "report"])
-    ap.add_argument("--port", type=int, default=8777)
+    ap.add_argument("--port", type=int, default=None, help="the app's port (default: server.port in data/config.yaml, else 8778)")
     ap.add_argument("--eager", action="store_true", help="on: cut at every shared dead ball")
     ap.add_argument("--since-min", type=float, default=None)
     a = ap.parse_args()

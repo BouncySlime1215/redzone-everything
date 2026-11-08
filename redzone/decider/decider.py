@@ -2438,13 +2438,31 @@ class Decider:
         """The editor's call: a jump Decision, False (holds; counted as bj_<why>) or None (not both buffered: jump
         mode's own rules decide)."""
         v = self._bj_pic(self.current or "", cur, now)
-        if v is None:
-            self.jump_holds["bj_screen_not_buffered"] += 1
-            return None
         ready = self.standby_ready
         hs = [(gid, x) for gid, x in self._jump_pool(cands).items()
               if gid != self.current and (ready is None or ready(x.target))]
         pics = [(gid, p) for gid, x in hs if (p := self._bj_pic(gid, x, now)) is not None]
+        if v is None:
+            # [bootstrap, overseer Nov 8 21:47] the screen's stick was tuned at the live edge (before the flag, or a failed
+            # scrub): once the hidden stick holds a buffered game, go there at the next safe dead ball (jump mode's own
+            # leave gate; the landing on the buffered picture), and from then on both pictures are buffered
+            self.jump_holds["bj_screen_not_buffered"] += 1
+            g = self._jump_gate(cur, now) if pics else None
+            for gid, p in pics:
+                at = self.snap_parked(cands[gid].target) if self.snap_parked is not None else None
+                hp = bj.frozen(p, now, at) if at is not None else p
+                ok, h_snap = bj.lands(hp, now, float(bj.cfg_get(self.cfg, "flip_fast_s")),
+                                      float(bj.cfg_get(self.cfg, "flip_s")), float(bj.cfg_get(self.cfg, "lead_min_s")),
+                                      float(bj.cfg_get(self.cfg, "margin_sigmas")))
+                if g is not None and g.safe and ok:
+                    info = {"why": "bj_bootstrap", "buffered": True, "h_snap_s": round(h_snap, 1),
+                            "behind_s": round(self.delays.get(cands[gid].target).behind, 1), "here_behind_s": 0.0,
+                            "gate": g.why, "holds": dict(self.jump_holds), "snap": False, "big": False,
+                            "cost_s": float(bj.cfg_get(self.cfg, "flip_s")), "held_s": round(now - self.since, 1)}
+                    self.jump_holds = Counter()
+                    return Decision(now, "switch", gid, f"jump: onto the buffered picture -> {self._short_gid(gid)}",
+                                    State.WATCHING, g.why, kind="jump", jump=info)
+            return None
         if not pics:
             self.jump_holds["bj_standby_not_buffered" if hs else "bj_standby_not_ready"] += 1
             return None if hs else False
