@@ -1378,3 +1378,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   unchanged, false). On: the engine re-reads `tuners.yttv_local_search` every decide tick, so a POST /api/settings
   change or Undo applies within ~0.5 s with no service restart (a tune in flight keeps its ref). Reason: turning the
   locals flag on for RC6.3.1 needed a restart mid-game-day (overseer suggestion b). PR #412.
+- 2026-11-07 19:05 ET (overseer, first live jump row 18:55: ALA@LSU -> ORE@OSU on CBS 17 tuned on the spot by search,
+  30 s, lost the dead ball; the standby sat empty): **new `jump_mode.ready_only` true** (with two sticks a jump goes
+  only onto the hidden stick's ready game; otherwise it waits for the standby and jumps at the next dead ball) and
+  **`jump_mode.search_penalty` 20** (the standby prefers code channels, ~3-4 s, over locals by search, ~11-15 s,
+  unless the local's moment is that much bigger). The standby pick also skips targets the hidden stick can't tune
+  now (a failed tune's backoff), which had kept it empty. jump_mode.enabled itself unchanged (Nick's live setting).
