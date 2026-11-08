@@ -57,6 +57,14 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-03: **$0 budget; never enter passwords or tokens.** Nick adds secrets himself.
 - 2026-11-02: **No build until he says "build" or "go".** "Lock in" means plan harder.
 
+- 2026-11-08 (Nick, "build a layer of fixes and safeguards", "proper mapping and coordination rules"): agents
+  default to 3 builders + 1 verifier (5 only for independent cards), claim files first (scripts/claims.py, CI),
+  and hard rules move from prose to enforcement: .claude/hooks/guard.py G1-G7 (secrets, branches, hardware,
+  heavy jobs, deploy, protected paths, Peacock). Reason: research (docs/research/2026-11-08/agents/) shows
+  rule files are advice, review capacity caps useful parallelism, one writer per file keeps facts.
+- 2026-11-08: every explicit state-machine move needs a why and is saved to data/transitions.jsonl
+  (redzone/fsm.py); tests fail on a move without a why or an undeclared edge, production logs it.
+
 ## Gates and quality
 
 - 2026-11-04 11:00 AM: **The replay window is 2-3 MINUTES max, not 10.** North Star `big_seen_10min` becomes `big_seen_3min` (live or replayed within 3 min, >= 99%), plus a stretch row `big_seen_2min`; `your_team_big` counts replays within 3 min. Graded on dev and locked, live and candidate (`backtest.CATCHUP_3_S`/`CATCHUP_2_S`). Product: the reel/replay queue (T2-T4 collision replays) targets the very next dead window; a replay that can't air within 3 min is skipped or folded into a later montage; clairvoyance and possession-start entry are the main way to see moments LIVE.

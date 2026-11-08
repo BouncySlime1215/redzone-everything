@@ -12,6 +12,7 @@ Short, do-this-now steps. Each one links to the full doc. Run everything from th
 | Set up TV-side input switching | [tv-setup.md](tv-setup.md) |
 | A stick looks offline | [stick-offline.md](stick-offline.md) |
 | Weekly usage is near the cap | [usage-pause.md](usage-pause.md) |
+| Why did it do that? (any time, any setting) | [why.md](why.md) |
 
 ## Memory hook
 

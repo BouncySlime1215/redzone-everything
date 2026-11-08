@@ -71,6 +71,20 @@ jobs:
           else
             python scripts/check_memory.py
           fi
+      - name: state machine doc is current
+        # redzone/machines/ specs -> docs/state-machines.md (stdlib only, no install needed).
+        run: python scripts/state_machines.py --check
+      - name: no edits inside another agent's open claim
+        # docs/coordination.md "Claims": one writer per file across parallel agents.
+        if: ${{ github.base_ref != '' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python scripts/claims.py check --base "origin/$BASE_REF"
+      - name: every commit says why
+        if: ${{ github.base_ref != '' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python scripts/commit_why.py --base "origin/$BASE_REF"
 
   graders:
     # docs/grading.md: graders are frozen by the integrator (G1), experiments are pre-registered (G2)
