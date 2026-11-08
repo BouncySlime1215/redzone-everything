@@ -395,6 +395,9 @@ jump_mode:                 # [Nick Nov 7 12:52, "should be 4-5 switches every mi
   rotate_per_min: 6        # value points per minute since the rotation last left a game (fairness), capped at
   rotate_cap_s: 300
   standby_margin: 8        # the hidden stick keeps its game unless another one beats it by this much
+  ready_only: true         # [overseer Nov 7 18:55] jump only onto the hidden stick's READY game; else wait for the
+                           # standby to finish and jump at the next dead ball (two sticks only)
+  search_penalty: 20       # standby pick: value points off a local reached by search (~11-15 s vs ~3-4 s by code)
   margin_sigmas: 2         # delay doubt each side of a leave / landing, in sigmas (2 = every other entry's rule)
   flip_s: 3.2              # the input flip to the ready standby: a leave's dead window must outlast it
   land_dead_s: 2           # the target stays dead at least this long after its picture comes up

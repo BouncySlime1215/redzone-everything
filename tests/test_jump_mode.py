@@ -161,3 +161,33 @@ def test_three_game_slate_rotates_and_never_joins_mid_play(cfg, clock):
     assert len(jumps) / 10 >= 1.2, len(jumps)
     assert {d.target for d in jumps} == {"a", "b", "c"}
     assert all(d.jump["why"] and "holds" in d.jump for d in jumps)
+
+
+def test_jumps_only_onto_the_ready_standby(cfg, clock):
+    """[overseer Nov 7 18:55] The first live jump tuned a search local on the spot (30 s) and lost the dead ball:
+    with two sticks a jump goes only to the game the hidden stick already plays; none ready = wait."""
+    dec = setup(cfg, clock)
+    t0 = clock.t
+    play(dec, "a", t0 + 10)
+    play(dec, "a", t0 + 40)
+    play(dec, "b", t0 + 50)
+    play(dec, "c", t0 + 52)
+    clock.t = t0 + 100
+    fresh(dec, clock)
+    dec.standby_ready = lambda target: False
+    d = dec.decide(cands(a=70, b=50, c=40))
+    assert d.kind != "jump" and dec.jump_holds["standby_not_ready"] == 1
+    dec.standby_ready = lambda target: target == "youtubetv:c"
+    d = dec.decide(cands(a=70, b=50, c=40))
+    assert d.kind == "jump" and d.target == "c"   # b scores higher but isn't on the hidden stick
+
+
+def test_standby_pick_skips_untunable_and_prefers_code_channels(cfg, clock):
+    dec = setup(cfg, clock)
+    dec.jump_left_at = {"b": clock.t - 300, "c": clock.t - 300}
+    # b (55) failed its last tune: the standby goes to c rather than sitting empty
+    assert dec.jump_next(cands(a=70, b=55, c=45), tunable=lambda t: t != "youtubetv:b") == "c"
+    # b is a local by search (~11-15 s): c by code wins unless b's moment is search_penalty (20) bigger
+    dec.slow_tune = lambda t: t == "youtubetv:b"
+    assert dec.jump_next(cands(a=70, b=55, c=45)) == "c"
+    assert dec.jump_next(cands(a=70, b=70, c=45)) == "b"
