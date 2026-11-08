@@ -302,3 +302,41 @@ def test_control_rescrubs_an_unscrubbed_standby_and_lets_a_stuck_one_go(cfg, tmp
         assert c.drop_stuck_standby("youtubetv:nbc", 0.05)
         assert c.hidden_target is None and not c.can_tune("youtubetv:nbc")
     asyncio.run(go())
+
+
+def test_scrub_waits_for_the_tune_banner_and_a_banner_miss_retries_soon(cfg, tmp_path, monkeypatch):
+    """[overseer Nov 8 21:55] 'focus guard: no scrub label after the LEFT' (62 s) = keys sent while YouTube TV's post-tune
+    banner was up: the first key waits scrub_after_tune_s after the tune played, and that miss backs off 30 s, not 120."""
+    import asyncio
+    import time as _t
+
+    from tests.test_control import ChannelMap, FakeStick, ctl
+
+    cfg.update({"mode": {"dry_run": False}, "timing": {"behind_live_s": {"scrub_after_tune_s": 0.4}}})
+    c = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    c.sticks = [FakeStick("a:5555"), FakeStick("b:5555")]
+    c.hdmi = {"a:5555": "HDMI1", "b:5555": "HDMI2"}
+    hid = c.hidden
+    seen = {}
+
+    class R:
+        ok, behind_s, presses, committed, reason = False, None, 0, False, "focus guard: no scrub label after the LEFT"
+
+    async def enter_buffer(stick, seconds, **kw):
+        seen["after"] = _t.time() - c._played_at[stick.host]
+        return R()
+    import redzone.tuners.yttv_seek as ys
+    monkeypatch.setattr(ys, "enter_buffer", enter_buffer)
+
+    async def tune(stick, target, may_cut=None):
+        from redzone.tuners.tuners import TuneResult
+        return TuneResult(True, target, 0.01, ["playing"], "")
+    monkeypatch.setattr(c, "_tune", tune)
+
+    async def go():
+        c._set_hidden("youtubetv:secn", False)
+        c._played_at[hid.host] = _t.time()
+        assert not await c._scrub_into(hid, "youtubetv:secn", 75.0)
+    asyncio.run(go())
+    assert seen["after"] >= 0.4
+    assert 25 <= c._scrub_backoff["youtubetv:secn"] - _t.time() <= 31

@@ -282,6 +282,7 @@ class Controller:
         self._last_preload = 0.0
         self._failed: dict[str, float] = {}      # target -> don't preload before
         self._stuck_since: tuple[str, float] | None = None   # [buffered jump] standby not ready, nothing running
+        self._played_at: dict[str, float] = {}   # host -> when its last tune reported playing
         self._repaused: dict[tuple[str, str], list[float]] = {}   # [APP-04] (host, target) -> STK-05 drop times
         self.on_preload_fail: Callable[..., None] | None = None   # (target, detail, host=): teach discovery
         # Discovery's per-stick answer (host, target) -> bool: one stick can be signed out of an
@@ -1529,6 +1530,7 @@ class Controller:
             # target isn't cooled down or marked unplayable for a stick fault.
             res.error = f"{STICK_HUNG}: {res.error}"
         if res.ok:
+            self._played_at[stick.host] = time.time()   # [scrub entry] the post-tune banner clock starts here
             self._set_held(target, 0.0)   # a fresh tune plays from the live edge
             # A Prime multiview tile switch is ~1 s, not a ~32 s tune: never let it into Prime's median.
             self.latency.record("prime_tile" if res.path == "tile" else app, res.took)
@@ -3273,6 +3275,15 @@ class Controller:
                 self.label_probe = LabelProbe(self.cfg)
             except Exception:
                 log.exception("buffered jump: no label probe")
+        # [overseer Nov 8 21:55] YouTube TV's LIVE/title banner sits up to ~30 s after a tune and swallows the overlay keys
+        # ('focus guard: no scrub label after the LEFT', 62 s): let it clear before the first key (stick tests waited)
+        settle = float(self.cfg.get("timing.behind_live_s.scrub_after_tune_s", 22.0)) \
+            - (time.time() - self._played_at.get(stick.host, 0.0))
+        while settle > 0:
+            if not still_hidden():
+                return False   # flipped to or replaced while the banner cleared: no key was pressed
+            await asyncio.sleep(min(0.25, settle))
+            settle -= 0.25
         res, why = None, ""
         if time.time() < self._scrub_backoff.get(target, 0.0):
             why = "backoff after a failed scrub"
@@ -3331,7 +3342,11 @@ class Controller:
         self._buffer_log("scrub_failed", target, stick.host, 0.0, None, took=took, why=why[:120])
         log.warning("scrub: %s on %s failed (%s): fail closed", target, stick.host, why)
         if not why.startswith("backoff"):
-            self._scrub_backoff[target] = time.time() + float(self.cfg.get("timing.behind_live_s.scrub_retry_s", 120.0))
+            # a banner / focus miss says nothing about the channel: retry it soon, not after the full backoff
+            banner = why.startswith("focus guard")
+            self._scrub_backoff[target] = time.time() + float(self.cfg.get(
+                "timing.behind_live_s.scrub_banner_retry_s" if banner else "timing.behind_live_s.scrub_retry_s",
+                30.0 if banner else 120.0))
         if not still_hidden() and self.hidden is not stick:
             return False   # it's on screen (or gone): never pressed or re-tuned from here
         self._set_held(target, 0.0)

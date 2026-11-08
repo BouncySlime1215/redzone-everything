@@ -748,6 +748,9 @@ timing:
                            # the hold above for that league). Nick flips it himself (scripts/rc8_flip.py); the
                            # pre-registered gate (docs/plans/2026-11-05-rc8-buffer-gate.md) is reported per league
                            # by scripts/rc8_gate_report.py. Ships false everywhere. Code: redzone/buffer_rc8.py
+    scrub_after_tune_s: 22 # [overseer Nov 8 21:55] the first overlay key waits this long after a tune reports playing:
+                           # YouTube TV's LIVE/title banner (up to ~30 s) swallows the keys ('no scrub label', 62 s)
+    scrub_banner_retry_s: 30   # a scrub that failed on the banner / focus guard is retried after this (others: scrub_retry_s)
     label_reader: false    # [YTTV scrub buffer item 2, Nick Nov 6 10:15 PM] read YouTube TV's overlay time label (screencap ->
                            # local OCR -> numbers; the frame is deleted at once, never kept) as the behind-live truth
                            # meter after a scrub seek (media_session lies after a seek). Code: redzone/tuners/yttv_label.py

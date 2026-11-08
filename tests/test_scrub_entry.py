@@ -39,7 +39,7 @@ class CrawlStick(FakeStick):
 def scrub(two, monkeypatch):   # noqa: F811
     c, tuner = two
     c.cfg.update({"timing": {"behind_live_s": {"enabled": True, "max_s": 90, "apps": ["youtubetv"],
-                                               "scrub_entry": True}}})
+                                               "scrub_entry": True, "scrub_after_tune_s": 0}}})
     c.cfg.defaults.setdefault("yttv_seek", {"enabled": False})   # item 1's flag (its default lands with its PR)
     c.cfg.update({"yttv_seek": {"enabled": True}})
     hid = CrawlStick("b:5555", display=c.sticks[0].display, hdmi="HDMI2")

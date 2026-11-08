@@ -1247,3 +1247,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   and every dead ball on screen flips to it (PLAY rolls the snap; the pause joins its behind-live). Rule #1 kept at the
   2-sigma margin. Sim on 37 NFL slates: 0.8 cuts/min, 1.35 plays/min shown (one game 0.79), 0 mid-play; 5/min only
   huddle to huddle (`park: false, eager: true`). Stick test: scripts/buffered_jump_try.py. PR claude/buffered-jump.
+- 2026-11-08 (overseer 21:55 ET, 3778a401 live: 'scrub_failed youtubetv:secn ... focus guard: no scrub label after the
+  LEFT', 62 s, then a 10-min supervisor backoff): **new `timing.behind_live_s.scrub_after_tune_s: 22`** (the first
+  overlay key of a scrub entry waits that long after the tune played: YouTube TV's post-tune banner swallows keys) and
+  **`scrub_banner_retry_s: 30`** (a focus-guard miss is retried soon, others keep scrub_retry_s 120); the supervisor
+  no longer counts "buffer entry failed" as the channel's failure. Seek thread agreed (it owns enter_buffer).
