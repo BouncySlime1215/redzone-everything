@@ -22,6 +22,7 @@ from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describ
 from redzone.config import Config, ConfigError, for_league
 from redzone.control import Controller, Outcome
 from redzone.decider import whistle
+from redzone.decider import buffered as bj
 from redzone.decider.decider import REDZONE, REEL, Candidate, Decider, Decision, FocusMode, Missed, State
 from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
                                    leave_gate, leave_window, screen_evidence)
@@ -140,6 +141,7 @@ class Engine:
         self.decider.deadline_cost = self.control.deadline_cost
         # [jump mode] jumps go only onto the hidden stick's ready game (one stick: there's no standby to wait for)
         self.decider.standby_ready = lambda t: not self.control.two_stick or self.control.standby_ready(t)
+        self.decider.snap_parked = self.control.snap_parked   # [buffered jump] when the hidden stick paused, or None
         self.decider.slow_tune = self.control.slow_tune
         if data_dir:
             from redzone import calibration
@@ -396,6 +398,8 @@ class Engine:
         g = self.merger.games.get(gid or "")
         if g is None or g.phase != Phase.LIVE:
             return 0.0
+        if self._buffered_league(target, g):
+            return float(bj.cfg_get(self.cfg, "behind_s"))   # [buffered jump] every stick plays this far behind
         if buffer_rc8.is_on(self.cfg, g.league.value):   # [RC8] Nick flipped this league: adaptive (or pinned) B
             try:
                 return buffer_rc8.buffer_for(self.cfg, g.league.value)[0]
@@ -417,7 +421,16 @@ class Engine:
         g = self.merger.games.get(gid or "")
         if g is None:
             return False
+        if self._buffered_league(target, g):
+            return True   # [buffered jump] the overlay scrub is how a stick gets behind (a pause doesn't hold)
         return bool(for_league(self.cfg, "timing.behind_live_s.scrub_entry", g.league.value, False))
+
+    def _buffered_league(self, target: str, g) -> bool:
+        """[buffered jump] Jump mode + buffered_jump on, a YouTube TV target, a game in buffered_jump.leagues."""
+        if not self.decider.buffered_on() or not target.startswith("youtubetv:"):
+            return False
+        lgs = bj.cfg_get(self.cfg, "leagues") or []
+        return not lgs or g.league.value in lgs
 
     def _shadow_buffer_on(self) -> bool:
         """[buffer shadow] timing.behind_live_s.shadow while the buffer itself is off on screen."""
@@ -1454,6 +1467,7 @@ class Engine:
             self._act(d, before, cands)
         else:
             self._preload_standby(cands, redzone)
+            self._buffered_park(cands)
         self._sync_switch_costs()
         if time.time() - self._last_snapshot > 60:
             self._last_snapshot = time.time()
@@ -1868,6 +1882,28 @@ class Engine:
         if pick:
             self.control.preload(pick.target, back_s=pick.back_s, replay_id=pick.replay_id)
 
+    def _buffered_park(self, cands: dict) -> None:
+        """[buffered jump, park] The hidden stick (scrubbed behind live) pauses on the line-up just before its game's
+        next LOGGED snap (redzone/decider/buffered.park_in); a park older than park_max_age_s is rolled and parks
+        again. The next dead ball on screen flips to it (Decider._buffered_jump)."""
+        dec, ctl = self.decider, self.control
+        if not dec.buffered_on() or not bj.cfg_get(self.cfg, "park") or not ctl.two_stick or dec.replaying:
+            return
+        target = ctl.standby[0]
+        if not target:
+            return
+        if ctl.snap_parked(target) is not None:
+            ctl.snap_park_expire()
+            return
+        gid = self._game_on_target(target)
+        now = time.time()
+        pic = dec._bj_pic(gid or "", cands.get(gid or ""), now)
+        if pic is None or not ctl.standby_ready(target):
+            return
+        pin = bj.park_in(pic, now, self.cfg)
+        if pin is not None and pin <= float(self.cfg.get("buffered_jump.park_schedule_s", 4.0)):
+            ctl.snap_park(target, pin)
+
     def _jump_standby(self, cands: dict) -> bool:
         """[jump mode] The hidden stick keeps re-tuning to the rotation's next game (Decider.jump_next).
         False: the rotation has nothing to tune (no other game), so the normal standby plan runs."""
@@ -1880,7 +1916,7 @@ class Engine:
         target = cands[gid].target if gid in cands else None
         if not target:
             return False
-        self.control.preload(target)
+        self.control.preload(target, rotate=self.decider.buffered_on())
         return True
 
     def _log_jump(self, d, before: str | None, target: str | None, out, cmd_ts: float) -> None:

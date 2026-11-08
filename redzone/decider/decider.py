@@ -36,6 +36,7 @@ from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S
                                     Timeline, break_on_arrival, catchable, final_play_aired, leave_gate,
                                     leave_window, resume_lead, resume_play)
 from redzone.decider.cuts import EntryPlan, plan_entry
+from redzone.decider import buffered as bj
 from redzone.decider.playbooks import Safety
 from redzone.decider.scenarios import Scenarios
 from redzone.noggin.lookahead import ahead
@@ -331,6 +332,8 @@ class Decider:
         self.standby_ready: Callable[[str], bool] | None = None
         self.slow_tune: Callable[[str], bool] | None = None
         self.jump_holds: Counter = Counter()
+        self.snap_parked: Callable[[str | None], float | None] | None = None   # [buffered jump] the engine's control
+        self._bj_pair: tuple[frozenset, float] | None = None   # [buffered jump] the two games on the sticks, since when
 
     # ----- inputs -----------------------------------------------------------
 
@@ -2297,6 +2300,16 @@ class Decider:
             return False
         if break_on_arrival(tl, d, now, now + cost):
             return False   # a commercial on arrival: not where a rotation lands
+        pic = self._bj_pic(gid, x, now)
+        at = self.snap_parked(x.target) if pic is not None and self.snap_parked is not None else None
+        if at is not None:
+            pic = bj.frozen(pic, now, at)   # paused on the line-up: the picture stood still since `at`
+        if pic is not None:
+            # [buffered jump] the standby plays behind live (scrubbed, label read): its picture is d.mu behind
+            ok, _ = bj.lands(pic, now, float(bj.cfg_get(self.cfg, "flip_fast_s")),
+                             max(float(bj.cfg_get(self.cfg, "flip_s")), cost),
+                             float(bj.cfg_get(self.cfg, "lead_min_s")), float(bj.cfg_get(self.cfg, "margin_sigmas")))
+            return ok
         if tl.dead.marks:
             mu = d.mu - d.behind   # a fresh tune or a live standby shows the live edge
             m = self._jump_margin(d, now)
@@ -2386,9 +2399,83 @@ class Decider:
             return pool[gid].scored.score + per * away / 60.0 - pen - (100.0 if gid in self._screen_break else 0.0)
         best = max(pool, key=val)
         keep = next((gid for gid, x in pool.items() if standby and x.target == standby), None)
+        if keep is not None and self.buffered_on():
+            # [buffered jump] a scrubbed standby is ~60 s of tune + scrub: keep it (ping-pong with the screen) until
+            # its game goes to a long stoppage or the pair has been on rotate_every_s
+            pair = frozenset((self.current or "", keep))
+            if self._bj_pair is None or self._bj_pair[0] != pair:
+                self._bj_pair = (pair, now)
+            pic = self._bj_pic(keep, pool[keep], now)
+            if pic is None or bj.rotate_due(pic, now, now - self._bj_pair[1], self.cfg) is None:
+                return keep
         if keep is not None and val(keep) >= val(best) - float(c.get("jump_mode.standby_margin", 8)):
             return keep
         return best
+
+    # ----- [buffered jump] ----------------------------------------------------
+    # Both sticks ~60-90 s behind live (scrubbed, label read): the play-by-play already holds every snap and whistle
+    # about to air, so the cut points are known in advance (redzone/decider/buffered.py). Only when BOTH pictures
+    # are buffered; otherwise jump mode's own rules run (a fresh live-edge tune until its scrub lands).
+
+    def buffered_on(self) -> bool:
+        return self.jump_on() and bool(self.cfg.get("buffered_jump.enabled", False))
+
+    def _bj_pic(self, gid: str, x: Candidate | None, now: float) -> bj.Pic | None:
+        """gid's picture as the editor sees it, or None: flag off, not a buffered league, no play-by-play dead windows,
+        or its stick isn't at least min_behind_s behind live (by the label)."""
+        if x is None or not x.target or not self.buffered_on():
+            return None
+        lgs = bj.cfg_get(self.cfg, "leagues") or []
+        tl = self.timelines.get(gid)
+        if tl is None or not tl.dead.marks or (lgs and x.scored.league.value not in lgs):
+            return None
+        d = self.delays.get(x.target)
+        if d.behind < float(bj.cfg_get(self.cfg, "min_behind_s")):
+            return None
+        return bj.Pic(tl.dead, d.mu, d.current_sigma(now), gid)
+
+    def _buffered_jump(self, cur: Candidate, cands: dict[str, Candidate], now: float):
+        """The editor's call: a jump Decision, False (holds; counted as bj_<why>) or None (not both buffered: jump
+        mode's own rules decide)."""
+        v = self._bj_pic(self.current or "", cur, now)
+        if v is None:
+            self.jump_holds["bj_screen_not_buffered"] += 1
+            return None
+        ready = self.standby_ready
+        hs = [(gid, x) for gid, x in self._jump_pool(cands).items()
+              if gid != self.current and (ready is None or ready(x.target))]
+        pics = [(gid, p) for gid, x in hs if (p := self._bj_pic(gid, x, now)) is not None]
+        if not pics:
+            self.jump_holds["bj_standby_not_buffered" if hs else "bj_standby_not_ready"] += 1
+            return None if hs else False
+        seen = self._jump_plays_seen(self.current, cur, now)
+        park = bool(bj.cfg_get(self.cfg, "park"))
+        best = None
+        for gid, p in pics:
+            if park:
+                at = self.snap_parked(cands[gid].target) if self.snap_parked is not None else None
+                c = bj.cut_parked(v, bj.frozen(p, now, at), now, self.cfg, plays_seen=seen) if at is not None \
+                    else bj.Cut(False, "not_parked")
+            else:
+                c = bj.cut_now(v, p, now, self.cfg, plays_seen=seen)
+            if c.go and (best is None or c.info.get("h_snap_s", 99) < best[1].info.get("h_snap_s", 99)):
+                best = (gid, c)
+            elif best is None:
+                last = c
+        if best is None:
+            self.jump_holds[f"bj_{last.why}"] += 1
+            return False
+        gid, c = best
+        held = now - self.since
+        info = {**c.info, "why": f"bj_{c.why}", "buffered": True, "held_s": round(held, 1),
+                "behind_s": round(self.delays.get(cands[gid].target).behind, 1),
+                "here_behind_s": round(self.delays.get(cur.target).behind, 1),
+                "gate": "buffered: dead ball on screen (play-by-play)", "holds": dict(self.jump_holds),
+                "snap": c.why in ("snap_next", "parked_snap"), "big": False, "cost_s": float(bj.cfg_get(self.cfg, "flip_s"))}
+        self.jump_holds = Counter()
+        reason = (f"jump: dead ball after {seen} play{'s' if seen != 1 else ''} ({c.why.replace('_', ' ')}) -> "
+                  f"{self._short_gid(gid)}: snap in {c.info.get('h_snap_s')}s")
+        return Decision(now, "switch", gid, reason, State.WATCHING, info["gate"], kind="jump", jump=info)
 
     def _jump_owns(self, d: Decision, cands: dict[str, Candidate]) -> bool:
         """[jump mode] Is d an optional switch out of a rotation game, which the rotation decides instead?"""
@@ -2417,6 +2504,10 @@ class Decider:
         if hold:
             self.jump_holds[hold] += 1
             return None
+        if self.buffered_on():
+            b = self._buffered_jump(cur, cands, now)
+            if b is not None:
+                return b or None   # False: the editor holds this tick (counted); a Decision: cut now
         g = self._jump_gate(cur, now)
         if g is None or not g.safe:
             self.jump_holds["play_on_screen"] += 1
