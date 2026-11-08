@@ -264,3 +264,16 @@ def test_a_break_that_resumed_in_the_data_is_not_a_free_leave(cfg, clock):
     fresh(dec, clock)
     a = Scored("a", League.CFB, 70, 70, 70, 1.0, 0.0, "timeout", [], True, None, None, 1.0)
     assert not dec._jump_break_on_screen("a", Candidate(a, "youtubetv:a"), tl, dec.delays.get("youtubetv:a"), clock.t)
+
+
+def test_every_way_the_rotation_stands_aside_is_counted(cfg, clock):
+    """[overseer Nov 8 01:50Z] No jumps and no clue why: a tapped game, a pause or safe mode turned jump mode off
+    silently. Each is a hold code now (jump_status.jsonl)."""
+    dec = setup(cfg, clock)
+    dec.user.locked_game = "a"
+    dec.decide(cands(a=70, b=50))
+    assert dec.jump_holds["locked_game"] == 1
+    dec.user.locked_game = None
+    dec.safe_mode = True
+    dec.decide(cands(a=70, b=50))
+    assert dec.jump_holds["safe_mode"] == 1
