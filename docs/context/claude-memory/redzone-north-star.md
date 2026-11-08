@@ -9,9 +9,9 @@ What Nick wants from RedZone Everything (as of 2026-11-03):
 
 **Product**
 1. **Feel like NFL RedZone.** Switch game to game instantly: no Fire TV home screen, no clicking around. The biggest pain right now is the 30-50 s HOME/HDMI switch.
-2. **Cut at the right moments.** Leave only at dead time (commercials, timeouts, free throws, challenges, injuries) and enter at the restart. 0 mid-play cuts or entries. Switch MORE often, but always at good points, never randomly.
+2. **Cut at the right moments.** Leave only at dead time (commercials, timeouts, free throws, challenges, injuries) and enter at the restart. 0 mid-play cuts or entries (Rule #1; Nick's pass bar Nov 7 also says 0 mid-play leaves; the older "low-leverage leaves are allowed" is superseded). Switch MORE often, but always at good points, never randomly.
 3. **Catch every key moment, crunch time first.**
-4. **League order:** NFL > CFB > NBA > NCAA basketball > NHL > MLB. Teams: Commanders, UNC, Wizards, Capitals, Nationals. Teams and bets have their own priorities.
+4. **League order:** NFL > CFB > NBA > NCAA basketball > NHL > MLB (Nick, Nov 4 + Nov 8: NFL = CFB only when both are in crunch, NFL first otherwise). Women's college basketball is OFF (N2, Nov 8). Teams: Commanders, UNC, Wizards, Capitals, Nationals. Teams and bets have their own priorities.
 5. **NHL:** power plays, goals and overtimes.
 6. **Catch-up mode:** 5+ clips back to back in 30-60 s, only what he needs to see. Timing is super important; play it when a game lingers in dead time.
 7. **Sync is automatic.** No taps, no mic or camera.
@@ -29,7 +29,7 @@ What Nick wants from RedZone Everything (as of 2026-11-03):
 **How Nick runs the work now**
 - Builds happen in the claude.ai Code Project "Training model for redzone" (coordinator + threads, repo BouncySlime1215/redzone-everything, base branch codex/resume-redzone, draft PRs into it).
 - My job: lock in context, steer the coordinator and its threads, and check for bugs and build faults. Make sure everything integrates as ONE system, not a sum of parts.
-- USAGE CAP: stop all RedZone Claude work at 90% weekly usage. At >=88%, pause the project (Project settings → Pause project) and stop the director cron. He needs the last 10% for school.
+- USAGE CAP: stop all RedZone Claude work at 88% weekly usage (the only cap). At 88%, pause the project (Project settings → Pause project) and stop the director cron. He needs the last 12% for school.
 - He chose to keep ALL project threads running in parallel even though usage was on pace to hit the weekly limit early (26% used on Tue Nov 3). Once those finish: at most 5 threads at once, the rest queued. Don't re-ask; mention usage only when it nears the limit.
 - He worries the project is discombobulated. Coordination is the coordinator's #1 job: architecture contract (docs/architecture.md), one owner per area, shared WorldState / clock / config, contract tests, golden nights, status board (docs/status.md), and one release PR that works as a whole.
 - "95% good minimum" release gate on held-out nights: 0 mid-play cuts; >=95% dead-ball landings; >=95% big plays seen per league; your-team 100%; reels >=95% in dead time; reasoner >=95% vs gold with unsafe leaves <=0.5%; watchdog >=95%; sync <2 s on >=95% of samples; >=95% preloaded switches under 3 s. A part that misses its gate ships OFF behind a flag.
@@ -37,6 +37,9 @@ What Nick wants from RedZone Everything (as of 2026-11-03):
 - AI = two tiers. REFLEX: a local ~2 GB student distilled on Kaggle (2x T4, account nmatta1215 / user nickmatta, private dataset redzone-distill; round 1 started Nov 3 2:33 PM; round 2 = millions of ESPN moments built inside Kaggle). BRAIN: Claude auto-repair via a GitHub issue → claude-code-action PR → gates → safe deploy. It must use his subscription OAuth token, which he adds himself.
 - Merge bar: full tests pass, scorecards show a clear win, 0 mid-play cuts, nothing important worse.
 - $0 budget; ask before spending. Never enter passwords. No disruptive TV tests while he's watching. He says when to push.
+
+- **Pass bar (Nick Nov 7 22:15, restated Nov 8 per N5):** in every sport show every touchdown and 95%+ of red-zone trips live, with as many cuts as the events need (about 5 per 10 min, up to 9-14 when busy), 0 mid-play joins and leaves, 0 commercial seconds. This replaces "75 jumps in 10 min".
+- Deploys (Nick Nov 7 12:08): agents may deploy, including in live games, with the health watch kept; never disturb the TV while he watches. See docs/memory/runbooks/deploy.md.
 
 **Why:** These were stated across the Nov 2-3 sessions; this is the consolidated spec.
 

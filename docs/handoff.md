@@ -15,7 +15,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 - **Switching:** instant game-to-game switches, with no Fire TV home screen and no clicking. Cut only
   at dead time (commercials, timeouts, free throws, challenges, injuries) and enter at the restart.
   **0 mid-play cuts or entries.**
-- **League order:** NFL > CFB > NBA > NCAA basketball > NHL > MLB. His teams are WSH (Commanders,
+- **League order:** NFL > CFB > NBA > NCAA basketball > NHL > MLB (NFL = CFB only when both are in crunch, N3). Women's college basketball is off (N2). His teams are WSH (Commanders,
   Wizards, Capitals, Nationals) and UNC; teams and bets have their own priorities. Crunch time comes
   first. NHL: power plays, goals and overtime.
 - **Catch-up reel:** 5+ clips back to back in 30–60 s, played only in dead time, with timing dialed.
@@ -77,6 +77,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 
 ## 5. Current state (updated by the director)
 
+> **STALE since Nov 8 (audit R11); the plan is [docs/PLAN.md](PLAN.md).** The Nov 7 22:45 entry below is history: since then buffered_jump.leagues became [nfl, cfb, nba, cbb, wcbb] (config; wcbb should be off per N2), `screen_game_unknown` after a restart was fixed in code (engine.py, decider.py, control.py), and jump_mode.leagues was restored at runtime. Check `/api/state` and `data/deploy/deploy.jsonl` for what the Mac runs now.
+
 <!-- STATUS:START -->
 - **2026-11-07 ~22:45 ET (overseer, newest; older entries below are kept as history).**
   - **Live build:** `claude/buffered-jump` **0b0f8534**, launchd `com.redzone.everything`, port 8778. Deployed
@@ -84,9 +86,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
     for the verdict. Last confirmed-good build: 9f3412d1 (healthy 22:22), and before that 3778a401 (marked good by
     hand 22:11).
   - **Flags live (set via /api/settings, persisted in data/config.yaml):**
-    - jump_mode.enabled true; **jump_mode.leagues narrowed to [cfb, nfl] at 22:25 for the buffered test.
-      RESTORE [cfb, nfl, nba, nhl, cbb] when the test ends.**
-    - buffered_jump enabled (park false, eager true, behind_s 75, min_behind_s 45; leagues nfl, cfb).
+    - jump_mode.enabled true; jump_mode.leagues narrowed to [cfb, nfl] at 22:25 (restored later; default stays [cfb, nfl], NHL/MLB are not in the rotation by default, R12).
+    - buffered_jump enabled (park false, eager true, behind_s 75, min_behind_s 45; leagues were nfl, cfb; now five, see above).
     - yttv_seek.enabled; timing.behind_live_s enabled + scrub_entry + label_reader.
     - replay.enabled; delay.edge_prior.enabled (34.9 s); tuners.yttv_local_search.
     - decider.leave.dead_windows [cfb, nfl, nhl, nba, cbb]; quiet_break near_end_clock_s 30; switch_margin 1;
@@ -134,13 +135,11 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 
 **Nov 7 ~22:45 ET (overseer), newest first. The older list below is kept as history.**
 
-1. **Hit the pass bar: 75 jumps in 10 min**, with 0 commercials, every play in full, no mid-play join or leave.
-   1. Fix `screen_game_unknown` after a restart (§5, root cause 2), test it, deploy it, then confirm in
-      `data/jump_status.jsonl` that the holds move to bj_* codes.
+1. **Hit the pass bar** (N5, Nov 8: every TD and 95%+ of red-zone trips live, cuts as events need ~5 per 10 min, 0 commercials, every play in full, no mid-play join or leave; the old 75-in-10-min bar is dropped).
+   1. DONE in code (Nov 8): `screen_game_unknown` after a restart. Confirm in `data/jump_status.jsonl` that the holds move to bj_* codes.
    2. Measure with `.venv/bin/python scripts/buffered_jump_try.py watch --port 8778`. Stop it with
       `perl -e 'alarm 610; exec @ARGV' ...`, because macOS has no `timeout`.
-   3. Add NBA and CBB to buffered mode, using made baskets, fouls and timeouts as dead balls. Restore
-      jump_mode.leagues.
+   3. DONE (Nov 8): NBA and CBB in buffered mode (fouls, FTs, timeouts as dead balls).
    4. When the screen game drops out of the feed, take a free cut at the next safe point.
    5. Stop a queued replay from starving the standby (standby_plan "yields to a queued replay").
    6. Fix the stuck command lock (supervisor `stuck_lock`: lock held 150-156 s).
@@ -166,7 +165,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 - **Every 10 minutes, in one pass:** usage guard → PRs/CI → Kaggle log → project threads → one
   concise directive if something's off → update §5 of this file. Only message Nick when he must act.
 - **Project rules:**
-  - max 5 working threads; paused threads stay paused until their dependencies land
+  - max 5 working threads (Nick Nov 7 22:35: do the work yourself when you can); paused threads stay paused until their dependencies land
   - every PR targets `integration/next`; merge small, CI green, scorecards no worse
   - 95% gates on held-out data
 - **Kaggle uploads:** the Chrome upload tool caps files at 10 MB (split into .bin parts), and

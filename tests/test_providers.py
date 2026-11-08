@@ -332,7 +332,8 @@ def test_register_adds_tuners_and_wraps_builtins_once():
     assert isinstance(tuners["youtubetv"], more.DiagnosingTuner)
     more.register(tuners)
     assert not isinstance(tuners["youtubetv"].inner, more.DiagnosingTuner)       # no double wrap
-    assert set(more.EXTRA_TUNERS) | {"youtubetv", "prime", "espn"} == prov.TUNER_APPS
+    # Peacock still has a registered tuner (redzone/tuners/providers.py, another card removes it) but is not a TUNER_APP
+    assert (set(more.EXTRA_TUNERS) - {"peacock"}) | {"youtubetv", "prime", "espn"} == prov.TUNER_APPS
 
 
 # --- 4. reading the screen -------------------------------------------------------------------
@@ -380,43 +381,43 @@ def src(provider, target, tunable=True, **kw):
 
 def test_youtube_tv_wins_when_it_can_tune():
     g = game(broadcasts=["ESPN"])
-    p = prov.best_source(g, [src("peacock", "peacock:1"), src("prime", "prime:amzn1.x"),
+    p = prov.best_source(g, [src("prime", "prime:amzn1.x"),
                              src("youtubetv", "youtubetv:espn", kind="channel", feed="national", label="ESPN · YouTube TV"),
                              src("espn", "espn:abc")])
     assert p.target == "youtubetv:espn" and p.tunable and "rewind" in p.why
-    assert [a.provider for a in p.alternates] == ["espn", "peacock", "prime"]  # League Pass blackout risk
+    assert [a.provider for a in p.alternates] == ["espn", "prime"]  # League Pass blackout risk
 
 
-def test_provider_order_prime_espn_fubo_and_peacock_last():
+def test_provider_order_prime_espn_fubo_then_the_rest():
     g = game()
-    order = ["fubo", "peacock", "espn", "prime", "max"]
+    order = ["fubo", "espn", "prime", "max"]
     picks = []
     cands = [src(k, f"{k}:1") for k in order]
     while cands:
         best = prov.best_source(g, cands).provider
         picks.append(best)
         cands = [c for c in cands if c.provider != best]
-    assert picks == ["prime", "espn", "fubo", "max", "peacock"]   # Peacock: last resort
+    assert picks == ["prime", "espn", "fubo", "max"]   # Peacock is banned, not a last resort
 
 
 def test_tunable_beats_better_app_that_cannot_tune_yet():
     g = game(broadcasts=["NBCSN"])
     p = prov.best_source(g, [src("youtubetv", "youtubetv:nbcsn", False, kind="channel", feed="national"),
-                             src("peacock", f"peacock:{OKC_CLE_MAIN}")])
-    assert p.provider == "peacock" and p.tunable
+                             src("fubo", "fubo:1")])
+    assert p.provider == "fubo" and p.tunable
 
 
 def test_unavailable_apps_are_skipped_with_reasons():
     g = game()
     states = {"youtubetv": prov.ProviderState("youtubetv", installed=False),
               "prime": prov.ProviderState("prime", True, False, "Prime Video: signed out — sign in on the TV once"),
-              "peacock": prov.ProviderState("peacock", True)}
+              "fubo": prov.ProviderState("fubo", True)}
     p = prov.best_source(g, [src("youtubetv", "youtubetv:espn"), src("prime", "prime:x"),
-                             src("peacock", "peacock:1")], states)
-    assert p.provider == "peacock"
+                             src("fubo", "fubo:1")], states)
+    assert p.provider == "fubo"
     assert "YouTube TV isn't installed on your Fire TV sticks." in p.reasons
     assert any("signed out" in r for r in p.reasons)
-    only = prov.best_source(g, [src("youtubetv", "youtubetv:espn")], {"peacock"})   # a set of usable apps
+    only = prov.best_source(g, [src("youtubetv", "youtubetv:espn")], {"fubo"})   # a set of usable apps
     assert only.target is None and "isn't installed" in only.label
 
 
@@ -425,8 +426,8 @@ def test_blackout_is_never_picked_and_geo_blocked_only_as_last_resort():
     p = prov.best_source(g, [src("prime", "prime:a", blackout=True)])
     assert p.target is None and "blacked out" in p.label
     p = prov.best_source(g, [src("prime", "prime:a", geo_ok=False, confidence="sure"),
-                             src("peacock", "peacock:b", geo_ok=True)])
-    assert p.provider == "peacock"
+                             src("espn", "espn:b", geo_ok=True)])
+    assert p.provider == "espn"
     p = prov.best_source(g, [src("prime", "prime:a", geo_ok=False, confidence="sure")])
     assert p.target == "prime:a" and "may be blacked out" in p.label and p.confidence == "likely"
 
@@ -446,16 +447,16 @@ def test_your_team_gets_its_own_broadcast_others_get_national():
 
 def test_alt_casts_and_spanish_feeds_come_last():
     g = okc_cle()
-    p = prov.best_source(g, [src("peacock", f"peacock:{OKC_CLE_PERF}", feed="alt"),
-                             src("peacock", f"peacock:{OKC_CLE_MAIN}")])
-    assert p.target == f"peacock:{OKC_CLE_MAIN}"
+    p = prov.best_source(g, [src("espn", f"espn:{OKC_CLE_PERF}", feed="alt"),
+                             src("espn", f"espn:{OKC_CLE_MAIN}")])
+    assert p.target == f"espn:{OKC_CLE_MAIN}"
 
 
 def test_league_pass_is_a_last_resort_during_national_tv():
     g = okc_cle()   # NBCSN national: League Pass feeds on Prime are blacked out in the US
-    p = prov.best_source(g, [src("prime", "prime:lp"), src("peacock", f"peacock:{OKC_CLE_MAIN}")])
-    assert p.provider == "peacock"
-    p = prov.best_source(game(home="ORL", away="WSH"), [src("prime", "prime:lp"), src("peacock", "peacock:x")])
+    p = prov.best_source(g, [src("prime", "prime:lp"), src("espn", f"espn:{OKC_CLE_MAIN}")])
+    assert p.provider == "espn"
+    p = prov.best_source(game(home="ORL", away="WSH"), [src("prime", "prime:lp"), src("espn", "espn:x")])
     assert p.provider == "prime"                                       # no national TV: Prime first
 
 
@@ -470,10 +471,12 @@ def test_your_phone_choice_always_wins_and_empty_is_unknown():
 
 
 def test_channel_fallbacks_fubo_and_label_only():
-    g = game(broadcasts=["ESPN", "Peacock"])
+    g = game(broadcasts=["ESPN", "Netflix"])
     cands = prov.channel_sources(g)
     assert [c.target for c in cands] == ["fubo:10179", None]
-    assert cands[1].label == "Peacock (game link not found yet)" and not cands[1].tunable
+    assert cands[1].label == "Netflix (game link not found yet)" and not cands[1].tunable
+    # Peacock is never offered, not even as a label-only entry
+    assert [c.target for c in prov.channel_sources(game(broadcasts=["ESPN", "Peacock"]))] == ["fubo:10179"]
 
 
 # --- 6. eventlinks additions (saved Apple TV / ESPN responses) --------------------------------
@@ -585,12 +588,11 @@ async def test_choose_end_to_end_okc_cle(monkeypatch, tmp_path):
     cm.codes.clear()
     monkeypatch.setattr(channels_mod, "SEARCH_CHANNELS", frozenset())   # no YouTube TV route at all:
     pick = book.choose(g, cm.where(g))
-    assert pick.target == f"peacock:{OKC_CLE_MAIN}"        # ...the chooser takes Peacock's main broadcast
-    assert pick.tunable and pick.confidence == "sure" and pick.provider == "peacock"
+    assert pick.provider == "prime" and "may be blacked out" in pick.label   # ...Peacock is banned: Prime, flagged risky
+    assert not any((a.target or "").startswith("peacock:") for a in pick.alternates)
     book.saw_apps("10.0.0.5:5555", {"youtubetv": "com.amazon.firetv.youtube.tv", "prime": "com.amazon.firebat"})
-    pick = book.choose(g, cm.where(g))                     # Peacock not on the sticks: say so
+    pick = book.choose(g, cm.where(g))
     assert pick.provider == "prime" and "may be blacked out" in pick.label
-    assert "Peacock isn't installed on your Fire TV sticks." in pick.reasons
 
 
 def test_learning_from_tunes(tmp_path):
@@ -709,11 +711,11 @@ def test_failed_preloads_teach_the_book(tmp_path):
     toasts = []
     rt.engine = SimpleNamespace(toast=lambda *a: toasts.append(a))
     g = game("CLE", "OKC", gid="g7")
-    rt.book.links[g.game_id] = {"providers": {"peacock": [{"ref": "main"}]}}
-    assert rt.book.game_for("peacock:main") == "g7" and rt.book.game_for("youtubetv:espn") is None
-    rt.on_preload_fail("peacock:main", "video never started")
-    rt.on_preload_fail("peacock:main", "video never started")
-    assert rt.book.skips["peacock:main"]["kind"] == "failed" and toasts
+    rt.book.links[g.game_id] = {"providers": {"fubo": [{"ref": "main"}]}}
+    assert rt.book.game_for("fubo:main") == "g7" and rt.book.game_for("youtubetv:espn") is None
+    rt.on_preload_fail("fubo:main", "video never started")
+    rt.on_preload_fail("fubo:main", "video never started")
+    assert rt.book.skips["fubo:main"]["kind"] == "failed" and toasts
     rt.on_preload_fail(None, "x")                            # never raises
 
 

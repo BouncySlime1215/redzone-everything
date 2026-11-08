@@ -69,6 +69,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   rule files are advice, review capacity caps useful parallelism, one writer per file keeps facts.
 - 2026-11-08: every explicit state-machine move needs a why and is saved to data/transitions.jsonl
   (redzone/fsm.py); tests fail on a move without a why or an undeclared edge, production logs it.
+- 2026-11-08 (Nick, via coordinator; audit R5/R13): **deploy rules written down.** Agents may deploy, including during live games (Nick Nov 7 12:08 PM ET), but keep the 10-minute health watch and auto-rollback and never disturb the TV while he watches; the Mac runs whatever branch was last deployed (runbooks/deploy.md step 0). **The only usage cap is 88 %** (CLAUDE.md, usage-pause.md); the 90 % and Nov 3-4 pacing text is removed.
 
 ## Gates and quality
 
@@ -114,6 +115,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-03: **No Mac as the HDMI source.** Keep the two sticks and the TV.
 - 2026-11-02: **Never Peacock.** NBC/NBCSN come through YouTube TV (Peacock can't be screenshotted for sync).
 - 2026-11-02: **Sync is fully automatic:** no taps, no mic, no camera.
+- 2026-11-08 (Nick, N2 via coordinator; audit R8): **women's college basketball is OFF everywhere** (docs and policy now say so). The `default_config.yaml` change (`mode.leagues.wcbb`, `teams.wcbb`, `college.groups.wcbb`, `league_priority`, `buffered_jump.leagues`) belongs to the config card, not this one.
+- 2026-11-08 (Nick, N3 via coordinator; audit R7): **league order is NFL first; NFL = CFB only when both are in crunch.** Order NFL > CFB > NBA > NCAA basketball > NHL > MLB elsewhere. Docs updated; code (`decider._value_league_rank`, `league_order`) to read one source (decider card).
+- 2026-11-08 (Nick, N5 via coordinator): **pass bar restated:** every touchdown and 95%+ of red-zone trips live, cuts as events need (about 5 per 10 min, up to 9-14 when busy), 0 mid-play joins and leaves, 0 commercial seconds. Replaces "75 jumps in 10 minutes". In the docs the mid-play-leave rule is 0 (the "low-leverage leave allowed" line is superseded).
+- 2026-11-08 (Nick; DEV-01/D-07): **Peacock is never a source.** Dropped from `TUNER_APPS`, `LINK_APPS`, `LABEL_ONLY` and `LAST_RESORT` in discovery and filtered by `BANNED_APPS` in `gather_sources` and `best_source`, whatever the Noggin flag says; Peacock games still map to NBC/NBCSN on YouTube TV (`peacock_on_yttv`). Feature flags `flags.*` are not wired (audit R3); docs now name the real per-subsystem keys.
+- 2026-11-08 (audit R12): `jump_mode.leagues` default stays `[cfb, nfl]`; NBA/CBB join through `buffered_jump.leagues`. NHL and MLB are NOT in the jump rotation by default; the pass bar is checked per sport only where jump mode runs. Add them to the default when their graded cards exist.
 
 ## AI
 

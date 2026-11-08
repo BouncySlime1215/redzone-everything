@@ -1,9 +1,13 @@
-"""Feature flags / kill switches: one per subsystem.
+"""Feature flag names and degraded modes: one per subsystem.
 
-Owner: INTEGRATION (the list); each subsystem owner reads its own flag. Flags live in config under
-`flags.<name>` (bool), so the phone's settings page, config rollback and the auto-tuner all reach
-them, and backtests A/B them by overriding the key. A flag that is off puts the subsystem in its
-degraded mode (DEGRADED below), never in an error.
+Owner: INTEGRATION (the list).
+
+STATUS (audit R3, 2026-11-08): NOT WIRED.  `enabled()` below is read by no production code, so
+`flags.<name>` in config switches nothing; only tests/test_contracts.py calls it.  Each subsystem is
+gated by its OWN key: brain.enabled, reasoner.enabled, reel.enabled / reel.play, replay.*, tuners.*,
+noggin.*, hardening.*, two_stick.*, decider.* (see default_config.yaml).  Use those to turn a part
+off.  Wiring `enabled()` into each guard is a larger change that is not scheduled; until it is, DEGRADED
+documents what each part does when it is off or missing, and the Flag names are kept for that table.
 """
 from __future__ import annotations
 
