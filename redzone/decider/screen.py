@@ -1,5 +1,7 @@
 """What's on your screen right now, estimated from the data and the stream delay.
 
+Why: leave and entry calls need what is on screen now, which differs from the feed by stream delay and arrival lag (commit 2026-11-02, Mid-play guard).
+
 Event times come from the feed's wallclock. When a feed has no wallclock,
 we retain an interval covering its possible arrival lag, not one guessed time.
 The delay is how far your screen runs behind real life; the "I just saw it"

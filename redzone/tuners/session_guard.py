@@ -1,6 +1,8 @@
 """[sync hardening, item 4] Session safety: what is this stick's session doing, is its buffer still true, and what is
 the ONE safe thing to do about it.
 
+Why: Nick's Nov 7 07:33 UTC order item 4: 'no evidence' read as fine, so stick sessions are classified and fail closed (decisions + lessons 2026-11-07, flags off).
+
 Nick's order (Nov 7, 07:33 UTC): handle banners, 'Who's watching', 'Are you still watching', app crash, stick reboot,
 adb drop, the Prime detail-page start, the program-boundary label reset, and a UI change detected by unexpected OCR
 text. Fail closed. Runbook: docs/memory/runbooks/stick-session.md (one entry per failure, with the Nov 5-7 evidence).

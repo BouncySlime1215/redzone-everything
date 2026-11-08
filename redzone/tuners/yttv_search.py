@@ -1,5 +1,7 @@
 """Bounded YouTube TV library inspection using observed menu geometry.
 
+Why: unknown (needs owner)
+
 This is a navigation helper, not a live-game tuner. Relative recording ages and
 the thumbnail's 'Playing' badge never establish an event date or player identity.
 Captures and device authorization belong to the caller; import has no side effects.

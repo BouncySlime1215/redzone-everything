@@ -1,5 +1,7 @@
 """State machines owned by the platform area. See redzone/fsm.py for the rules.
 
+Why: platform states, stdlib + fsm only, so scripts/deploy.py and the watchdog's venv can import them (docstring; decisions 2026-11-08).
+
 Stdlib + redzone.fsm only: scripts/deploy.py and the watchdog's venv import this module too.
 """
 from __future__ import annotations

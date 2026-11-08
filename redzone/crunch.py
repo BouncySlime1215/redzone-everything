@@ -1,6 +1,8 @@
 """[one brain, step 2] One crunch table (docs/onebrain-migration.md). Serves: crunch_live_* (North Star
 "crunch time live"), your_team_crunch_live, and the scorecard's graded crunch window.
 
+Why: one brain step 2 (docs/onebrain-migration.md, 2026-11-04): every 'is this crunch time?' reads one table, so app, planner, demo and grading agree.
+
 Every "is this crunch time?" question in the app, the standby planner, the demo and the grading reads
 its numbers from the `crunch:` section of redzone/default_config.yaml through `row(kind, league)` and
 answers with `inside(row, period, clock_s, margin)`. A league's rules (which period, how close, which

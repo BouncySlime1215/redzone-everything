@@ -4,8 +4,11 @@ Bugs we hit and why, so nobody hits them twice. Newest first. **Add one after ev
 auto-fix brain and the watchdog read this file before acting
 ([memory hook](runbooks/README.md#memory-hook)).
 
-Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words that point to it
-(comma separated); the watchdog matches them against error signatures, so keep them literal.
+Each lesson is a `## ` heading plus four lines: `Symptom:`, `Cause:`, `Fix:`, `Signals:`. `Signals:` holds the log
+words that point to it (comma separated); the watchdog matches them against error signatures, so keep them literal.
+New lessons also add `Repro:` (the command and its output before the fix) and `Bisected-to:` (the sha and subject,
+or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name the regression test in `Fix:` as
+`Test: tests/...`.
 
 ## A fixed blend weight left the NHL break odds miscalibrated
 - **Symptom:** after #51's log-odds fix, NHL break-forecast ECE was still 0.095 on held-out nights (brain alone 0.041).

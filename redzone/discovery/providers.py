@@ -1,5 +1,7 @@
 """Provider candidates: installed apps, learned access failures, and per-game routes.
 
+Why: which apps a stick has and which games each can really play must be learned per device, only from outcomes where a tune ran (commit 2026-11-02).
+
 Discovery after the owner selects and signs into their devices:
 1. Installed?   One `pm list packages` per stick (every 30 min) says which provider apps
                 exist (roles_from_packages).  Package names are looked up, never assumed.

@@ -1,6 +1,8 @@
 """YouTube TV multiview as a switch path (SWITCHING). OFF until the at-home probe has measured it
 (`multiview.enabled`, scripts/multiview_probe.py).
 
+Why: expanding a multiview tile should be near-instant compared with a tune; OFF until the at-home probe measures it (docstring; commit 2026-11-03).
+
 YouTube TV can play up to four games in one 2x2 screen, and Sunday Ticket can build NFL
 multiviews. Expanding a tile to full screen should be near-instant, because all four streams are
 already loaded, and BACK returns to the grid with the streams still warm. So:

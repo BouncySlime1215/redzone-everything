@@ -1,5 +1,7 @@
 """ESPN's free site API: the backbone for all four leagues.
 
+Why: a free public feed covers every league the app needs and its fields can be pinned against saved responses in tests/fixtures (docstring).
+
     scoreboard: site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard
     summary:    .../summary?event={id}   (play-by-play with wallclock, win probability)
 

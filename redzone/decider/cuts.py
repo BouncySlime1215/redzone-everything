@@ -1,5 +1,7 @@
 """Cut timing: WHEN to leave a game and WHEN to come into one.
 
+Why: Rule #1: leave inside dead time, enter just before play resumes, never mid-play (commit 2026-11-03 'Enter on a dead ball'; EXP-024, EXP-089, EXP-211).
+
 Leave inside dead time; enter just before play resumes, never mid-play.
 
   dead window   the stretch after a play-by-play entry while the ball is dead: free throws, a foul,

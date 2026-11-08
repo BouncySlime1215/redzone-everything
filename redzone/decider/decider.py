@@ -1,5 +1,7 @@
 """The switch decider: a producer that never cuts you off mid-play.
 
+Why: Rule #1 in the switch decision: states and locks decide when a cut is allowed, so a play is never cut off (commit 2026-11-02 'Mid-play guard').
+
 States (shown on the phone):
   IDLE       nothing live
   WATCHING   on a game, free to leave at the next safe gap

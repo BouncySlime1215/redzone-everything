@@ -1,5 +1,7 @@
 """Turns decisions into TV actions. Dry-run by default.
 
+Why: a wrong cut is a Rule #1 miss, so the hidden stick is tuned and confirmed first and the flip waits for a safe moment (two-stick commit 2026-11-02).
+
 Single stick: tune the stick, confirm video is playing.
 Two sticks ("hot standby"): the hidden stick is ALWAYS the one that gets tuned. When it's
 confirmed playing, we wait for a safe moment on the visible game (no play on screen) and only

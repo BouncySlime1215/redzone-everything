@@ -4,7 +4,8 @@
 the user's order. After each merge, the full test suite and ALL scorecards (NFL, NBA, NHL and the
 Nov 1 mixed demo) run on the pinned archive. A PR that makes the combination worse is dropped,
 even if it won alone. Conflicts in `decider.py`/`engine.py` are resolved by hand, never with "take
-ours". The end state is one release PR, `integration/next` → `codex/resume-redzone`.
+ours". The end state is one release PR, `integration/next` → `codex/resume-redzone`. Procedure for every merge and
+conflict: [merge runbook](memory/runbooks/merge.md). The train refuses a head sha that isn't green.
 
 Order: #1 trip budget → #3 NHL (after its entry fix) → #2 drive priority (after its dead-air fix)
 → Hype v2 → Brain v3 → auto-tune → sync → reasoner/watchdog. Infrastructure that changes no

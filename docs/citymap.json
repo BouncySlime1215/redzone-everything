@@ -656,6 +656,15 @@
     "scripts/grading_check.py"
    ]
   },
+  "docs/module_headers_baseline.json": {
+   "readers": [
+    "scripts/module_headers.py"
+   ],
+   "users": [],
+   "writers": [
+    "scripts/module_headers.py"
+   ]
+  },
   "docs/northstar-history.jsonl": {
    "readers": [],
    "users": [],
@@ -12791,6 +12800,27 @@
     "untagged"
    ]
   },
+  "scripts/fix_needs_test.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "A fix PR carries a regression test and a repro; no PR deletes or skips tests.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/gate_power.py": {
    "calls": [],
    "contracts": [],
@@ -13194,6 +13224,31 @@
     "untagged"
    ]
   },
+  "scripts/module_headers.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "docs/module_headers_baseline.json"
+    ],
+    "uses": [],
+    "writes": [
+     "docs/module_headers_baseline.json"
+    ]
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Check that every module says what it is and why it exists, ratcheted so only new gaps fail.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/multiview_probe.py": {
    "calls": [
     "redzone/channels.py:ChannelMap",
@@ -13561,6 +13616,27 @@
    "outputs": [],
    "owner": "unowned",
    "role": "RAM/CPU line for the PR comment: the live decide() tick on a synthetic slate, startup, and peak RSS.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/plan_check.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "There is one plan and it has the parts a living plan needs.",
    "serves": [
     "untagged"
    ]
@@ -15135,12 +15211,12 @@
  },
  "summary": {
   "calls": 1544,
-  "data_files": 180,
+  "data_files": 181,
   "machines": 49,
-  "modules": 378,
+  "modules": 381,
   "orphans": 14,
-  "unowned": 205,
-  "untagged": 310
+  "unowned": 208,
+  "untagged": 313
  },
  "version": 2
 }

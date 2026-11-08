@@ -1,5 +1,7 @@
 """[YTTV scrub buffer, item 1] Put a YouTube TV stick a set time behind live by scrubbing the player overlay.
 
+Why: Nick's Nov 6 10:15 PM order item 1: put a hidden YouTube TV stick behind live by overlay scrubbing (decisions 2026-11-07, flag off).
+
 Measured (overseer, Nov 6 9:40 PM; docs/sync/2026-11-06-yttv-scrub-buffer-spec.md on codex/resume-redzone):
   * DPAD_CENTER opens the overlay with the progress bar focused; each DPAD_LEFT moves the knob 15 s back; DPAD_CENTER
     commits. N=4 lands about 60 s behind; 7 of 7 repeats held (ESPNU, ACC Network, TNT, both sticks), one 20 min.

@@ -1,5 +1,7 @@
 """[EXP-728 / EXP-736] Land late in a break, not early: the restart a break is predicted to end at.
 
+Why: [EXP-728/736] #277's autopsy found entries landing in commercials with over 10 s left, so entries are held later in the break (decisions 2026-11-05, off).
+
 Test writers' autopsy (Nov 5, #277): NBA dev 33 of 64 entries and NFL 196 of 531 land in a real commercial with
 more than 10 s still to air (cutgrade BREAK_TAIL_BAR). The cure they pre-registered: when the destination is in a
 break, hold the switch until its picture would come up at most `decider.entry.break_tail_s` before the predicted

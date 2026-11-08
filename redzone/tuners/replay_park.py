@@ -1,5 +1,7 @@
 """[replay on the scrub, Nick Nov 7 1:02 PM ET] Park a HIDDEN YouTube TV stick just before a big play's snap.
 
+Why: Nick, Nov 7 1:02 PM ET: he could see the rewind, so the seek happens on the hidden stick, parked just before the big play's snap (docstring).
+
 Nick: 'that rewind worked rly good / got right to the spot of the big play / but i saw the rewind / it should be auto
 on the play right b4 the snap when it switches'. So the seek happens on the hidden stick and the TV flips onto it:
   1. k LEFTs so the knob lands at or before the park point. The frozen-overlay time cancels out (it puts the picture

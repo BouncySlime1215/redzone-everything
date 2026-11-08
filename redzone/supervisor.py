@@ -1,5 +1,7 @@
 """Supervisor: the live system watches itself, so nobody has to.
 
+Why: real nights fail in repeated known ways, so every ~10 s it checks them and fixes what it can, rate-limited, with nobody watching (commit 2026-11-03).
+
 Every ~10 s it checks a short list of things that have gone wrong on real nights and fixes the
 ones it can, on its own. Each rule waits until a problem has lasted long enough to be real, every
 fix is rate-limited (a minimum gap and a cap per hour), and every observation and fix is written

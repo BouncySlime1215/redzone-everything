@@ -1,5 +1,7 @@
 # After the state machines: plan checked against the research (2026-11-08)
 
+> **Superseded by [docs/PLAN.md](../PLAN.md)**, the only plan. Kept as history and input.
+
 Done before this plan: inventory of implicit state machines, `redzone/fsm.py` + tests, every machine
 converted (52 specs in `redzone/machines/`, `GET /api/machines`, `docs/state-machines.md` generated and
 checked in CI).

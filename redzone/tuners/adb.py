@@ -1,5 +1,7 @@
 """Talk to a Fire TV stick over the network with the adb command-line tool.
 
+Why: Fire TV sticks are driven over the network by adb; each command has a timeout so a hung adb never freezes the app (docstring).
+
 Guardrails:
 - Every command has a timeout; a hung adb never freezes the app.
 - Lost connection -> reconnect at every keepalive tick (~10s), forever, quietly.

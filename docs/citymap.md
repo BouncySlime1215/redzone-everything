@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**378 modules**, 310 untagged, 205 unowned, 14 orphans (no importer); 1544 call edges, 180 data files, 49 machines.
+**381 modules**, 313 untagged, 208 unowned, 14 orphans (no importer); 1544 call edges, 181 data files, 49 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -226,7 +226,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (205)
+## unowned (208)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -370,6 +370,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/fastcast_check.py` (entry) | [fastcast live check] Grade ESPN FastCast against polling from a night's flight recorder. | sources.fastcast_check -> - | untagged |
 | `scripts/fault_drill.py` (entry) | Fault drill: run the real Controller / Fetcher / Engine against injected faults and score them. | channels, config, control, decider.decider, engine, models +8 -> - | untagged |
 | `scripts/fetch_eval_data.py` (entry) | Fetch the pinned eval dataset (eval-data.lock.json) into data/, verified, so every thread and CI grades on the same nights. | lab.evaldata -> - | untagged |
+| `scripts/fix_needs_test.py` (entry) | A fix PR carries a regression test and a repro; no PR deletes or skips tests. | - -> - | untagged |
 | `scripts/gate_power.py` (entry) | How many nights does a gate need? | - -> - | untagged |
 | `scripts/gi_v3_nba.py` (entry) | GI v3 NBA (WV loop cycle 1, prereg /mnt/project-files/wv-loop/prereg-gi-v3-nba.md). | - -> - | untagged |
 | `scripts/grading_check.py` (entry) | Grading rules in CI (docs/grading.md; Nick, Nov 4 2026 6:40 PM ET: "grading even SHARPER"). | - -> - | untagged |
@@ -385,6 +386,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/license_check.py` (entry) | F8 license-tag check (Test Factory; Nick, Nov 4 2026 11:20 PM ET, data B). | - -> - | untagged |
 | `scripts/measure_break_lengths.py` (entry) | [Data F] Measured break lengths by league x network x break kind, from the pinned archive. | lab.backtest, lab.cutgrade, lab.splits, models, sources.espn -> - | untagged |
 | `scripts/media_pull.py` (entry) | Media metadata workers (Data Division, type C): which plays got clipped, and how much people watched. | - -> - | untagged |
+| `scripts/module_headers.py` (entry) | Check that every module says what it is and why it exists, ratcheted so only new gaps fail. | - -> - | untagged |
 | `scripts/multiview_probe.py` (entry) | At home, ~5 minutes, before the games: measure YouTube TV multiview on a real stick. | channels, screen_ocr, tuners.adb, tuners.multiview, tuners.tuners -> - | untagged |
 | `scripts/nba_cdn_plays.py` (entry) | NBA.com's own action log (cdn liveData, packaged by shufinskiy/nba_data) -> hoopR-schema play rows (plan A NBA). | - -> - | untagged |
 | `scripts/nhl_apiweb.py` (entry) | NHL api-web play-by-play + shift charts -> the factory's compact ESPN-shaped game records (NFM tokens). | noggin.factory -> - | untagged |
@@ -397,6 +399,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/orient_line.py` (entry) | [EXP-038] Print the orientation-beat line: override rates on nights with phone.orient on vs off. | lab.orient, web.phone_v2 -> - | untagged |
 | `scripts/pack_factory_code.py` (entry) | Pack the code the Kaggle factory notebook needs into rz_factory_code.tar.gz (no data, no secrets). | - -> - | untagged |
 | `scripts/perf_probe.py` (entry) | RAM/CPU line for the PR comment: the live decide() tick on a synthetic slate, startup, and peak RSS. | config, engine, models, store -> - | untagged |
+| `scripts/plan_check.py` (entry) | There is one plan and it has the parts a living plan needs. | - -> - | untagged |
 | `scripts/playbook_coverage.py` (entry) | Playbook coverage (docs/playbooks.md): which entries have a night-lab / unit test that RAN and passed. | - -> - | SAFE-01 |
 | `scripts/press_probe.py` (entry) | [press-to-TV, real hardware] Press GO NOW on the running app the way the phone does, and time each press from the tap to the game playing on the TV. | - -> - | BTN-01 |
 | `scripts/prime_pause_try.py` (entry) | Run prime_pause.enter_buffer_pause once on the HIDDEN Prime stick and print the result row. | tuners.adb, tuners.prime_pause -> - | untagged |
@@ -436,7 +439,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 | `scripts/yttv_search_tune_try.py` (entry) | Tune the LOCAL stations by YouTube TV search on the HIDDEN stick, through the app's own routing and tuner as if tuners.yttv_local_search were on (ChannelMap.... | channels, tuners.adb, tuners.tuners -> - | untagged |
 
-## Untagged (310)
+## Untagged (313)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -676,6 +679,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/fault_drill.py`
 - `scripts/fetch_eval_data.py`
 - `scripts/find_yttv_code.py`
+- `scripts/fix_needs_test.py`
 - `scripts/gate_power.py`
 - `scripts/gi_v3_nba.py`
 - `scripts/grading_check.py`
@@ -690,6 +694,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/license_check.py`
 - `scripts/measure_break_lengths.py`
 - `scripts/media_pull.py`
+- `scripts/module_headers.py`
 - `scripts/multiview_probe.py`
 - `scripts/nba_cdn_plays.py`
 - `scripts/nhl_apiweb.py`
@@ -700,6 +705,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/orient_line.py`
 - `scripts/pack_factory_code.py`
 - `scripts/perf_probe.py`
+- `scripts/plan_check.py`
 - `scripts/plan_tonight.py`
 - `scripts/prime_flip_probe.py`
 - `scripts/prime_pause_try.py`
@@ -796,7 +802,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/control.py:Controller` | 6 |
 | `redzone/lab/backtest.py:lag_of` | 6 |
 
-## Shared data files (76 of 180)
+## Shared data files (76 of 181)
 
 Files two or more modules name (the rest are in the JSON). Best effort from string literals: w = writes, r = reads, u = named but unclassified.
 

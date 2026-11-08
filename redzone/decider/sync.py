@@ -1,5 +1,7 @@
 """Automatic per-channel sync: each channel's screen delay tracked by a small Kalman filter, no taps.
 
+Why: each channel's screen delay is tracked automatically, with no taps (commit 2026-11-03, 'Per-channel delay predictor and automatic Kalman sync').
+
 What is tracked, per channel (tuner target):
 
     d   the screen delay now: how far the frame on screen runs behind real life (s)

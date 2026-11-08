@@ -5,6 +5,7 @@ name: CI
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [codex/resume-redzone, integration/next, integration/release]
   workflow_dispatch:
@@ -22,7 +23,7 @@ env:
   EVAL_DATA_ASSET: eval-archive.tgz
   PYTHONDONTWRITEBYTECODE: "1"
   # The integration train gets every scorecard in full; other PRs get the fast smoke slice.
-  RZ_SCORECARD_FULL: ${{ (github.base_ref == 'integration/next' || github.ref == 'refs/heads/integration/next' || github.ref == 'refs/heads/integration/release' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
+  RZ_SCORECARD_FULL: ${{ (github.event_name == 'merge_group' || github.base_ref == 'integration/next' || github.ref == 'refs/heads/integration/next' || github.ref == 'refs/heads/integration/release' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
 
 jobs:
   lint:
@@ -49,6 +50,8 @@ jobs:
         run: test "$(cat lint-status.txt)" = 0
       - name: contract kernel (new violations fail; baseline in docs/contract_baseline.json)
         run: python scripts/contract_check.py
+      - name: every module says what it is and why (ratchet, docs/module_headers_baseline.json)
+        run: python scripts/module_headers.py
 
   memory:
     # CLAUDE.md and docs/memory/ links resolve; a PR that changes a default or a gate also adds a
@@ -87,6 +90,16 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: python scripts/commit_why.py --base "origin/$BASE_REF"
+      - name: a fix carries a regression test; no deleted or skipped tests
+        # W1-RULES gap 1. Title and body come through env, never spliced into the script.
+        if: ${{ github.base_ref != '' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python scripts/fix_needs_test.py --base "origin/$BASE_REF"
+      - name: one plan, with its required sections
+        run: python scripts/plan_check.py
 
   graders:
     # docs/grading.md: graders are frozen by the integrator (G1), experiments are pre-registered (G2)

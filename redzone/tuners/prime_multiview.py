@@ -1,6 +1,8 @@
 """Prime Video NBA multiview as a switch path (SWITCHING). OFF until a live calibration on a Prime
 NBA night passes its gate (`tuners.prime_multiview`, scripts/prime_multiview_probe.py).
 
+Why: Prime can show three NBA games at once and a tile switch is ~1 s; OFF until a live Prime NBA night passes its gate (decisions 2026-11-03).
+
 Prime Video on Fire TV can show up to three NBA games at once: one big main tile (it has the
 audio) and smaller tiles stacked on the right. Making another tile main is remote navigation
 inside the player: no app relaunch, no deep link, no detail page. So a switch between tiles on

@@ -1,5 +1,7 @@
 """SwitchPaths contract: every way to put a target on screen, each with a measured cost.
 
+Why: Architecture contract v1 (2026-11-03): one interface for switch paths and their measured costs (decisions 2026-11-04, switch costs have one source of truth).
+
 The path TYPE is the decision core's redzone/decider/core.py `SwitchPath(kind, cost_s, cost_p90_s,
 preloaded)`; this file defines who produces them. Owner: SWITCHING ("Switch games instantly via TV
 input"). Implementation today: redzone/control.py Controller (switch_costs / deadline_cost /

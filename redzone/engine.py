@@ -1,5 +1,7 @@
 """The producer loop: poll every feed -> merge -> score -> decide -> act -> tell the phone.
 
+Why: the producer loop: each stage is wrapped so one failing feed, game or stick degrades only that piece and the app keeps running (docstring).
+
 Runs forever. Every stage is wrapped so one failure (a feed down, a bad game, a stick
 offline) degrades that piece and keeps everything else running.
 """

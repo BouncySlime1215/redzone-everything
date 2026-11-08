@@ -1,5 +1,7 @@
 """[Join watchdog + drift monitor] Nick's Nov 7 sync order, items (1) and (3). Flags off; Rule #1 unchanged.
 
+Why: Nick's Nov 7 sync order items 1 and 3: verify every entry on the overlay label and catch drift (decisions 2026-11-07, flags off).
+
 (1) JOIN WATCHDOG. After every entry (redzone/tuners/join.py, or control's scrub entry) the landing is checked
 against the plan on the one truth source we have: YouTube TV's overlay time label (yttv_label.LabelProbe), Prime's
 overlay timecode (prime_pause). Never media_session: it is wrong after a seek and goes stale (Nov 6-7).

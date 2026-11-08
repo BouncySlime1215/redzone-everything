@@ -40,6 +40,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 
 ## Process and budget
 
+- 2026-11-08: **Process gates G-02 to G-06 and G-09 built from the wave-1 reports.** A fix needs a regression test and a
+  repro; a Stop hook runs fast checks (it gives up with BLOCKED on a repeat, and under the harness's cap of eight); one
+  plan is checked in CI; `docs/handoff.md` targets 80 lines, ratcheted from 305 because the director edits it elsewhere.
+  Guard policy: a hook that can't start or times out blocks, a crash inside it allows and logs. Changes to `.claude/`
+  and `.github/` wait in a patch for Nick to apply (`docs/agents/patches/2026-11-08-process-gates.patch`). Why: rules with no check are advice.
 - 2026-11-04 (planned): **Move to a new Claude account Wed 5 PM.** Everything an AI needs lives
   in this repo ([new-environment.md](../new-environment.md)), so memory work lands before then.
 - 2026-11-03 4:20 PM: **Pace usage to reach ~90% at 5 PM Wed.** Checkpoints ≤55% at 10 PM,

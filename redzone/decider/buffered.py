@@ -1,6 +1,8 @@
 """[buffered jump] Nick, Nov 7 20:45 ET: "you need to go play by play moment from moment / several jumps across a
 minute (5-10) whatever makes sense". The overseer's fix (Nov 8 01:50Z): run BOTH sticks ~60-90 s behind live.
 
+Why: Nick Nov 7 20:45 ET asked for several jumps a minute; running both sticks ~60-90 s behind live makes the jump land before its snap (overseer fix, Nov 8).
+
 Why it works: the play-by-play runs ~10-30 s behind real life and YouTube TV's live edge runs 34.9 s behind it, so
 at the live edge the data never covers the picture and the jump gates mostly wait (live tonight: 715 "ready_not_dead"
 holds against 2 jumps). A stick scrubbed 60-90 s behind live shows real time now - (34.9 + behind): every snap,

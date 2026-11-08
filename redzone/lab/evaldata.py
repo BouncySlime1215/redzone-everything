@@ -1,5 +1,7 @@
 """One pinned eval dataset, so every thread, CI and the Mac grade on byte-identical nights.
 
+Why: every thread, CI and the Mac must grade on byte-identical nights, and the archive isn't in git (commit 2026-11-03, 'Pin one eval dataset').
+
 The scorecards (scripts/eval.py, scripts/eval_sports.py, ``python -m redzone.demo``) read
 ``data/archive/<league>/``, ``data/eval_config.yaml`` and ``data/demo/<day>/``. None of that is in
 git and the live service keeps adding nights, so two sessions that "re-download the archive" can

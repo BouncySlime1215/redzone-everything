@@ -1,5 +1,7 @@
 """SQLite log of everything the app decides and everything you tell it.
 
+Why: the training lab's raw material: every switch with three timestamps, every thumbs vote, calibration and screen-lab label in one SQLite log (docstring).
+
 This is the training lab's raw material: every switch with three timestamps
 (data event, command sent, playback confirmed), every 👍/👎, every calibration,
 every screen-lab label, and the source race.

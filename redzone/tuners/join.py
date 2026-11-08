@@ -1,5 +1,7 @@
 """[Join API] Put a HIDDEN stick a chosen time behind live, say where it should land, measure where it did, log both.
 
+Why: Nick's goal, Nov 7 2:07 AM ET: join a chosen spot accurately; which plays to join is the model's job later (decisions 2026-11-07, flag off).
+
 Nick's goal (Nov 7, 2:07 AM ET): join a chosen spot accurately; which plays to join is the model's job, later.
 Measured (overseer, 9 runs on NBA TV, ESPN, FS1, ACCN; targets 60/75/90; label truth):
   * YouTube TV: the overlay scrub with n = round((T - 10) / 15) LEFTs landed T - 3.3 s on average (errors -4.3,

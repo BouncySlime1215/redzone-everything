@@ -1,5 +1,7 @@
 """Conservative matchup evidence from fresh provider metadata.
 
+Why: unknown (needs owner)
+
 A matching title identifies the named matchup, not its date, live status, or
 video frames. A provider may retain metadata while changing playback; this does
 not replace the tuner's transition checks or verify that a switch succeeded.

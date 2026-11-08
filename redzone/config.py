@@ -1,5 +1,7 @@
 """Config: defaults + user overrides, validated, versioned, and undoable.
 
+Why: knobs change often on a live app: one store rejects bad values before saving and rollback() undoes a save (see lessons: unreadable config fell back to dry run).
+
 Guardrails:
 - Every edit is checked against LIMITS before it's saved; bad values are rejected with a reason.
 - Every save writes a timestamped copy to data/config_history/, so `rollback()` can undo it.

@@ -1,5 +1,7 @@
 """Noggin data factory: labeled dead-ball moments from free public play-by-play with real wall clocks.
 
+Why: the Noggin needs labeled dead-ball moments at scale from free play-by-play, built on Kaggle CPU, never the Mac (decisions 2026-11-04, 15:06 UTC).
+
     python scripts/noggin_factory.py nba --seasons 2019-2026      # Kaggle CPU / GitHub Actions, never the Mac
 
 One row per dead window (a stoppage on the feed, start -> the real restart), labeled by the SAME code the

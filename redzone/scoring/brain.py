@@ -1,5 +1,7 @@
 """The learned brain: per-game break / key-moment / game-flow predictions from trained models.
 
+Why: per-league break, key-moment and game-flow predictions; ships OFF because models trained on seasons including locked nights (decisions 2026-11-03).
+
 Three small gradient-boosted tree models per league (trained by ``scripts/train_brain.py`` on
 public play-by-play, see ``redzone.lab.datasets``), evaluated here with plain numpy:
 

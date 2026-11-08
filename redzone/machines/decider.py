@@ -1,5 +1,7 @@
 """State machines owned by the decider area (redzone/decider/, redzone/engine.py). See redzone/fsm.py for the rules.
 
+Why: decider states, stdlib + fsm only, so docs and tests read the specs without importing the decider (docstring; decisions 2026-11-08).
+
 Only stdlib + redzone.fsm here: the specs are read by docs and tests without importing the decider.
 """
 from __future__ import annotations

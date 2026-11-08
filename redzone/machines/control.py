@@ -1,5 +1,8 @@
 """State machines owned by the control area (redzone/control.py, redzone/tv.py, redzone/tuners/).
-See redzone/fsm.py for the rules. Only stdlib + redzone.fsm here."""
+See redzone/fsm.py for the rules. Only stdlib + redzone.fsm here.
+
+Why: the control area's states, declared apart from control.py under the 2026-11-08 explicit state-machine move (decisions 2026-11-08).
+"""
 from __future__ import annotations
 
 from redzone.fsm import ANY, Spec  # noqa: F401

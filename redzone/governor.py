@@ -1,5 +1,7 @@
 """Resource governor: keep the Mac cool, quiet and with free disk while RedZone runs.
 
+Why: the app shares an 8 GB MacBook Air that also goes to school, so extra work must keep it cool, quiet and with free disk (docstring; CLAUDE.md).
+
 The Mac is an 8 GB MacBook Air with ~5 GB of free disk that also goes to school. RedZone shares
 it with everything else, so the extra work (catch-up reel downloads and trims, the lab, the
 archive, score-bug OCR, the local model) backs off when the Mac is busy, hot, on battery, short

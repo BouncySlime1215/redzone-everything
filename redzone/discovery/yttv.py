@@ -1,6 +1,8 @@
 """YouTube TV channel codes with zero pasting: a researched default table, self-verification on a
 Fire TV stick, and an in-app search fallback.
 
+Why: YouTube TV channels open by 11-char codes that change now and then, so zero pasting needs a table plus self-verification on a stick (docstring).
+
 A YouTube TV channel is opened with https://tv.youtube.com/watch/<11-char code>. Codes are the same
 for every account, but they change now and then and East/West feeds differ, so:
   1. yttv_channels.json ships every code we could find in public posts (with source + date), and

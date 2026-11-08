@@ -1,5 +1,7 @@
 # Test Factory (engine 2): plan
 
+> **Superseded by [docs/PLAN.md](../PLAN.md)**, the only plan. Kept as history and input.
+
 Owner: the integrator. Nick asked for it on Nov 4 2026 at 11:10 PM ET: "every brain change is tested the moment it exists."
 Lane 1 owns engine 1 (context and hype data). The factory grades what engine 1's features do to the brain. It never
 grades the features themselves.

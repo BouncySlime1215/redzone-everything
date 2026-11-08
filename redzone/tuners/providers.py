@@ -1,6 +1,8 @@
 """Tuners for the other streaming apps: Peacock, Fubo, Paramount+, HBO Max, Netflix, NFL,
 NBA, Apple TV and DAZN.  (YouTube TV, Prime Video and ESPN live in tuners.py.)
 
+Why: each additional streaming app is one more tuner of deep link plus presses, using the same playing-yet ground truth as tuners.py (docstring).
+
 Each tuner = one deep link + the button presses that app needs, then the same ground truth
 as the built-in tuners: the stick's own playback report (dumpsys media_session).
 

@@ -1,5 +1,7 @@
 """The brief: one game's live situation as numbers (for the head) and as compact text (for the model).
 
+Why: unknown (needs owner)
+
 Built from what the app already has on every poll: the GameState, the brain's running features
 (its Tracker row) and reading, plus your context (your team, a bet, what's on screen). Stdlib +
 numpy; nothing here can raise on a strange feed (every field is optional, see redzone.models).

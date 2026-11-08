@@ -1,5 +1,7 @@
 """Per-channel stream-delay predictor: how far each channel's picture runs behind real life.
 
+Why: channels of one app don't share a delay: first YouTube TV samples Nov 2 were truTV 22 s, ESPN 26.4 s, FS1 42 s (commit 2026-11-03).
+
 Channels of one app do NOT share one delay. The first real samples on the sticks (Nov 2 2026, YouTube
 TV) were truTV 22 s and ESPN 26.4 s (show changes, boundary.py) and FS1 42 s (a tap): 20 s apart on
 one app. The old book pooled an app's taps into one figure and handed it to every channel without

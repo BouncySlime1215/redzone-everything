@@ -1,5 +1,7 @@
 """Select an explicitly configured profile using readable focus evidence only.
 
+Why: some Fire TV apps expose no accessible profile nodes, so a profile is chosen only on readable focus evidence, never a blind OK (docstring).
+
 Some Fire TV apps expose no accessible profile nodes. In that case the owner must
 select the profile; screen text alone never authorizes a blind OK or grid guess.
 """

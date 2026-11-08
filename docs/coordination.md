@@ -52,17 +52,30 @@ A card without an expected delta or a "no regression" line does not start.
 
 | Id | Rule | Enforced by | If blocked |
 |---|---|---|---|
-| G1 | Never read or print secrets | `.claude/hooks/guard.py` | Ask Nick |
-| G2 | No push or merge to `main`, `codex/resume-redzone`, `integration/release`; no force-push; PRs target `integration/next` | guard.py + permission deny rules | `gh pr create --base integration/next` |
-| G3 | No adb, stick or TV scripts (the TV may be in use) | guard.py; Nick unlocks with `data/.agent_hw_ok` | Use `tests/fake_adb.py` or the simulator |
+| G1 | Never read or print secrets (Read, Grep, Glob, every shell tool) | `.claude/hooks/guard.py` | Ask Nick |
+| G2 | No push or merge to `main`, `codex/resume-redzone`, `integration/release`; no force-push; PRs target `integration/next` | guard.py + permission deny rules; `git push` always asks | `gh pr create --base integration/next` |
+| G3 | No adb (bare, quoted or by path), stick or TV scripts, or computer-use tools (the TV may be in use) | guard.py; Nick unlocks with `data/.agent_hw_ok` | Use `tests/fake_adb.py` or the simulator |
 | G4 | No training or calibration on the 8 GB Mac | guard.py | Kaggle or CI |
 | G5 | No real deploy | guard.py; Nick unlocks with `data/.agent_deploy_ok` | `scripts/deploy.py --dry-run` |
 | G6 | Protected paths are read-only to agents: `.claude/`, `.github/`, `tests/conftest.py`, release gate, leak check, northstar, eval scripts and locks, gate baseline, grader freeze | guard.py + `scripts/autofix_guard.py` in CI | Write BLOCKED, or open a separate grader PR for Nick touching nothing else |
 | G7 | Never Peacock | guard.py (+ code check, fix plan) | Pick another provider |
+| G8 | Nobody in a Claude session reads locked test data or results | guard.py (Read, Grep, Glob); full design is PLAN G-08 | Use CI's PASS/FAIL summary |
 | R1 | Rule #1: never join mid-play; never leave a high-leverage moment | CI counters on replayed nights; `rule1-reviewer` on risky PRs | Ship the change OFF behind its flag |
 | W1 | Every state change says why | `redzone/fsm.py` (tests fail without a why) | Pass a short reason code |
 | M1 | A default or gate change adds a decisions line | `scripts/check_memory.py` | Add the fragment |
 | W2 | Every commit has a `Why:` line | `scripts/commit_why.py` in CI | Amend with one sentence of reason |
+| V1 | No stop on red: fast checks for the changed files pass before a turn ends | `.claude/hooks/stop_gate.py` (Stop; main sessions only, so parallel workers do not block each other) | Fix it, or write `BLOCKED: <reason>` |
+| F1 | A fix PR has a regression test and a repro; no PR deletes or skips tests | `scripts/fix_needs_test.py` in CI | Add the test, or `No-test: <reason>` for the test only |
+| D1 | Debug in order: reproduce, minimal test, map, bisect, root cause | [debugging runbook](memory/runbooks/debugging.md), `scripts/bisect_test.sh`, `debugger` subagent | Stop after 3 loops, mark BLOCKED |
+| MG1 | Merge, don't rebase, shared branches; keep both sides' intent; full suite before push | [merge runbook](memory/runbooks/merge.md); `merge_group` in CI; branch protection (Nick) | `BLOCKED:` rather than edit a test or gate |
+| P1 | One plan, with its required sections; handoff stays short | `scripts/plan_check.py` in CI; `scripts/check_memory.py` | Write into docs/PLAN.md; mark other plans superseded |
+
+Guard failure policy: a hook that can't start or times out blocks (`onFailure`); a crash inside guard.py allows the
+call and logs to `data/guard_errors.log`, and CI re-checks. Regexes read command text only, so auto mode's classifier
+is the backstop for a script that calls adb internally.
+
+**Status 2026-11-08:** the guard hardening above, V1, the `debugger` subagent and the CI steps for F1, P1 and MG1
+live in `docs/agents/patches/2026-11-08-process-gates.patch` until Nick applies it (`git apply`). The scripts and runbooks are in the tree.
 
 ## 5b. Finding out why
 

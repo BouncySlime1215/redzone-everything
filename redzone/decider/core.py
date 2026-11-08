@@ -1,5 +1,7 @@
 """The decision core: ONE expected-value function that every action is chosen by.
 
+Why: one expected-value function chooses every action, so soft choices don't scatter across the app (commits 2026-11-03, decision core interface).
+
 Every part of the app feeds the core through the small views below; the core never reaches into a
 feed, a model or a tuner itself. The Decider (decider.py) builds a CoreState each tick, asks the
 core for the action with the highest expected value, and lets the guard layer (hard rules: never

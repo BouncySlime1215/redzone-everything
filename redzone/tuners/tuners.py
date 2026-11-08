@@ -1,5 +1,7 @@
 """Tuners: one class per streaming app. Add ESPN or Fubo later by writing one more.
 
+Why: one class per streaming app, so a new app is one more class and every tune checks the same 'is the new stream playing?' truth (docstring).
+
 Every tune is: already playing it? done -> wake the stick only if it's asleep -> send the deep
 link -> ask the stick "playing yet?" 4 times a second until the NEW stream plays -> read the
 screen for a prompt only if it's slow -> retry once -> report how long it took.

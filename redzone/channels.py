@@ -1,5 +1,7 @@
 """Where can you actually watch a game? Map each game to a tuner target.
 
+Why: a game counts only if Nick's subscriptions reach it (YouTube TV, Sunday Ticket, Prime; Raleigh-Durham), so each game maps to a real tuner target.
+
 Targets look like  "youtubetv:espn"  or  "prime:<gti>"  or  "youtubetv:st"  (Sunday Ticket slot TBD).
 
 Rules (Raleigh-Durham market, YouTube TV + Sunday Ticket + Prime):

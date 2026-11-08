@@ -31,14 +31,14 @@ Each section names who may write it. Started 2026-11-08 from Nick's brief (quote
 | Id | Finding (link) | Fix | Back-filled? | Closed |
 |---|---|---|---|---|
 | G-01 | Organization standard for every report and finding (docs/STANDARD.md, Nick 2026-11-08) | `scripts/doc_index.py` + CI; wave-1 moved to docs/agents/<stream>/ | Nov 8 research/audits still in old layout: back-fill pending | open |
-| G-02 | W1-RULES: a fix needs a regression test (not only auto-fix PRs) | `scripts/fix_needs_test.py` + CI + PR template Repro/Root-cause | — | open |
-| G-03 | W1-RULES: Stop hook so a turn can't end with checks failing | `.claude/hooks/stop_gate.py` + settings | — | open |
-| G-04 | W1-RULES: debugging protocol (reproduce, bisect, root cause) | runbook `debugging.md`, `scripts/bisect_test.sh`, `debugger` subagent, lessons `Repro:`/`Bisected-to:` | lessons back-fill | open |
-| G-05 | W1-RULES: merge safety is prose only | runbook `merge.md`, `merge_group` CI trigger, rerere; branch protection is Nick's click | — | open |
-| G-06 | W1-RULES: the one plan isn't enforced | `scripts/plan_check.py` (sections, owners), handoff size cap | old plan files marked superseded | open |
-| G-07 | W1-CONTEXT: context card on every file read (why / routes / relied on / tests / invariants) | PostToolUse Read hook + card builder from citymap; module `Why:` header check with ratchet | ~360 module headers back-filled from decisions/lessons | open |
+| G-02 | W1-RULES: a fix needs a regression test (not only auto-fix PRs) | `scripts/fix_needs_test.py` + CI + PR template Repro/Root-cause | — | closed |
+| G-03 | W1-RULES: Stop hook so a turn can't end with checks failing | `.claude/hooks/stop_gate.py` + settings | — | closed |
+| G-04 | W1-RULES: debugging protocol (reproduce, bisect, root cause) | runbook `debugging.md`, `scripts/bisect_test.sh`, `debugger` subagent, lessons `Repro:`/`Bisected-to:` | lessons back-fill | closed |
+| G-05 | W1-RULES: merge safety is prose only | runbook `merge.md`, `merge_group` CI trigger, rerere; branch protection is Nick's click | — | closed; branch protection is Nick's click (docs/ci.md) |
+| G-06 | W1-RULES: the one plan isn't enforced | `scripts/plan_check.py` (sections, owners), handoff size cap | old plan files marked superseded | closed |
+| G-07 | W1-CONTEXT: context card on every file read (why / routes / relied on / tests / invariants) | PostToolUse Read hook + card builder from citymap; module `Why:` header check with ratchet | ~360 module headers back-filled from decisions/lessons | built and wired; 89 of 411 module headers done, 322 remain (ratchet), back-fill in waves |
 | G-08 | W1-ACCESS + W1-SEALED + W1-TAMPER: locked test data and results leak to agents and public CI | one combined design: deny rules + fail-closed hook (G8), strip locked scores from CI output, sealed private grader repo, hash-chained results log | eval data split moved; old CI summaries | open |
-| G-09 | W1-HARNESS: guard.py misses the terminal and computer-use tools, quoted `adb`, Grep and Glob; `git push` needs an `ask` rule | harden `.claude/hooks/guard.py` + deny/ask rules; `autoContinueAtUsageLimit: false`; hourly fresh coordinator tick instead of one immortal session | scheduled tasks re-pointed | open |
+| G-09 | W1-HARNESS: guard.py misses the terminal and computer-use tools, quoted `adb`, Grep and Glob; `git push` needs an `ask` rule | harden `.claude/hooks/guard.py` + deny/ask rules; `autoContinueAtUsageLimit: false`; hourly fresh coordinator tick instead of one immortal session | scheduled tasks re-pointed | closed; autoContinueAtUsageLimit and Auto mode are Nick's settings |
 
 ## 3. P1 switching accuracy (coordinator)
 
@@ -89,6 +89,24 @@ At most 2 audit rounds when code and prod work; then 1-2 loops of safety measure
   front matter; gate items G-01..G-08 opened. Standing streams scheduled (process 3x/day, training and data daily).
 - 2026-11-08: plan created; wave-1 research launched (process rules, code comprehension, locked results x3,
   Mac harness, single-plan practice). Merge of integration/next into PR #423 under full-suite test.
+
+## 9. Progress (coordinator)
+
+Phase status is section 1; gate items are section 2. Now: P0, closing G-02 to G-09.
+
+## 10. Surprises & Discoveries (coordinator; one line, date, link)
+
+- 2026-11-08: `docs/handoff.md` is 305 lines against an 80-line target ([W1-RULES](agents/rules/2026-11-08-debug-validate-merge.md) gap 5). `check_memory.py` holds it at 305 until it is trimmed.
+
+## 11. Decision Log (coordinator; one line, date, link)
+
+Nick's decisions live in [decisions.md](memory/decisions.md). Decisions about this plan go here.
+
+- 2026-11-08: only one plan; `docs/plans/*` carry a superseded line, checked by `scripts/plan_check.py`.
+
+## 12. Outcomes (coordinator; filled when a phase exits)
+
+None yet.
 
 ## Brief
 

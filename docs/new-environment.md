@@ -45,6 +45,11 @@ nights; $0 budget; never ask the user for tokens; stop at 88% weekly usage. Keep
 current after every merge.
 ```
 
+## Every clone (about 5 seconds)
+
+`git config rerere.enabled true`, so git replays conflict resolutions you already made
+([merge runbook](memory/runbooks/merge.md)).
+
 ## What carries over automatically
 
 - Code, branches, PRs, CI, docs: GitHub.

@@ -5,6 +5,8 @@
 
 1. Every relative link in CLAUDE.md and docs/memory/**/*.md points at a file or folder that exists.
 2. A change to a default or a gate (GUARDED below) must also add a line to docs/memory/decisions.md.
+3. docs/handoff.md stays short (W1-RULES gap 5): over HANDOFF_TARGET lines is a printed note, over HANDOFF_RATCHET
+   fails. Lower the ratchet as the file is trimmed, until the two match.
 Exit 0 = fine, 1 = something to fix (each problem is printed on its own line).
 """
 from __future__ import annotations
@@ -19,6 +21,9 @@ ROOT = Path(__file__).resolve().parent.parent
 DECISIONS = "docs/memory/decisions.md"
 # Defaults and gates. Keep in step with CLAUDE.md and the header of docs/memory/decisions.md.
 GUARDED = ("redzone/default_config.yaml", "docs/gate_baseline.json", "scripts/release_gate.py")
+HANDOFF = "docs/handoff.md"
+HANDOFF_TARGET = 80
+HANDOFF_RATCHET = 305   # its length when the cap started (2026-11-08); only ever goes down
 _LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 
 
@@ -55,11 +60,25 @@ def decisions_missing(changed: list[str]) -> list[str]:
     return []
 
 
+def handoff_size(root: Path = ROOT) -> tuple[list[str], list[str]]:
+    """(problems, notes) for the length of the handoff."""
+    f = root / HANDOFF
+    n = len(f.read_text(encoding="utf-8").splitlines()) if f.exists() else 0
+    if n > HANDOFF_RATCHET:
+        return [f"{HANDOFF}: {n} lines (limit {HANDOFF_RATCHET}, target {HANDOFF_TARGET}); move history out of it"], []
+    if n > HANDOFF_TARGET:
+        return [], [f"note: {HANDOFF} is {n} lines (target {HANDOFF_TARGET})"]
+    return [], []
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", help="git ref the branch is compared against (enables the decisions rule)")
     a = ap.parse_args(argv)
-    problems = broken_links()
+    size_problems, notes = handoff_size()
+    problems = broken_links() + size_problems
+    for n in notes:
+        print(n)
     if a.base:
         problems += decisions_missing(changed_files(a.base))
     for p in problems:

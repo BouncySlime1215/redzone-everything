@@ -1,6 +1,8 @@
 """[Join self-calibration, Nick's Nov 7 order item 5] Per channel and stick: join-error and delay stats, and a
 bias that updates itself from data/joins.jsonl, inside hard bounds. OFF (join.calib.enabled false).
 
+Why: Nick's Nov 7 order item 5: a per-channel, per-stick bias from data/joins.jsonl that corrects itself inside hard bounds (flag off).
+
 What is calibrated (the only thing a join controls):
   * YouTube TV: the LEAD of a scrub. A join of k real LEFTs from `before` lands at before + 16.8 k + lead + read
     (Nick's depth sweep, Nov 7 13:48Z: 16.8 k + 28.5 with the label read's 7.5 s, k = 1..6 within 1 s; shipped lead

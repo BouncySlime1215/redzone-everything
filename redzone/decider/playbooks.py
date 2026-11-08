@@ -1,5 +1,7 @@
 """Safety playbooks SAFE-01/02/03/05 (docs/playbooks.md, family flag `playbooks.safe.enabled`, OFF).
 
+Why: SAFE-01/02/03/05 turn a switch into a logged, auditable hold (docs/playbooks.md; decisions 2026-11-04 10:30 AM, ships OFF).
+
 Each entry is "given X, do Y": a pure check of the live state that turns a switch into a hold and
 writes `playbook=<id>` into the decision's reason, so the End Planner and 👍/👎 can audit it. Rule #1
 beats every playbook, so every action here is a HOLD (stay on the game on screen); none of them can

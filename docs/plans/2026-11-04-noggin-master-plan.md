@@ -1,5 +1,7 @@
 # The Noggin master plan: becoming THE sports AI
 
+> **Superseded by [docs/PLAN.md](../PLAN.md)**, the only plan. Kept as history and input.
+
 Draft for Nick, Wed Nov 4, 2026, ~5:45 PM. **Nothing in here is sent to the project until Nick says go.**
 The data catalog (about 20B data points, 54 GB) is held until the model is chosen.
 
