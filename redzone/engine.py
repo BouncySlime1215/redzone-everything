@@ -194,7 +194,11 @@ class Engine:
         self._bug_log_path = data_dir.parent / "scorebug_reads.jsonl" if data_dir else None
         # [jump mode] every jump with its reason: ids, numbers and short codes (data/jumps.jsonl)
         self._jump_log_path = data_dir.parent / "jumps.jsonl" if data_dir else None
-        self._jump_status_at = 0.0   # [jump mode] last standby status row in jumps.jsonl
+        # [jump mode] standby status rows go to their own file (overseer Nov 8: a status row in jumps.jsonl read
+        # as a jump with every field None)
+        self._jump_status_path = data_dir.parent / "jump_status.jsonl" if data_dir else None
+        self._jump_status_at = 0.0
+        self._jump_standby_note: dict = {"standby_plan": "not run yet"}
         from redzone.buffer_shadow import BufferShadow
         self.buffer_shadow = BufferShadow(self.cfg, self.decider, self._shadow_behind,
                                           data_dir.parent / "buffer_shadow.jsonl" if data_dir else None,
@@ -1440,6 +1444,7 @@ class Engine:
         self._hold_check()
         if self._shadow_buffer_on():
             self.buffer_shadow.tick(cands)   # never acts: what the buffered show would do right now
+        self._jump_status()   # [jump mode] heartbeat, also while a switch or replay is in flight
         if self._pending_decision is not None:
             return False  # score/feed updates continue; don't race a tune in flight
         if not dry and self.control.input_unknown and getattr(self.control, "live_control", False):
@@ -1891,35 +1896,47 @@ class Engine:
         False: the rotation has nothing to tune (no other game), so the normal standby plan runs."""
         u = self.decider.user
         if u.locked_game or u.focus_mode != FocusMode.AUTOPILOT:
+            self._jump_standby_note = {"standby_plan": "locked or focus mode"}
             return False
         if self.cfg.get("jump_mode.replays", True) and self._replay_standby(cands) is not None:
+            self._jump_standby_note = {"standby_plan": "yields to a queued replay"}
             return False   # a big-play catch-up is queued: the normal plan parks it on the hidden stick (replay_park)
         gid = self.decider.jump_next(cands, standby=self.control.standby[0], tunable=self.control.can_tune)
         target = cands[gid].target if gid in cands else None
         if not target:
+            self._jump_standby_note = {"standby_plan": "no other tunable game"}
             return False
         started = self.control.preload(target, urgent=urgent)
         if not started and urgent:
             log.info("jump refill of %s refused: %s", gid, self.control.preload_why)
-        self._log_jump_status(gid, target, started, urgent)
+        self._jump_standby_note = {"standby_plan": "refill" if urgent else "rotation", "want": gid,
+                                   "want_ready": bool(self.control.standby_ready(target)),
+                                   "preload": "started" if started else (self.control.preload_why or "refused")}
+        if urgent:
+            self._jump_status(force=True)
         return True
 
-    def _log_jump_status(self, want: str, target: str, started: bool, urgent: bool) -> None:
-        """[jump mode] Every ~30 s (and on each refill after a jump): what the standby holds, whether it's
-        ready, why a preload was refused, and why the rotation held. Rows carry "event": "standby"."""
+    def _jump_status(self, force: bool = False) -> None:
+        """[jump mode] Every ~30 s (and on each refill after a jump) one row in data/jump_status.jsonl: what the
+        standby holds, whether it's ready, what the standby plan did (and why a preload was refused), whether a
+        switch or replay is in flight, and why the rotation held. Kinds and codes only: no play text."""
         now = time.time()
-        if self._jump_log_path is None or not self.cfg.get("jump_mode.log", True):
+        if self._jump_status_path is None or not self.cfg.get("jump_mode.log", True) or not self.decider.jump_on():
             return
-        if not urgent and now - self._jump_status_at < 30.0:
+        if not force and now - self._jump_status_at < 30.0:
             return
         self._jump_status_at = now
         sb = self.control.standby[0]
-        rec = {"event": "standby", "ts": round(now, 2), "want": want, "standby": self._game_on_target(sb),
-               "standby_ready": bool(self.control.standby_ready(sb)), "want_ready": bool(self.control.standby_ready(target)),
-               "preload": "started" if started else (self.control.preload_why or "refused"), "refill": urgent,
+        pend, last = self._pending_decision, self.last_decision
+        rec = {"ts": round(now, 2), "on_screen": self.decider.current, "standby": self._game_on_target(sb),
+               "standby_ready": bool(self.control.standby_ready(sb)), **self._jump_standby_note,
+               "pending": f"{pend.action}:{pend.kind}" if pend is not None else None,
+               "pending_s": round(now - self._pending_since, 1) if pend is not None and self._pending_since else None,
+               "replaying": bool(self.decider.replaying),
+               "last": f"{last.action}:{last.kind}" if last is not None else None,
                "holds": dict(self.decider.jump_holds)}
         try:
-            with self._jump_log_path.open("a") as fh:
+            with self._jump_status_path.open("a") as fh:
                 fh.write(json.dumps(rec) + "\n")
         except OSError:
             pass
