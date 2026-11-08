@@ -2438,13 +2438,21 @@ class Decider:
         if not self.jump_on():
             return None
         u, c = self.user, self.cfg
-        if (self.safe_mode or u.paused or u.locked_game or now < u.manual_until or now < self._arrival_until
-                or u.focus_mode != FocusMode.AUTOPILOT or self.replaying or self.after_replay):
+        # [overseer Nov 8 01:50Z: "no jump rows, decision text is the normal decider"] every way the rotation
+        # stands aside is counted (data/jump_status.jsonl holds), not only the waits at a dead ball
+        off = ("safe_mode" if self.safe_mode else "paused" if u.paused else "locked_game" if u.locked_game
+               else "manual_pause" if now < u.manual_until else "just_arrived" if now < self._arrival_until
+               else "focus_mode" if u.focus_mode != FocusMode.AUTOPILOT else "replaying" if self.replaying
+               else "after_replay" if self.after_replay else None)
+        if off:
+            self.jump_holds[off] += 1
             return None
         if d.action in ("switch", "replay") and d.kind in JUMP_KEEPS:
+            self.jump_holds[f"normal_{d.kind}"] += 1
             return None   # crunch time, a finished game, your tap, a chase: the normal decider already goes
         cur = cands.get(self.current or "")
         if cur is None or self.current in PSEUDO or not self._jump_league(cur):
+            self.jump_holds["screen_not_in_rotation" if cur is not None else "screen_game_unknown"] += 1
             return None
         hold = self._jump_hold(cur)
         if hold:
