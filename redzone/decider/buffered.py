@@ -26,7 +26,8 @@ from redzone.decider.cuts import DeadTracker
 
 BJ_DEFAULTS = {
     "enabled": False,
-    "leagues": ["nfl", "cfb"],   # where the editor runs (football: every snap is logged with a wallclock)
+    "leagues": ["nfl", "cfb", "nba", "cbb", "wcbb"],   # every entry has a wallclock; basketball's dead balls are fouls,
+                                 # free throws, timeouts, violations, reviews, period ends (cuts.after_kind)
     "behind_s": 75.0,            # scrub depth asked of each fresh tune (join landing 16.8 k + 28.5: k=3 -> ~79 s)
     "min_behind_s": 45.0,        # a stick less behind than this (read off the label) is not a buffered picture
     "flip_s": 3.2,               # input flip to the hidden stick (the slowest usual)

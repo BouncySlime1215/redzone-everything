@@ -68,6 +68,11 @@ def _short_why(detail: str) -> str:
     return detail.split(";", 1)[0].strip()[:80] or "switch failed"
 
 
+def _league_of(g) -> str | None:
+    lg = getattr(g, "league", None)
+    return getattr(lg, "value", None)
+
+
 def buffered_league(cfg, decider, target: str, g) -> bool:
     """[buffered jump] Jump mode + buffered_jump on, a YouTube TV target, a game in buffered_jump.leagues."""
     if decider is None or not decider.buffered_on() or not target.startswith("youtubetv:"):
@@ -1889,15 +1894,16 @@ class Engine:
         next LOGGED snap (redzone/decider/buffered.park_in); a park older than park_max_age_s is rolled and parks
         again. The next dead ball on screen flips to it (Decider._buffered_jump)."""
         dec, ctl = self.decider, self.control
-        if not dec.buffered_on() or not ctl.two_stick or dec.replaying:
+        self._bj_park_why = ("off" if not dec.buffered_on() else "one_stick" if not ctl.two_stick
+                             else "replaying" if dec.replaying else "no_standby" if not ctl.standby[0] else "buffer")
+        if self._bj_park_why != "buffer":
             return
         target = ctl.standby[0]
-        if not target:
-            return
         # [bootstrap, overseer Nov 8 21:47] sticks tuned before the flag went on are never scrubbed: re-tune + scrub
         # the hidden one; and a standby stuck not-ready with nothing running is let go for the rotation's next pick
         if ctl.drop_stuck_standby(target, float(bj.cfg_get(self.cfg, "stuck_s"))) or ctl.buffer_standby(target):
             return
+        self._bj_park_why = "checked"
         if not bj.cfg_get(self.cfg, "park"):
             return
         if ctl.snap_parked(target) is not None:
@@ -1918,7 +1924,9 @@ class Engine:
         u = self.decider.user
         if u.locked_game or u.focus_mode != FocusMode.AUTOPILOT:
             return False
-        if self.cfg.get("jump_mode.replays", True) and self._replay_standby(cands) is not None:
+        # [overseer Nov 8 22:15] buffered: the hidden stick is the editor's next cut, so a queued replay doesn't take it
+        if self.cfg.get("jump_mode.replays", True) and not self.decider.buffered_on() \
+                and self._replay_standby(cands) is not None:
             return False   # a big-play catch-up is queued: the normal plan parks it on the hidden stick (replay_park)
         gid = self.decider.jump_next(cands, standby=self.control.standby[0], tunable=self.control.can_tune)
         target = cands[gid].target if gid in cands else None
@@ -1934,7 +1942,10 @@ class Engine:
         rec = {"ts": round(cmd_ts, 2), "from": before, "to": d.target, "app": (target or "").split(":", 1)[0],
                "ok": bool(out.ok), "dry_run": bool(out.dry_run), "took_s": round(out.took or 0.0, 2),
                "waited_s": round(out.waited or 0.0, 1), "path": out.path, **(d.jump or {}),
-               "standby": self._game_on_target(self.control.standby[0]), "standby_ready": bool(self.control.hidden_ready)}
+               "standby": self._game_on_target(self.control.standby[0]), "standby_ready": bool(self.control.hidden_ready),
+               # [pass bar audit, scripts/buffered_jump_try.py] which ESPN league to read each game's play-by-play from
+               "from_league": _league_of(self.merger.games.get(before or "")),
+               "to_league": _league_of(self.merger.games.get(d.target or ""))}
         if not out.ok:
             rec["fail"] = "cancelled" if out.detail.startswith("switch cancelled") else "no_safe_moment" \
                 if "no safe moment" in out.detail else "other"

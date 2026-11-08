@@ -265,6 +265,7 @@ class Controller:
         self._hidden_entry = 0.0                 # [seek model] entry rewind to run on the hidden stick before the flip
         self._hidden_entry_done = False
         self._entry_rewind = 0.0                 # [EXP-741 B] the running switch's entry rewind (arm_entry_rewind)
+        self.bj_buffer_why = ""                  # [buffered jump] why buffer_standby last didn't start (jump_status)
         self._safe_waiting = False               # [EXP-741 E] a switch is waiting for its moment (tap_bug_frames)
         self._entry_cue = ""
         self.seek_log_path = None                # [calib.auto] data/seeks.jsonl: one row per measured seek
@@ -2205,7 +2206,10 @@ class Controller:
                                    path=path, screen_unchanged=visible_untouched)
                 self._mark("park_done")
         if not replay and path in ("tuned", "preloaded") and self._scrub_wanted(target) \
-                and hid.scrubbed(target) is None:
+                and hid.scrubbed(target) is None and not self._buffered_jump():
+            # [buffered jump] not inside a switch: tune + banner wait + scrub + the safe-moment wait held the command
+            # lock 156 s (overseer Nov 8 22:15, stuck_lock). Buffered scrubs run on the standby (preload/buffer_standby);
+            # this picture lands live-edge and the next bootstrap cut moves the screen onto a buffered one.
             # [scrub entry, item 4] seek the hidden stick into the buffer BEFORE the flip, with the old game still
             # on screen: the picture comes up B s behind live and the safe-moment wait below then judges the
             # dead ball on that delayed picture (the engine's may_cut reads the delay book, which _set_held
@@ -3713,10 +3717,21 @@ class Controller:
         went on (never scrubbed) is re-tuned and scrubbed off screen, so the next flip puts a buffered picture on screen.
         True = started. Never touches the stick on screen."""
         hid = self.hidden
-        if not self._buffered_jump() or hid is None or self.hidden_target != target or not self.hidden_ready \
-                or self.parked is not None or hid.scrubbed(target) is not None or self._busy() or self._flipping:
-            return False
-        if not self._scrub_wanted(target) or time.time() < self._scrub_backoff.get(target, 0.0):
+        # [overseer Nov 8 22:29: fox ready, unscrubbed, no re-scrub line] the first refusing guard is named (jump_status
+        # 'bj_buffer' and one log line each time it changes)
+        why = ("flag_off" if not self._buffered_jump() else "no_hidden_stick" if hid is None
+               else "hidden_holds_other" if self.hidden_target != target
+               else "already_scrubbed" if hid.scrubbed(target) is not None
+               else "not_ready" if not self.hidden_ready else "replay_parked" if self.parked is not None
+               else "switch_running" if self._task is not None and not self._task.done()
+               else "preload_running" if self._preload_task is not None and not self._preload_task.done()
+               else "lock_held" if self._lock.locked() else "flipping" if self._flipping
+               else "scrub_not_wanted" if not self._scrub_wanted(target)
+               else "scrub_backoff" if time.time() < self._scrub_backoff.get(target, 0.0) else "start")
+        if why != getattr(self, "bj_buffer_why", ""):
+            log.info("buffered jump: standby %s re-scrub check: %s", target, why)
+        self.bj_buffer_why = why
+        if why != "start":
             return False
         log.info("buffered jump: %s on the hidden stick %s isn't scrubbed: re-tune + scrub", target, hid.host)
         self._set_hidden(target, False)

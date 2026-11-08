@@ -340,3 +340,45 @@ def test_scrub_waits_for_the_tune_banner_and_a_banner_miss_retries_soon(cfg, tmp
     asyncio.run(go())
     assert seen["after"] >= 0.4
     assert 25 <= c._scrub_backoff["youtubetv:secn"] - _t.time() <= 31
+
+
+def test_screen_game_gone_from_the_feed_is_a_free_cut(cfg, clock):
+    """[overseer Nov 8 22:15] the game on screen left the games list ('screen_game_unknown' 140 holds): jump onto the
+    buffered standby at its dead-ball landing; leaving the gone game needs no dead ball of its own."""
+    dec, delays = setup(cfg, clock)
+    scene(dec, clock)
+    dec.current = "gone"
+    d = dec.decide(cands(b=50))
+    assert d.kind == "jump" and d.target == "b" and d.jump["why"] == "bj_screen_gone", (d.reason, dict(dec.jump_holds))
+    assert dec.jump_may_leave("gone", cands(b=50), clock.t, 3.2)
+
+
+def test_buffered_never_takes_the_low_leverage_leave(cfg, clock):
+    """[Nick 22:15 pass bar: "Can't leave mid play"] with buffered on, the normal gate's low-leverage leave is refused."""
+    from redzone.decider.screen import Gate
+    dec, delays = setup(cfg, clock)
+    scene(dec, clock)
+    dec._gate = lambda cur, now: Gate(True, "low-leverage moment: leaving mid-play is OK")
+    dec.timelines["a"].dead = DeadTracker(League.CFB)   # no dead window: only the normal gate could open
+    x = cands(a=60, b=50)["a"]
+    assert not dec._jump_gate(x, clock.t).safe
+    cfg.update({"buffered_jump": {"enabled": False}})
+    assert dec._jump_gate(x, clock.t).safe   # jump mode alone keeps its low-leverage leave
+
+
+def test_pass_bar_windows():
+    """75 jumps in a 10-min window AND 0 ad seconds AND no play cut off AND no mid-play join/leave."""
+    import scripts.buffered_jump_sim as sim
+    spans = {"a": [(100.0, 110.0)], "b": [(400.0, 410.0)]}
+    ads = {"a": [(200.0, 260.0)], "b": []}
+    cuts = [float(t) for t in range(0, 600, 8)][:75]
+    ok = sim.pass_bar([("a", 0.0, 150.0, 0.0), ("b", 150.0, 600.0, 0.0)], spans, ads, cuts, [], 0.0, 600.0)
+    assert ok["windows_pass"] == 1, ok
+    few = sim.pass_bar([("a", 0.0, 150.0, 0.0), ("b", 150.0, 600.0, 0.0)], spans, ads, cuts[:74], [], 0.0, 600.0)
+    assert few["windows_pass"] == 0
+    ad = sim.pass_bar([("a", 0.0, 300.0, 0.0), ("b", 300.0, 600.0, 0.0)], spans, ads, cuts, [], 0.0, 600.0)
+    assert ad["ad_s"] == 60.0 and ad["windows_pass"] == 0
+    cut = sim.pass_bar([("a", 0.0, 105.0, 0.0), ("b", 105.0, 600.0, 0.0)], spans, ads, cuts, [], 0.0, 600.0)
+    assert cut["partial_plays"] == 1 and cut["windows_pass"] == 0
+    mid = sim.pass_bar([("a", 0.0, 150.0, 0.0), ("b", 150.0, 600.0, 0.0)], spans, ads, cuts, [50.0], 0.0, 600.0)
+    assert mid["windows_pass"] == 0
