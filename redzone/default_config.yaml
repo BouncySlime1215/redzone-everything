@@ -413,7 +413,8 @@ buffered_jump:             # [overseer Nov 8 01:50Z / Nick 20:45 "play by play m
                            # every snap and whistle about to air, so each cut is planned (redzone/decider/buffered.py). Needs
                            # jump_mode.enabled too. Sim: scripts/buffered_jump_sim.py. Stick test: scripts/buffered_jump_try.py
   enabled: false           # OFF: Nick turns it on at runtime (POST /api/settings {"changes":{"buffered_jump":{"enabled":true}}})
-  leagues: [nfl, cfb]      # football: every snap has a wallclock; other leagues keep jump mode's own rules
+  leagues: [nfl, cfb, nba, cbb, wcbb]   # [overseer Nov 8 22:15] + basketball (fouls, FTs, timeouts, violations are the
+                           # dead balls; a made basket's inbound is too short for the delay margin). Others: jump mode's rules
   behind_s: 75             # scrub depth asked of each fresh YouTube TV tune (lands ~79 s: 16.8 k + 28.5, k=3)
   min_behind_s: 45         # a stick less behind than this (label) isn't a buffered picture: jump mode's own rules run
   flip_s: 3.2              # slowest input flip to the ready standby (live tonight 2.5-3.7 s)

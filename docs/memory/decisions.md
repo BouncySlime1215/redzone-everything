@@ -1252,3 +1252,16 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   overlay key of a scrub entry waits that long after the tune played: YouTube TV's post-tune banner swallows keys) and
   **`scrub_banner_retry_s: 30`** (a focus-guard miss is retried soon, others keep scrub_retry_s 120); the supervisor
   no longer counts "buffer entry failed" as the channel's failure. Seek thread agreed (it owns enter_buffer).
+- **2026-11-08 (Nick 22:15 + 22:17 ET Nov 7, via the overseer): the jump PASS BAR.** A 10-minute window of the real
+  TV passes only with **75+ on-screen jumps in that window (7.5/min)** AND all four hard rules in it: **0 commercial
+  seconds on screen**, **every shown play in full** (no play cut off at a cut), **0 mid-play joins**, **0 mid-play
+  leaves**. "Can't leave mid play" is stricter than Rule #1's low-leverage exception: with buffered_jump on, the
+  rotation leaves only at a dead ball (`Decider._jump_gate` refuses the low-leverage gate). Measured by
+  `scripts/buffered_jump_try.py watch|report` (one PASS/FAIL line per 10-min window, rules audited ~2.5 min later
+  against ESPN's play-by-play) and `scripts/buffered_jump_sim.py` (per-window verdicts on recorded slates; commercials =
+  a break window's inside, 10 s in from each end, an assumption). Applies to every sport.
+- **2026-11-08 (overseer 22:15 ET Nov 7, live 0 cuts on 9f3412d): buffered_jump.leagues default += nba, cbb, wcbb**
+  (fouls, free throws, timeouts, violations, reviews and period ends are the dead balls; a made basket's inbound is too
+  short for the delay margin). With buffered_jump on: no catch-up replay queue (it took the standby: 'yields to a queued
+  replay'), no scrub inside a switch (tune + banner wait + scrub + safe wait held the command lock 156 s), and a screen
+  game that left the feed is a free cut onto a ready standby that lands dead.
