@@ -904,13 +904,16 @@ def test_the_game_on_a_channel_is_the_live_one(eng):
 
 
 def test_jump_refill_is_urgent_and_logs_why_the_standby_waits(eng, tmp_path, monkeypatch):
-    """[overseer Nov 7 20:05] After a jump the standby is refilled at once (no 5 s preload gap), and a "standby" row
-    in jumps.jsonl says what it holds, whether it's ready and why a preload was refused."""
+    """[overseer Nov 7 20:05] After a jump the standby is refilled at once (no 5 s preload gap), and a row in
+    jump_status.jsonl (not jumps.jsonl: Nov 8, a status row there read as an all-None jump) says what it holds,
+    whether it's ready and why a preload was refused."""
     import json
     from conftest import nfl
     from redzone.decider.decider import Candidate
     e, _ = eng
+    e.cfg.update({"jump_mode": {"enabled": True}})
     e._jump_log_path = tmp_path / "jumps.jsonl"
+    e._jump_status_path = tmp_path / "jump_status.jsonl"
     g = nfl("cin_hou", "HOU", "CIN")
     e.merger.games["cin_hou"] = g
     cands = {"cin_hou": Candidate(None, "youtubetv:fox")}
@@ -926,8 +929,14 @@ def test_jump_refill_is_urgent_and_logs_why_the_standby_waits(eng, tmp_path, mon
     e.decider.jump_holds["standby_not_ready"] = 3
     assert e._jump_standby(cands, urgent=True)
     assert calls == [("youtubetv:fox", True)]
-    row = json.loads(e._jump_log_path.read_text().splitlines()[-1])
-    assert row["event"] == "standby" and row["want"] == "cin_hou" and row["refill"] is True
+    row = json.loads(e._jump_status_path.read_text().splitlines()[-1])
+    assert row["want"] == "cin_hou" and row["standby_plan"] == "refill" and row["pending"] is None
     assert row["preload"] == "a switch or preload is running" and row["holds"] == {"standby_not_ready": 3}
-    assert e._jump_standby(cands)   # a normal tick within 30 s: no second row
-    assert len(e._jump_log_path.read_text().splitlines()) == 1
+    assert not e._jump_log_path.exists()
+    e._jump_status()   # the tick's heartbeat within 30 s: no second row
+    assert len(e._jump_status_path.read_text().splitlines()) == 1
+    # a queued replay: the plan yields, and the next heartbeat says so
+    monkeypatch.setattr(e, "_replay_standby", lambda c: object())
+    assert not e._jump_standby(cands)
+    e._jump_status(force=True)
+    assert json.loads(e._jump_status_path.read_text().splitlines()[-1])["standby_plan"] == "yields to a queued replay"
