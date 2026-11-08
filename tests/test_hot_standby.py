@@ -883,3 +883,21 @@ async def test_the_watchdog_waits_for_a_dead_ball_then_rebuilds(two, monkeypatch
     monkeypatch.setattr(c.hidden, "playback", lambda pkg=None: asyncio.sleep(0, result=jumped))
     await c.verify_standby()                                           # flag off: nothing watches the hold
     assert holds == [(88.5, 0.0)]
+
+
+def test_the_game_on_a_channel_is_the_live_one(eng):
+    """[overseer Nov 7 19:10] The standby on FOX 50 read 'DEN @ CAR' (tomorrow's game on FOX) while CIN@HOU was
+    live there: every lookup by channel (the standby card, the jump log, STK-06's dead-ball check) takes the
+    LIVE game on that channel first."""
+    import dataclasses
+    from conftest import nfl
+    from redzone.channels import Where
+    from redzone.models import Phase
+    e, _ = eng
+    tomorrow = dataclasses.replace(nfl("den_car", "CAR", "DEN"), phase=Phase.PRE)
+    tonight = nfl("cin_hou", "HOU", "CIN")
+    e.merger.games.update({"den_car": tomorrow, "cin_hou": tonight})
+    e.where.update({"den_car": Where("youtubetv:fox", "FOX", "sure", True),
+                    "cin_hou": Where("youtubetv:fox", "FOX", "sure", True)})
+    assert e._game_on_target("youtubetv:fox") == "cin_hou"
+    assert e._game_on_target("youtubetv:espn") is None

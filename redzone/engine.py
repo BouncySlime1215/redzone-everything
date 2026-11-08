@@ -1777,7 +1777,7 @@ class Engine:
 
     def _target_dead(self, target: str) -> bool:
         """[STK-06] Is the game on `target` in a dead ball on screen right now? No game known: no."""
-        gid = next((g for g, w in self.where.items() if getattr(w, "target", None) == target), None)
+        gid = self._game_on_target(target)   # the LIVE game on that channel, not tomorrow's on the same network
         return bool(gid) and self.safe_to_leave(gid)
 
     def safe_to_leave(self, gid: str | None, required_s: float = 0.0) -> bool:
@@ -1833,7 +1833,8 @@ class Engine:
             return
         rec = {"ts": round(cmd_ts, 2), "from": before, "to": d.target, "app": (target or "").split(":", 1)[0],
                "ok": bool(out.ok), "dry_run": bool(out.dry_run), "took_s": round(out.took or 0.0, 2),
-               "waited_s": round(out.waited or 0.0, 1), "path": out.path, **(d.jump or {})}
+               "waited_s": round(out.waited or 0.0, 1), "path": out.path, **(d.jump or {}),
+               "standby": self._game_on_target(self.control.standby[0]), "standby_ready": bool(self.control.hidden_ready)}
         if not out.ok:
             rec["fail"] = "cancelled" if out.detail.startswith("switch cancelled") else "no_safe_moment" \
                 if "no safe moment" in out.detail else "other"
@@ -2562,12 +2563,20 @@ class Engine:
             log.debug("queue item enrich failed", exc_info=True)
         return item
 
+    def _game_on_target(self, target: str | None) -> str | None:
+        """The game a channel is showing now: a LIVE game on it first. `where` maps every game on the board,
+        so a channel's first entry can be tomorrow's game on the same network (overseer Nov 7 19:10: the
+        standby on FOX 50 read 'DEN @ CAR' while CIN@HOU was live there)."""
+        on = [g for g, w in self.where.items() if target and getattr(w, "target", None) == target]
+        live = [g for g in on if getattr(self.merger.games.get(g), "phase", None) == Phase.LIVE]
+        return (live or on or [None])[0]
+
     def _standby_view(self) -> dict | None:
         c = self.control
         t = c.hidden_target
         if not (c.two_stick and t):
             return None
-        gid = next((g for g, w in self.where.items() if getattr(w, "target", None) == t), None)
+        gid = self._game_on_target(t)
         parked = c.parked_id
         pick = next((o for o in self.planner.last if o.target == t and o.replay_id == parked), None)
         return {"game_id": pick.game_id if pick else gid, "matchup": self._name(pick.game_id if pick else gid),
