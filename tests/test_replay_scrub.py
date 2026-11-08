@@ -217,7 +217,7 @@ def test_nicks_espn_park_63s_lands_112_behind_and_is_1_5s_before_the_snap():
     oldattr = getattr(_t, "yttv_seek", None)
     _t.yttv_seek = mod
     try:
-        r = run(rp.park(Stick(), 63.0, probe=Probe(), clock=clk, sleep=sleep))
+        r = run(rp.park(Stick(), 63.0, probe=Probe(), pkg="yttv.pkg", clock=clk, sleep=sleep))
     finally:
         sys.modules["redzone.tuners.yttv_seek"] = old
         _t.yttv_seek = oldattr
@@ -261,8 +261,23 @@ def test_a_transient_none_after_pause_is_reread_not_a_lost_park():
     oldattr = getattr(_t, "yttv_seek", None)
     _t.yttv_seek = mod
     try:
-        r = run(rp.park(Stick(), 63.0, probe=Probe(), clock=clk, sleep=sleep))
+        r = run(rp.park(Stick(), 63.0, probe=Probe(), pkg="yttv.pkg", clock=clk, sleep=sleep))
     finally:
         sys.modules["redzone.tuners.yttv_seek"] = old
         _t.yttv_seek = oldattr
     assert r.ok and r.paused and r.to_snap_s == pytest.approx(1.5, abs=0.3)
+
+
+def test_a_park_without_the_youtubetv_package_presses_nothing():
+    """Nick's rerun on 89656de9: the try script never identify()'d the stick, so park() had no package and the pause
+    read 'none' among several media sessions. A park that can't confirm its pause never presses a key."""
+    from redzone.tuners import replay_park as rp
+
+    class Stick:
+        log, host = [], "b:5555"
+
+        async def key(self, k):
+            self.log.append(k)
+    probe = Probe()
+    r = run(rp.park(Stick(), 63.0, probe=probe))
+    assert not r.ok and "package" in r.reason and Stick.log == [] and probe.armed_on == []

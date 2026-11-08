@@ -10,7 +10,7 @@ on the play right b4 the snap when it switches'. So the seek happens on the hidd
   3. the picture plays toward the snap: wait until it shows (snap - park_lead_s), then MEDIA_PAUSE. The flip
      un-pauses it, so the TV lands park_lead_s before the snap.
 `back_s` is how far before NOW the replay starts (the decider's Missed.back_s: back_lead_s before the snap).
-Fails closed (ok False) on: no label probe, no read, a landing past the park point, a wait over park_wait_max_s, the
+Fails closed (ok False) on: no package (pkg None), no label probe, no read, a landing past the park point, a wait over park_wait_max_s, the
 stick no longer hidden. Never raises. Frames are read for numbers, then deleted (yttv_label / yttv_seek).
 """
 from __future__ import annotations
@@ -79,6 +79,11 @@ async def _park(stick, back_s, probe, cfg, pkg, still_hidden, clock, sleep, t0, 
     k = res.lefts = lefts_for(back_s, cfg)
     if k > int(_cfg(cfg, "yttv_max_lefts")):
         res.reason = f"{back_s:.0f}s back needs {k} LEFTs (> yttv_max_lefts)"
+        return
+    if not pkg:
+        # [Nick, Nov 8 89656de9] playback(None) can't pick the YouTube TV session among several (Prime, Alexa,
+        # vizzini) and reads 'none': never press keys on a park whose pause can't be confirmed
+        res.reason = "no YouTube TV package: the pause could not be read (identify() the stick first)"
         return
     if probe is None or not probe.arm(stick):
         res.reason = "no label probe armed: a replay is never placed blind"

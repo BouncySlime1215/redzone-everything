@@ -24,9 +24,14 @@ async def main(host: str, play_ago_s: float, play: bool) -> None:
     if not await stick.connect():
         print(json.dumps({"error": "stick not connected"}))
         return
+    await stick.identify()                       # without it the stick has no app packages and the pause reads 'none'
+    pkg = stick.packages.get("youtubetv")
+    if not pkg:
+        print(json.dumps({"error": "no YouTube TV package found on the stick"}))
+        return
     back = play_ago_s + float(replay_park.PARK_DEFAULTS["back_lead_s"])
     print(json.dumps({"play_ago_s": play_ago_s, "back_s": back, "lefts": replay_park.lefts_for(back)}))
-    r = await replay_park.park(stick, back, probe=LabelProbe())
+    r = await replay_park.park(stick, back, probe=LabelProbe(), pkg=pkg)
     row = {k: v for k, v in r.__dict__.items()}
     print(json.dumps(row, indent=1))
     if r.ok and play:
