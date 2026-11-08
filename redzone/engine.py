@@ -1854,7 +1854,11 @@ class Engine:
         target = cands[gid].target if gid in cands else None
         if not target:
             self._jump_standby_note = {"standby_plan": "no other tunable game"}
-            return False
+            # [overseer Nov 8 21:00] the normal plan then loaded ORL@GS (NBA, not in jump_mode.leagues) with UGA@MISS
+            # on screen: while the screen is in the rotation, the hidden stick only ever holds a game the rotation can
+            # jump to, so with none tunable right now it keeps what it has
+            return self.decider._jump_league(cands.get(self.decider.current or ""))
+
         started = self.control.preload(target, urgent=urgent)
         if not started and urgent:
             log.info("jump refill of %s refused: %s", gid, self.control.preload_why)
