@@ -209,6 +209,8 @@ class Missed:
     due_s: float = 0.0        # [replay.redzone_way] replay it within this long of the play (0 = old rule)
     must: bool = False        # [T4] missed because another big play was on screen: head of the queue
     aired: float = 0.0        # when it aired on the screen (wallclock; 0 = unknown, use t)
+    retry_at: float = 0.0     # [Nick, Nov 8 live] a failed replay of this play isn't tried again before this
+    fails: int = 0            # failed replays of this play (replay.max_fails drops it)
 
     def back_s(self, now: float, delay_mu: float, play_len: float, lead_s: float = 3.0) -> float:
         """How far to rewind from the live edge (which shows real time now - delay)."""
@@ -492,6 +494,18 @@ class Decider:
             self._arrival_until = 0.0
             self.after_replay = False
 
+    def replay_failed(self, m: Missed, now: float | None = None) -> None:
+        """[Nick, Nov 8 live, UGA@MISS] A replay that failed (any path) backs off: it was decided again every tick
+        and failed at ~2 Hz ('replay seek failed; kept current game'). replay.fail_retry_s before it may be tried
+        again; after replay.max_fails failures it leaves the queue."""
+        now = self._clock() if now is None else now
+        m.fails += 1
+        if m.fails >= int(self.cfg.get("replay.max_fails", 2)):
+            self.queue = [q for q in self.queue if q is not m]
+            m.retry_at = float("inf")
+        else:
+            m.retry_at = now + float(self.cfg.get("replay.fail_retry_s", 120))
+
     def reject(self, d: Decision) -> None:
         if self._proposal_home and self._proposal_home[0] is d:
             self._proposal_home = None
@@ -732,7 +746,8 @@ class Decider:
         team's own game is on screen, so its live snaps aren't traded for its old ones."""
         crunch_on = not montage and self._crunch_on(cands)
         games = self._replay_pool(cands)
-        pool = [m for m in self.queue if m.game_id != exclude and self._replayable(games.get(m.game_id))
+        pool = [m for m in self.queue if m.game_id != exclude and m.retry_at <= now
+                and self._replayable(games.get(m.game_id))
                 and (not crunch_on or self._mine_cant_wait(m, now))]
         if not montage:     # [T5] older plays wait for the end-of-window montage (RedZone way, per league)
             pool = [m for m in pool if not self._rw(m.game_id) or now - m.t <= self.cfg.get("replay.max_age_s", 1800)]
@@ -747,7 +762,7 @@ class Decider:
         if allow_seen and not pool:
             recent = now - self.cfg.get("replay.instant_window_s", 900)
             done_ids = {(d.game_id, d.pid) for d in self.done_replays if d.replayed}
-            pool = [m for m in self.done_replays if m.seen_live and m.t >= recent
+            pool = [m for m in self.done_replays if m.seen_live and m.t >= recent and m.retry_at <= now
                     and (m.game_id, m.pid) not in done_ids and m.game_id in cands and m.game_id != exclude
                     and self._replayable(cands[m.game_id])]
         if budget is not None:
@@ -1895,6 +1910,7 @@ class Decider:
         w = float(c.get("replay.resume_window_s", 180))
         games = self._replay_pool(cands)
         fresh = [m for m in self.queue if m.game_id != self.current and not m.seen_live and not m.replayed
+                 and m.retry_at <= now
                  and self._aired_age(m, now) <= w and self._replayable(games.get(m.game_id))]
         if not fresh:
             return None

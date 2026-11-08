@@ -1661,6 +1661,17 @@ class Controller:
         return bool(target) and str(target).split(":", 1)[0] == "youtubetv" and \
             str(self.cfg.get("replay.yttv_seek", "scrub")).lower() == "scrub"
 
+    def _scrub_park_refusal(self, target: str, back_s: float) -> str:
+        """Why a YouTube TV replay can't be parked right now ('' = it can be tried): checked before any key."""
+        from redzone.tuners import replay_park
+        if time.time() < self.__dict__.get("_replay_scrub_backoff", {}).get(target, 0.0):
+            return "a failed replay scrub on this channel is backing off"
+        k = replay_park.lefts_for(back_s, self.cfg)
+        cap = int(self.cfg.get("replay.yttv_max_lefts") or replay_park.PARK_DEFAULTS["yttv_max_lefts"])
+        if k > cap:
+            return f"{back_s:.0f}s back needs {k} LEFTs (> {cap})"
+        return ""
+
     async def _scrub_park(self, stick: Stick, target: str, back_s: float, replay_id: str) -> bool:
         """[replay on the scrub, Nick Nov 7] Park the HIDDEN stick park_lead_s before the snap by the label-measured
         overlay scrub (redzone/tuners/replay_park.py). False = keep the current game (fails closed)."""
@@ -2106,6 +2117,12 @@ class Controller:
             return None
         replay = bool(replay_back_s)
         visible_untouched = True
+        if replay and self._replay_scrubs(target) and not self._parked_for(target, replay_id):
+            why = self._scrub_park_refusal(target, replay_back_s)
+            if why:
+                # [Nick, Nov 8 live] a replay that can't be parked never tunes the hidden stick: refused, untouched
+                return Outcome(False, target, time.time() - t0, f"replay refused: {why}", False, path="refused",
+                               screen_unchanged=True)
         if not replay and await self._still_on_visible(target):
             return Outcome(True, target, 0.0, "already on it", False, time.time(), path="already")
         no_moment = "no safe moment to cut — kept the current game"

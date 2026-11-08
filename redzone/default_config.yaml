@@ -641,6 +641,8 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   park_max_age_s: 90       # a YouTube TV park older than this is never rolled (a 120 s pause reset the position, Nov 6)
   pause_settle_s: 3        # after the park's PAUSE, re-read the player this long for 'paused' (a first 'none' is transient)
   scrub_retry_s: 120       # a failed replay scrub on a channel isn't tried again for this long (no key storms)
+  fail_retry_s: 120        # a failed replay (any path) of a play isn't decided again for this long (Nov 8 live: 2 Hz loop)
+  max_fails: 2             # after this many failed replays a play leaves the catch-up queue
   yttv_max_lefts: 8        # never more LEFTs than this (8 = 120 s of knob): a deeper catch-up is not seeked
   yours_first: true        # your team's missed big plays: replayed before other games' and over ordinary live play
   apps: [youtubetv]        # apps where rewinding live TV works
