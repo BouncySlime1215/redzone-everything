@@ -115,6 +115,15 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-02: **Never Peacock.** NBC/NBCSN come through YouTube TV (Peacock can't be screenshotted for sync).
 - 2026-11-02: **Sync is fully automatic:** no taps, no mic, no camera.
 
+- 2026-11-08 (N4, switch-path audit S-4): **a phone tap (Back, Focus, Replay, like Watch this) waits for a dead ball unless
+  tapped twice.** Before, those three cut mid-play at once. North Star: never leave a high-leverage moment.
+- 2026-11-08 (audit S-3): a jump's leave margin is max(jump_mode.flip_s, the measured slow flip on the current path)
+  instead of a fixed 3.2 s: the old game plays on until the input changes, and HOME flips run 2-6 s.
+- 2026-11-08 (audit DEV-09): `two_stick.identity_check` (default true): each stick's HDMI port and serial are checked
+  against devices.json at start and on reconnect; a definite mismatch turns two-stick mode off with a phone alert.
+- 2026-11-08 (audit S-11): a replay is only ever seeked on the hidden stick, for every app: one-stick replays are
+  refused (Nick, Nov 7: the viewer never sees a rewind).
+
 ## AI
 
 - 2026-11-04 10:55 AM: **The Noggin is fully self-taught: no training signal from Nick.** His 👍/👎, overrides, lock-ins and taps never feed any training, labelling, suggestion or grading path (crunch policy, Pick, Priority L2 suggestions, E23). Allowed sources: the hindsight oracle on archived nights, self-play/simulation, the Teacher's automated nightly review, objective pbp outcomes, stick/sync telemetry. His buttons stay controls only. North Star: `right_game` (agreement with his taps) is replaced by `pct_of_oracle` (% of hindsight-oracle value achieved, mean of NFL/NBA/NHL). `priority.suggest_from_feedback` removed.

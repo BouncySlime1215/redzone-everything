@@ -407,3 +407,8 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
   control._execute ("no stick connected", ok=True, 0 s) and set on_target: the switch log filled with phantom
   "start ALA@LSU ok=True took 0 s" rows that inflated switch counts. Only mode.dry_run is a simulated success now;
   no stick is a refused switch (ok=False, screen_unchanged, not the target's fault).
+- 2026-11-08: A snap-parked standby was "ready" (standby_ready) but "steady playing" refused it, and the PLAY that fixes
+  that sat after the check: every jump to a parked standby was refused. **A paused-on-purpose standby is a preloaded path
+  of its own**, and the wait after PLAY must be short: buffered.park_lead_s plans the picture rolling from PLAY to the flip.
+- 2026-11-08: A closure that polls for 25 s must not keep the tick's snapshot (jump may_cut read cands from decision time):
+  rebuild from live state on each poll, as _entry_valid does.

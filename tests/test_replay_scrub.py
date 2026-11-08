@@ -138,7 +138,9 @@ def test_a_too_deep_catchup_is_not_seeked(scrub):
 
 def test_single_stick_never_rewinds_on_screen(scrub):
     c, calls, _ = scrub
-    out = run(c._execute_one("youtubetv:espn", 60.0, time.time()))
+    c.sticks = c.sticks[:1]
+    c.sticks[0].log.clear()
+    out = run(c.execute("youtubetv:espn", replay_back_s=60.0))
     assert not out.ok and out.screen_unchanged and calls == [] and c.main.log == []
 
 
