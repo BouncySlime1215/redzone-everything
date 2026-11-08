@@ -10,6 +10,7 @@ oracle's best action FROM THAT STATE (oracle.value_to_go_cue: stay, or switch to
 ball), adds those rows to the aggregate and retrains. Labels come only from the oracle (no Nick signal).
 Splits as train_noggin_pick: train seasons label + fit, calib early-stops and picks the margin, test is
 graded once on the full set (same grader, same rollout).
+Why: DAgger for the possession policy: labels states the policy visits with the oracle (docstring).
 """
 from __future__ import annotations
 

@@ -1,3 +1,17 @@
+---
+id: R-PERCEPT
+title: "On-device perception for live sports (2026-11-08)"
+date: 2026-11-08
+stream: context
+author: "unrecorded (2026-11-08 research agent)"
+status: reviewed
+supersedes: []
+sources: 28
+verified: 23
+affects: []
+gate: []
+---
+
 # On-device perception for live sports (2026-11-08)
 
 Scope: cheap perception that tells RedZone whether the game on screen is live play, dead ball, replay,

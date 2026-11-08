@@ -6,6 +6,7 @@
 Raw files are the same free releases scripts/build_training.py downloads (it keeps them with
 --keep-raw): nfl_<year>.parquet, nba_<year>.parquet, nhl_<year>.parquet, mlb_pbp_/mlb_pitches_2025.
 Writes data/training3/<league>.parquet and manifest.json. See redzone/lab/brain3data.py.
+Why: Builds Brain v3 training tables; too heavy for the Mac, so it runs in the cloud (docstring).
 """
 from __future__ import annotations
 

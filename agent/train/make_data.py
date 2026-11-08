@@ -6,6 +6,7 @@ error has many wordings; whole wordings are held out for the test set, so the sc
 carrying the judgment over to NEW error text, not memorizing it.
 
     .venv-agent/bin/python agent/train/make_data.py   ->  agent/train/data/{train,valid,test}.jsonl
+Why: Builds fine-tuning data for the watchdog model: app status to action (docstring).
 """
 from __future__ import annotations
 

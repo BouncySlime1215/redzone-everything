@@ -19,6 +19,7 @@ depends on:
 
 Writes data/reports/prime_flip_probe_<time>.json; the numbers go into the Prime resume order.
 Never run it while someone is watching: it flips the TV input about 3x per round.
+Why: Probes Prime flip timing, which is slow; needs a live Prime game with the service paused (docstring).
 """
 from __future__ import annotations
 

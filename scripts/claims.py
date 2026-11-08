@@ -14,6 +14,7 @@ optimistic: nothing blocks editing, CI catches overlap (Cursor found blocking lo
 Shared hot files (decisions.md, lessons.md, status.md, citymap.*, state-machines.md) are never claimed:
 agents append fragments and the integration train folds them in.
 Stdlib only.
+Why: One writer per file across parallel agents, via claim files (docstring, coordination rules commit).
 """
 from __future__ import annotations
 

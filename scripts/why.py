@@ -11,6 +11,7 @@
 Sources: data/transitions.jsonl (redzone/fsm.py), data/jumps.jsonl (each jump and its veto), data/jump_status.jsonl
 (who owned the TV, holds), data/buffer.jsonl (standby scrub/hold), docs/memory/decisions.md, docs/memory/lessons.md.
 Rows carry `sha` (the running commit) when the app wrote it, so a live surprise maps to exact code.
+Why: Answers 'why?' from the records RedZone keeps; every state-machine move needs a why (memory 2026-11-08).
 """
 from __future__ import annotations
 

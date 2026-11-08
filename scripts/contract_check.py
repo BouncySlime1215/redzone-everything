@@ -18,6 +18,7 @@ Rules (ids are stable):
   K5 orphan          a module nothing in redzone/ or scripts/ imports
   K6 lab-import      production code importing redzone.lab
   K7 untagged        (warn only) a module docs/citymap.json tags as serving nothing
+Why: Checks the redzone/ graph against the contract rules on every change (docstring, proof kernel commit).
 """
 from __future__ import annotations
 

@@ -8,6 +8,7 @@ Serves: North Star "% of hindsight-oracle value achieved" (off-policy). Owner: l
 Each line of the log is a #186 decision record with "options" (decider.log_options on), a "night" and a
 reward field written by the grader. --policy same replays the live propensities (a sanity check: it reads
 the logged mean); the morning job passes the shadow candidate's probabilities instead (EXP-004).
+Why: EXP-005: scores a candidate decider off-policy on logged nights (docstring).
 """
 from __future__ import annotations
 

@@ -13,6 +13,7 @@ What to look for: data/buffer.jsonl "scrubbed" rows (each fresh tune label-read 
 why bj_snap_next / bj_long_dead and behind_s on both sides, and on screen: every cut lands on the line-up a few
 seconds before a snap, never mid-play. Expected (sim, 37 NFL slates): ~1.1 plays/min shown, 0.4-1 cuts/min
 snap-timed (+ break cuts); eager ~4-5 cuts/min.
+Why: Runs buffered jumps on the real TV to test the stick bootstrap (docstring, buffered jump commits).
 """
 import argparse
 import json

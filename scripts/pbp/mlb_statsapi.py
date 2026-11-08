@@ -19,6 +19,7 @@ details.code. side = possession = batting team for every row (away in the top ha
 BEFORE the event (balls/strikes from the previous pitch's post-count; outs and bases carried from runners[] movements by
 playIndex and reset to matchup.postOn* / count.outs at PA end). value = runs on the event (score delta), scores
 after. x = (pX + 2 ft) / 4 ft, y = pZ / 5 ft (catcher's view, clipped 0..1; null for actions).
+Why: Converts the MLB Stats API live feed into the play table, one row per action (docstring, Data A commit).
 """
 from __future__ import annotations
 

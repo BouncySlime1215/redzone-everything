@@ -7,6 +7,7 @@ Open the desired game/replay yourself, then label what you actually see in the p
 Lab tab. Recording reads playback, foreground app and occasional UI text; it does not
 switch streams or capture video. A media session saying 'playing' is NOT evidence that
 a sports play is in progress. DVR tests cannot calibrate the delay of a live broadcast.
+Why: Compares device reports with supervised labels, including yesterday's DVR (docstring).
 """
 from __future__ import annotations
 

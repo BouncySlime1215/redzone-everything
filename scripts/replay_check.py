@@ -3,6 +3,7 @@
     .venv/bin/python scripts/replay_check.py 20261101 --leagues nba nhl
 
 Outputs a manifest, honest scorecards, timing-permission audit and manual replay cues.
+Why: Replays one archived sports date without feeds or devices (docstring, service runtime commit).
 """
 from __future__ import annotations
 

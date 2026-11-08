@@ -15,6 +15,7 @@ Runs in a cloud session (release assets download fine; no ESPN calls). It:
      Kaggle builds must never download (build_moments_kaggle.py --locked).
 Then it prints what is left by hand: the decisions.md line (CI enforces it), the docs/eval-data.md row, the
 --locked default, and the new baseline numbers for the PR. Nothing is pushed.
+Why: Moves the default eval-data pin to a new release in one go (eval-data-v3 commits).
 """
 from __future__ import annotations
 

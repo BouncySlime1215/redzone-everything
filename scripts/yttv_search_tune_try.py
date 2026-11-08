@@ -7,6 +7,7 @@ YouTubeTVTuner.tune). Reads data/channels.json, writes nothing (no channels.json
 Per station: search (WRAL / ABC 11 / CBS 17 / FOX 50) -> channel page -> DOWN -> Select, else reopen
 + Select at the starting focus; accepted only on a media-session subtitle naming the station AND a live
 playhead, else BACK. Run it only on the stick that is NOT on screen. The stick address is never printed.
+Why: Tunes local stations by YouTube TV search on the hidden stick, via the app's routing (docstring).
 """
 import asyncio
 import sys

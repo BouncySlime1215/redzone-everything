@@ -22,6 +22,7 @@ pairwise distance of the five) per team, ball height z, raw shot clock, and wall
 table stores wall_ts as float32, which rounds unix seconds to ~128 s, so join exact wall time from here). Its sidecar counts 0 events/tokens so the
 ledger never double counts. Raw .7z and JSON are deleted after each game; per-game parts live in a raw/ folder
 (removed by the Kaggle crew after the shard is built) so the pull is resumable.
+Why: Turns SportVU tracking dumps into per-second summaries in the play table (docstring, Data A commit).
 """
 from __future__ import annotations
 

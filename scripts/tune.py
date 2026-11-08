@@ -4,6 +4,7 @@
     python scripts/tune.py --resume              # continue after a stop (per-fold checkpoints)
 
 Heavy (all CPU cores for over an hour): run it in the cloud, never on the Mac.
+Why: Auto-tunes the decider against the scorecards with forward-chaining CV (salvage #16 commit).
 """
 import argparse
 import json

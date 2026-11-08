@@ -10,6 +10,7 @@
     test    the newest block before the locked nights ("dev-test": per-round reporting)
 
 A game never spans two splits (one night per game); ``check`` asserts that.
+Why: Nick's no-overfitting rules 1, 2 and 6 (docstring): split by whole night, per league.
 """
 from __future__ import annotations
 

@@ -13,6 +13,7 @@ token: everything the notebook needs is inside, the code included. Three label t
       notebook works down it until its GPU budget runs out and resumes there next session
   (c) gold: the ~1,000 hardest lock-in and jump-or-stay moments, labeled by Claude with Nick's rules
       and hand-reviewed -> data/gold/*.jsonl (training up-weight + their own gate lines)
+Why: Builds the single upload folder for the private Kaggle dataset redzone-distill (docstring).
 """
 from __future__ import annotations
 

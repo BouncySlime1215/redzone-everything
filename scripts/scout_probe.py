@@ -7,6 +7,7 @@ It never follows a login, never retries a 403/429 (a bot block is a stop, not a 
 
     python scripts/scout_probe.py --json docs/datasources/scout.json --out probe.json
 Prints one line per source: robots verdict, HTTP status, bytes. Paste probe.json back to the scout thread.
+Why: Checks each scout source's robots.txt and fetches one probe URL (docstring, scout cycle 13 commit).
 """
 from __future__ import annotations
 

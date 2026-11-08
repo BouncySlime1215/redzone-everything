@@ -16,6 +16,7 @@ One game = <BOS:league> <HOME:team> <AWAY:team> then per event 6 tokens, in this
 then <EOS>. Ids fit uint16 (VOCAB_SIZE < 65536). Nights on or after the league's scorecard window are never
 tokenized (factory.EVAL_FIRST_NIGHT): the locked nights stay unseen. Shards: <out>/<league>/<year>.npy (uint16,
 games back to back) + <year>.json (games: [gid, night, offset, length], tokens, events, vocab version).
+Why: Turns every play of every game into short event tokens for the Noggin model (docstring).
 """
 from __future__ import annotations
 

@@ -26,6 +26,7 @@ Rows whose PointNumber is not a positive integer (the "0X"/"0Y" set markers) are
 Status 2026-11-05: raw.githubusercontent.com returned a real GitHub 404 for every JeffSackmann repo from this box
 (tennis_atp too; git ls-remote: not found), so the repo looks moved/withdrawn. Columns were coded from the published
 layout and tested on a SYNTHETIC fixture; re-verify on the first real file (see pull_all's `base`).
+Why: Converts Sackmann's tennis point-by-point data into the play table (docstring, Data A commit).
 """
 from __future__ import annotations
 

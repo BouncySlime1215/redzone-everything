@@ -16,6 +16,7 @@ URLs, titles and names are never stored. Coverage "*" per processed file (bin st
 
 Backfill reads every `stride`-th file (stride 4 = one per hour) up to --max-files / --max-minutes; rates are per
 covered bin, so sampled coverage still gives unbiased z-scores. Re-runs skip covered files.
+Why: GDELT news volume and tone per team as buzz signals, counts only (docstring, Data B buzz commit).
 """
 from __future__ import annotations
 

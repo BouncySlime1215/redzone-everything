@@ -8,6 +8,7 @@ Reads only archive nights that are neither LOCKED test nights nor nights the bra
 (redzone/lab/breakblend.py). Per league: ECE / Brier / AUC of the rules, the brain alone, the old
 50/50 blend and the fitted log-odds blend, each graded on forward-chaining held-out folds (mean and
 worst), and `ship`: the brain.break_blend coefficients to put in default_config.yaml.
+Why: Fits the break blend on held-out nights only, per the lessons-log fix (docs/memory/lessons.md).
 """
 import argparse
 import json

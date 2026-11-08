@@ -7,6 +7,7 @@
 Fits the hazard on the train nights, calibrates the conformal lower bound on the calib nights, grades on
 the factory's test nights (all unseen, all before the scorecard window) and writes
 <out>/timing_<league>.v1.npz plus <data>/timing_<league>.report.json.
+Why: Trains Noggin Timing v1 for one league from the factory table (docstring, Phase 1 commit).
 """
 from __future__ import annotations
 

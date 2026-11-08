@@ -10,6 +10,7 @@ league (buckets fit on TRAIN games only), and manifest-b1.json. Doc: docs/dataso
 No betting lines are emitted (crew D owns spread/total/moneyline).
 
     python scripts/context/land_github_ctx.py --raw <cache dir> --out /mnt/project-files/data-b/
+Why: Lands the first crew-B context facts from GitHub-hosted public data (docstring, Data B commit).
 """
 from __future__ import annotations
 

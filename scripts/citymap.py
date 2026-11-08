@@ -20,6 +20,7 @@ Covers redzone/**, agent/** (the LOCAL AI lane) and scripts/*.py.
 --focus prints a token-budgeted, in-degree-ranked 1-2 hop slice (signatures only); --impact lists
 everything a change to one file can reach (importers, tests, contracts, machines, data, tags).
 Exit 0 = fine, 1 = stale (--check), 2 = a tag in docs/citymap_tags.json is unknown.
+Why: One generated graph of every module, so agents see role and owner (docstring, city map commit).
 """
 from __future__ import annotations
 

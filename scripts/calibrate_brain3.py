@@ -1,6 +1,7 @@
 """Calibrate Brain v3's cautious restart bound per break type (redzone/lab/brain3cal.py).
 
     python scripts/calibrate_brain3.py            # writes brain_models/entry_cal_v3.json + docs/brain3/entry_cal.json
+Why: Calibrates Brain v3's cautious restart bound per break type (docstring, Brain v3 commit).
 """
 from __future__ import annotations
 

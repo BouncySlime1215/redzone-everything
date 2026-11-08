@@ -8,6 +8,7 @@ Serves: EXP-1000 / EXP-097 (real tokens landed, honest split). Owner: Data Plann
 Counts only what landed (a shard with its sidecar). Every row of the ledger is NEW information (real events);
 derived per-play state and tokenizer-v2 rich fields are counted by lane 1, synthetic/augmentation in data-ledger.md.
 A shard without a license line, or a plan-B shard without the personal-use tag, fails --check.
+Why: Sums play-table shard sidecars into the pbp ledger docs (docstring, Data A ledger commit).
 """
 from __future__ import annotations
 

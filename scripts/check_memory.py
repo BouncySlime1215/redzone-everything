@@ -8,6 +8,7 @@
 3. docs/handoff.md stays short (W1-RULES gap 5): over HANDOFF_TARGET lines is a printed note, over HANDOFF_RATCHET
    fails. Lower the ratchet as the file is trimmed, until the two match.
 Exit 0 = fine, 1 = something to fix (each problem is printed on its own line).
+Why: Keeps AI memory honest: links resolve, decisions logged; runs in CI (docstring, memory commit).
 """
 from __future__ import annotations
 

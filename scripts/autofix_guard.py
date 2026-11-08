@@ -9,6 +9,7 @@ commit is pushed. It refuses a change that would weaken the project's safety net
   - is too big for an unattended fix (MAX_FILES / MAX_LINES)
 
     python scripts/autofix_guard.py --base origin/integration/next      # exit 0 ok, 1 refused
+Why: Guards Claude's auto-fix diffs before any push (auto-fix BRAIN tier commit).
 """
 from __future__ import annotations
 

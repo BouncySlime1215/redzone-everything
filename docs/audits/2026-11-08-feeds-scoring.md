@@ -1,3 +1,17 @@
+---
+id: A-FEEDS
+title: "Review 2026-11-08: data in and how it is judged (feeds, scoring, grader, gates)"
+date: 2026-11-08
+stream: audit
+author: "unrecorded (2026-11-08 audit agent)"
+status: reviewed
+supersedes: []
+sources: 0
+verified: 0
+affects: ["redzone/sources/", "redzone/scoring/", "redzone/models.py", "redzone/lab/", "redzone/grading.py", "scripts/ci_scorecard.py", "scripts/release_gate.py"]
+gate: []
+---
+
 # Review 2026-11-08: data in and how it is judged (feeds, scoring, grader, gates)
 
 Scope: `redzone/sources/*`, `redzone/scoring/*`, `redzone/models.py`, `redzone/lab/*` (leverage, oracle, outcome_label, splits, brain3data), `redzone/grading.py`, `scripts/ci_scorecard.py`, `scripts/release_gate.py`. Read-only; nothing was run except tiny pure-function probes (leverage, Merger). Checked against `docs/research/2026-11-08/live-data-feeds.md` and `leverage-excitement.md`.

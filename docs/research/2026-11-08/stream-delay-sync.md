@@ -1,3 +1,17 @@
+---
+id: R-DELAY
+title: "Measuring and controlling stream delay (research, 2026-11-08)"
+date: 2026-11-08
+stream: harness
+author: "unrecorded (2026-11-08 research agent)"
+status: reviewed
+supersedes: []
+sources: 22
+verified: 11
+affects: []
+gate: []
+---
+
 # Measuring and controlling stream delay (research, 2026-11-08)
 
 Goal: per stream, know "seconds the picture is behind real time" to about +-1 s (1 sd <= 0.5 s), and hold a stick at a fixed offset behind live.

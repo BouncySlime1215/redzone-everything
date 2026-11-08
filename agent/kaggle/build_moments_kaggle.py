@@ -25,6 +25,7 @@ no token. Nothing is uploaded: only this code pack.
 College rules: sportsgrade's big/crunch definitions are pro-league only, so college games are
 graded by their base league's rules (CFB = NFL; men's college basketball = NBA with halves mapped
 to the 2nd and 4th quarter, so "last 2:00 of the 4th" = "last 2:00 of the 2nd half").
+Why: Round 2 of the Kaggle Mind pipeline: outcome-labeled reasoner moments built in the notebook (docstring).
 """
 from __future__ import annotations
 

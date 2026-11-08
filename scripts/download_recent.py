@@ -5,6 +5,7 @@
 
 Dates are event dates in America/New_York. Existing archive files are preserved.
 Every requested date gets a manifest, including no games, unfinished games, and errors.
+Why: Downloads public ESPN play-by-play for backtests, never for live TV control (docstring).
 """
 from __future__ import annotations
 

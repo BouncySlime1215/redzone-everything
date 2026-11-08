@@ -26,6 +26,7 @@ Mapping notes:
   possession team with the ball after the event (possession_after): made shot / turnover -> other team, rebound
             -> rebounder's team, made last free throw of a trip -> other team, else carried; "" until known.
 CLI: python scripts/pbp/wehoop.py --league wnba --seasons 2025-2002 --out DIR [--keep-raw]
+Why: Converts sportsdataverse wehoop play-by-play into the play table (docstring, Data Division A commit).
 """
 from __future__ import annotations
 

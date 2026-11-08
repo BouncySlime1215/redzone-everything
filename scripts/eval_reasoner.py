@@ -7,6 +7,7 @@ never saw that night (data/training/reasoner_folds, from scripts/train_reasoner.
     python scripts/eval_reasoner.py nfl --off                 # same harness, reasoner off (= the baseline)
 
 Every other setting is data/eval_config.yaml, exactly as the normal scorecards read it.
+Why: Cross-fitted scorecards: each night scored by a head that never saw it (docstring, reasoner commit).
 """
 import argparse
 import runpy

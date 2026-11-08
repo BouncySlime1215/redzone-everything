@@ -1,3 +1,17 @@
+---
+id: R-NUMBERS
+title: "How busy is a RedZone Sunday? (measured, 2026-11-08)"
+date: 2026-11-08
+stream: context
+author: "unrecorded (2026-11-08 research agent)"
+status: reviewed
+supersedes: []
+sources: 0
+verified: 0
+affects: []
+gate: []
+---
+
 # How busy is a RedZone Sunday? (measured, 2026-11-08)
 
 Question: what pace should RedZone-for-everything aim for? Nick's old bar was 75 jumps per 10 minutes. This note

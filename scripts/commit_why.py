@@ -5,6 +5,7 @@
 A commit message needs a line starting with `Why:` (one sentence: the reason, the North Star line or the bug).
 Merge commits and reverts are exempt, and so are commits made before the rule started (SINCE): a branch that
 carries older work is not failed for history it can't change. Stdlib only.
+Why: Every PR commit must say why, since the why is what goes missing (docstring).
 """
 from __future__ import annotations
 

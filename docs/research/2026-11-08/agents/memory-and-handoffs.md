@@ -1,3 +1,17 @@
+---
+id: R-MEMORY
+title: "Long-horizon memory and handoffs for coding agents"
+date: 2026-11-08
+stream: rules
+author: "unrecorded (2026-11-08 rules research agent)"
+status: reviewed
+supersedes: []
+sources: 37
+verified: 35
+affects: []
+gate: []
+---
+
 # Long-horizon memory and handoffs for coding agents
 
 Research note, 2026-11-08. Read-only analysis; nothing here is a measured RedZone result unless marked `[local]`.

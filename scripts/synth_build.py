@@ -18,6 +18,7 @@ Outputs, each with license "personal-use, not for commercial release" and synthe
     SYN/teacher/<league>.npz                   game_id, moment, hindsight, tokens (N x 6, teacher-v1)
     SYN/teacher/text.jsonl                     storyline / why / next per answer, for the Mind (never tokens)
     SYN/manifest_augment.json, SYN/manifest_teacher.json   per-league counts the ledger folds in
+Why: Builds synthetic and teacher token shards for the NFM, inside the 3x-real cap (docstring).
 """
 from __future__ import annotations
 

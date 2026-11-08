@@ -12,6 +12,7 @@ whistle + 3 s), a mid-play LEAVE when a play is on screen during the flip.
   python scripts/buffered_jump_sim.py --json out.json
 
 Numbers only; no play text leaves this script.
+Why: Tests the buffered-jump pass bar (jumps per minute, Rule #1) on recorded slates (docstring).
 """
 from __future__ import annotations
 

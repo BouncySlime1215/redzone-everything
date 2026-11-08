@@ -23,6 +23,7 @@ data/redzone.db, read-only), so its seconds split into where they went:
 Every run is saved to data/press_probe/<when>.json: northstar.py's press_to_tv_p95 line grades the real
 presses there (PASS/FAIL once there are REAL_MIN of them). Talks only to the app on this machine and reads
 its database; touches no stick directly. Serves: BTN-01 / press_to_tv_p95. Owner: lane 3.
+Why: Measures time from a GO NOW press to the game on the TV, on real hardware (docstring, memory 2026-11-05).
 """
 from __future__ import annotations
 

@@ -2,6 +2,7 @@
 
     .venv/bin/python scripts/download_season.py 2025
 Polite: one request at a time, skips files it already has. About 140 MB per season.
+Why: Downloads a past NFL season for the training lab (docstring, RedZone Everything commit).
 """
 import json
 import sys

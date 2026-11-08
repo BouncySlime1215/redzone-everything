@@ -1,3 +1,17 @@
+---
+id: R-RULES
+title: "Agent rule files in practice: what changes behaviour, what gets ignored"
+date: 2026-11-08
+stream: rules
+author: "unrecorded (2026-11-08 rules research agent)"
+status: reviewed
+supersedes: []
+sources: 45
+verified: 45
+affects: []
+gate: []
+---
+
 # Agent rule files in practice: what changes behaviour, what gets ignored
 
 Researched 2026-11-08. Scope: CLAUDE.md, AGENTS.md, .cursor rules, `.claude/rules`, skills,

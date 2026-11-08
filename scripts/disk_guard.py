@@ -9,6 +9,7 @@ of the transfer folders that cloud build threads leave behind.
 Only the transfer folders below can be cleaned, and only when nothing in them changed in the
 last --min-age-h hours (a thread may still be copying). Never the archive, recordings, models,
 config or venvs: those are reported so a person can decide.
+Why: Keeps about 5 GB free on the Mac by cleaning transfer folders (docstring, resource governor commit).
 """
 from __future__ import annotations
 

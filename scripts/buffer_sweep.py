@@ -17,6 +17,7 @@ switches} per oracle. big_from_start is null until lane 3's frozen grader line l
 Also the ADAPTIVE buffer (Nick 9:35 AM): B = feed-lag p90 + sync error + tune/seek + margin - stream delay,
 floored at --floor (a play is always known before it is shown), reported as its own arm.
 Owner: lane 1. Lane 3 grades the app side (eval_sports --behind-live) and divides by these rows.
+Why: Oracle side of the time-shift buffer sweep, Nick's Nov 5 parts B and C (docstring).
 """
 from __future__ import annotations
 

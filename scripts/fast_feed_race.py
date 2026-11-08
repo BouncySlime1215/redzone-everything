@@ -6,6 +6,7 @@ For each source, the lag (when we first saw an event minus when it happened) whe
 it happened: NBA liveData (timeActual) and MLB statsapi (endTime) on the fast side, ESPN (wallclock) on
 the other. NHL api-web has no event time, so its goals are paired with ESPN's goals in order, game by
 game, and the lead is ESPN's first-seen minus api-web's. Read only; prints one JSON object.
+Why: Lag race between fast feeds and ESPN; tracker item 5 (docs/memory/decisions.md).
 """
 from __future__ import annotations
 

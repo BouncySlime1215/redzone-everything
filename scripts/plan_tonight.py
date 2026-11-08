@@ -9,6 +9,7 @@ Read-only except for the plan file: it fetches public scoreboards (and event lin
 --no-links), never touches a stick or the TV, and never saves channels.json/providers.json.
 Check results already in today's plan file are kept. The running engine rebuilds the same plan
 every minute and runs the checks itself.
+Why: Prints tonight's plan without the engine: where each game is watched (commit, docstring).
 """
 from __future__ import annotations
 

@@ -9,6 +9,7 @@ Converter written against the documented schema (figshare not reachable from the
 Goals: tag 101 on a Shot / Free Kick event (the keeper's "Save attempt" also carries 101 and is not counted);
 own goal: tag 102 on any event, credited to the other side. Penalty shootout ("P") goals do not move the score.
 x, y = positions[0] / 100 (Wyscout coordinates are in the acting team's attacking direction). No wall clock.
+Why: Converts Pappalardo et al. Wyscout soccer events into the play table (docstring, Data A commit).
 """
 from __future__ import annotations
 

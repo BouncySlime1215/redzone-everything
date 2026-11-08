@@ -7,6 +7,7 @@ what its plan did, a switch or replay in flight). Writes nothing but the setting
     .venv/bin/python scripts/jump_try.py watch    # live summary every 60 s: jumps/min, ok rate, why, holds
     .venv/bin/python scripts/jump_try.py report   # one summary of the whole file (or --since-min N)
     .venv/bin/python scripts/jump_try.py off      # jump_mode.enabled false (the normal decider)
+Why: Turns jump mode on or off on the real TV and reads its effect (docstring, buffered jumps commit).
 """
 import argparse
 import json

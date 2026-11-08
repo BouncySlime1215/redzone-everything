@@ -6,6 +6,7 @@
 YouTube TV: n = round((T - 10) / 15) LEFTs, predicted landing 15 n + 11.7 s; start from the live edge (tune another
 channel, then this one). Prime: a pause of T s from wherever it plays (its timecode measures the gain). No relink is
 wired here: on a failure, re-tune by hand. The stick address is never printed or logged.
+Why: Runs one join on the hidden stick and logs the row to data/joins.jsonl (docstring, join API commit).
 """
 import asyncio
 import json

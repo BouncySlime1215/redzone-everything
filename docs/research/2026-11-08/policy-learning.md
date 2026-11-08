@@ -1,3 +1,17 @@
+---
+id: R-POLICY
+title: "How to learn a RedZone switching policy safely"
+date: 2026-11-08
+stream: planner
+author: "unrecorded (2026-11-08 research agent)"
+status: reviewed
+supersedes: []
+sources: 38
+verified: 36
+affects: []
+gate: []
+---
+
 # How to learn a RedZone switching policy safely
 
 Research note, 2026-11-08. No code changed. Every source below was checked on arXiv (API record: title,

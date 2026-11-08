@@ -21,6 +21,7 @@ It runs as its own launchd job (com.redzone.agent), so it still works when the a
 crashed. Every observation, verdict and action goes to data/agent.jsonl.
 
     .venv-agent/bin/python -m agent.watchdog [--once] [--dry-run]
+Why: Keeps the app healthy without a person, as a separate always-on process (docstring, watchdog commit).
 """
 from __future__ import annotations
 

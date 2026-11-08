@@ -10,6 +10,7 @@ buffer.hold_left on for this run only (data/config.yaml is left as it is):
   3. wait --away seconds, reading the held stick (still paused at the same position?)
   4. switch back to A: path must be "left hold", played on from the pause, held ~away s behind live
 Prints one JSON verdict. Never prints config values. Serves: STK-07. Owner: lane 3.
+Why: STK-07 rig check on the real sticks, approved by Nick for a 10-minute test (docstring, commit).
 """
 from __future__ import annotations
 

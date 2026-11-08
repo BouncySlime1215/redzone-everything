@@ -11,6 +11,7 @@ scenario reports:
 
     python scripts/fault_drill.py              # table
     python scripts/fault_drill.py --json       # machine-readable, for the PR before/after table
+Why: Runs the real Controller, Fetcher and Engine against injected faults (docstring, errors commit).
 """
 from __future__ import annotations
 

@@ -1,6 +1,7 @@
 """Replay a past NFL Sunday through the app and print the report card.
 
     .venv/bin/python scripts/backtest.py 20251214 [--focus WSH] [--window 1pm|4pm|all]
+Why: Replays a past NFL Sunday through the app for a report card (docstring, RedZone Everything commit).
 """
 import argparse
 import json

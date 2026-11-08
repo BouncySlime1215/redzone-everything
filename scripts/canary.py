@@ -8,6 +8,7 @@
                                                    # changes nothing; loading it is Nick's call (a Mac service change).
 
 Prints one JSON row (also appended to data/canary.jsonl). Never prints a stick address. FAIL / WARN go to the phone.
+Why: Daily pre-game self-test of the hidden stick, item 8 (docstring, canary commit).
 """
 from __future__ import annotations
 

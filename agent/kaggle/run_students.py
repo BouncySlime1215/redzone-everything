@@ -12,6 +12,7 @@ held-out prompts, and convert each adapter to mlx_lm format.
   "before" column.
 Writes <out>/<job>/peft/, <out>/<job>/mlx/ (adapters.safetensors + adapter_config.json),
 <out>/<job>/test_out.jsonl, <out>/<job>/train_report.json. A job whose mlx/ exists is skipped (resume).
+Why: Phase 2 of the Kaggle Mind pipeline: one LoRA student adapter per job (docstring).
 """
 from __future__ import annotations
 

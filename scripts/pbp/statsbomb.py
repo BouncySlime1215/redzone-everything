@@ -8,6 +8,7 @@ StatsBomb Open Data user agreement (research and personal interest; credit Stats
 clock in open data (wall_ts null); elapsed_s comes from the per-period "timestamp". Penalty shootout (period 5)
 goals keep sub_kind "goal" but value 0 and do not move the score (match score excludes the shootout).
 Follow-up: 360 freeze frames (three-sixty/{match_id}.json) are skipped for now.
+Why: Converts StatsBomb open data into the play table, one row per event (docstring, Data A commit).
 """
 from __future__ import annotations
 

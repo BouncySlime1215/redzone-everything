@@ -4,6 +4,7 @@
 
 Writes data/training/reasoner_<league>.jsonl.gz: one row per archived play (brief facts, brief
 text, labels from what happened next, night). See redzone/lab/reasoner_data.py.
+Why: Builds the live game reasoner's training rows from data/archive (docstring, reasoner commit).
 """
 import argparse
 import gzip

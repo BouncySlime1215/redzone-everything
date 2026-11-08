@@ -8,6 +8,7 @@ Writes data/training/<league>.parquet and data/training/manifest.json (sizes, la
 rates, sources, hotness knots). Raw downloads live in data/training/raw/ and are
 deleted after each league is built unless --keep-raw. Everything under data/ is
 git-ignored. See README "Training data" for sources and licenses.
+Why: Builds labeled training snapshots from free play-by-play (docstring, training data commit).
 """
 from __future__ import annotations
 

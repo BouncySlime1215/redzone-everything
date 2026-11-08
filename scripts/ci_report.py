@@ -7,6 +7,7 @@ Exits 1 when the PR adds mid-play cuts (the one hard scorecard rule: more cuts t
 same slice, or any cut when there is no base to compare with), or when a scorecard crashes on the PR
 although its data is there. Every other change is shown with an
 arrow and a warning mark, not gated: trade-offs between metrics are a judgment call for review.
+Why: Turns CI results into the PR comment: tests, lint, scorecard smoke (docstring, CI commit).
 """
 from __future__ import annotations
 

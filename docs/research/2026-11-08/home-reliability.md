@@ -1,3 +1,17 @@
+---
+id: R-HOMEREL
+title: "Home reliability: what to do next for RedZone on an 8 GB Mac"
+date: 2026-11-08
+stream: process
+author: "unrecorded (2026-11-08 research agent)"
+status: reviewed
+supersedes: []
+sources: 29
+verified: 24
+affects: []
+gate: []
+---
+
 # Home reliability: what to do next for RedZone on an 8 GB Mac
 
 Date: 2026-11-08. Research only; no code changed. Sources are numbered [n] and listed in section 4.

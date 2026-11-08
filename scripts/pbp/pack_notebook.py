@@ -4,6 +4,7 @@
 Serves: EXP-1000. Owner: Data Planner A.
 
     python scripts/pbp/pack_notebook.py OUT_DIR [--jobs files|baseball|euro]   # -> OUT_DIR/rz_pbp_crew_<jobs>.ipynb
+Why: Builds the self-contained Kaggle notebook for the play-by-play crew (docstring, Data A commit).
 """
 from __future__ import annotations
 
