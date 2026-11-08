@@ -600,6 +600,7 @@ class Engine:
                 if (self.cfg.get("mode.dry_run", True) or self._pending_decision is not None
                         or self.decider.replaying or self.decider.after_replay):
                     self.scorebug.reset()
+                    self.control.bug_why = "decision_pending_or_replay"
                     wait = 5.0
                 elif not self.control.scorebug_sticks(bool(self.cfg.get("delay.scorebug_hidden", False))):
                     self.scorebug.reset()
@@ -607,6 +608,7 @@ class Engine:
                 else:
                     if not self.governor.allow("ocr"):   # the Mac is critical: no OCR for now
                         self.scorebug.reset()
+                        self.control.bug_why = "governor_no_ocr"
                         await asyncio.sleep(10.0)
                         continue
                     wait = scorebug.EVERY_S * self.governor.scale("ocr")
@@ -615,6 +617,7 @@ class Engine:
                         band_from=scorebug.LOWER_FROM if self.cfg.get("delay.scorebug_band") else None)
                     if not frames:
                         self.scorebug.reset()
+                why = getattr(self.control, "bug_why", "") if not frames else ""
                 for f in frames:
                     gid = self._game_on(f["target"], f["visible"])
                     g = self.merger.games.get(gid or "")
@@ -622,6 +625,7 @@ class Engine:
                     bug = None
                     if g is not None and tl is not None:
                         bug = await asyncio.to_thread(scorebug.read_png, f["png"], g.home, g.away, recognize)
+                    why = why or ("no_game" if g is None or tl is None else "no_bug" if bug is None else "")
                     # The pipeline (switch/flip) may have moved while OCR ran: those frames don't count.
                     if self._pending_decision is not None or not any(
                             s is f["stick"] and tgt == f["target"] for s, tgt, _ in self.control.scorebug_sticks(
@@ -638,6 +642,11 @@ class Engine:
                         # [Nick 9:25 AM Nov 5] every bug read as numbers (data/scorebug_reads.jsonl): the TNF race
                         # (bug vs espn_fastcast / summary / markets) is graded from first-seen score changes
                         self._log_bug_read(g, f, bug)
+                if why != getattr(self, "_bug_why", None):
+                    # [overseer Nov 8 00:05] the score bug went silent 23:21-00:05 with a Prime standby unsynced (±13 s):
+                    # each change of why it reads nothing is logged once
+                    log.info("score bug: %s", why or "reading")
+                    self._bug_why = why
             except Exception:
                 log.exception("score bug read failed")
                 self.scorebug.reset()

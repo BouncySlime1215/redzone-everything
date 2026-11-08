@@ -428,7 +428,11 @@ class Controller:
         """(stick, target, visible) for each stick showing a live Prime game we tuned ourselves: the
         visible one, and with `hidden` the hidden one when its preload is live. Empty during a switch,
         a flip or a preload, and in dry run. Reads nothing from the sticks."""
-        if not self.live_control or self._busy() or self._flipping or self.input_unknown:
+        self.bug_why = ("no_control" if not self.live_control else "switch_running" if self._task and not self._task.done()
+                        else "preload_running" if self._preload_task and not self._preload_task.done()
+                        else "lock_held" if self._lock.locked() else "flipping" if self._flipping
+                        else "input_unknown" if self.input_unknown else "")
+        if self.bug_why:
             return []
         out = []
         main, t = self.main, self.on_target
@@ -438,6 +442,11 @@ class Controller:
         if (hidden and h is not None and ht and ht.startswith("prime:") and self._live_on_hidden(ht)
                 and (h.tuned or {}).get("target") == ht):
             out.append((h, ht, False))
+        if not out:
+            h_t = (h.tuned or {}).get("target") if h is not None else None
+            self.bug_why = ("no_prime" if not ((t or "").startswith("prime:") or (ht or "").startswith("prime:"))
+                            else "hidden_not_live" if ht and ht.startswith("prime:") and not self._live_on_hidden(ht)
+                            else "hidden_untracked" if ht and h_t != ht else "main_untracked")
         return out
 
     async def tap_bug_frames(self, target: str, band_from: float | None = None) -> list[dict]:
