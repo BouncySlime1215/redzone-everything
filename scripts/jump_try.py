@@ -21,7 +21,20 @@ LOG = ROOT / "data" / "jumps.jsonl"
 STATUS = ROOT / "data" / "jump_status.jsonl"   # standby / in-flight heartbeat every ~30 s
 
 
-def post(port: int, changes: dict) -> None:
+def app_port(port: int | None = None) -> int:
+    """The running app's port: --port, else server.port in data/config.yaml (the Mac's runs on 8778), else 8778."""
+    if port:
+        return port
+    try:
+        import yaml
+        return int(((yaml.safe_load((ROOT / "data" / "config.yaml").read_text()) or {}).get("server") or {}).get("port")
+                   or 8778)
+    except Exception:
+        return 8778
+
+
+def post(port: int | None, changes: dict) -> None:
+    port = app_port(port)
     req = urllib.request.Request(f"http://127.0.0.1:{port}/api/settings", data=json.dumps({"changes": changes}).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=10) as r:
@@ -80,7 +93,7 @@ def summary(rs: list[dict], minutes: float, ss: list[dict] | None = None) -> str
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["on", "off", "watch", "report"])
-    ap.add_argument("--port", type=int, default=8777)
+    ap.add_argument("--port", type=int, default=None, help="the app's port (default: server.port in data/config.yaml, else 8778)")
     ap.add_argument("--since-min", type=float, default=None)
     ap.add_argument("--no-edge-prior", action="store_true", help="on: leave delay.edge_prior as it is")
     a = ap.parse_args()
