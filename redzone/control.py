@@ -3417,11 +3417,21 @@ class Controller:
                else "switch_running" if self._task is not None and not self._task.done()
                else "preload_running" if self._preload_task is not None and not self._preload_task.done()
                else "lock_held" if self._lock.locked() else "flipping" if self._flipping
-               else "scrub_not_wanted" if not self._scrub_wanted(target)
-               else "scrub_backoff" if time.time() < self._scrub_backoff.get(target, 0.0) else "start")
+               else "scrub_backoff" if time.time() < self._scrub_backoff.get(target, 0.0)
+               else "start" if self._scrub_wanted(target)
+               else "already_held" if self.held.get(target, 0.0) >= self._bj_min_behind()
+               else "hold_start" if self._pause_hold_ok(target) else "scrub_not_wanted")
         if why != getattr(self, "bj_buffer_why", ""):
             log.info("buffered jump: standby %s re-scrub check: %s", target, why)
         self.bj_buffer_why = why
+        if why == "hold_start":
+            # [overseer Nov 7 23:05] a Prime standby (NBA crunch time) was never buffered ('scrub_not_wanted' all
+            # night): Prime holds a pause (Nov 6: 60 s pause -> 67.7 s behind), so pause it off screen instead
+            log.info("buffered jump: %s on the hidden stick %s isn't buffered: pause-hold", target, hid.host)
+            self._set_hidden(target, False)
+            self._preloading = (target, None)
+            self._preload_task = asyncio.create_task(self._hold_standby(hid, target))
+            return True
         if why != "start":
             return False
         log.info("buffered jump: %s on the hidden stick %s isn't scrubbed: re-tune + scrub", target, hid.host)
@@ -3429,6 +3439,46 @@ class Controller:
         self._preloading = (target, None)
         self._preload_task = asyncio.create_task(self._rescrub(hid, target))
         return True
+
+    def _bj_min_behind(self) -> float:
+        return float(self.cfg.get("buffered_jump.min_behind_s", 45.0))
+
+    def _pause_hold_ok(self, target: str) -> bool:
+        """[buffered jump] A standby that can't be scrubbed but whose player holds a pause (timing.behind_live_s.apps,
+        e.g. Prime) and isn't a multiview tile (a pause there pauses every tile)."""
+        hid = self.hidden
+        if hid is None or not self.two_stick or not target:
+            return False
+        apps = set(self.cfg.get("timing.behind_live_s.apps") or ("youtubetv", "primevideo"))
+        if "primevideo" in apps:
+            apps.add("prime")   # Prime targets are "prime:<gti>"; the config names the app "primevideo"
+        if target.split(":", 1)[0] not in apps:
+            return False
+        mv = self.prime_mv
+        return not (mv is not None and mv.session(hid.host) is not None)
+
+    async def _hold_standby(self, hid: Stick, target: str) -> None:
+        """Pause the ready hidden stick until it runs ~behind_s behind live; ready again either way (a failed hold leaves
+        it playing at the live edge, or re-tuned there). A failure backs the target off: no key storms."""
+        ask = max(self._bj_min_behind() + 10.0, min(float(self.cfg.get("buffered_jump.behind_s", 75.0)),
+                                                  float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
+        ok = False
+        try:
+            ok = await self._hold(hid, target, ask)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("buffered jump: pause-hold %s on %s", target, hid.host)
+        finally:
+            if self._preload_task is asyncio.current_task():
+                self._preloading = None
+            if not ok:
+                self._scrub_backoff[target] = time.time() + float(self.cfg.get("timing.behind_live_s.scrub_retry_s",
+                                                                                 120.0))
+            if self.hidden is hid and self.hidden_target == target:
+                self._set_hidden(target, True)
+        self._buffer_log("held" if ok else "hold_failed", target, hid.host, self.held.get(target, 0.0), None,
+                         took=round(ask, 1), why="" if ok else "pause-hold did not hold")
 
     def drop_stuck_standby(self, target: str, stuck_s: float) -> bool:
         """[buffered jump, overseer Nov 8 21:47: 'MIA @ ND' sat not-ready 10+ min] A hidden stick that has held `target`

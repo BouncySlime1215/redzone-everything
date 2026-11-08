@@ -404,3 +404,42 @@ def test_a_re_learned_screen_game_ends_the_unknown_hold(cfg, clock):
     assert dec.current == "a" and dec._arrival_until == 0.0 and dec._screen_log[-1][1] == "a"
     dec.decide(cands(b=50))
     assert dec.jump_holds.get("screen_game_unknown", 0) == 0, dict(dec.jump_holds)
+
+
+def test_a_prime_standby_is_pause_held_not_left_unbuffered(cfg, tmp_path, monkeypatch):
+    """[overseer Nov 7 23:05] ORL@GS crunch time on Prime sat as the ready standby with 'scrub_not_wanted' (197 holds):
+    Prime can't be scrubbed but holds a pause, so the standby is paused off screen to ~behind_s, then ready again;
+    once held it isn't held twice, and a failed hold backs off (no key storms)."""
+    import asyncio
+
+    from tests.test_control import ChannelMap, FakeStick, ctl
+
+    cfg.update({"mode": {"dry_run": False}, "jump_mode": {"enabled": True}, "buffered_jump": {"enabled": True}})
+    c = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    c.sticks = [FakeStick("a:5555"), FakeStick("b:5555")]
+    c.hdmi = {"a:5555": "HDMI1", "b:5555": "HDMI2"}
+    c.scrub_of = lambda t: True
+    asked, results = [], [True, False]
+
+    async def hold(stick, target, behind_s, base_s=0.0):
+        asked.append(behind_s)
+        ok = results.pop(0)
+        if ok:
+            c._set_held(target, behind_s)
+        return ok
+    monkeypatch.setattr(c, "_hold", hold)
+
+    async def go():
+        t = "prime:amzn1.dv.gti.x"
+        c._set_hidden(t, True)
+        assert c.buffer_standby(t) and not c.hidden_ready and c.bj_buffer_why == "hold_start"
+        await c._preload_task
+        assert c.hidden_ready and asked == [75.0] and c.held[t] == 75.0
+        assert not c.buffer_standby(t) and c.bj_buffer_why == "already_held"
+        u = "prime:amzn1.dv.gti.y"
+        c._set_hidden(u, True)
+        assert c.buffer_standby(u)
+        await c._preload_task
+        assert c.hidden_ready and u not in c.held          # failed: left at the live edge, still a usable standby
+        assert not c.buffer_standby(u) and c.bj_buffer_why == "scrub_backoff"
+    asyncio.run(go())
