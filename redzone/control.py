@@ -3190,7 +3190,7 @@ class Controller:
                     pb = await hid.playback(pkg)
                     if pb.get("state") == "paused" or time.time() >= end:
                         break
-                    await asyncio.sleep(0.3)
+                    await asyncio.sleep(float(self.cfg.get("replay.pause_poll_s", 0.4)))
                 if pb.get("state") != "paused":
                     # the key may or may not have landed: the picture's place is unknown, so it's no buffered standby
                     log.info("buffered jump: %s on %s reads %s after PAUSE: dropped", target, hid.host, pb.get("state"))

@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 
 from redzone.decider.cuts import DeadTracker
 
-DEFAULTS = {
+BJ_DEFAULTS = {
     "enabled": False,
     "leagues": ["nfl", "cfb"],   # where the editor runs (football: every snap is logged with a wallclock)
     "behind_s": 75.0,            # scrub depth asked of each fresh tune (join landing 16.8 k + 28.5: k=3 -> ~79 s)
@@ -43,16 +43,14 @@ DEFAULTS = {
     "min_plays": 1,              # plays V shows before a cut that isn't a long dead stretch
     "rotate_every_s": 600.0,     # the hidden stick re-tunes to another game after the pair has been on this long
     "rotate_dead_s": 120.0,       # ...or right away when its game's next snap is this far off (a break)
+    "park_guard_s": 1.5,         # cuts.landing calls a play on screen from 1 s before its snap: park a little earlier
     "prep_s": 60.0,              # tune + scrub + label read before a re-tuned hidden stick is ready (sim only)
 }
 
 
-PARK_GUARD_S = 1.5   # cuts.landing calls a play on screen from 1 s before its snap: park a little earlier than that
-
-
 def cfg_get(cfg, key: str):
     v = cfg.get(f"buffered_jump.{key}") if cfg is not None and hasattr(cfg, "get") else None
-    return DEFAULTS[key] if v is None else v
+    return BJ_DEFAULTS[key] if v is None else v
 
 
 @dataclass
@@ -137,7 +135,7 @@ def _closed_window(p: Pic, x: float):
 def park_lead_s(h: Pic, cfg=None) -> float:
     """How long before its snap the hidden stick's picture is paused: the flip, the delay margin, the line-up."""
     return (float(cfg_get(cfg, "flip_s")) + _m(h, float(cfg_get(cfg, "margin_sigmas")))
-            + float(cfg_get(cfg, "lead_min_s")) + PARK_GUARD_S)
+            + float(cfg_get(cfg, "lead_min_s")) + float(cfg_get(cfg, "park_guard_s")))
 
 
 def park_in(h: Pic, now: float, cfg=None) -> float | None:

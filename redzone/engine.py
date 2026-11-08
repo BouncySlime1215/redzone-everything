@@ -68,6 +68,14 @@ def _short_why(detail: str) -> str:
     return detail.split(";", 1)[0].strip()[:80] or "switch failed"
 
 
+def buffered_league(cfg, decider, target: str, g) -> bool:
+    """[buffered jump] Jump mode + buffered_jump on, a YouTube TV target, a game in buffered_jump.leagues."""
+    if decider is None or not decider.buffered_on() or not target.startswith("youtubetv:"):
+        return False
+    lgs = bj.cfg_get(cfg, "leagues") or []
+    return not lgs or g.league.value in lgs
+
+
 class Engine:
     def __init__(self, cfg: Config | None = None, store: Store | None = None):
         self.cfg = cfg or Config()
@@ -398,7 +406,7 @@ class Engine:
         g = self.merger.games.get(gid or "")
         if g is None or g.phase != Phase.LIVE:
             return 0.0
-        if self._buffered_league(target, g):
+        if buffered_league(self.cfg, getattr(self, "decider", None), target, g):
             return float(bj.cfg_get(self.cfg, "behind_s"))   # [buffered jump] every stick plays this far behind
         if buffer_rc8.is_on(self.cfg, g.league.value):   # [RC8] Nick flipped this league: adaptive (or pinned) B
             try:
@@ -421,16 +429,10 @@ class Engine:
         g = self.merger.games.get(gid or "")
         if g is None:
             return False
-        if self._buffered_league(target, g):
+        if buffered_league(self.cfg, getattr(self, "decider", None), target, g):
             return True   # [buffered jump] the overlay scrub is how a stick gets behind (a pause doesn't hold)
         return bool(for_league(self.cfg, "timing.behind_live_s.scrub_entry", g.league.value, False))
 
-    def _buffered_league(self, target: str, g) -> bool:
-        """[buffered jump] Jump mode + buffered_jump on, a YouTube TV target, a game in buffered_jump.leagues."""
-        if not self.decider.buffered_on() or not target.startswith("youtubetv:"):
-            return False
-        lgs = bj.cfg_get(self.cfg, "leagues") or []
-        return not lgs or g.league.value in lgs
 
     def _shadow_buffer_on(self) -> bool:
         """[buffer shadow] timing.behind_live_s.shadow while the buffer itself is off on screen."""
