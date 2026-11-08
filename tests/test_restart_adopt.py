@@ -112,3 +112,26 @@ async def test_read_screen_never_after_a_replay(one):
     c.on_target = None
     assert await c.read_screen(["youtubetv:espn"]) is None    # a rewound picture is never read back as live
 
+
+
+class PrimeShowing(ShowingStick):
+    def __init__(self, host, text):
+        super().__init__(host, subtitle="", pkg="prime.pkg")
+        self.text = text
+
+    async def ocr_text(self):
+        return self.text
+
+
+@pytest.mark.parametrize("text,want", [
+    ("MAGIC 98 WARRIORS 100 4TH 1:25", "prime:orlgs"),   # the score bug names one live Prime game
+    ("MAGIC 98 4TH", None),                              # one name only
+    ("LAKERS 90 BLAZERS 88", None),                      # another game
+])
+async def test_read_screen_learns_a_prime_game_by_its_score_bug(one, text, want):
+    """[overseer Nov 7 23:50] Prime names no game: its score bug's team names pick the one live Prime target."""
+    c, tuner = one
+    c.sticks = [PrimeShowing("a:5555", text)]
+    c.target_names = lambda t: {"prime:orlgs": ["Magic", "Warriors"], "prime:nyknj": ["Knicks", "Nets"]}[t]
+    assert await c.read_screen(["prime:orlgs", "prime:nyknj"]) == want
+    assert c.on_target == want and tuner.calls == []

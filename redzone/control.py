@@ -1813,18 +1813,45 @@ class Controller:
         if (self.on_target is not None or self._replayed or stick is None or self.input_unknown or self._flipping
                 or (self._task and not self._task.done()) or self._lock.locked()):
             return None
+        targets = list(targets)
         yt = sorted({t for t in targets if t and t.startswith("youtubetv:")})
         pkg = self._package(stick, yt[0]) if yt else None
         if not pkg:
-            return None
+            return await self._read_prime_screen(stick, targets)
         pb = await stick.playback(pkg)
         if pb.get("pkg") != pkg or not playback_ready(pb):
             return None
+        if pb.get("pkg") != pkg:
+            return await self._read_prime_screen(stick, targets)
         hits = [t for t in yt if (m := channel_matcher(t)) is not None and m(pb) is True]
         if len(hits) != 1 or self.on_target is not None or self.main is not stick or (self._task and not self._task.done()):
             return None
         self._adopt_once = False
         log.info("read back the screen after a restart: %s (%s)", hits[0], pb.get("subtitle"))
+        stick.remember(hits[0], pb)
+        self.on_target = hits[0]
+        return hits[0]
+
+    async def _read_prime_screen(self, stick: Stick, targets: list[str]) -> str | None:
+        """[overseer Nov 7 23:50] read_screen for Prime: it names no game, so the score bug's team names pick the one
+        live Prime target (>= 2 names on screen, exactly one target matching), as the restart adopt does."""
+        prime = sorted({t for t in targets if t and t.startswith("prime:")})
+        if not prime or self.target_names is None:
+            return None
+        pkg = self._package(stick, prime[0])
+        pb = await stick.playback(pkg) if pkg else {}
+        if not pkg or pb.get("pkg") != pkg or not playback_ready(pb):
+            return None
+        text = (await stick.ocr_text()).lower()
+        hits = []
+        for t in prime:
+            names = {n.lower() for n in self.target_names(t) if n and len(n) >= 3}
+            if len({n for n in names if n in text}) >= 2:
+                hits.append(t)
+        if len(hits) != 1 or self.on_target is not None or self.main is not stick or (self._task and not self._task.done()):
+            return None
+        self._adopt_once = False
+        log.info("read back the Prime screen after a restart: %s", hits[0])
         stick.remember(hits[0], pb)
         self.on_target = hits[0]
         return hits[0]
