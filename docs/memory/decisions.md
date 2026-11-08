@@ -1275,3 +1275,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (a replay park on a freshly tuned stick waits this long from the tune, no keys, then scrubs that much further
   back) and **`replay.scrub_max_play_age_s` 110 -> 95** (the wait makes the park ~22 s deeper; 8 LEFTs still
   reach it). PR #419.
+- 2026-11-07 (Nick, live, 22:15 + 22:17 ET): **pass bar for jumps = 75 jumps in 10 minutes** (7.5/min) with, in that
+  window, 0 commercials on screen, every shown play in full, 0 mid-play joins and **0 mid-play leaves** (leaves only at
+  dead balls; stricter than Rule #1's low-leverage leave). Earlier the same day: 4-5/min (12:55), then 5-10/min
+  "play by play" (20:45); "no forces, real autopilot"; mechanics first, the when-to-jump model later (21:05).
+- 2026-11-07 (Nick, 12:08 ET): "You can deploy whatever" / "You can do whatever you want"; 22:35: the overseer fixes
+  code itself when it can instead of waiting on threads. Deploys still go through scripts/deploy.py's health watch.
+- 2026-11-07 (overseer 22:25 ET, runtime only): jump_mode.leagues narrowed to [cfb, nfl] for the buffered-jump test
+  (buffered_jump.leagues is nfl/cfb, so NBA/NHL standbys could never be cut to). Restore [cfb, nfl, nba, nhl, cbb] when
+  NBA/CBB join buffered mode or the test ends.

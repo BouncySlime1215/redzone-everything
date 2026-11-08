@@ -368,3 +368,12 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   the data while the data "covers" the screen or the break is under its usual length. A slow feed fails "covered",
   so a timeout past its floor read as "play on screen". The feed is ~35 s ahead of the screen: if the fresh feed is
   still in the break, the screen is too (once the play before it has aired). The jump gate uses that now.
+- 2026-11-07 (buffered jumps, overseer 22:30): 0 buffered cuts for an hour because `Engine._game_on(target, False)`
+  returned None when several games map to one channel (FOX: IOWA@NU live + Sunday's NFL). behind_of/scrub_of then
+  said 0/off and the hidden stick was never scrubbed; only single-game SEC Network worked. `_game_on_target` had the
+  same bug fixed at 19:10. Lesson: every target -> game lookup must prefer the one LIVE game; grep for siblings when
+  fixing one.
+- 2026-11-07 (Mac, 22:00-22:09): 7.7 GB swapped on the 8 GB Mac froze the API (3 misses) and rolled back a good
+  deploy (e5876ea0); the rollback itself was logged "rollback_failed" because the app was still frozen. Lesson: check
+  swap/load before blaming a build; `deploy.py confirm` clears an interrupted watch.
+- 2026-11-07 (overseer tooling): macOS has no `timeout`; `perl -e 'alarm N; exec @ARGV' cmd` instead.
