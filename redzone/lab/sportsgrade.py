@@ -1,7 +1,5 @@
 """League-aware report card for backtests (NFL, NBA, NHL, MLB).
 
-Why: big plays and crunch mean different things per league, so backtests are graded by each league's own definitions (docstring).
-
 What counts, per league:
   big play   NFL: scores + turnovers   NHL: goals   MLB: runs scored / home runs
              NBA: clutch buckets (Q4/OT, last 2:00, within 5 before the shot)

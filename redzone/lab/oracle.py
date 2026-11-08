@@ -1,7 +1,5 @@
 """Hindsight oracle: the best schedule anyone could have run on an archived night (offline only).
 
-Why: gives every scorecard line a ceiling: the best schedule anyone could have run on the night (decisions 2026-11-04 5:00 AM, oracle_gap lines).
-
 Knowing every play of every game in advance, which game should have been on screen when? A dynamic program
 over 5 s steps, state = the game on screen, under the same hard rules the app lives by:
 

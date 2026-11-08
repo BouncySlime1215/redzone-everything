@@ -1,7 +1,5 @@
 """Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03).
 
-Why: Nick's no-overfitting rule (2026-11-03): time splits by whole night, newest >= 25% locked and scored once per release (commit 2026-11-03).
-
     train | valid | test          by NIGHT, oldest -> newest, per league
     test  = the newest >= 25 % of nights: LOCKED. Scored only for the release PR, once per release
             candidate (scripts/release_gate.py). Nobody tunes, trains or picks thresholds on it.

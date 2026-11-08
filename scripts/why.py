@@ -141,9 +141,9 @@ def night(data: Path, date: str) -> list[str]:
     out = [f"Night of {date} (6 AM to 6 AM)",
            f"- jumps: {len(ok)} ok, {sum(fails.values())} failed"
            + (f" ({', '.join(f'{k} {v}' for k, v in fails.most_common())})" if fails else ""),
-           f"- vetoed at the flip: " + (", ".join(f"{k} {v}" for k, v in vetoes.most_common()) or "none"),
-           f"- what held the TV (hold ticks): " + (", ".join(f"{k} {v}" for k, v in holds.most_common(6)) or "none"),
-           f"- who owned the TV (status rows): " + (", ".join(f"{k} {v}" for k, v in owners.most_common()) or "none"),
+           "- vetoed at the flip: " + (", ".join(f"{k} {v}" for k, v in vetoes.most_common()) or "none"),
+           "- what held the TV (hold ticks): " + (", ".join(f"{k} {v}" for k, v in holds.most_common(6)) or "none"),
+           "- who owned the TV (status rows): " + (", ".join(f"{k} {v}" for k, v in owners.most_common()) or "none"),
            f"- state moves: {len(moves)}; busiest: " + (", ".join(f"{k} {v}" for k, v in by_machine.most_common(5)) or "none"),
            "- most common reasons:"]
     out += [f"    {v:>4}  {k}" for k, v in reasons.most_common(8)] or ["    none"]

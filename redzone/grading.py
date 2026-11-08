@@ -2,8 +2,6 @@
 Serves: entries_mid_play (dead_at / clean_leave decide where a cut may land and leave), big_plays_live
 (is_big), crunch_live_* (is_crunch), and the feed-anchored sync (is_dead_ball).
 
-Why: one brain step 3 (docs/onebrain-migration.md, 2026-11-04): live app and grader share the play predicates, so a cut and its grade can't disagree.
-
 Before this, Noggin PICK (live) and the engine's break anchor imported them from redzone/lab/
 (cutgrade, sportsgrade, oracle, timing, backtest), so the live path ran lab code. They live here now,
 moved verbatim; the lab modules import them back under their old names, so the grader and the live

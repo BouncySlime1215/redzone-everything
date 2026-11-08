@@ -1,7 +1,5 @@
 """Cut-timing scorecard: WHERE in each game we left, and WHERE we landed.
 
-Why: Rule #1 needs a number: grades both ends of every switch against the true archive, entries_mid_play first (commit 2026-11-03; RC7 gate lines 2026-11-05).
-
 The mid-play-cut check grades leaving. This grades both ends of every switch against the TRUE
 archive (real wallclocks, the stream's real delay), per league:
 

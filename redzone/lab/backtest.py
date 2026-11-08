@@ -1,7 +1,5 @@
 """Replay a real slate of past games through the scorer and decider, then grade it.
 
-Why: a change has to be judged before a live night: replays real past slates knowing only what the app could have known then (docstring; CLAUDE.md release gate).
-
 The simulation is honest about time:
   - the app only "sees" a play feed_lag seconds after it happened (wallclock)
   - your screen shows it delay seconds after the app saw it
