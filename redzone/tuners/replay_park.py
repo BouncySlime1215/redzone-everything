@@ -24,7 +24,7 @@ from typing import Callable
 
 log = logging.getLogger("redzone.replay_park")
 
-PARK_DEFAULTS = {"back_lead_s": 3.0, "park_lead_s": 1.5, "scrub_slack_s": 4.0, "park_wait_max_s": 40.0,
+PARK_DEFAULTS = {"back_lead_s": 3.0, "park_lead_s": 1.5, "scrub_slack_s": 4.0, "park_wait_max_s": 40.0, "pause_settle_s": 3.0, "pause_poll_s": 0.4,
                  "yttv_max_lefts": 8}
 
 
@@ -119,7 +119,14 @@ async def _park(stick, back_s, probe, cfg, pkg, still_hidden, clock, sleep, t0, 
     if not sent or not getattr(sent, "ok", False):
         res.reason = "PAUSE not sent"
         return
-    pb = await stick.playback(pkg)
+    # [Nick, Nov 8 fd1ba542] the first read right after PAUSE can be a transient 'none' (the post-tune family, #356)
+    # while the player is paused (state 2 at +0, +10, +20 s): re-read for pause_settle_s before calling it lost
+    end = clock() + float(_cfg(cfg, "pause_settle_s"))
+    while True:
+        pb = await stick.playback(pkg)
+        if pb.get("state") == "paused" or clock() >= end:
+            break
+        await sleep(float(_cfg(cfg, "pause_poll_s")))
     if pb.get("state") not in ("playing", "paused"):
         res.reason = f"player is {pb.get('state')} after PAUSE"
         return
