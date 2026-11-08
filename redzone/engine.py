@@ -566,7 +566,13 @@ class Engine:
         if visible and cur and getattr(self.where.get(cur), "target", None) == target:
             return cur
         hits = [gid for gid, w in self.where.items() if getattr(w, "target", None) == target]
-        return hits[0] if len(hits) == 1 else None
+        if len(hits) == 1:
+            return hits[0]
+        # [overseer Nov 7 22:30] a network carries tomorrow's games too (FOX: IOWA@NU live + Sunday's NFL), so
+        # several games map to one channel. The one LIVE game is what it shows; without this, FOX/ABC/NBC/ESPN
+        # read "no game" and behind_of/scrub_of said 0/off: the hidden stick was never scrubbed (0 buffered cuts).
+        live = [g for g in hits if getattr(self.merger.games.get(g), "phase", None) == Phase.LIVE]
+        return live[0] if len(live) == 1 else None
 
     async def _scorebug_loop(self) -> None:
         """While a Prime game is on screen (and, with delay.scorebug_hidden, on the live hidden stick):
