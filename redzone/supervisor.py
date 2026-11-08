@@ -132,7 +132,7 @@ LIMITS.update(_AGENT_LIMITS)
 NOT_THE_TARGET = ("no safe moment", "safe exit window closed", "switch cancelled", "tv input is unknown",
                   "tv control was disabled", "no channel", "standby stream is no longer confirmed", "dry run",
                   "replay seek failed", "replay resume failed", "two-stick mode off", "crashed:",
-                  "stick not responding")
+                  "stick not responding", "buffer entry failed")   # a scrub miss (tune banner), not the channel
 
 # Failure detail -> a short cause name for the nightly report. First match wins.
 CAUSES = (

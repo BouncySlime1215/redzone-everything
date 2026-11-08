@@ -407,6 +407,34 @@ jump_mode:                 # [Nick Nov 7 12:52, "should be 4-5 switches every mi
                            # decider's replay switches go through jump mode untouched
   log: true                # every jump to data/jumps.jsonl (ids, numbers and short reason codes only)
 
+buffered_jump:             # [overseer Nov 8 01:50Z / Nick 20:45 "play by play moment from moment"] jump mode with BOTH sticks
+                           # scrubbed ~75 s behind live (yttv_seek overlay scrub, label read): the play-by-play already holds
+                           # every snap and whistle about to air, so each cut is planned (redzone/decider/buffered.py). Needs
+                           # jump_mode.enabled too. Sim: scripts/buffered_jump_sim.py. Stick test: scripts/buffered_jump_try.py
+  enabled: false           # OFF: Nick turns it on at runtime (POST /api/settings {"changes":{"buffered_jump":{"enabled":true}}})
+  leagues: [nfl, cfb, nba, cbb, wcbb]   # [overseer Nov 8 22:15] + basketball (fouls, FTs, timeouts, violations are the
+                           # dead balls; a made basket's inbound is too short for the delay margin). Others: jump mode's rules
+  behind_s: 75             # scrub depth asked of each fresh YouTube TV tune (lands ~79 s: 16.8 k + 28.5, k=3)
+  min_behind_s: 45         # a stick less behind than this (label) isn't a buffered picture: jump mode's own rules run
+  flip_s: 3.2              # slowest input flip to the ready standby (live tonight 2.5-3.7 s)
+  flip_fast_s: 2.0         # fastest
+  margin_sigmas: 2         # delay doubt each side of a leave / landing (sim: 2 sigma at the 4 s floor = 0 mid-play)
+  lead_min_s: 2            # the picture comes up at least this long before the target's snap
+  lead_max_s: 8            # ...and at most this long past the delay margin (else wait for a later dead moment)
+  long_dead_s: 45          # the screen game's next snap is further off (break, punt, score): leave for a sooner snap now
+  park: true               # [Nick 21:05] the hidden stick PAUSES on the line-up just before its next logged snap (~flip +
+                           # 2 sigma + 3.5 s ahead); every dead ball on screen (after min_plays) flips to it and PLAY rolls
+                           # the snap; the freed stick keeps playing and parks at ITS next snap. Each pause adds to behind.
+                           # Sim (37 NFL slates): 0.8 cuts/min, 1.35 plays/min shown (one game 0.79), 0 mid-play
+  park_max_age_s: 45       # a park older than this is rolled on the hidden stick and parks again (long pauses lose place)
+  park_schedule_s: 4       # the engine schedules the PAUSE when the park point is this close (the control times it)
+  max_delay_s: 270         # screen delay (edge + behind, pauses included) past which the hidden stick re-tunes
+  eager: false             # (park false only) true = cut at every shared dead ball (sim ~4.9 cuts/min, fewer plays shown) instead of snap-timed
+  min_plays: 1             # plays the screen game shows before a snap-timed cut
+  rotate_every_s: 600      # the hidden stick re-tunes (tune + scrub ~60 s) after the pair has been on this long...
+  rotate_dead_s: 120       # ...or when its game's next snap is this far off (a break)
+  prep_s: 60               # sim only: a re-tuned hidden stick is ready this long later
+
 crunch:                    # [one brain, step 2] ONE crunch table (redzone/crunch.py), read by the scorer, standby,
                            # the demo and the grading. period / clock_s (left, at or under; null = whole period on) / margin /
                            # ot (crunch from this period on) / ot_close (OT still needs the margin). Values as shipped Nov 4.
@@ -845,6 +873,9 @@ timing:
                            # the hold above for that league). Nick flips it himself (scripts/rc8_flip.py); the
                            # pre-registered gate (docs/plans/2026-11-05-rc8-buffer-gate.md) is reported per league
                            # by scripts/rc8_gate_report.py. Ships false everywhere. Code: redzone/buffer_rc8.py
+    scrub_after_tune_s: 22 # [overseer Nov 8 21:55] the first overlay key waits this long after a tune reports playing:
+                           # YouTube TV's LIVE/title banner (up to ~30 s) swallows the keys ('no scrub label', 62 s)
+    scrub_banner_retry_s: 30   # a scrub that failed on the banner / focus guard is retried after this (others: scrub_retry_s)
     label_reader: false    # [YTTV scrub buffer item 2, Nick Nov 6 10:15 PM] read YouTube TV's overlay time label (screencap ->
                            # local OCR -> numbers; the frame is deleted at once, never kept) as the behind-live truth
                            # meter after a scrub seek (media_session lies after a seek). Code: redzone/tuners/yttv_label.py

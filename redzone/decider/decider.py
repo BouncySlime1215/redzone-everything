@@ -34,8 +34,9 @@ from typing import Callable
 
 from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S, PLAY_LEN_S, DelayBook, Event, Gate,
                                     Timeline, break_on_arrival, catchable, final_play_aired, leave_gate,
-                                    leave_window, resume_lead, resume_play)
+                                    leave_window, resume_lead, resume_play, STALE_DATA_S)
 from redzone.decider.cuts import EntryPlan, plan_entry
+from redzone.decider import buffered as bj
 from redzone.decider.playbooks import Safety
 from redzone.decider.scenarios import Scenarios
 from redzone.noggin.lookahead import ahead
@@ -331,6 +332,8 @@ class Decider:
         self.standby_ready: Callable[[str], bool] | None = None
         self.slow_tune: Callable[[str], bool] | None = None
         self.jump_holds: Counter = Counter()
+        self.snap_parked: Callable[[str | None], float | None] | None = None   # [buffered jump] the engine's control
+        self._bj_pair: tuple[frozenset, float] | None = None   # [buffered jump] the two games on the sticks, since when
 
     # ----- inputs -----------------------------------------------------------
 
@@ -576,8 +579,8 @@ class Decider:
 
     def _scan_missed(self, cands: dict[str, Candidate], now: float) -> None:
         """After each big play has aired, note whether you saw it. If not, queue a replay."""
-        if not self.cfg.get("replay.enabled", True):
-            return
+        if not self.cfg.get("replay.enabled", True) or self.buffered_on():
+            return   # [buffered jump] the hidden stick is the editor's next cut: no catch-up queue (overseer Nov 8 22:15)
         max_age = self.cfg.get("replay.max_age_s", 1800)
         pool = self._replay_pool(cands)
         for gid, tl in self.timelines.items():
@@ -2217,7 +2220,9 @@ class Decider:
         return bool(self.cfg.get("jump_mode.enabled", False))
 
     def _jump_league(self, x: Candidate | None) -> bool:
-        lgs = self.cfg.get("jump_mode.leagues") or []
+        lgs = list(self.cfg.get("jump_mode.leagues") or [])
+        if lgs and self.buffered_on():   # [overseer Nov 8 22:15] buffered runs in its own leagues too (NBA, CBB)
+            lgs += list(bj.cfg_get(self.cfg, "leagues") or [])
         return x is not None and (not lgs or x.scored.league.value in lgs)
 
     def _jump_pool(self, cands: dict[str, Candidate]) -> dict[str, Candidate]:
@@ -2241,7 +2246,8 @@ class Decider:
         (2 = the rule every other entry uses)."""
         return float(self.cfg.get("jump_mode.margin_sigmas", 2.0)) * d.current_sigma(now)
 
-    def _jump_gate(self, cur: Candidate, now: float, gid: str | None = None, required_s: float | None = None) -> Gate | None:
+    def _jump_gate(self, cur: Candidate, now: float, gid: str | None = None, required_s: float | None = None,
+                   strict: bool | None = None) -> Gate | None:
         """[Nick Nov 7 1:05, "Rule #1 kept for JOINS"] May the rotation leave gid (default: the game on screen)?
         The normal gate (official breaks, low-leverage leaves per decider.leave.low_leverage) or, in any jump
         league, the play-by-play's dead window between plays: the feed lags the TV and goes quiet in the ads,
@@ -2259,15 +2265,26 @@ class Decider:
                 return Gate(True, "dead ball on screen (play-by-play)")
         saved, self.current = self.current, gid
         try:
-            return self._gate(cur, now)
+            g = self._gate(cur, now)
         finally:
             self.current = saved
+        if g is not None and g.safe and (self.buffered_on() if strict is None else strict) \
+                and g.why.startswith("low-leverage"):
+            # [Nick 22:15 Nov 7 pass bar: "Can't leave mid play"] buffered mode leaves only at a dead ball, never on
+            # the low-leverage exception
+            return Gate(False, "dead balls only (buffered: no mid-play leave)")
+        return g
 
     def jump_may_leave(self, gid: str | None, cands: dict[str, Candidate], now: float, required_s: float) -> bool:
         """At the flip: the jump may cut away from gid now (the engine's may_cut for a jump)."""
         x = cands.get(gid or "") or self._known.get(gid or "")
         if not gid or gid in PSEUDO or x is None:
             return True
+        if gid not in cands and self.buffered_on():
+            # [buffered: the screen's game left the feed] no fresh play-by-play left to show a play: a free leave
+            tl = self.timelines.get(gid)
+            if tl is None or tl.fresh_at is None or now - tl.fresh_at > STALE_DATA_S:
+                return True
         g = self._jump_gate(x, now, gid=gid, required_s=required_s)
         return bool(g and g.safe)
 
@@ -2297,6 +2314,16 @@ class Decider:
             return False
         if break_on_arrival(tl, d, now, now + cost):
             return False   # a commercial on arrival: not where a rotation lands
+        pic = self._bj_pic(gid, x, now)
+        at = self.snap_parked(x.target) if pic is not None and self.snap_parked is not None else None
+        if at is not None:
+            pic = bj.frozen(pic, now, at)   # paused on the line-up: the picture stood still since `at`
+        if pic is not None:
+            # [buffered jump] the standby plays behind live (scrubbed, label read): its picture is d.mu behind
+            ok, _ = bj.lands(pic, now, float(bj.cfg_get(self.cfg, "flip_fast_s")),
+                             max(float(bj.cfg_get(self.cfg, "flip_s")), cost),
+                             float(bj.cfg_get(self.cfg, "lead_min_s")), float(bj.cfg_get(self.cfg, "margin_sigmas")))
+            return ok
         if tl.dead.marks:
             mu = d.mu - d.behind   # a fresh tune or a live standby shows the live edge
             m = self._jump_margin(d, now)
@@ -2386,9 +2413,127 @@ class Decider:
             return pool[gid].scored.score + per * away / 60.0 - pen - (100.0 if gid in self._screen_break else 0.0)
         best = max(pool, key=val)
         keep = next((gid for gid, x in pool.items() if standby and x.target == standby), None)
+        if keep is not None and self.buffered_on():
+            # [buffered jump] a scrubbed standby is ~60 s of tune + scrub: keep it (ping-pong with the screen) until
+            # its game goes to a long stoppage or the pair has been on rotate_every_s
+            pair = frozenset((self.current or "", keep))
+            if self._bj_pair is None or self._bj_pair[0] != pair:
+                self._bj_pair = (pair, now)
+            pic = self._bj_pic(keep, pool[keep], now)
+            if pic is None or bj.rotate_due(pic, now, now - self._bj_pair[1], self.cfg) is None:
+                return keep
         if keep is not None and val(keep) >= val(best) - float(c.get("jump_mode.standby_margin", 8)):
             return keep
         return best
+
+    # ----- [buffered jump] ----------------------------------------------------
+    # Both sticks ~60-90 s behind live (scrubbed, label read): the play-by-play already holds every snap and whistle
+    # about to air, so the cut points are known in advance (redzone/decider/buffered.py). Only when BOTH pictures
+    # are buffered; otherwise jump mode's own rules run (a fresh live-edge tune until its scrub lands).
+
+    def buffered_on(self) -> bool:
+        return self.jump_on() and bool(self.cfg.get("buffered_jump.enabled", False))
+
+    def _bj_pic(self, gid: str, x: Candidate | None, now: float) -> bj.Pic | None:
+        """gid's picture as the editor sees it, or None: flag off, not a buffered league, no play-by-play dead windows,
+        or its stick isn't at least min_behind_s behind live (by the label)."""
+        if x is None or not x.target or not self.buffered_on():
+            return None
+        lgs = bj.cfg_get(self.cfg, "leagues") or []
+        tl = self.timelines.get(gid)
+        if tl is None or not tl.dead.marks or (lgs and x.scored.league.value not in lgs):
+            return None
+        d = self.delays.get(x.target)
+        if d.behind < float(bj.cfg_get(self.cfg, "min_behind_s")):
+            return None
+        return bj.Pic(tl.dead, d.mu, d.current_sigma(now), gid)
+
+    def _bj_lands(self, gid: str, p: bj.Pic, cands: dict[str, Candidate], now: float) -> tuple[bool, float]:
+        at = self.snap_parked(cands[gid].target) if self.snap_parked is not None else None
+        hp = bj.frozen(p, now, at) if at is not None else p
+        return bj.lands(hp, now, float(bj.cfg_get(self.cfg, "flip_fast_s")), float(bj.cfg_get(self.cfg, "flip_s")),
+                        float(bj.cfg_get(self.cfg, "lead_min_s")), float(bj.cfg_get(self.cfg, "margin_sigmas")))
+
+    def _bj_screen_gone(self, cands: dict[str, Candidate], now: float) -> Decision | None:
+        """The game on screen isn't in the feed any more: jump to a ready standby that lands on a dead ball (buffered
+        picture by the play-by-play, else jump mode's own landing check)."""
+        ready = self.standby_ready
+        for gid, x in self._jump_pool(cands).items():
+            if gid == self.current or (ready is not None and not ready(x.target)):
+                continue
+            p = self._bj_pic(gid, x, now)
+            if p is not None:
+                ok, h_snap = self._bj_lands(gid, p, cands, now)
+            else:
+                ok, h_snap = self.jump_lands_dead(gid, x, now, float(bj.cfg_get(self.cfg, "flip_s"))), -1.0
+            if not ok:
+                continue
+            info = {"why": "bj_screen_gone", "buffered": p is not None, "h_snap_s": round(h_snap, 1),
+                    "behind_s": round(self.delays.get(x.target).behind, 1), "here_behind_s": 0.0,
+                    "gate": "the screen's game left the feed", "holds": dict(self.jump_holds), "snap": False,
+                    "big": False, "cost_s": float(bj.cfg_get(self.cfg, "flip_s")), "held_s": round(now - self.since, 1)}
+            self.jump_holds = Counter()
+            return Decision(now, "switch", gid, f"jump: the game on screen left the feed -> {self._short_gid(gid)}",
+                            State.WATCHING, info["gate"], kind="jump", jump=info)
+        self.jump_holds["bj_screen_gone_no_landing"] += 1
+        return None
+
+    def _buffered_jump(self, cur: Candidate, cands: dict[str, Candidate], now: float):
+        """The editor's call: a jump Decision, False (holds; counted as bj_<why>) or None (not both buffered: jump
+        mode's own rules decide)."""
+        v = self._bj_pic(self.current or "", cur, now)
+        ready = self.standby_ready
+        hs = [(gid, x) for gid, x in self._jump_pool(cands).items()
+              if gid != self.current and (ready is None or ready(x.target))]
+        pics = [(gid, p) for gid, x in hs if (p := self._bj_pic(gid, x, now)) is not None]
+        if v is None:
+            # [bootstrap, overseer Nov 8 21:47] the screen's stick was tuned at the live edge (before the flag, or a failed
+            # scrub): once the hidden stick holds a buffered game, go there at the next safe dead ball (jump mode's own
+            # leave gate; the landing on the buffered picture), and from then on both pictures are buffered
+            self.jump_holds["bj_screen_not_buffered"] += 1
+            g = self._jump_gate(cur, now, strict=True) if pics else None
+            for gid, p in pics:
+                ok, h_snap = self._bj_lands(gid, p, cands, now)
+                if g is not None and g.safe and ok:
+                    info = {"why": "bj_bootstrap", "buffered": True, "h_snap_s": round(h_snap, 1),
+                            "behind_s": round(self.delays.get(cands[gid].target).behind, 1), "here_behind_s": 0.0,
+                            "gate": g.why, "holds": dict(self.jump_holds), "snap": False, "big": False,
+                            "cost_s": float(bj.cfg_get(self.cfg, "flip_s")), "held_s": round(now - self.since, 1)}
+                    self.jump_holds = Counter()
+                    return Decision(now, "switch", gid, f"jump: onto the buffered picture -> {self._short_gid(gid)}",
+                                    State.WATCHING, g.why, kind="jump", jump=info)
+            return None
+        if not pics:
+            self.jump_holds["bj_standby_not_buffered" if hs else "bj_standby_not_ready"] += 1
+            return None if hs else False
+        seen = self._jump_plays_seen(self.current, cur, now)
+        park = bool(bj.cfg_get(self.cfg, "park"))
+        best = None
+        for gid, p in pics:
+            if park:
+                at = self.snap_parked(cands[gid].target) if self.snap_parked is not None else None
+                c = bj.cut_parked(v, bj.frozen(p, now, at), now, self.cfg, plays_seen=seen) if at is not None \
+                    else bj.Cut(False, "not_parked")
+            else:
+                c = bj.cut_now(v, p, now, self.cfg, plays_seen=seen)
+            if c.go and (best is None or c.info.get("h_snap_s", 99) < best[1].info.get("h_snap_s", 99)):
+                best = (gid, c)
+            elif best is None:
+                last = c
+        if best is None:
+            self.jump_holds[f"bj_{last.why}"] += 1
+            return False
+        gid, c = best
+        held = now - self.since
+        info = {**c.info, "why": f"bj_{c.why}", "buffered": True, "held_s": round(held, 1),
+                "behind_s": round(self.delays.get(cands[gid].target).behind, 1),
+                "here_behind_s": round(self.delays.get(cur.target).behind, 1),
+                "gate": "buffered: dead ball on screen (play-by-play)", "holds": dict(self.jump_holds),
+                "snap": c.why in ("snap_next", "parked_snap"), "big": False, "cost_s": float(bj.cfg_get(self.cfg, "flip_s"))}
+        self.jump_holds = Counter()
+        reason = (f"jump: dead ball after {seen} play{'s' if seen != 1 else ''} ({c.why.replace('_', ' ')}) -> "
+                  f"{self._short_gid(gid)}: snap in {c.info.get('h_snap_s')}s")
+        return Decision(now, "switch", gid, reason, State.WATCHING, info["gate"], kind="jump", jump=info)
 
     def _jump_owns(self, d: Decision, cands: dict[str, Candidate]) -> bool:
         """[jump mode] Is d an optional switch out of a rotation game, which the rotation decides instead?"""
@@ -2408,6 +2553,15 @@ class Decider:
         if (self.safe_mode or u.paused or u.locked_game or now < u.manual_until or now < self._arrival_until
                 or u.focus_mode != FocusMode.AUTOPILOT or self.replaying or self.after_replay):
             return None
+        cur = cands.get(self.current or "")
+        if cur is None and self.current and self.current not in PSEUDO and self.buffered_on() \
+                and d.kind not in ("user", "crunch"):
+            # [overseer Nov 8 22:15] the screen's game left the feed (over, or dropped from the list): nothing on screen
+            # to cut out of, so it's a free cut onto the first ready standby that lands on a dead ball (ahead of the
+            # normal 'ended' switch, which doesn't time the landing on a buffered picture)
+            gone = self._bj_screen_gone(cands, now)
+            if gone is not None:
+                return gone
         if d.action in ("switch", "replay") and d.kind in JUMP_KEEPS:
             return None   # crunch time, a finished game, your tap, a chase: the normal decider already goes
         cur = cands.get(self.current or "")
@@ -2417,6 +2571,10 @@ class Decider:
         if hold:
             self.jump_holds[hold] += 1
             return None
+        if self.buffered_on():
+            b = self._buffered_jump(cur, cands, now)
+            if b is not None:
+                return b or None   # False: the editor holds this tick (counted); a Decision: cut now
         g = self._jump_gate(cur, now)
         if g is None or not g.safe:
             self.jump_holds["play_on_screen"] += 1

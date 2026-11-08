@@ -1384,3 +1384,27 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   **`jump_mode.search_penalty` 20** (the standby prefers code channels, ~3-4 s, over locals by search, ~11-15 s,
   unless the local's moment is that much bigger). The standby pick also skips targets the hidden stick can't tune
   now (a failed tune's backoff), which had kept it empty. jump_mode.enabled itself unchanged (Nick's live setting).
+- 2026-11-08 (Nick 20:45 + 21:05 ET via the overseer, "5-10 jumps per min ... idc about the decisions rn i just care
+  about the code"): **new flag `buffered_jump` (default OFF, needs jump_mode)**: both YouTube TV sticks scrubbed ~75 s
+  behind live (label read), the hidden stick PAUSES on the line-up just before its next logged snap (`park: true`),
+  and every dead ball on screen flips to it (PLAY rolls the snap; the pause joins its behind-live). Rule #1 kept at the
+  2-sigma margin. Sim on 37 NFL slates: 0.8 cuts/min, 1.35 plays/min shown (one game 0.79), 0 mid-play; 5/min only
+  huddle to huddle (`park: false, eager: true`). Stick test: scripts/buffered_jump_try.py. PR claude/buffered-jump.
+- 2026-11-08 (overseer 21:55 ET, 3778a401 live: 'scrub_failed youtubetv:secn ... focus guard: no scrub label after the
+  LEFT', 62 s, then a 10-min supervisor backoff): **new `timing.behind_live_s.scrub_after_tune_s: 22`** (the first
+  overlay key of a scrub entry waits that long after the tune played: YouTube TV's post-tune banner swallows keys) and
+  **`scrub_banner_retry_s: 30`** (a focus-guard miss is retried soon, others keep scrub_retry_s 120); the supervisor
+  no longer counts "buffer entry failed" as the channel's failure. Seek thread agreed (it owns enter_buffer).
+- **2026-11-08 (Nick 22:15 + 22:17 ET Nov 7, via the overseer): the jump PASS BAR.** A 10-minute window of the real
+  TV passes only with **75+ on-screen jumps in that window (7.5/min)** AND all four hard rules in it: **0 commercial
+  seconds on screen**, **every shown play in full** (no play cut off at a cut), **0 mid-play joins**, **0 mid-play
+  leaves**. "Can't leave mid play" is stricter than Rule #1's low-leverage exception: with buffered_jump on, the
+  rotation leaves only at a dead ball (`Decider._jump_gate` refuses the low-leverage gate). Measured by
+  `scripts/buffered_jump_try.py watch|report` (one PASS/FAIL line per 10-min window, rules audited ~2.5 min later
+  against ESPN's play-by-play) and `scripts/buffered_jump_sim.py` (per-window verdicts on recorded slates; commercials =
+  a break window's inside, 10 s in from each end, an assumption). Applies to every sport.
+- **2026-11-08 (overseer 22:15 ET Nov 7, live 0 cuts on 9f3412d): buffered_jump.leagues default += nba, cbb, wcbb**
+  (fouls, free throws, timeouts, violations, reviews and period ends are the dead balls; a made basket's inbound is too
+  short for the delay margin). With buffered_jump on: no catch-up replay queue (it took the standby: 'yields to a queued
+  replay'), no scrub inside a switch (tune + banner wait + scrub + safe wait held the command lock 156 s), and a screen
+  game that left the feed is a free cut onto a ready standby that lands dead.
