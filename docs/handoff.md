@@ -91,6 +91,11 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
     - replay.enabled; delay.edge_prior.enabled (34.9 s); tuners.yttv_local_search.
     - decider.leave.dead_windows [cfb, nfl, nhl, nba, cbb]; quiet_break near_end_clock_s 30; switch_margin 1;
       return_tolerance 0.
+  - **0b0f8534 verdict: healthy (22:43).** **Next deploy candidate:** branch tip after 8e61a426. The thread's 0bbf8f9b
+    adds the pass-bar PASS/FAIL per 10-min window, NBA/CBB in buffered mode, a cut when the screen game is gone,
+    and no replay/scrub fights; d3a6a755 queues only young catch-ups (scrub_max_play_age_s 110); 304a16a3 makes
+    the replay park wait out the banner. Check whether 0bbf8f9b also fixes `screen_game_unknown` after a
+    restart; if not, that is still open.
   - **Autopilot:** ON, not paused, focus_mode autopilot. Nick is watching live CFB/NBA.
   - **Jumps:**
     - **0 buffered cuts so far.** The 9f3412d1 window 22:22-22:32 counted 0 cuts, held by bj_standby_not_ready
