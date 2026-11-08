@@ -6,6 +6,11 @@ Not in this worktree (untracked in the main checkout, not listed): `docs/club/`,
 
 ## Start here
 
+- [PLAN.md](PLAN.md) - the only plan: phases, process gate, test queue link, questions for Nick
+- [STANDARD.md](STANDARD.md) - how every report, finding and doc is organized (checked in CI)
+- [agents/INDEX.md](agents/INDEX.md) - [GEN] every agent report by stream, status and gate items
+- [test-queue.md](test-queue.md) - what gets tested on the TV, in order
+
 - [../CLAUDE.md](../CLAUDE.md) - hard rules, North Star, branches, commands (read first)
 - [handoff.md](handoff.md) - live handoff; newest status is section 5, updated by the overseer (Nov 7)
 - [northstar.md](northstar.md) - [GEN] where we are vs perfect (measured, 2026-11-06)

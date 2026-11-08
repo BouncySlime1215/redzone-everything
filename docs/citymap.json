@@ -11963,6 +11963,27 @@
     "untagged"
    ]
   },
+  "scripts/doc_index.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Generate docs/agents/INDEX.md from report front matter, and check the organization standard (docs/STANDARD.md).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/doctor.py": {
    "calls": [
     "redzone/network.py:Probe",
@@ -15116,10 +15137,10 @@
   "calls": 1544,
   "data_files": 180,
   "machines": 49,
-  "modules": 377,
+  "modules": 378,
   "orphans": 14,
-  "unowned": 204,
-  "untagged": 309
+  "unowned": 205,
+  "untagged": 310
  },
  "version": 2
 }

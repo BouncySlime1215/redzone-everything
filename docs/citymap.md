@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**377 modules**, 309 untagged, 204 unowned, 14 orphans (no importer); 1544 call edges, 180 data files, 49 machines.
+**378 modules**, 310 untagged, 205 unowned, 14 orphans (no importer); 1544 call edges, 180 data files, 49 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -226,7 +226,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (204)
+## unowned (205)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -354,6 +354,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/delay_report.py` (entry) | How well each channel's stream delay is predicted, from the delay samples the app has stored. | config, decider.screen -> - | untagged |
 | `scripts/disk_guard.py` (entry) | Disk guard for the Mac (~5 GB free): what is using space in this checkout, and a safe cleanup of the transfer folders that cloud build threads leave behind. | governor -> - | untagged |
 | `scripts/distill.py` (entry) | Big teacher -> small student, end to end. | agent.distill.evaluate, agent.distill.student, agent.distill.teacher -> - | untagged |
+| `scripts/doc_index.py` (entry) | Generate docs/agents/INDEX.md from report front matter, and check the organization standard (docs/STANDARD.md). | - -> - | untagged |
 | `scripts/edge_probe_try.py` (entry) | [edge prior, Nick Nov 7] Measure YouTube TV's live-edge delay on the HIDDEN stick, Nick's way, and print JSON rows. | channels, tuners.adb, tuners.tuners, tuners.yttv_edge_probe -> - | untagged |
 | `scripts/entry_autopsy.py` (entry) | Entry autopsy (PROPOSAL, test writers; EXP-700 / EXP-727 / EXP-736). | lab.backtest, lab.cutgrade, models, sources.espn -> - | untagged |
 | `scripts/eval_break_blend.py` (entry) | Held-out calibration of the break forecast's rules + brain blend (breaks.blend). | lab.breakblend, lab.evaldata -> - | untagged |
@@ -435,7 +436,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 | `scripts/yttv_search_tune_try.py` (entry) | Tune the LOCAL stations by YouTube TV search on the HIDDEN stick, through the app's own routing and tuner as if tuners.yttv_local_search were on (ChannelMap.... | channels, tuners.adb, tuners.tuners -> - | untagged |
 
-## Untagged (309)
+## Untagged (310)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -652,6 +653,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/deploy.py`
 - `scripts/disk_guard.py`
 - `scripts/distill.py`
+- `scripts/doc_index.py`
 - `scripts/doctor.py`
 - `scripts/download_recent.py`
 - `scripts/download_season.py`

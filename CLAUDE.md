@@ -7,6 +7,7 @@ Spec: [redzone-north-star](docs/context/claude-memory/redzone-north-star.md). Ga
 
 Start: run `python scripts/context_pack.py`, then the "Verify first" commands in [docs/handoff.md](docs/handoff.md).
 Find code with `python scripts/citymap.py --focus <file>` / `--impact <file>`, not by reading many files.
+The only plan: [docs/PLAN.md](docs/PLAN.md). Organization standard: [docs/STANDARD.md](docs/STANDARD.md).
 Index of all docs: [docs/README.md](docs/README.md). How agents work together: [docs/coordination.md](docs/coordination.md).
 
 ## Rule #1

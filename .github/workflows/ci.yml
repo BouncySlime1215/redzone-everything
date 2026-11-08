@@ -74,6 +74,8 @@ jobs:
       - name: state machine doc is current
         # redzone/machines/ specs -> docs/state-machines.md (stdlib only, no install needed).
         run: python scripts/state_machines.py --check
+      - name: agent reports follow docs/STANDARD.md (front matter, ids, generated index)
+        run: pip install pyyaml >/dev/null 2>&1 || true; python scripts/doc_index.py --check
       - name: no edits inside another agent's open claim
         # docs/coordination.md "Claims": one writer per file across parallel agents.
         if: ${{ github.base_ref != '' }}
