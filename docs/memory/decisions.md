@@ -1378,3 +1378,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   unchanged, false). On: the engine re-reads `tuners.yttv_local_search` every decide tick, so a POST /api/settings
   change or Undo applies within ~0.5 s with no service restart (a tune in flight keeps its ref). Reason: turning the
   locals flag on for RC6.3.1 needed a restart mid-game-day (overseer suggestion b). PR #412.
+- 2026-11-08 (overseer's stick re-run of the replay park on fd1ba542: to_snap_s 1.5, but ok false on 'player is none
+  after PAUSE' while media_session read PAUSED right after and at +10/+20 s): **new defaults
+  `replay.pause_settle_s: 3`, `replay.pause_poll_s: 0.4`.** After the park's MEDIA_PAUSE the player is re-read every
+  0.4 s for up to 3 s and the park counts as held on the first 'paused'. Reason: the first read after PAUSE can be a
+  transient 'none' (#356 family). PR #419.
