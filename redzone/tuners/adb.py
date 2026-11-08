@@ -30,6 +30,7 @@ import time
 from dataclasses import dataclass, field
 
 from redzone import config as _config
+from redzone.machines.control import ADB_SHELL, STICK_LINK
 from redzone.platform.breaker import Breaker
 
 log = logging.getLogger(__name__)
@@ -98,7 +99,7 @@ class Stick:
     model: str = ""
     os: str = ""
     packages: dict[str, str] = field(default_factory=dict)  # role -> package
-    state: str = "unknown"         # connected | offline | unauthorized | unknown
+    state: str = "unknown"         # connected | offline | unauthorized | unknown (machine tuners.stick_link: link_m)
     connect_error: str = ""         # last failed connection/probe, kept separate from playback status
     last_ok: float = 0.0
     _next_retry: float = 0.0
@@ -517,6 +518,23 @@ def hdmi_port_from_dump(text: str) -> str | None:
     return f"HDMI{next(iter(ports))}" if len(ports) == 1 else None
 
 
+def _stick_state(self: "Stick") -> str:
+    m = self.__dict__.get("link_m")
+    return m.state if m is not None else "unknown"
+
+
+def _set_stick_state(self: "Stick", value: str) -> None:
+    """Stick.state is the tuners.stick_link machine (link_m): every write is a declared move."""
+    m = self.__dict__.get("link_m")
+    if m is None:
+        self.__dict__["link_m"] = STICK_LINK.new(key=self.__dict__.get("host", ""), state=value)
+        return
+    m.to(value, why=self.__dict__.get("connect_error", "") or value)
+
+
+Stick.state = property(_stick_state, _set_stick_state)   # after @dataclass: __init__ still takes state=
+
+
 # --- the always-open shell ---------------------------------------------------------------
 
 DONE, NOT_SENT, LOST, TIMED_OUT = "done", "not sent", "lost", "timed out"
@@ -550,6 +568,11 @@ class AdbShell:
         self.retry_at = 0.0                # monotonic time before which we don't try starting it again
         self.last_error = ""
         self.ready_ms: float | None = None
+        self.m = ADB_SHELL.new(key=host, clock=time.monotonic)   # closed / opening / ready / broken
+
+    def view(self) -> dict:
+        return {**self.m.view(history=0), "alive": self.alive, "failures": self.failures,
+                "retry_in_s": round(max(0.0, self.retry_at - time.monotonic()), 1)}
 
     @property
     def alive(self) -> bool:
@@ -572,6 +595,7 @@ class AdbShell:
     async def _open(self) -> bool:
         self.opens += 1
         t0 = time.monotonic()
+        self.m.to("opening", why=f"open #{self.opens}")
         try:
             self.proc = await asyncio.create_subprocess_exec(
                 ADB, "-s", self.host, "shell", stdin=asyncio.subprocess.PIPE,
@@ -586,6 +610,7 @@ class AdbShell:
             return self._broken((r.out.strip()[-120:] if r.out.strip() else status))
         self.failures, self.last_error = 0, ""
         self.ready_ms = (time.monotonic() - t0) * 1000
+        self.m.to("ready", why=f"handshake in {self.ready_ms:.0f} ms")
         log.info("adb: always-open shell to %s ready in %.0f ms", self.host, self.ready_ms)
         return True
 
@@ -594,6 +619,7 @@ class AdbShell:
         wait = min(300.0, 5.0 * 2 ** (self.failures - 1))
         self.retry_at = time.monotonic() + wait
         self.last_error = why
+        self.m.to("broken", why=f"{why[:80]}; retry in {wait:.0f}s")
         log.warning("adb: always-open shell to %s not usable (%s); one adb process per command for %.0fs",
                     self.host, why, wait)
         return False
@@ -647,6 +673,8 @@ class AdbShell:
         p, self.proc = self.proc, None
         if p is not None:
             _close_proc(p)
+        if not self.m.is_("broken"):
+            self.m.to("closed", why="killed")
 
     def abandon(self) -> None:
         """Kill it without waiting (works even if its event loop is gone)."""
@@ -654,6 +682,8 @@ class AdbShell:
 
     async def close(self) -> None:
         p, self.proc = self.proc, None
+        if not self.m.is_("broken"):
+            self.m.to("closed", why="closed")
         if p is None:
             return
         _close_proc(p)

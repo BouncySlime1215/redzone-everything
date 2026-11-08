@@ -27,6 +27,9 @@ def cands(**scores):
 
 @pytest.fixture
 def dec(cfg, clock):
+    # Catch-ups of any age, as in tests/test_decider.py: the YouTube TV scrub's park-age cap
+    # (replay.scrub_max_play_age_s, decisions 2026-11-08) is tested in tests/test_replay_scrub.py.
+    cfg.update({"replay": {"scrub_max_play_age_s": 0}}, record=False)
     d = Decider(cfg, DelayBook({"youtubetv": 40.0}, sigma_default=15.0, clock=clock), clock=clock)
     for g in "abc":
         for v in (39, 40, 41):
@@ -133,7 +136,7 @@ def test_a_missed_play_beats_redzone_as_break_filler(dec, clock):
     dec.timelines["a"].events.append(Event(clock.t, "stop_start", "end_period"))
     clock.t += 50
     d = dec.decide(cands(a=sc("a", 60, is_break=True), b=10), REDZONE_TARGET)
-    assert d.action == "replay" and d.target == "b"
+    assert d.action == "replay" and d.target == "b", (d.action, d.kind, d.target, d.reason)
 
 
 def test_only_live_game_is_found_again_after_its_break(dec, clock):

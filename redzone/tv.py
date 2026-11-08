@@ -51,6 +51,7 @@ from typing import Awaitable, Callable
 
 import httpx
 
+from redzone.machines.control import SMARTTHINGS
 from redzone.platform.breaker import Breaker
 
 log = logging.getLogger(__name__)
@@ -283,6 +284,16 @@ class SmartThingsAuth:
             await self.refresh()
 
 
+class _CloudBreaker(Breaker):
+    """The SmartThings breaker: also opens for a 429's Retry-After (its own fields, not poked from outside).
+    TODO(platform): move open_for into redzone/platform/breaker.Breaker."""
+
+    def open_for(self, wait_s: float) -> None:
+        self.hangs = max(self.hangs, self.threshold - 1)
+        self.hang()                                       # open now...
+        self.until = max(self.until, self.clock() + wait_s)  # ...for at least as long as the server asked
+
+
 @dataclass
 class SamsungTV:
     host: str | None = None
@@ -302,20 +313,20 @@ class SamsungTV:
     corroborate: Callable[[str], Awaitable[bool | None]] | None = None
     # hardening.smartthings (the controller passes a live reader so the phone's toggle applies at once)
     hardening: Callable[[], bool] = lambda: False
-    st_fault: str = ""                   # "" | "auth" | "rate_limited" | "cloud_down"
+    st_fault: str = ""                   # "" | "auth" | "rate_limited" | "cloud_down" (machine tv.smartthings: st_m)
     st_fault_detail: str = ""
     st_breaker: Breaker | None = None
     _tv: object = None
     _fails: dict = field(default_factory=dict)      # method -> consecutive failures
     _skip_until: dict = field(default_factory=dict)  # method -> not before
-    _auth_failed: tuple | None = None                # (at, oauth file stamp) of the last auth failure
+    _auth_failed: tuple | None = None                # (at, oauth file stamp) of the last auth failure (st_m "auth")
 
     def __post_init__(self):
         if self.auth is None:
             self.auth = SmartThingsAuth(transport=self.transport)
         if self.st_breaker is None:
-            self.st_breaker = Breaker("smartthings", threshold=ST_BREAK_AFTER, backoff_s=ST_BREAK_S,
-                                      max_backoff_s=ST_BREAK_MAX_S, clock=lambda: self.clock())
+            self.st_breaker = _CloudBreaker("smartthings", threshold=ST_BREAK_AFTER, backoff_s=ST_BREAK_S,
+                                            max_backoff_s=ST_BREAK_MAX_S, clock=lambda: self.clock())
 
     @classmethod
     def from_devices(cls, path: Path | None = None) -> "SamsungTV":
@@ -354,15 +365,20 @@ class SamsungTV:
             return False
 
     def _auth_blocked(self) -> bool:
-        if self._auth_failed is None:
+        """Is the cloud still blocked by a refused sign-in? A pure check: the re-arm is _auth_rearm."""
+        got = self._auth_failed
+        if got is None:
             return False
-        at, stamp = self._auth_failed
-        if self.clock() - at >= AUTH_RETRY_S or (self.auth and self.auth.stamp() != stamp):
-            self._auth_failed = None        # tv_setup.py ran again (or an hour passed): try once more
+        at, stamp = got
+        return not (self.clock() - at >= AUTH_RETRY_S or (self.auth and self.auth.stamp() != stamp))
+
+    def _auth_rearm(self) -> None:
+        """tv_setup.py ran again (or an hour passed) since the sign-in was refused: try once more, with the new
+        sign-in read fresh (not the cached refused one). Called before a cloud call, never inside a check."""
+        if self.st_m.is_("auth") and not self._auth_blocked():
+            self.st_m.to("auth_retry", why="OAuth file changed or AUTH_RETRY_S passed")
             if self.auth is not None:
-                self.auth._d = None         # re-read the new sign-in, not the cached refused one
-            return False
-        return True
+                self.auth._d = None
 
     def cloud_blocked(self) -> str:
         """Why no SmartThings call should go out right now ("" = it may). Only with hardening.smartthings."""
@@ -380,34 +396,35 @@ class SamsungTV:
         if self.st_fault in ("cloud_down", "rate_limited") or self.st_breaker.state != "closed":
             log.info("SmartThings answering again")
         self.st_breaker.success()
-        self._auth_failed = None              # the sign-in worked: any auth fault is over too
-        self.st_fault = self.st_fault_detail = ""
+        self.st_fault_detail = ""
+        self.st_m.to("ok", why="SmartThings answered")   # the sign-in worked: any auth fault is over too
 
     def _cloud_down(self, detail: str) -> None:
         was = self.st_breaker.state
         self.st_breaker.hang()
-        self.st_fault, self.st_fault_detail = "cloud_down", detail
+        self.st_fault_detail = detail
+        self.st_m.to("cloud_down", why=detail)
         if was != "open" and self.st_breaker.state == "open":
             log.warning("SmartThings %s: HOME/CEC flips for %.0fs", detail, self.st_breaker.retry_in())
 
     def _rate_limited(self, wait_s: float) -> None:
         b = self.st_breaker
-        b.hangs = max(b.hangs, b.threshold - 1)
-        b.hang()                                       # open now...
-        b.until = max(b.until, self.clock() + wait_s)  # ...for at least as long as SmartThings asked
-        self.st_fault, self.st_fault_detail = "rate_limited", f"HTTP 429, retry after {wait_s:.0f}s"
+        _CloudBreaker.open_for(b, wait_s)   # open now, for at least as long as SmartThings asked
+        self.st_fault_detail = f"HTTP 429, retry after {wait_s:.0f}s"
+        self.st_m.to("rate_limited", why=self.st_fault_detail)
         log.warning("SmartThings rate limit: HOME/CEC flips for %.0fs", b.retry_in())
 
     def _auth_down(self, detail: str) -> None:
-        self._auth_failed = (self.clock(), self.auth.stamp() if self.auth else None)
         if self.st_fault != "auth":
             log.error("SmartThings sign-in refused (%s): HOME/CEC flips until tv_setup.py --smartthings", detail)
-        self.st_fault, self.st_fault_detail = "auth", detail
+        self._auth_failed = (self.clock(), self.auth.stamp() if self.auth else None)   # -> st_m "auth"
+        self.st_fault_detail = detail
         self.st_breaker.release()
 
     def cloud_view(self) -> dict:
         return {"fault": self.st_fault, "detail": self.st_fault_detail, "hardening": self._hardened(),
-                "breaker": self.st_breaker.view(), "blocked": self.cloud_blocked()}
+                "breaker": self.st_breaker.view(), "blocked": self.cloud_blocked(),
+                "machine": self.st_m.view(history=3)}
 
     @property
     def has_readback(self) -> bool:
@@ -527,6 +544,7 @@ class SamsungTV:
     async def _st(self, method: str, path: str, body: dict | None = None) -> dict | None:
         hard = self._hardened()
         if hard:
+            self._auth_rearm()
             blocked = self.cloud_blocked()
             if blocked:
                 self.last_error = blocked
@@ -656,6 +674,8 @@ class SamsungTV:
         """Keepalive: keep the SmartThings sign-in fresh and the local socket open. With hardening.smartthings,
         a SmartThings breaker past its wait is probed here (one readback), not by a real flip."""
         try:
+            if self._hardened():
+                self._auth_rearm()
             if self.auth and not (self._hardened() and self.cloud_blocked()):
                 # A refused refresh here doesn't block the cloud yet: the access token may have
                 # hours left. Health warns (tv_auth) so the sign-in can be redone before it runs out.
@@ -764,3 +784,43 @@ class SamsungTV:
         finally:
             evidence.total_s = time.monotonic() - t0
             self._log(evidence)
+
+
+# --- tv.smartthings: st_fault and _auth_failed are views of one machine (SamsungTV.st_m) -------------------
+
+_FAULT_STATE = {"": "ok", "auth": "auth", "rate_limited": "rate_limited", "cloud_down": "cloud_down"}
+
+
+def _st_machine(self: SamsungTV):
+    m = self.__dict__.get("st_m")
+    if m is None:
+        m = self.__dict__["st_m"] = SMARTTHINGS.new(clock=lambda: self.clock())
+    return m
+
+
+def _get_st_fault(self: SamsungTV) -> str:
+    s = _st_machine(self).state
+    return "" if s == "ok" else "auth" if s.startswith("auth") else s
+
+
+def _set_st_fault(self: SamsungTV, value: str) -> None:
+    _st_machine(self).to(_FAULT_STATE[value or ""], why=self.__dict__.get("st_fault_detail", "") or value or "ok")
+
+
+def _get_auth_failed(self: SamsungTV) -> tuple | None:
+    return self.__dict__.get("_auth_at") if _st_machine(self).is_("auth") else None
+
+
+def _set_auth_failed(self: SamsungTV, value: tuple | None) -> None:
+    m = _st_machine(self)
+    if value is None:
+        if m.is_("auth"):
+            m.to("auth_retry", why="auth fault cleared")
+        return
+    self.__dict__["_auth_at"] = tuple(value)
+    m.to("auth", why="sign-in refused")
+
+
+SamsungTV.st_m = property(_st_machine)
+SamsungTV.st_fault = property(_get_st_fault, _set_st_fault)
+SamsungTV._auth_failed = property(_get_auth_failed, _set_auth_failed)

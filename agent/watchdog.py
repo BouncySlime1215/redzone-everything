@@ -484,8 +484,21 @@ def launchd_last_exit(label: str = LABEL) -> int | None:
     return int(m.group(1)) if m else None
 
 
+# Mirrors scripts/deploy.py ACTIVE (the deploy states that restart or watch the app).
+DEPLOY_ACTIVE = frozenset({"switching", "watching", "rolling_back"})
+
+
 def deploy_in_progress(now: float) -> bool:
-    """scripts/deploy.py writes this marker while it restarts the app and watches its health."""
+    """True while scripts/deploy.py restarts the app or watches its health. Reads the deploy machine in
+    state.json first (the one source of truth, redzone/machines/platform.py "deploy.lifecycle"), then the
+    older in_progress.json marker. Kept dependency-free: the watchdog runs in its own venv."""
+    try:
+        st = json.loads((DATA / "deploy" / "state.json").read_text())
+        m = st.get("machine") if isinstance(st, dict) else None
+        if isinstance(m, dict) and m.get("state"):
+            return m["state"] in DEPLOY_ACTIVE and float(m.get("until") or 0) > now
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
     try:
         m = json.loads((DATA / "deploy" / "in_progress.json").read_text())
         return float(m.get("until", 0)) > now

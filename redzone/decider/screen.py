@@ -20,6 +20,8 @@ from collections import deque
 from dataclasses import dataclass, field
 
 from redzone.decider.cuts import DeadTracker
+from redzone.fsm import MachineMap
+from redzone.machines import decider as _M
 from redzone.decider.delaymodel import Centre, app_prior, combine
 from redzone.models import REAL_BREAKS, ByLeague, GameState, League, Phase, Stoppage, pro_period
 
@@ -203,6 +205,7 @@ class DelayBook:
         # [edge model] delay = D_edge(channel) + behind_live (label), config delay.edge_model
         self.edge_cfg = None                                      # key -> delay.edge_model.<key> (engine), else defaults
         self.labels: dict[str, tuple[float, float, float]] = {}   # target -> (behind_live_s, sd, ts) off the overlay label
+        self.label_m = MachineMap(_M.DELAY_LABEL, clock=clock)    # [state machines] none / read / stale, per target
         self.edge_seen: dict[str, tuple[float, float, float]] = {}  # target -> (edge s, sd, ts) tonight at behind 0
         self.on_label_stale = None                                # target -> re-read its label (wired by yttv_seek)
         # [edge prior, Nick Nov 7] one shared live-edge delay per app (delay.edge_prior, OFF), refreshed by the probe
@@ -438,6 +441,7 @@ class DelayBook:
         sd = float(self._ecfg("label_sd_s")) if sd is None else max(0.1, float(sd))
         prev = self.labels.get(target)
         self.labels[target] = (behind_s, sd, self._clock() if ts is None else float(ts))
+        self.label_m[target].to("read", f"behind {behind_s:.1f}s +-{sd:.1f}")
         d = self.get(target)
         self._refresh(target)
         if self.edge_model and self.sync is not None and (prev is None or abs(prev[0] - behind_s) > 2.0):
@@ -446,11 +450,24 @@ class DelayBook:
             self.sync.tuned(target, new_stream=False)
         return d
 
-    def clear_label(self, target: str) -> None:
+    def clear_label(self, target: str, why: str = "a fresh tune") -> None:
         """A fresh tune (deep link to the live edge): the label read belonged to the old tune."""
+        if target in self.label_m:
+            self.label_m[target].to("none", why)
+            self.label_m.prune()
         if self.labels.pop(target, None) is not None and target in self.book:
             self.book.pop(target, None)   # rebuilt at behind 0 from the channel's samples / filter
             self.get(target)
+
+    def clear_label_before(self, target: str, t: float) -> bool:
+        """A fresh tune confirmed by the controller (its command at t): a label read before t belonged to the tune
+        before it. The tune callback (_sync_tune) normally clears it; a tune it never heard of left the old figure
+        standing as this tune's behind_live. A read after t is the new tune's own (a scrub's label): kept."""
+        lab = self.labels.get(target)
+        if lab is None or lab[2] >= t:
+            return False
+        self.clear_label(target, "a confirmed fresh tune after the read")
+        return True
 
     def labelled(self, target: str) -> bool:
         """The edge model owns this target's delay: flag on and a label read for this tune."""
@@ -742,6 +759,7 @@ class DelayBook:
             # [edge model] the label read is stale by the stall: behind +3 s, its doubt +5 s, until re-read
             b, sd, ts = self.labels[target]
             self.labels[target] = (b + 3.0, sd + 5.0, ts)
+            self.label_m[target].to("stale", "the stream stalled after the read")
             self._refresh(target)
             if self.sync is not None:
                 self.sync.tuned(target, new_stream=False)

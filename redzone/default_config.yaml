@@ -738,6 +738,8 @@ timing:
     by_league: {nfl: 60, cfb: 60, nba: 90, cbb: 90, wcbb: 90, nhl: 90}
     default: 60
     max_s: 90              # Nick's cap (~1 min behind live accepted, 90 s at most)
+    held_max_age_s: 600    # held.json offsets older than this are not restored at start (the stick may have moved)
+    resume_poll_s: 0.5     # how often a hold's resume re-reads playback while it settles
     resume_settle_s: 6     # [overseer Nov 7] a hold's PLAY may read 'stopped' for a moment (Prime re-buffering): wait this long for 'playing'
     shadow: true           # [Nick 9:10 AM Nov 5, buffer = main architecture] with enabled off: an editor decider runs
                            # every game B s behind live and logs each decision to data/buffer_shadow.jsonl; no stick
@@ -890,6 +892,7 @@ noggin:                    # docs/noggin.md
     points: 20             # term = points x (P - the league's base rate), bounded to +-points; needs priority.enabled
 
 phone:                     # the phone page (redzone/web)
+  crunch_leave_s: 60       # "Crunch ending" shows this long after a game drops out of crunch time
   v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it
   commit: false            # [EXP-036] commitment controls (stay here, only my teams, stop after this game, end at a time), each at a dead ball; OFF until lanes 2/3 ship the "commit" action
   catchup_view: false      # [EXP-026 display] catch-up queue in the decider's own order, spoiler-safe ("A play you missed": no names, play type or score until it plays), only catchup_visible shown

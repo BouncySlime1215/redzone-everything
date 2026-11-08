@@ -20,6 +20,8 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from redzone.crunch import ONE_SCORE_NFL
+from redzone.fsm import MachineMap
+from redzone.machines.platform import CRUNCH
 from redzone.models import PERIOD_S, REGULATION, League, Phase, league_order
 from redzone.noggin.priority import HardRules, Preferences
 from redzone.web import ledger as ledger_mod
@@ -964,13 +966,57 @@ CRUNCH_STATES = ("entering", "in", "leaving")
 STAKES_BIG, STAKES_SOME = 0.6, 0.3     # stub only: Scored.stakes (0..1) until lane 1 sets stakes_line
 
 
-def watch_values(scored: dict, games: dict) -> dict:
+class CrunchTracker:
+    """phone.crunch, one machine per game, for the stub (no crunch model yet). The flags alone are
+    memoryless, so "leaving" could never be produced: it needs to know the game WAS in crunch time.
+    in -> leaving when crunch_now drops; leaving shows for leave_s, then entering/out by the flags."""
+
+    def __init__(self, clock=time.time, leave_s: float = 60.0):
+        self.clock, self.leave_s = clock, leave_s
+        self.games = MachineMap(CRUNCH, clock=clock)
+
+    def state(self, gid: str, raw: str | None) -> str | None:
+        """raw: the flags' reading ("in" | "entering" | None). Returns what the phone shows."""
+        m, now = self.games[gid], self.clock()
+        if raw == "in":
+            m.to("in", "inside the crunch window", now)
+        elif m.is_("in"):
+            m.to("leaving", "dropped out of the crunch window", now)
+        elif m.is_("leaving"):
+            if m.age(now) >= self.leave_s:
+                m.to(raw or "out", f"{self.leave_s:.0f}s after leaving crunch time", now)
+        else:
+            m.to(raw or "out", "crunch run-up" if raw else "not crunch time", now)
+        return None if m.is_("out") else m.state
+
+    def keep(self, gids: set) -> None:
+        """Games no longer listed (ended, not live) go back to out and are forgotten."""
+        for gid, m in self.games.items():
+            if gid not in gids and not m.is_("out"):
+                m.to("out", "no longer a live game", self.clock())
+        self.games.prune()
+
+
+def crunch_tracker(engine) -> CrunchTracker | None:
+    """The engine's tracker (created on first use); None when the engine can't hold one."""
+    t = getattr(engine, "_crunch_tracker", None)
+    if t is None:
+        try:
+            t = CrunchTracker(leave_s=float(engine.cfg.get("phone.crunch_leave_s", 60.0)))
+            engine._crunch_tracker = t
+        except Exception:
+            return None
+    return t
+
+
+def watch_values(scored: dict, games: dict, tracker: CrunchTracker | None = None) -> dict:
     """Each live game's 0-100 watch value and its one-line why, best first (display only).
     Contract with lane 1 (HEAT 2.0): Scored.watch_value (0-100) and Scored.watch_why. While watch_value is
     None, the stub shows today's priority score clipped to 0-100 with its biggest factor, marked
     source="stub" so the phone says it's the old score.
     crunch_state: lane 1's crunch model sets `Scored.crunch_state` in CRUNCH_STATES; until then the stub
-    reads today's flags (crunch_now -> "in", crunch -> "entering"; "leaving" needs the model).
+    reads today's flags (crunch_now -> "in", crunch -> "entering"); with a CrunchTracker (the live /watch
+    route passes the engine's) a game that leaves crunch time shows "leaving" for phone.crunch_leave_s.
     stakes_line: lane 1 sets `Scored.stakes_line` (e.g. "AFC 1-seed race, top-5 matchup"); until then the
     stub turns Scored.stakes into "Big stakes" / "Some stakes" / ""."""
     rows = []
@@ -984,6 +1030,8 @@ def watch_values(scored: dict, games: dict) -> dict:
         cs = s.crunch_state                           # lane 1's crunch model: entering | in | leaving
         if cs not in CRUNCH_STATES:
             cs = "in" if s.crunch_now else ("entering" if s.crunch else None)
+            if tracker is not None:
+                cs = tracker.state(gid, cs)
         sl = s.stakes_line                            # lane 1: e.g. "AFC 1-seed race, top-5 matchup"
         stakes_rough = sl is None                     # #172 writes it (None = no stakes); the stub is "rough"
         if sl is None:
@@ -993,6 +1041,8 @@ def watch_values(scored: dict, games: dict) -> dict:
                      "league": s.league.value, "wv": int(round(max(0.0, min(100.0, val)))),
                      "why": str(why or "")[:120], "crunch": bool(s.crunch),
                      "is_break": bool(s.is_break), "source": "learned" if learned else "stub"})
+    if tracker is not None:
+        tracker.keep({r["game_id"] for r in rows})
     rows.sort(key=lambda r: -r["wv"])
     return {"games": rows, "source": "learned" if rows and all(r["source"] == "learned" for r in rows)
             else ("stub" if rows else None)}
@@ -1156,7 +1206,8 @@ def router(engine) -> APIRouter:
                 "why_tag": why_tag(engine.scored.get(cur), float(engine.cfg.get("phone.why_tag_min"))) if cur else None,
                 "also_close": also_close(getattr(engine.merger, "games", {}), cur, league_order(engine.cfg))
                 if engine.cfg.get("phone.also_close") else [],
-                **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}))}
+                **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}),
+                               crunch_tracker(engine))}
 
     @r.get("/follow")
     async def get_follow():

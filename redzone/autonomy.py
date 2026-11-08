@@ -50,6 +50,8 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from redzone.channels import describe
+from redzone.fsm import MachineMap
+from redzone.machines.platform import AUTONOMY_HEALER, AUTONOMY_JOB, AUTONOMY_STICK, AUTONOMY_TV
 from redzone.models import League, Phase
 from redzone.network import arp_table, find_by_mac, norm_mac  # noqa: F401  (re-exported)
 from redzone.tuners.adb import YTTV_PACKAGES, Stick, adb_available
@@ -250,7 +252,7 @@ class Job:
 
 @dataclass
 class _JobState:
-    running: bool = False
+    m: Any = None                    # autonomy.job: idle / waiting / running / retrying (the one truth)
     last_run: float | None = None
     ok: bool | None = None
     message: str = "hasn't run yet"
@@ -261,6 +263,14 @@ class _JobState:
     waiting: str = ""                # last reason it couldn't run (logged once per slot)
     next_run: float | None = None    # jobs that run elsewhere tell us this via note()
 
+    def __post_init__(self):
+        if self.m is None:
+            self.m = AUTONOMY_JOB.new()
+
+    @property
+    def running(self) -> bool:
+        return self.m.is_("running")
+
 
 class Scheduler:
     """Runs jobs at their times: one at a time per job (and per group), each inside its time box,
@@ -269,7 +279,7 @@ class Scheduler:
 
     def __init__(self, jobs: list[Job], log_path: Path, clock: Callable[[], float] = time.time):
         self.jobs = {j.name: j for j in jobs}
-        self.state = {j.name: _JobState() for j in jobs}
+        self.state = {j.name: _JobState(AUTONOMY_JOB.new(key=j.name, clock=clock)) for j in jobs}
         self.log_path = log_path
         self.clock = clock
         self.tasks: set[asyncio.Task] = set()
@@ -304,10 +314,10 @@ class Scheduler:
             if st.slot != slot:
                 st.slot, st.tries, st.waiting = slot, 0, ""
             why = self._group_busy(job) or await self._check(job)
+            if st.running:   # a "run now" started it while the safety check was awaited
+                continue
             if why:
                 self._wait(job, st, why, now)
-                continue
-            if st.running:   # a "run now" started it while the safety check was awaited
                 continue
             started.append(self._launch(job, slot))
         return started
@@ -319,6 +329,7 @@ class Scheduler:
         if st.tries == 0:
             st.message = f"Didn't run {when_text(st.slot)}: {st.waiting or 'no safe moment'}"
             self._log(job, "missed", None, st.message, st.slot)
+        st.m.to("idle", "window closed" + (" without a run" if st.tries == 0 else " (tries used up)"))
         st.done_slot, st.slot = st.slot, None
 
     async def _check(self, job: Job) -> str | None:
@@ -340,12 +351,19 @@ class Scheduler:
     def _wait(self, job: Job, st: _JobState, why: str, now: float) -> None:
         st.not_before = now + job.retry_s
         st.message = f"Waiting: {why}"
+        st.m.to("waiting", why, now)
         if st.waiting != why:  # each new reason is logged once, not on every re-check
             st.waiting = why
             self._log(job, "waiting", None, why, st.slot)
 
+    def _start(self, st: _JobState, why: str) -> None:
+        """The one place a job becomes running. Synchronous with the caller's last check (no await
+        between them), so two starters can't both get through."""
+        st.m.to("running", why)
+
     def _launch(self, job: Job, slot: float | None) -> asyncio.Task:
-        self.state[job.name].running = True   # set before the task starts: single-flight from here on
+        self._start(self.state[job.name], f"scheduled slot {when_text(slot) if slot else ''}".strip())
+        # ^ before the task starts: single-flight from here on
         task = asyncio.create_task(self._run(job, slot))
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
@@ -353,7 +371,8 @@ class Scheduler:
 
     async def _run(self, job: Job, slot: float | None) -> JobResult:
         st = self.state[job.name]
-        st.running = True
+        if not st.running:   # called directly (tests); _launch / run_now already moved it
+            self._start(st, "run directly")
         if slot is not None:
             st.tries += 1
         t0, m0 = self.clock(), time.monotonic()
@@ -365,14 +384,21 @@ class Scheduler:
         except Exception as e:  # a job's bug never takes the app down
             log.exception("autonomy job %s crashed", job.name)
             res, outcome = JobResult(False, f"Crashed ({type(e).__name__}: {e})"[:200]), "crashed"
-        finally:
-            st.running = False
+        except BaseException:
+            st.m.to("idle", "run cancelled")
+            raise
         st.last_run, st.ok, st.message = t0, res.ok, res.message
         if slot is not None:
             if res.ok is not False or st.tries >= job.attempts:
                 st.done_slot = slot
+                st.m.to("idle", f"slot done: {outcome}")
             else:
                 st.not_before = self.clock() + job.retry_s
+                st.m.to("retrying", f"try {st.tries} of {job.attempts} {outcome}")
+        else:   # "run now": back to what the window was doing
+            pending = st.slot is not None and st.slot != st.done_slot
+            st.m.to("retrying" if pending and st.tries else "waiting" if pending and st.waiting else "idle",
+                    f"run now {outcome}")
         self._log(job, outcome, res.ok, res.message, slot, took=time.monotonic() - m0)
         return res
 
@@ -390,7 +416,7 @@ class Scheduler:
         why = why or self._group_busy(job)
         if why or self.state[name].running:   # re-checked: the safety check awaited
             return JobResult(None, f"Not now: {why or 'it just started'}")
-        self.state[name].running = True
+        self._start(self.state[name], "run now")
         return await self._run(job, None)
 
     def note(self, name: str, ok: bool | None, message: str, next_run: float | None = None) -> None:
@@ -407,7 +433,7 @@ class Scheduler:
     def status(self) -> list[dict]:
         now = self.clock()
         return [{"job": j.name, "label": j.label, "last_run": s.last_run, "ok": s.ok, "message": s.message,
-                 "next_run": self._next(j, s, now), "running": s.running}
+                 "next_run": self._next(j, s, now), "running": s.running, "state": s.m.state}
                 for j, s in ((j, self.state[j.name]) for j in self.jobs.values())]
 
     def _next(self, job: Job, st: _JobState, now: float) -> float | None:
@@ -640,19 +666,53 @@ class DeviceHealer:
 
     def __init__(self, hooks: Any, path: Path, net: Net, clock: Callable[[], float] = time.time):
         self.hooks, self.path, self.net, self.clock = hooks, path, net, clock
-        self.offline_since: dict[str, float] = {}
+        self.sticks = MachineMap(AUTONOMY_STICK, clock=clock)   # present | missing (offline_since = since)
         self.sticks_scan, self.tv_scan = Backoff(), Backoff()
-        self.tv_lost_since: float | None = None
+        # autonomy.tv_presence: power, lost-since and on-LAN are one state, so they can't disagree.
+        self.tv = AUTONOMY_TV.new(clock=clock)
+        self._tv_on_lan = False                   # only meaningful while not_answering (see tv_on_lan)
         self.tv_checked = -math.inf
         self.tv_saved = False
-        self.tv_power: str | None = None          # "on" | "standby" | None (didn't answer)
         self.strangers: dict[str, float] = {}     # host -> until: not ours, don't connect (or prompt) again
         self.learned: dict[str, float] = {}       # host -> last time we tried to learn its identity
         self.notes: list[str] = []
         self.last_check: float | None = None
-        self.tv_on_lan = False                    # the TV's MAC is on the network, but its control port is shut
-        self._busy = False
-        self._dirty = False
+        self.pass_ = AUTONOMY_HEALER.new(clock=clock)   # single-flight check()
+        self._dirty = False                       # devices.json edits not written yet (within one pass)
+
+    # --- presence state (redzone/machines/platform.py) ---------------------------------------
+
+    @property
+    def offline_since(self) -> dict[str, float]:
+        """host -> missing since (a read-only view of the stick machines)."""
+        return {h: m.since for h, m in self.sticks.items() if m.is_("missing")}
+
+    @property
+    def tv_power(self) -> str | None:
+        """"on" | "standby" | None (didn't answer, or not checked)."""
+        return self.tv.state if self.tv.is_("on", "standby") else None
+
+    @property
+    def tv_lost_since(self) -> float | None:
+        return self.tv.since if self.tv.is_("not_answering") else None
+
+    @property
+    def tv_on_lan(self) -> bool:
+        """The TV's MAC is on the network at the saved address, but its control port is shut."""
+        return self.tv.is_("not_answering") and self._tv_on_lan
+
+    @property
+    def _busy(self) -> bool:
+        return self.pass_.is_("checking")
+
+    def _tv_answered(self, power: str | None, why: str) -> None:
+        self.tv.to("standby" if power == "standby" else "on", why)
+        self._tv_on_lan = False
+
+    def _tv_silent(self, why: str) -> None:
+        if not self.tv.is_("not_answering"):
+            self._tv_on_lan = False
+        self.tv.to("not_answering", why)
 
     @property
     def controller(self) -> Any:
@@ -662,14 +722,14 @@ class DeviceHealer:
         """One pass (every ~15 s). Cheap unless something is missing. Returns notes about changes."""
         if self._busy:
             return []
-        self._busy = True
+        self.pass_.to("checking", "device check")
         try:
             return await asyncio.wait_for(self._check(), HEAL_TIMEOUT_S)
         except asyncio.TimeoutError:
             log.warning("device check took over %.0fs; trying again next pass", HEAL_TIMEOUT_S)
             return []
         finally:
-            self._busy = False
+            self.pass_.to("idle", "check done")
 
     @property
     def network(self) -> Any:
@@ -696,8 +756,11 @@ class DeviceHealer:
         if st is not None and st.away:
             # Not a fault: nothing here can answer. Don't scan someone else's network, and start the
             # "missing for 2 minutes" clocks fresh when we're back.
-            self.offline_since.clear()
-            self.tv_lost_since, self.tv_power, self.tv_on_lan = None, None, False
+            for h, m in self.sticks.items():
+                m.to("present", "away from home: clock starts fresh")
+            self.sticks.prune()
+            self.tv.to("unknown", "away from home: clock starts fresh")
+            self._tv_on_lan = False
             self.last_check = self.clock()
             return []
         notes = await self._learn(d)
@@ -759,9 +822,14 @@ class DeviceHealer:
     def _lost(self, s: Stick, now: float) -> bool:
         """Missing for 2+ minutes. "Waiting for approval" isn't missing: that address is right."""
         if s.state in ("connected", "unauthorized"):
-            self.offline_since.pop(s.host, None)
+            m = self.sticks.get(s.host)
+            if m is not None:
+                m.to("present", s.state, now)
+                self.sticks.prune()
             return False
-        return now - self.offline_since.setdefault(s.host, now) >= LOST_AFTER_S
+        m = self.sticks[s.host]
+        m.to("missing", s.state, now)
+        return now - m.since >= LOST_AFTER_S
 
     async def _follow_sticks(self, d: dict) -> list[str]:
         """Sticks missing 2+ minutes: scan for adb (port 5555) and follow each to its new address."""
@@ -859,7 +927,10 @@ class DeviceHealer:
         e.update({k: v for k, v in seen.items() if v})
         e["host"] = new.host
         self._dirty = True
-        self.offline_since.pop(old.host, None)
+        m = self.sticks.get(old.host)
+        if m is not None:
+            m.to("present", f"followed to {new.host}")
+            self.sticks.prune()
         return f"{_name(e)} moved from {_ip(old.host)} to {_ip(new.host)} — following it"
 
     # --- the TV ---------------------------------------------------------------------
@@ -875,11 +946,10 @@ class DeviceHealer:
         self.tv_checked = now
         info = await self.net.samsung(tv["ip"]) if self.tv_saved else None
         if info and same_tv(tv, info):
-            self.tv_power, self.tv_lost_since, self.tv_on_lan = info.get("power") or "on", None, False
+            self._tv_answered(info.get("power"), "status page answered")
             self._learn_tv(d, tv, info)
             return []
-        self.tv_power = None
-        self.tv_lost_since = self.tv_lost_since or now
+        self._tv_silent("status page didn't answer" if self.tv_saved else "no saved address")
         lost = now - self.tv_lost_since >= LOST_AFTER_S
         moved = await self._tv_by_mac(d, tv, macs, sweep=lost and self.tv_scan.ready(now), now=now)
         if moved is not None:
@@ -903,7 +973,8 @@ class DeviceHealer:
                 break
         if sweep and not ip and not tv.get("ip"):
             self.tv_scan.failed(now)   # with a saved address, the port-8001 scan below backs off for both
-        self.tv_on_lan = bool(ip) and ip == tv.get("ip")
+        if self.tv.is_("not_answering"):
+            self._tv_on_lan = bool(ip) and ip == tv.get("ip")
         if not ip or ip == tv.get("ip"):
             return None
         old, tv["ip"] = tv.get("ip"), ip
@@ -911,7 +982,7 @@ class DeviceHealer:
         self._dirty = True
         info = await self.net.samsung(ip)
         if info and same_tv(tv, info):
-            self.tv_power, self.tv_lost_since = info.get("power") or "on", None
+            self._tv_answered(info.get("power"), f"answered at its new address {ip}")
             self._learn_tv(d, tv, info)
         self._save(d)
         self.tv_saved = True
@@ -932,7 +1003,7 @@ class DeviceHealer:
         self._save(d)
         _point_tv(self.controller, tv["ip"])
         self.tv_scan.found(now)
-        self.tv_power, self.tv_lost_since = hits[0].get("power") or "on", None
+        self._tv_answered(hits[0].get("power"), f"found by scan at {tv['ip']}")
         return [f"The TV moved from {old} to {tv['ip']} — following it"]
 
     def _learn_tv(self, d: dict, tv: dict, info: dict) -> None:

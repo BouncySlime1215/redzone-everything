@@ -14,6 +14,7 @@ import time
 from urllib.parse import quote
 
 from redzone.discovery.providers import classify_screen, is_purchase_screen, normalize_text
+from redzone.machines.control import YTTV_SEARCH
 from redzone.screen_ocr import focus_caption
 from redzone.tuners.prime_search import CapturedScreen, has_teams, unique_focus, _words
 from redzone.tuners.profiles import (ProfileSelectionRequired, is_profile_screen,
@@ -36,10 +37,27 @@ class YTTVSearchProof:
     transport_ready: bool = False
     player_title: str = ""
     selected_card: str = ""
-    last_completed_stage: str = "none"
+    last_completed_stage: str = "none"   # machine tuners.yttv_search (stage_m)
     video_verified: bool = False
     elapsed_s: float = 0.0
     steps: list[dict] = field(default_factory=list)
+
+
+def _stage(self: "YTTVSearchProof") -> str:
+    m = self.__dict__.get("stage_m")
+    return m.state if m is not None else "none"
+
+
+def _set_stage(self: "YTTVSearchProof", value: str) -> None:
+    """last_completed_stage is the tuners.yttv_search machine (stage_m): stages only move forward."""
+    m = self.__dict__.get("stage_m")
+    if m is None:
+        self.__dict__["stage_m"] = YTTV_SEARCH.new(state=value)
+        return
+    m.to(value, why=self.__dict__.get("reason", "") or value)
+
+
+YTTVSearchProof.last_completed_stage = property(_stage, _set_stage)   # after @dataclass: __init__ still takes it
 
 
 @dataclass(frozen=True)

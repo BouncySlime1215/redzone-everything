@@ -21,7 +21,8 @@ Memory caps (macOS has no enforced RSS limit for launchd user agents, so they ar
     service_hard_mb (never during crunch time), and drops its own model when idle or when the
     model processes together go over models_mb
 
-Stdlib only: the watchdog's separate venv imports it too.
+Stdlib only (plus redzone.fsm / redzone.machines, which are stdlib too): the watchdog's separate venv
+imports it. The level is the explicit machine governor.level (redzone/machines/platform.py).
 """
 from __future__ import annotations
 
@@ -36,6 +37,8 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
+
+from redzone.machines.platform import GOVERNOR_LEVEL
 
 log = logging.getLogger(__name__)
 
@@ -274,10 +277,9 @@ class Governor:
         self.root = root
         self._probe = probe or (lambda: sample(root, clock=clock))
         self._clock = clock
-        self.level = "normal"
+        self.m = GOVERNOR_LEVEL.new(clock=clock)   # normal | eco | critical: the one place the level lives
         self.reasons: list[str] = []
         self.last: Sample | None = None
-        self.since = clock()
         self._calm_from: float | None = None   # when the raw level first dropped below self.level
         self._checked = -1e18
         self.changes: list[tuple[float, str, str]] = []   # (when, level, why), last 20
@@ -294,6 +296,14 @@ class Governor:
         g = cls(read(), **kw)
         g._source = read   # settings changed on the phone apply at the next look
         return g
+
+    @property
+    def level(self) -> str:
+        return self.m.state
+
+    @property
+    def since(self) -> float:
+        return self.m.since
 
     # -- what callers ask --
     def allow(self, kind: str) -> bool:
@@ -315,7 +325,8 @@ class Governor:
         """Fold one sample in (with hysteresis) and return the level."""
         self.last = s
         if not self.opts["enabled"]:
-            self.level, self.reasons = "normal", []
+            self.m.to("normal", "governor disabled")
+            self.reasons = []
             return self.level
         raw, reasons = assess(s, self.opts)
         now = self._clock()
@@ -335,7 +346,8 @@ class Governor:
 
     def _set(self, level: str, reasons: list[str], now: float) -> None:
         old = self.level
-        self.level, self.reasons, self.since = level, reasons, now
+        self.reasons = reasons
+        self.m.to(level, self.why(), now)
         self.changes = (self.changes + [(now, level, self.why())])[-20:]
         log.info("governor: %s -> %s (%s)", old, level, self.why())
 
@@ -373,7 +385,7 @@ class Governor:
 
     def view(self) -> dict:
         s = self.last
-        return {"level": self.level, "why": self.why(), "since": self.since,
+        return {"level": self.level, "why": self.why(), "since": self.since, "machine": self.m.view(history=0),
                 "paused": sorted(k for k in ALLOWED if not self.allow(k)),
                 "sample": asdict(s) if s else None,
                 "service_mb": self.service_mb(), "service_soft_mb": self.opts["service_soft_mb"],

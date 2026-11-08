@@ -142,3 +142,124 @@ def test_real_repo_has_every_module():
     assert files
     for p in files:
         assert p.relative_to(ROOT).as_posix() in mods
+
+
+# ---- call, data and machine edges; --focus; --impact -------------------------------------------
+
+@pytest.fixture
+def edges(repo: Path) -> Path:
+    _write(repo, "redzone/b.py", '"""Module b."""\nX = 1  # STK-06\n\n\n'
+           'def helper(n: int) -> int:\n    """Add one."""\n    return n + 1\n\n\ndef _private():\n    pass\n')
+    _write(repo, "redzone/pkg/d.py", '"""D."""\ny = 2\n\n\ndef make():\n    pass\n\n\n'
+           "class Thing:\n    pass\n")
+    _write(repo, "redzone/fsm.py", '"""Machines."""\n\n\nclass Spec:\n    def new(self):\n        pass\n')
+    _write(repo, "redzone/machines/__init__.py", "")
+    _write(repo, "redzone/machines/m.py",
+           '"""Specs."""\nfrom redzone.fsm import Spec\n\n'
+           'PARK = Spec("park.state", owner="holder.Holder.park_m", doc="", states={}, edges={}, initial="a")\n'
+           'THING = Spec(name="thing.state", owner="pkg.Thing.m", doc="", states={}, edges={}, initial="a")\n')
+    _write(repo, "redzone/holder.py", '"""Holds the park machine."""\n\n\nclass Holder:\n    pass\n')
+    _write(repo, "redzone/user.py",
+           '"""Uses everything."""\nimport redzone.pkg.d\nfrom redzone import b as bb\n'
+           "from redzone.machines.m import PARK\n\nm = PARK.new()\nbb.helper(1)\nredzone.pkg.d.make()\n")
+    _write(repo, "redzone/writer.py",
+           '"""Writes."""\nfrom pathlib import Path\n\nDATA = Path("data")\nLOG = DATA / "jumps.jsonl"\n\n\n'
+           'def save(row):\n    with open(LOG, "a") as f:\n        f.write(row)\n\n\n'
+           'def snap():\n    (DATA / "held.json").write_text("{}")\n')
+    _write(repo, "redzone/reader.py",
+           '"""Reads."""\nimport json\nimport sqlite3\nfrom pathlib import Path\n\nimport redzone.writer\n'
+           'STATE = "data/held.json"\n\n\nclass P:\n    log: Path = Path("data") / "x.csv"\n\n'
+           "    def go(self):\n        return open(self.log)\n\n\n"
+           'def load():\n    return json.loads(Path("data/jumps.jsonl").read_text())\n\n\n'
+           'def db():\n    return sqlite3.connect("data/r.db")\n')
+    _write(repo, "tests/test_b.py", "from redzone import b\n")
+    _write(repo, "tests/test_user.py", "import redzone.user\n")
+    _write(repo, "tests/fixtures/x/redzone/b.py", "import redzone.b\n")  # a fixture repo, not a test
+    return repo
+
+
+def test_call_edges(edges):
+    m = citymap.build(edges)["modules"]
+    assert m["redzone/user.py"]["calls"] == [
+        "redzone/b.py:helper", "redzone/machines/m.py:PARK", "redzone/pkg/d.py:make"]
+    assert "redzone/fsm.py:Spec" in m["redzone/machines/m.py"]["calls"]
+    assert m["redzone/b.py"]["calls"] == []  # no self edges, stdlib ignored
+
+
+def test_data_edges(edges):
+    g = citymap.build(edges)
+    m = g["modules"]
+    assert m["redzone/writer.py"]["data"] == {
+        "reads": [], "writes": ["data/held.json", "data/jumps.jsonl"], "uses": []}
+    assert m["redzone/reader.py"]["data"] == {
+        "reads": ["data/jumps.jsonl", "data/x.csv"], "writes": [], "uses": ["data/held.json", "data/r.db"]}
+    jumps = g["data_files"]["data/jumps.jsonl"]
+    assert jumps == {"readers": ["redzone/reader.py"], "writers": ["redzone/writer.py"], "users": []}
+    assert g["summary"]["data_files"] == 4
+
+
+def test_machine_edges(edges):
+    g = citymap.build(edges)
+    m = g["modules"]
+    assert m["redzone/machines/m.py"]["machines"]["declares"] == ["park.state", "thing.state"]
+    assert m["redzone/holder.py"]["machines"]["drives"] == ["park.state"]  # Spec.owner
+    assert m["redzone/user.py"]["machines"]["drives"] == ["park.state"]  # PARK.new()
+    assert m["redzone/pkg/d.py"]["machines"]["drives"] == ["thing.state"]  # package -> defining submodule
+    assert g["machines"]["park.state"] == {
+        "declared_in": "redzone/machines/m.py", "owner": "holder.Holder.park_m",
+        "driven_by": ["redzone/holder.py", "redzone/user.py"]}
+    md = citymap.render_md(g)
+    assert "## Machines (2)" in md and "## Shared data files (2 of 4)" in md and "## Most-called symbols" in md
+
+
+def test_focus_ranked_and_budgeted(edges):
+    g = citymap.build(edges)
+    out = citymap.focus(g, edges, "redzone/b.py", tokens=1500)
+    lines = out.splitlines()
+    assert lines[0].startswith("# focus redzone/b.py")
+    assert lines[1].startswith("redzone/b.py  [hop 0,")
+    assert "  def helper(n: int) -> int  # Add one.  [called by 1]" in lines
+    assert not any("_private" in x for x in lines)  # signatures only, public only
+    hops = [int(x.split("[hop ")[1][0]) for x in lines if "[hop " in x]
+    assert hops == sorted(hops) and 1 in hops and 2 in hops  # nearest first
+    assert out == citymap.focus(g, edges, "redzone/b.py", tokens=1500)  # deterministic
+    short = citymap.focus(g, edges, "redzone/b.py", tokens=40)
+    assert len(short) < len(out) and "cut at ~40 tokens" in short
+    assert len(short) <= 40 * citymap.CHARS_PER_TOKEN + 200
+
+
+def test_focus_links_data_and_machines(edges):
+    g = citymap.build(edges)
+    hop1 = [x.split()[0] for x in citymap.focus(g, edges, "redzone/holder.py").splitlines() if "[hop 1" in x]
+    assert hop1 == ["redzone/machines/m.py"]  # only the machine links holder to anything
+    out = citymap.focus(g, edges, "redzone/writer.py")
+    assert "redzone/reader.py  [hop 1" in out  # imports it and shares data/jumps.jsonl
+    assert "~ writes data/held.json; writes data/jumps.jsonl" in out
+
+
+def test_impact(edges):
+    g = citymap.build(edges)
+    out = citymap.impact(g, edges, "redzone/b.py")
+    assert " depth 1 (" in out and " depth 2 (" in out
+    d1 = out.split(" depth 1")[1].split(" depth 2")[0]
+    assert "redzone/a.py" in d1 and "redzone/user.py" in d1
+    assert "scripts/run.py" in out.split(" depth 2")[1].split("symbols called")[0]  # run -> a -> b
+    assert "helper (1)" in out
+    assert "tests importing it directly (1):\n  tests/test_b.py" in out
+    assert "tests/test_user.py" in out.split("tests importing an importer")[1]
+    assert "fixtures" not in out
+    assert "north star / serves:\n  STK-06" in out
+    a = citymap.impact(g, edges, "redzone/a.py")
+    assert "contracts implemented:\n  BreakModel" in a
+    w = citymap.impact(g, edges, "redzone/writer.py")
+    assert "writes data/jumps.jsonl; also: redzone/reader.py (reader)" in w
+    assert "machines declared:\n  park.state, thing.state" in citymap.impact(g, edges, "redzone/machines/m.py")
+
+
+def test_focus_and_impact_cli(edges, capsys):
+    assert citymap.main(["--root", str(edges), "--focus", "redzone/b.py", "--tokens", "200"]) == 0
+    assert capsys.readouterr().out.startswith("# focus redzone/b.py")
+    assert citymap.main(["--root", str(edges), "--impact", str(edges / "redzone/b.py")]) == 0
+    assert capsys.readouterr().out.startswith("# impact redzone/b.py")
+    assert citymap.main(["--root", str(edges), "--impact", "redzone/nope.py"]) == 2
+    assert not (edges / citymap.MD_OUT).exists()  # the views never write the docs

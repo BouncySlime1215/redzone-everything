@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 from redzone import bets as betlib
 from redzone import buffer_rc8
-from redzone import reel, standby, trace, userstate, views
+from redzone import fsm, reel, standby, trace, userstate, views
 from redzone.reel import REEL_DIR
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
 from redzone.config import Config, ConfigError, for_league
@@ -38,6 +38,8 @@ from redzone.sources.merge import Merger
 from redzone.recorder import Recorder
 from redzone.screen import boundary, scorebug
 from redzone.store import Store
+from redzone.fsm import MachineMap
+from redzone.machines import decider as M
 
 log = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")
@@ -51,6 +53,7 @@ NOT_THE_TARGETS_FAULT = ("no safe moment", "safe exit window closed", "switch ca
                          "stick not responding", STANDBY_NOT_READY)
 PEEK_HOLD_S = 90.0    # a game opened on the phone keeps the hidden stick this long (two_stick.pretune_on_open)
 SKIP_S = 300.0        # a skipped game stays off the TV this long after the TV leaves it
+SUPERSEDED = "switch cancelled: superseded"   # an in-flight switch replaced by a newer one (_act): resolved, recorded
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
 
@@ -87,6 +90,57 @@ def buffered_league(cfg, decider, target: str, g) -> bool:
         return False
     lgs = bj.cfg_get(cfg, "leagues") or []
     return not lgs or g.league.value in lgs
+
+
+class FailCool(dict):
+    """[state machines] engine.fail_cool: tuner target -> no retry before this time, one keyed machine per target
+    (ok / cooling). A dict on purpose: the supervisor sets, pops and clears it (e._fail_cool[t] = until) and tests
+    compare it to a dict; every write moves the target's machine with a reason."""
+
+    def __init__(self, data: dict | None = None):
+        super().__init__()
+        self.m = MachineMap(M.FAIL_COOL)
+        for k, v in (data or {}).items():
+            self[k] = v
+
+    def __setitem__(self, target, until) -> None:
+        super().__setitem__(target, until)
+        self.m[target].to("cooling", f"until {float(until):.0f}")
+
+    def __delitem__(self, target) -> None:
+        super().__delitem__(target)
+        self._ok(target, "cleared")
+
+    def _ok(self, target, why: str) -> None:
+        if target in self.m:
+            self.m[target].to("ok", why)
+            self.m.prune()
+
+    def pop(self, target, *default):
+        had = target in self
+        v = super().pop(target, *default)
+        if had:
+            self._ok(target, "cool-down over")
+        return v
+
+    def popitem(self):
+        k, v = super().popitem()
+        self._ok(k, "cleared")
+        return k, v
+
+    def clear(self) -> None:
+        for k in list(self):
+            self._ok(k, "all cleared")
+        super().clear()
+
+    def update(self, *a, **kw) -> None:
+        for k, v in dict(*a, **kw).items():
+            self[k] = v
+
+    def setdefault(self, target, until=None):
+        if target not in self:
+            self[target] = until
+        return self[target]
 
 
 class Engine:
@@ -206,6 +260,7 @@ class Engine:
         self._jump_status_path = data_dir.parent / "jump_status.jsonl" if data_dir else None
         self._jump_status_at = 0.0
         self._jump_standby_note: dict = {"standby_plan": "not run yet"}
+        self._bj_park_why = "never"   # [buffered jump] the park step reached this tick (was read with getattr)
         from redzone.buffer_shadow import BufferShadow
         self.buffer_shadow = BufferShadow(self.cfg, self.decider, self._shadow_behind,
                                           data_dir.parent / "buffer_shadow.jsonl" if data_dir else None,
@@ -227,7 +282,7 @@ class Engine:
         self._cost_mode: bool | None = None         # two-stick mode when switch costs were last synced
         self._cost_synced = 0.0
         self.boosted: set[str] = set()
-        self.skipped: dict[str, float] = {}   # game -> skip expires at
+        self.skipped: dict[str, float] = {}   # game -> skip expires at (skip_m: leaving / muted; kept across restarts)
         self.scored: dict[str, Scored] = {}
         self.where: dict[str, object] = {}
         self.last_decision = None
@@ -260,18 +315,18 @@ class Engine:
         self._last_snapshot = 0.0
         self.mic = None
         self.fantasy = None   # latest fantasy.Matchup
-        self._suspended_focus: tuple | None = None   # (game, mode) paused for garbage time
-        self.hold: dict | None = None   # "Watch this" from the phone: a manual hold until "Resume auto"
+        # _suspended_focus: (game, mode) paused for garbage time (focus_m); hold: "Watch this" from the phone, a manual
+        # hold until "Resume auto" (hold_m): properties on their machines
         from redzone.commands import Commands
         self.commands = Commands()   # phone taps by id: a retried tap answers, never runs twice
         self.peek: tuple[str, str, float] | None = None   # (game, target, until): a game opened on the phone
         self._mic_used: set[tuple[str, float]] = set()
         self._last_mic = 0.0
-        self._pending_decision = None
+        # _pending_decision: the switch in flight (pending_m: idle / pending; a newer switch supersedes it explicitly)
         self._pending_since = 0.0
         self._pending_mono = 0.0   # the same moment on time.monotonic(): wall-clock jumps can't age a switch
         self._pending_done = None          # the in-flight switch's done callback (for the deadline)
-        self._fail_cool: dict[str, float] = {}   # tuner target -> no retry before this time
+        self._fail_cool = FailCool()   # tuner target -> no retry before this time (engine.fail_cool, keyed)
         self.mic_suggestion = None
         self.fastcast = None
         self._fastcast_task = None
@@ -308,8 +363,111 @@ class Engine:
         self.control.target_names = self._target_names
         # Pause / "Watch this" / focus / lock survive a service restart (redzone/userstate.py).
         self._user_state_path = data_dir.parent / "user_state.json" if data_dir else None
-        self._user_state_saved = userstate.capture(self.decider.user, self.hold)   # defaults: nothing to write
+        self._user_state_saved = self._capture_user_state()   # defaults: nothing to write
         self._restore_user_state()
+
+    # ------------------------------------------------------------------ state machines (redzone/machines/decider.py)
+    # The old attribute names are properties on them; class-level defaults keep a half-built Engine readable.
+    _pend = None
+    _hold_d: dict | None = None
+    _focus_susp: tuple | None = None
+    _LAZY = {"pending_m": M.ENGINE_PENDING, "standby_m": M.STANDBY_PLAN, "hold_m": M.HOLD, "focus_m": M.FOCUS_SUSPEND}
+
+    def __getattr__(self, name: str):
+        spec = Engine._LAZY.get(name)
+        if spec is not None:
+            m = self.__dict__[name] = spec.new()
+            return m
+        if name == "skip_m":
+            m = self.__dict__[name] = MachineMap(M.ENGINE_SKIP)
+            return m
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+
+    @property
+    def _fail_cool(self) -> FailCool:
+        fc = self.__dict__.get("_fail_cool_d")
+        if fc is None:
+            fc = self.__dict__["_fail_cool_d"] = FailCool()
+        return fc
+
+    @_fail_cool.setter
+    def _fail_cool(self, v: dict) -> None:
+        """A plain dict assigned (the supervisor, tests) becomes the machine-backed one."""
+        old = self.__dict__.get("_fail_cool_d")
+        if old is not None:
+            old.clear()
+        self.__dict__["_fail_cool_d"] = v if isinstance(v, FailCool) else FailCool(v)
+
+    @property
+    def _pending_decision(self):
+        return self._pend if self.pending_m.is_("pending") else None
+
+    @_pending_decision.setter
+    def _pending_decision(self, d) -> None:
+        self._pend = d
+        if d is None:
+            self.pending_m.to("idle", "cleared")
+        else:
+            self.pending_m.to("pending", f"{getattr(d, 'action', '?')}:{getattr(d, 'kind', '')} -> {getattr(d, 'target', None)}")
+
+    @property
+    def hold(self) -> dict | None:
+        return self._hold_d
+
+    @hold.setter
+    def hold(self, h: dict | None) -> None:
+        self._hold_d = h
+        if h is None:
+            self.hold_m.to("none", "released")
+        else:
+            self.hold_m.to("resuming" if h.get("resume_at") else "held", f"holding {h.get('game_id')}")
+
+    @property
+    def _suspended_focus(self) -> tuple | None:
+        return self._focus_susp if self.focus_m.is_("suspended") else None
+
+    @_suspended_focus.setter
+    def _suspended_focus(self, v: tuple | None) -> None:
+        self._focus_susp = v
+        self.focus_m.to("suspended" if v else "none", f"focus on {v[0]} suspended for garbage time" if v else "restored")
+
+    def _capture_user_state(self) -> dict:
+        return userstate.capture(self.decider.user, self.hold, self.skipped, self._suspended_focus)
+
+    def _skip_tick(self, now: float) -> None:
+        """[controls] skip_m follows each skipped game: 'leaving' while still on screen (its five minutes count from when
+        the TV leaves it), 'muted' after; an expired skip unmutes its game."""
+        for gid, until in list(self.skipped.items()):
+            if gid == self.decider.current:
+                # Still on the skipped game (waiting for a dead ball to leave it): the five minutes count from when
+                # the TV leaves it. Before, a skip in a hockey power play waited ~5 min for a stoppage, expired first,
+                # and the TV never left (controls drill, seed 4).
+                self.skipped[gid] = max(until, now + SKIP_S)
+                self.skip_m[gid].to("leaving", "skipped, still on screen")
+                continue
+            if now >= until:
+                self.skipped.pop(gid)
+                self.decider.user.muted.discard(gid)
+                if gid in self.skip_m:
+                    self.skip_m[gid].to("none", "skip expired: unmuted")
+            else:
+                self.skip_m[gid].to("muted", f"skipped until {until:.0f}")
+        for gid in self.skip_m:
+            if gid not in self.skipped and not self.skip_m[gid].is_("none"):
+                self.skip_m[gid].to("none", "skip dropped")
+        self.skip_m.prune()
+
+    def machines_view(self) -> dict:
+        """[state machines] Every engine + decider machine now: snapshot()['machines'] (GET /api/machines has all)."""
+        now = time.time()
+        return {**self.decider.machines(), "pending": self.pending_m.view(now, history=0),
+                "standby_plan": {**self.standby_m.view(now, history=0), **self._jump_standby_note},
+                "hold": self.hold_m.view(now, history=0), "skip": self.skip_m.view(now),
+                "focus_suspend": self.focus_m.view(now, history=0), "fail_cool": self._fail_cool.m.view(now)}
+
+    def _plan_owner(self, state: str, why: str) -> None:
+        """engine.standby_plan: who planned the hidden stick this tick."""
+        self.standby_m.to(state, why)
 
     def _restore_user_state(self) -> None:
         if self._user_state_path is None:
@@ -319,7 +477,15 @@ class Engine:
             if state is None:
                 return
             self.hold = userstate.apply(state, self.decider.user, FocusMode)
-            self._user_state_saved = userstate.capture(self.decider.user, self.hold)
+            self.skipped = dict(state.get("skipped") or {})
+            sf = state.get("suspended_focus")
+            if sf:
+                try:
+                    self._suspended_focus = (sf[0], FocusMode(sf[1]))
+                except ValueError:
+                    pass
+            self._skip_tick(time.time())
+            self._user_state_saved = self._capture_user_state()
             log.info("restored after restart: %s", self._user_state_saved)
         except Exception:
             log.exception("could not restore pause/hold/focus/lock")
@@ -328,7 +494,7 @@ class Engine:
         """Written when it changes (checked every decision tick, so within half a second of a tap)."""
         if self._user_state_path is None or self.recorded.active:
             return
-        state = userstate.capture(self.decider.user, self.hold)
+        state = self._capture_user_state()
         if state != self._user_state_saved:
             userstate.save(self._user_state_path, state)
             self._user_state_saved = state
@@ -1222,6 +1388,12 @@ class Engine:
 
     def _source_health(self) -> None:
         now = time.time()
+        # Lift benches whose time is up even when no feed updated this tick (a quiet benched source
+        # would otherwise stay flagged).
+        try:
+            self.merger.expire(now)
+        except Exception:
+            log.debug("merger.expire failed", exc_info=True)
         for name, h in self.merger.health.items():
             # ok = reachable and fresh. A bench (merge.py: this source's copy regressed against a faster
             # feed for some game) is reported on its own: the source still works, so it isn't a failing
@@ -1402,16 +1574,7 @@ class Engine:
         if self.recorded.active:
             return False
         now = time.time()
-        for gid, until in list(self.skipped.items()):
-            if gid == self.decider.current:
-                # [controls] Still on the skipped game (waiting for a dead ball to leave it): the five
-                # minutes count from when the TV leaves. Before, a skip in a hockey power play waited
-                # ~5 min for a stoppage, expired first, and the TV never left (controls drill, seed 4).
-                self.skipped[gid] = max(until, now + SKIP_S)
-                continue
-            if now >= until:
-                self.skipped.pop(gid)
-                self.decider.user.muted.discard(gid)
+        self._skip_tick(now)
         for tgt, until in list(self._fail_cool.items()):
             if now >= until:
                 self._fail_cool.pop(tgt)
@@ -1576,9 +1739,17 @@ class Engine:
         deferred = not self.cfg.get("mode.dry_run", True)
         replay_exit = max(self.decider.replay_until, self.decider.replay_exit_after) \
             if (self.decider.replaying or self.decider.after_replay) else None
+        old, old_done = self._pending_decision, self._pending_done
+        if old is not None and old is not d and old_done is not None:
+            # [pending] a newer switch (your tap while one is in flight) replaces it: resolve the old one now, with its
+            # store row, reject (its proposed break visit dropped) and no error. Before, the new one overwrote
+            # _pending_decision and the old done() returned early: no confirm/reject, no row, a stale _proposal_home.
+            old_done(Outcome(False, None, self.pending_age(time.time()),
+                             f"{SUPERSEDED} by a newer {d.kind or d.action} switch to {d.target}", False))
         self._pending_decision = d
         self._pending_since = time.time()
         self._pending_mono = time.monotonic()
+        self._plan_owner("idle", f"a {d.kind or d.action} switch is in flight")
         before_target = getattr(self.control, "on_target", None) or getattr(self.where.get(before or ""), "target", None)
         if deferred:
             # Conservatively mark the transition unknown until observed; never
@@ -1589,19 +1760,28 @@ class Engine:
 
         forced = [False]   # [Nick, Nov 5] set by may_cut: this cut went through on a second "Go now" tap
 
+        resolved = [False]
+
         def done(out):
-            if self._pending_decision is not d:
+            if resolved[0] or self._pending_decision is not d:
                 return
-            self._pending_decision = None
-            self._pending_done = None
+            resolved[0] = True
+            superseded = out.detail.startswith(SUPERSEDED)
+            self._pend, self._pending_done = None, None
+            self.pending_m.to("idle", ("superseded" if superseded else "confirmed" if out.ok else "failed")
+                              + f": {d.action}:{d.kind} -> {d.target}")
             cancelled = out.detail.startswith("switch cancelled")
             if deferred:
                 if out.ok and not out.dry_run:
                     self.decider.confirm(d, cands)
                     if d.kind == "user":
                         self.decider.user.manual_until = time.time() + self.cfg.get("decider.manual_pause_s")
+                    if out.path in ("tuned", "single") and target:
+                        # [edge model] a fresh tune lands on the live edge: an overlay label read before this command
+                        # belonged to the old tune (it stayed stale when the tune wasn't reported to _sync_tune)
+                        self.delays.clear_label_before(target, cmd_ts)
                 else:
-                    self.decider.reject(d)
+                    self.decider.reject(d, backoff=not superseded)
                     if not out.dry_run and not cancelled and not out.detail.startswith(NOT_THE_TARGETS_FAULT):
                         self.decider.lock_failed(d, _short_why(out.detail))   # [lock wait] (flag off: no-op)
                     # Playback can be unknown after a failed launch. Hold for
@@ -1879,12 +2059,24 @@ class Engine:
     def _preload_standby(self, cands: dict, redzone: str | None = None) -> None:
         """Two sticks: keep the hidden one on what the next switch most likely needs, so that switch
         is a 1-2s input flip instead of a 5-10s tune. What and when: redzone/standby.py."""
-        if not self.control.two_stick or self.decider.user.paused:
+        dec = self.decider
+        if not dec.jump_on() and self._jump_standby_note.get("standby_plan") != "jump mode off":
+            # [standby notes] jump mode's notes were never cleared when it went off: jump_status / the snapshot kept
+            # saying 'rotation, want X' for a plan that no longer ran
+            self._jump_standby_note = {"standby_plan": "jump mode off"}
+            self._bj_park_why = "off"
+        if not self.control.two_stick or dec.user.paused:
+            self._plan_owner("idle", "one stick" if not self.control.two_stick else "paused")
             return
         if self._peeking():
+            self._plan_owner("peek", f"{self.peek[0]} opened on the phone")
             return   # a game you opened on the phone is on the hidden stick: keep it there for now
-        if self.decider.jump_on() and not self.decider.replaying and self._jump_standby(cands):
+        if dec.jump_on() and not dec.replaying and self._jump_standby(cands):
+            self._plan_owner("buffered" if dec.buffered_on() else "rotation",
+                             str(self._jump_standby_note.get("standby_plan", "")))
             return
+        self._plan_owner("planner", "jump mode off" if not dec.jump_on() else
+                         "replaying" if dec.replaying else str(self._jump_standby_note.get("standby_plan", "")))
         self._plan_prime_multiview(cands)
         pick = self.planner.plan(self._standby_options(cands, redzone), self.control.standby)
         if pick:
@@ -1965,14 +2157,19 @@ class Engine:
         pend, last = self._pending_decision, self.last_decision
         rec = {"ts": round(now, 2), "on_screen": self.decider.current, "standby": self._game_on_target(sb),
                "standby_ready": bool(self.control.standby_ready(sb)), **self._jump_standby_note,
+               # [owner] which decider owned the TV and who planned the hidden stick (additive keys)
+               "owner": self.decider.owner_m.state, "owner_why": self.decider.owner_m.why,
+               "standby_owner": self.standby_m.state, "screen": self.decider.screen_m.state,
                "pending": f"{pend.action}:{pend.kind}" if pend is not None else None,
                "pending_s": round(now - self._pending_since, 1) if pend is not None and self._pending_since else None,
                "replaying": bool(self.decider.replaying),
                # [buffered jump] where the standby's re-scrub stands: the park step reached, and buffer_standby's guard
-               **({"bj_park": getattr(self, "_bj_park_why", "never"), "bj_buffer": getattr(self.control, "bj_buffer_why", "")}
+               **({"bj_park": self._bj_park_why, "bj_buffer": getattr(self.control, "bj_buffer_why", "")}
                   if self.decider.buffered_on() else {}),
                "last": f"{last.action}:{last.kind}" if last is not None else None,
                "holds": dict(self.decider.jump_holds)}
+        if fsm.run_commit():
+            rec["sha"] = fsm.run_commit()      # which code made this call (scripts/why.py)
         try:
             with self._jump_status_path.open("a") as fh:
                 fh.write(json.dumps(rec) + "\n")
@@ -1995,6 +2192,8 @@ class Engine:
                 if "no safe moment" in out.detail else "standby_not_ready" \
                 if out.detail.startswith(STANDBY_NOT_READY) else "other"
             rec["fail_detail"] = _redact(out.detail)
+        if fsm.run_commit():
+            rec["sha"] = fsm.run_commit()
         try:
             with self._jump_log_path.open("a") as fh:
                 fh.write(json.dumps(rec) + "\n")
@@ -2171,6 +2370,7 @@ class Engine:
             if not self.hold:
                 return False, "Nothing is held"
             self.hold.update(auto_resume=bool(value), resume_at=None, why="")
+            self.hold_m.to("held", f"auto-resume {'on' if value else 'off'}")
             return True, ("I'll hand back to autopilot when it's over or a blowout" if value
                           else f"Staying on {self._name(self.hold['game_id'])} until you tap Resume auto")
         if action == "redzone":
@@ -2256,11 +2456,7 @@ class Engine:
             elif was_dry:
                 # A simulated current game is not evidence of a physical stream.
                 dec.abort_replay()
-                dec.current = None
-                dec._screen_log.clear()
-                dec._arrival_until = 0.0
-                dec.after_replay = False
-                dec.replay_exit_after = 0.0
+                dec.forget_screen("TV control on: a dry-run screen is no evidence of a real stream")
                 self.control.on_target = None
             return True, "Dry run on: the TV won't be touched" if value else "TV control ON"
         if action == "replay":
@@ -2455,11 +2651,13 @@ class Engine:
             if h["resume_at"] and not why:
                 self.toast(f"{self._name(gid)} is close again — staying")
             h.update(resume_at=None, why="")
+            self.hold_m.to("held", "close again" if why else "no auto-resume")
             return
         now = time.time()
         if h["resume_at"] is None:
             wait = 5.0 if over else HOLD_RESUME_S
             h.update(resume_at=now + wait, why=why)
+            self.hold_m.to("resuming", f"{gid} {why}: autopilot in {wait:.0f}s")
             self.toast(f"{self._name(gid)} {why} — autopilot takes over in {wait:.0f}s")
         elif now >= h["resume_at"]:
             self._release_hold("")
@@ -2625,6 +2823,7 @@ class Engine:
                      "tv_control": self.control.live_control, "two_stick": self.control.two_stick,
                      "control_note": self.control.note, "mic": self.mic is not None, "announcer_hint": ""},
             "now": now, "next": nxt, "standby": self._standby_view(), "games": games,
+            "machines": self.machines_view(),   # [state machines] additive: every engine/decider machine now
             "reel": self.reel_view(), "agent": self.agent_notes(),
             "tonight": self.tonight.view(),
             "screen_evidence": self.screen_evidence(),

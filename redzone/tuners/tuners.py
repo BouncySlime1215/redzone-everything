@@ -25,6 +25,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
+from redzone.fsm import MachineMap
+from redzone.machines.control import PRIME_TUNE
 from redzone.tuners import prime_multiview as pmv
 from redzone.tuners.adb import Stick, playback_ready, same_stream
 from redzone.tuners.profiles import ProfileSelectionRequired, preference, select_profile
@@ -437,6 +439,19 @@ class PrimeTuner(Tuner):
     # (The video can't start before the page is up anyway, so `-W` costs Prime nothing.)
     wait_for_launch = True
 
+    def __init__(self) -> None:
+        # Per stick (host): what the confirm loop saw since the deep link (tuners.prime_tune: linked -> page ->
+        # pressed), the player screen before the link and when the link went out.
+        self.tune_m = MachineMap(PRIME_TUNE, clock=time.monotonic)
+        self._before_player: dict[str, str | None] = {}
+        self._link_at: dict[str, float] = {}
+
+    def _saw_page(self, host: str) -> bool:
+        return self.tune_m.state(host) in ("page", "pressed")
+
+    def _pressed(self, host: str) -> bool:
+        return self.tune_m.state(host) == "pressed"
+
     def url(self, ref: str) -> str:
         return f"https://app.primevideo.com/detail?gti={ref}"
 
@@ -465,15 +480,13 @@ class PrimeTuner(Tuner):
                 # so the second press only happens while the detail page (not the player) is in front;
                 # in the player a CENTER would pause it.
                 on_page = await self._on_detail_page(stick)
-                if on_page:
-                    self._saw_page = getattr(self, "_saw_page", {})
-                    self._saw_page[stick.host] = True
+                if on_page and not self._saw_page(stick.host):
+                    self.tune_m[stick.host].to("page", why="detail page in front")
                 if len(done) < 2 and not (live_pressed and not done) and on_page:
                     if may_cut is not None and not may_cut():
                         break
                     await stick.key("KEYCODE_DPAD_CENTER")
-                    self._pressed = getattr(self, "_pressed", {})
-                    self._pressed[stick.host] = True
+                    self.tune_m[stick.host].to("pressed", why="pressed watch" if not done else "pressed watch live")
                     steps.append("pressed: watch (focused button)" if not done else "pressed: watch live (panel)")
         return await super()._confirm(stick, pkg, steps, watch, may_cut)
 
@@ -492,24 +505,21 @@ class PrimeTuner(Tuner):
         # Prime reports every live game as one "PrimeVideo" session on a wall-clock position, and
         # the game already playing keeps running behind the detail page (Nov 2): "playing" alone
         # would confirm the OLD game. A new game is a new player screen (a new ActivityRecord).
-        self._before_player = getattr(self, "_before_player", {})
         self._before_player[stick.host] = await self._player_token(stick)
-        self._pressed = getattr(self, "_pressed", {})
-        self._pressed[stick.host] = False
-        self._saw_page = getattr(self, "_saw_page", {})
-        self._saw_page[stick.host] = False
-        self._link_at = getattr(self, "_link_at", {})
+        m = self.tune_m[stick.host]
+        if not m.to("linked", why=f"deep link {target}"):
+            m.reset("linked", why=f"deep link {target}")   # a fresh link restarts the age
         self._link_at[stick.host] = time.monotonic()
         return await super().tune(stick, ref, target, **kw)
 
     async def _watch_for(self, stick: Stick, pkg: str, watch: NewStream, seconds: float) -> bool:
         end = time.monotonic() + seconds
-        before = getattr(self, "_before_player", {}).get(stick.host)
+        before = self._before_player.get(stick.host)
         while True:
             pb = await stick.playback(pkg)
             if playback_ready(pb):
                 token = await self._player_token(stick)
-                pressed = getattr(self, "_pressed", {}).get(stick.host)
+                pressed = self._pressed(stick.host)
                 # A new player screen, or (when the page opened inside the old player) our press
                 # followed by a screen that no longer shows the page.
                 if token and (token != before or (pressed and not await self._on_detail_page(stick))):
@@ -517,9 +527,9 @@ class PrimeTuner(Tuner):
                     return True
                 # A link to the game the player is already showing is ignored by Prime: no page ever
                 # comes up and the same player keeps playing it (seen after a service restart, Nov 2).
-                waited = time.monotonic() - getattr(self, "_link_at", {}).get(stick.host, time.monotonic())
+                waited = time.monotonic() - self._link_at.get(stick.host, time.monotonic())
                 if (token and token == before and not pressed and waited >= 6.0
-                        and not getattr(self, "_saw_page", {}).get(stick.host)
+                        and not self._saw_page(stick.host)
                         and not await self._on_detail_page(stick)):
                     watch.report = pb
                     return True
@@ -612,6 +622,7 @@ class PrimeMultiviewTuner(PrimeTuner):
     (which leaves the multiview, so that stick's session is forgotten)."""
 
     def __init__(self, keys: "pmv.KeyMap | None" = None, verify_s: float = 3.0, poll_s: float = 0.3):
+        super().__init__()
         self.enabled = False
         self.keys = keys
         self.sessions: dict[str, pmv.Session] = {}

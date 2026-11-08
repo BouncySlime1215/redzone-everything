@@ -7,6 +7,10 @@ again and a held game was abandoned. It lives in a small JSON file next to the c
 Pause is kept however old it is: you paused it, so it stays paused. Game-specific choices (hold,
 lock, focus) are about tonight's games; after STALE_S they are dropped rather than pointed at a
 game that ended hours ago.
+
+A skip mutes its game (muted is kept 12 h), so the skip's own expiry (skipped: game -> epoch) is kept with it:
+without it a restart left the game muted all night instead of for five minutes. A focus suspended for garbage
+time (suspended_focus) is kept too, or a restart in garbage time lost your focus for good.
 """
 from __future__ import annotations
 
@@ -21,8 +25,8 @@ STALE_S = 6 * 3600.0
 HOLD_KEYS = ("game_id", "since", "auto_resume")
 
 
-def capture(user, hold: dict | None) -> dict:
-    """The part of the decider's UserState (and the engine's hold) worth keeping."""
+def capture(user, hold: dict | None, skipped: dict | None = None, suspended_focus: tuple | None = None) -> dict:
+    """The part of the decider's UserState (and the engine's hold, skips and suspended focus) worth keeping."""
     return {
         "paused": bool(user.paused),
         "locked_game": user.locked_game,
@@ -30,6 +34,9 @@ def capture(user, hold: dict | None) -> dict:
         "focus_mode": getattr(user.focus_mode, "value", user.focus_mode),
         "hold": {k: hold.get(k) for k in HOLD_KEYS} if hold else None,
         "muted": sorted(getattr(user, "muted", set()) or ()),
+        "skipped": {g: round(float(t), 3) for g, t in sorted((skipped or {}).items())},
+        "suspended_focus": ([suspended_focus[0], getattr(suspended_focus[1], "value", suspended_focus[1])]
+                            if suspended_focus else None),
     }
 
 
@@ -54,7 +61,7 @@ def load(path: Path, now: float | None = None) -> dict | None:
     except (TypeError, ValueError):
         saved = 0.0
     out = {"paused": bool(d.get("paused")), "locked_game": None, "focus_game": None,
-           "focus_mode": "autopilot", "hold": None}
+           "focus_mode": "autopilot", "hold": None, "skipped": {}, "suspended_focus": None}
     if now - saved <= STALE_S:
         hold = d.get("hold")
         if isinstance(hold, dict) and isinstance(hold.get("game_id"), str):
@@ -65,9 +72,16 @@ def load(path: Path, now: float | None = None) -> dict | None:
                 out[k] = d[k]
         if isinstance(d.get("focus_mode"), str):
             out["focus_mode"] = d["focus_mode"]
+        sf = d.get("suspended_focus")
+        if isinstance(sf, list) and len(sf) == 2 and all(isinstance(x, str) for x in sf):
+            out["suspended_focus"] = (sf[0], sf[1])
     # Muted games stay muted all night (games that can't play here, the user's own mutes).
     if now - saved <= 12 * 3600 and isinstance(d.get("muted"), list):
         out["muted"] = [g for g in d["muted"] if isinstance(g, str)]
+        # ...and a skip's expiry with it: an expired one is unmuted by the engine's first decision tick
+        sk = d.get("skipped")
+        if isinstance(sk, dict):
+            out["skipped"] = {g: float(t) for g, t in sk.items() if isinstance(g, str) and isinstance(t, (int, float))}
     return out
 
 

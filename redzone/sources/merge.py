@@ -17,6 +17,8 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from redzone.fsm import MachineMap
+from redzone.machines.platform import MERGE_FEED
 from redzone.models import GameState, Phase, Stoppage
 
 STALE_AFTER_S = 60.0       # a live game with no fresh data this long is "stale"
@@ -98,7 +100,22 @@ class Merger:
         self.race: list[RaceEvent] = []
         self._race_open: dict[tuple[str, str], RaceEvent] = {}
         self._regress_at: dict[tuple[str, str], list[float]] = defaultdict(list)
-        self._bench_until: dict[tuple[str, str], float] = {}
+        # merge.feed, one per (source, game): trusted -> regressing -> benched -> (after BENCH_S) trusted.
+        # SourceHealth.benched is derived from it for every source (_refresh_benched).
+        self.feeds = MachineMap(MERGE_FEED, clock=clock)
+        self._bench_end: dict[tuple[str, str], float] = {}
+
+    @staticmethod
+    def _fkey(key: tuple[str, str]) -> str:
+        return f"{key[0]}|{key[1]}"
+
+    @property
+    def _bench_until(self) -> dict[tuple[str, str], float]:
+        """(source, game) -> bench end, for the benched feeds only (a read-only view of merge.feed)."""
+        return {k: u for k, u in self._bench_end.items() if self.feeds.state(self._fkey(k)) == "benched"}
+
+    def _benched(self, key: tuple[str, str]) -> bool:
+        return self.feeds.state(self._fkey(key)) == "benched"
 
     def record_error(self, source: str) -> None:
         self.health[source].errors += 1
@@ -115,7 +132,7 @@ class Merger:
             if src not in self._per_source or game_id not in self._per_source[src]:
                 continue
             seen = self._owner_at.get((src, game_id), -1e18)
-            if (now - seen <= STOPPAGE_OWNER_FRESH_S and (src, game_id) not in self._bench_until
+            if (now - seen <= STOPPAGE_OWNER_FRESH_S and not self._benched((src, game_id))
                     and now - self._err_at.get(src, -1e18) > OWNER_ERROR_HOLD_S):
                 return src
         return None
@@ -135,9 +152,14 @@ class Merger:
                 hits = [t for t in self._regress_at[bkey] if now - t < REGRESSION_WINDOW_S]
                 hits.append(now)
                 self._regress_at[bkey] = hits
+                feed = self.feeds[self._fkey(bkey)]
                 if len(hits) >= UNHEALTHY_REGRESSIONS:
-                    self._bench_until[bkey] = now + BENCH_S
+                    if not feed.is_("benched"):
+                        feed.to("benched", f"{len(hits)} backward jumps in {REGRESSION_WINDOW_S:.0f}s", now)
+                    self._bench_end[bkey] = now + BENCH_S
                     h.benched = True
+                elif not feed.is_("benched"):   # a benched feed stays benched until its bench ends
+                    feed.to("regressing", f"{len(hits)} backward jump(s)", now)
                 return self.games.get(g.game_id, prev_same)
             if kg < kp:
                 # Same period and clock, lower score or fewer plays. A score drop with both
@@ -148,11 +170,16 @@ class Merger:
                 correction = True
         h.updates += 1
         h.last_ok = now
+        feed = self.feeds.get(self._fkey(bkey))
+        if feed is not None and feed.is_("regressing") and \
+                not any(now - t < REGRESSION_WINDOW_S for t in self._regress_at.get(bkey, ())):
+            feed.to("trusted", "its backward jumps aged out", now)
+            self.feeds.prune()
         self._per_source[source][g.game_id] = g
         self._note_race(source, g, now)
 
         cur = self.games.get(g.game_id)
-        if bkey in self._bench_until and cur is not None:
+        if self._benched(bkey) and cur is not None:
             return cur
         takes = (cur is None or _takes_over(g, cur)
                  or (correction and _position(progress_key(g)) >= _position(progress_key(cur))))
@@ -197,15 +224,26 @@ class Merger:
 
     def _expire_bench(self, source: str, now: float) -> None:
         """Lift benches older than BENCH_S. The source re-baselines for that game, so a feed
-        whose clock was legitimately set back (a review) is judged afresh."""
+        whose clock was legitimately set back (a review) is judged afresh. Every source's
+        SourceHealth.benched is refreshed, not just the one updating: a benched source that went
+        quiet used to stay flagged after its bench ended."""
         for key, until in list(self._bench_until.items()):
             if until <= now:
-                del self._bench_until[key]
+                self.feeds[self._fkey(key)].to("trusted", "bench over: re-baselined", now)
+                self._bench_end.pop(key, None)
                 self._regress_at.pop(key, None)
                 self._per_source[key[0]].pop(key[1], None)
-        h = self.health.get(source)
-        if h is not None:
-            h.benched = any(k[0] == source for k in self._bench_until)
+        self.feeds.prune()
+        self._refresh_benched()
+
+    def _refresh_benched(self) -> None:
+        benched = {k[0] for k in self._bench_until}
+        for src, h in self.health.items():
+            h.benched = src in benched
+
+    def expire(self, now: float | None = None) -> None:
+        """Lift benches that are over without waiting for an update (status readers call this)."""
+        self._expire_bench("", self._clock() if now is None else now)
 
     def _note_race(self, source: str, g: GameState, now: float) -> None:
         for label in race_labels(g):

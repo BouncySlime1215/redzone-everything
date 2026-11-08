@@ -58,6 +58,9 @@ from typing import Any, Callable
 
 from redzone import config
 from redzone.channels import ChannelMap
+from redzone.fsm import MachineMap
+from redzone.machines.control import (ADOPT, CEC, COMMAND, OFFSET, PRELOAD_SLOT, CONTROL_SCREEN, STANDBY, STANDBY_READY,
+                                      TWO_STICK, VISIBLE)
 from redzone.tuners.adb import STICK_HUNG, Stick, adb_available, playback_ready, same_stream
 from redzone.tuners import prime_multiview as pmv
 from redzone.tuners.tuners import TUNERS, PrimeMultiviewTuner, TuneResult, channel_matcher
@@ -140,6 +143,66 @@ CEC_GET_CMD = "settings get global hdmi_control_enabled"
 CEC_SET_CMD = "settings put global hdmi_control_enabled {v}"
 
 TUNE_PLAUSIBLE = (0.3, 90.0)
+
+
+def _now() -> float:
+    return time.time()   # machines read the clock through here, so a test's patched time.time applies
+
+
+# Controller.__getattr__: machine state a partial controller (a test fake) gets on first use.
+_LAZY: dict[str, Callable[[Any], Any]] = {
+    "standby_m": lambda c: STANDBY.new(clock=_now), "_sb_target": lambda c: None, "_sb_payload": lambda c: None,
+    "slot_m": lambda c: PRELOAD_SLOT.new(clock=_now), "_slot_payload": lambda c: None,
+    "offset_m": lambda c: MachineMap(OFFSET, clock=_now), "_last_hold": lambda c: None,
+    "screen_m": lambda c: CONTROL_SCREEN.new(clock=_now, on_change=c._on_screen), "_flip_gen_n": lambda c: 0,
+    "two_stick_m": lambda c: TWO_STICK.new(clock=_now),
+    "cec_m": lambda c: MachineMap(CEC, clock=_now), "_cec_book": lambda c: _CecBook(c.cec_m),
+    "visible_m": lambda c: VISIBLE.new(clock=_now), "_vis_bad": lambda c: None, "_vis_how": lambda c: "",
+    "_resume_kind": lambda c: "", "command_m": lambda c: COMMAND.new(clock=_now),
+    "adopt_m": lambda c: ADOPT.new(clock=_now),
+}
+
+
+def _task_label(t: "asyncio.Task | None") -> str:
+    if t is None:
+        return "?"
+    name = t.get_name()
+    if not name.startswith("Task-"):
+        return name
+    return getattr(t.get_coro(), "__qualname__", name)
+
+
+class _OwnedLock(asyncio.Lock):
+    """The command lock, with who holds it and since when (a stuck lock is visible in Controller.machines_view)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.owner, self.since = "", 0.0
+
+    async def acquire(self) -> bool:
+        await super().acquire()
+        self.owner, self.since = _task_label(asyncio.current_task()), time.time()
+        return True
+
+    def release(self) -> None:
+        self.owner, self.since = "", 0.0
+        super().release()
+FLIP_STATES = ("flipping", "resuming", "reasserting")   # control.screen: not cancellable, reads untrusted
+
+
+class _CecBook(dict):
+    """host -> HDMI-CEC on (True) / off (False) / unread (None), kept in step with the control.cec machines."""
+
+    def __init__(self, machines: MachineMap, init: dict | None = None):
+        super().__init__()
+        self._m = machines
+        for k, v in (init or {}).items():
+            self[k] = v
+
+    def __setitem__(self, host: str, value: bool | None) -> None:
+        super().__setitem__(host, value)
+        self._m[host].to("unread" if value is None else "on" if value else "off",
+                         why=f"hdmi_control_enabled={'?' if value is None else int(bool(value))}")
 
 
 @dataclass
@@ -250,6 +313,27 @@ class LatencyBook:
 
 class Controller:
     def __init__(self, cfg, channels: ChannelMap, latency_path: Path | None = None):
+        # The explicit state machines (redzone/machines/control.py). Created first: the attributes below that
+        # are views of them (hidden_target, hidden_ready, parked, _snap_park, _holding, _left, _stuck_since,
+        # _preloading, _refreshing, ...) write through to them.
+        self.standby_m = STANDBY.new(clock=_now)          # what the hidden stick holds
+        self._sb_target: str | None = None                # ...its target (None in "empty")
+        self._sb_payload: Any = None                      # ...Parked / LeftHold / hold token / stuck since
+        self.slot_m = PRELOAD_SLOT.new(clock=_now)        # which job owns _preload_task
+        self._slot_payload: tuple[str, str | None] | None = None   # ...its (target, replay_id)
+        self.offset_m = MachineMap(OFFSET, clock=_now)    # per target: live / held / scrubbed / restored
+        self._last_hold: dict | None = None               # how the last pause-hold ended (_hold)
+        self._flip_gen_n = 0                              # bumped by screen_m at every flip start (_flip_gen)
+        self.screen_m = CONTROL_SCREEN.new(clock=_now, on_change=self._on_screen)   # which stick the TV shows
+        self.two_stick_m = TWO_STICK.new(clock=_now)      # on / degraded (a failed flip)
+        self.cec_m = MachineMap(CEC, clock=_now)          # per stick: HDMI-CEC unread / on / off / restoring
+        self._cec_book = _CecBook(self.cec_m)             # ...as the old host -> bool dict (_cec_on)
+        self.visible_m = VISIBLE.new(clock=_now)          # the visible-stick watchdog: ok / bad / repairing / restoring
+        self._vis_bad: float | None = None                # ...when the stick on screen stopped playing
+        self._vis_how = ""                                # ...and how: paused / frozen / none / stopped
+        self._resume_kind = ""                            # what _resume_task is: recheck / repair / restore
+        self.command_m = COMMAND.new(clock=_now)          # the switch command: idle / queued / running / waiting_safe
+        self.adopt_m = ADOPT.new(clock=_now)              # after a restart: fresh / adopted / replayed
         self.cfg = cfg
         self.channels = channels
         self.sticks: list[Stick] = []
@@ -258,10 +342,9 @@ class Controller:
         self.on_target: str | None = None        # what the visible stick shows LIVE (None after a replay)
         self.active = 0                          # index of the stick on screen
         self.calibrated_flip: tuple[float, float] | None = None   # [calib.auto] (median, max) TV flip
-        self.hidden_target: str | None = None    # what the hidden stick is playing or loading
+        # hidden_target / hidden_ready / parked: properties over standby_m (what the hidden stick holds)
         self.preload_why = ""                    # [jump mode] why the last preload was refused ("" = started)
         self._preloaded_only = False             # [jump mode] this switch may only flip to a ready standby
-        self.hidden_ready = False                # ...and it's confirmed playing
         self._hidden_entry = 0.0                 # [seek model] entry rewind to run on the hidden stick before the flip
         self._hidden_entry_done = False
         self._entry_rewind = 0.0                 # [EXP-741 B] the running switch's entry rewind (arm_entry_rewind)
@@ -270,19 +353,15 @@ class Controller:
         self._entry_cue = ""
         self.seek_log_path = None                # [calib.auto] data/seeks.jsonl: one row per measured seek
         self._last_seek_sent = 0
-        self.parked: Parked | None = None        # ...parked on a replay instead of live
-        self._snap_park: Parked | None = None   # [buffered jump] the hidden stick paused just before its next snap
-        self._snap_task: asyncio.Task | None = None
-        self.two_stick_ok = True                 # flips to False if an input flip ever fails
+        self._snap_task: asyncio.Task | None = None   # [buffered jump] the pending snap park (standby_m "snap_parked")
+        # two_stick_ok: a property over two_stick_m (False after a failed input flip, until the retry)
         self.latency = LatencyBook()
         self.latency_path = latency_path
-        self._lock = asyncio.Lock()
+        self._lock = _OwnedLock()
         self._task: asyncio.Task | None = None
         self._preload_task: asyncio.Task | None = None
-        self._preloading: tuple[str, str | None] | None = None   # (target, replay_id) being loaded
         self._last_preload = 0.0
         self._failed: dict[str, float] = {}      # target -> don't preload before
-        self._stuck_since: tuple[str, float] | None = None   # [buffered jump] standby not ready, nothing running
         self._played_at: dict[str, float] = {}   # host -> when its last tune reported playing
         self._repaused: dict[tuple[str, str], list[float]] = {}   # [APP-04] (host, target) -> STK-05 drop times
         self.on_preload_fail: Callable[..., None] | None = None   # (target, detail, host=): teach discovery
@@ -314,6 +393,8 @@ class Controller:
         self.dead_ball: Callable[[str], bool] = lambda target: True   # [STK-06] engine: is target's game dead now?
         self._buffer_bad: dict[str, float] = {}                      # target -> when its hold went bad
         self._scrub_backoff: dict[str, float] = {}                   # [scrub entry] target -> no scrub before this
+        self._replay_scrub_backoff: dict[str, float] = {}            # [replay scrub] target -> no replay park before
+        self._tuned_at: dict[str, float] = {}                        # host -> its last confirmed tune (banner wait)
         self.buffer_log_path: Path | None = None
         self.on_behind: Callable[[str, float, float], None] | None = None   # (target, new s, old s)
         # [SYNC 1] stick host -> ((target, stick `updated` ms), first monotonic seen): how long a stick
@@ -324,36 +405,30 @@ class Controller:
         self._awake_at: dict[str, float] = {}    # stick host -> last seen awake
         self._asleep_until = 0.0
         self._verified_at = 0.0
-        self._flipping = False                   # inside the flip: not cancellable
-        self._holding: tuple | None = None       # [time-shift buffer] (stick, target, token) of a hold in progress
-        self._left: LeftHold | None = None       # [buffer.hold_left] STK-07: the left game, paused where we left it
+        # _flipping / input_unknown: properties over screen_m (a flip in progress / the TV input is unknown)
         self.adb_ok = False
         self._watchdog_applied = False
         self.last: Outcome | None = None
         self.note = ""
         self.stage = {"stage": "idle", "target": None, "reason": ""}
         self._marks: list | None = None          # steps of the switch now running (redzone/trace.py)
-        self.input_unknown = False
         self._two_stick_retry_at = 0.0           # after a failed flip: two-stick mode stays off until then
         self._home_flipped = False               # the last flip pressed HOME (its app was relaunched)
         self._resume_task: asyncio.Task | None = None   # "did the relaunched app resume?" after a HOME flip
         self._cec_synced_at = 0.0
-        self._adopt_once = True                  # first switch after start may adopt the screen
-        self._replayed = False                   # a rewound picture was shown since start: never read back as live
+        # _adopt_once / _replayed: properties over adopt_m (first switch may adopt the screen / a rewound picture
+        # was shown since start: never read back as live)
         self.target_names: Callable[[str], list[str]] | None = None   # engine: team names for a target
         self.prime_plan: list[str] = []          # engine: Prime NBA games for a multiview, best first
-        self._flip_gen = 0                       # bumped on every flip: a CEC read that spans one is stale
         self._replay_shown: tuple[str, Any, int] | None = None   # (target, stick, flip gen) of a replay put on screen
         self._steal_task: asyncio.Task | None = None     # playbook=TV-04 (_undo_steal)
         self._refresh_task: asyncio.Task | None = None   # after a flip: reload the game we left (see _refresh_left)
-        self._refreshing: str | None = None      # the target the running preload is refreshing, if it is a refresh
         self._wish: tuple[str, float] | None = None   # the planner's latest preload ask (target, at), even if refused
         self._standby_miss: str | None = None    # a Prime standby whose last check found no session (one more read)
         self._exit_check = None
         self._flip_s: float | None = None       # HOME -> active source, of the last flip
         self.last_flip: dict | None = None       # the phone's latency book: flip_s / resume_s of the last flip
-        self._visible_bad_since: float | None = None   # the stick on screen stopped playing at (watchdog)
-        self._visible_state = ""                       # ... and how: paused / frozen / none / stopped
+        # _visible_bad_since / _visible_state: properties over visible_m (when / how the screen stopped playing)
         self._visible_fix_at = 0.0               # last watchdog repair (rate limit)
         self._loading_since: dict[tuple[str, str], tuple[float, float]] = {}   # (host, target) -> (first, last) loading read
         self._unknown_since = 0.0                # input became unknown at
@@ -372,7 +447,6 @@ class Controller:
         self.tv.hardening = self._st_hardening
         self._flip_how = ""                      # "tv:local" | "tv:smartthings" | "home" | "" (last flip)
         self._why: dict | None = None            # [provenance] the switch now running: how each step went
-        self._cec_on: dict[str, bool | None] = {}   # stick host -> its HDMI-CEC setting (None = unread)
         self._cec_read_at = 0.0
         self._cec_restore: dict[str, asyncio.Task] = {}   # host -> "turn CEC off again" after a HOME fallback
         self._cec_pending: tuple[int | None, int] = (None, 0)   # (stick index CEC alone says, syncs in a row)
@@ -603,23 +677,25 @@ class Controller:
                 if not ours(await back.playback(self._package(back, target))):
                     log.info("playbook=TV-04 %s was re-tuned meanwhile: nothing to go back to", back.host)
                     return
-                self._flipping = True
+                self._screen_to("flipping", f"TV-04: putting the TV back on {back.host}")
                 gate, self._exit_check = self._exit_check, None   # no switch of ours is waiting on a moment
                 try:
                     flipped = await self._flip_to(back)
                 finally:
-                    self._flipping = False
+                    self._screen_settle("TV-04 flip over")
                     self._exit_check = gate
                 if not flipped:
                     log.warning("playbook=TV-04 couldn't put the TV back on %s: %s", back.host, self.tv.last_error)
                     return
                 self.active = self.sticks.index(back)
-                self._flip_gen += 1
-                self._flipping = True
+                # [fix] through _set_hidden: the stick we flipped away from shows its home screen (that's what the
+                # TV jumped to), so nothing it held earlier is a standby any more
+                self._set_hidden(None, False, why=f"TV-04 undo: {now_on.host} shows its home screen")
+                self._screen_to("resuming", f"TV-04: confirming {target} plays on {back.host}")
                 try:   # on screen again, so pressing play can't cut anything (the re-assert ladder)
                     how = await self._resume_playback(back, target, self._resume_wait(target))
                 finally:
-                    self._flipping = False
+                    self._screen_settle("TV-04 undo over")
                 self.on_target = target
                 self._visible_bad_since = None if how else time.time()
                 log.info("playbook=TV-04 the TV jumped to %s by itself (not playing); back on %s (%s)",
@@ -715,6 +791,7 @@ class Controller:
                 return
         # Both sticks at once: a stick that times out (~6 s) mustn't hold up the other one.
         await asyncio.gather(*(self._reconnect(s) for s in self.sticks))
+        self._roles_check()
         if time.time() - self._tv_maintained_at >= TV_MAINTAIN_S and not self._busy() and not self._flipping:
             self._tv_maintained_at = time.time()
             await self.tv.maintain()
@@ -730,7 +807,7 @@ class Controller:
         if self.input_unknown:
             await self._maybe_reassert()
         if not self.two_stick_ok and time.time() >= self._two_stick_retry_at and not self.input_unknown:
-            self.two_stick_ok = True
+            self.two_stick_m.to("on", why="retry time passed and the TV input is known")
             self.note = ""
             log.info("Two-stick mode back on (the TV input is known again)")
         await self._stick_watchdog()
@@ -771,11 +848,10 @@ class Controller:
         async with self._lock:
             if not self.input_unknown or self.main is not stick:
                 return
-            self._flipping = True
+            self._screen_to("reasserting", f"HOME re-assert on {stick.host} (try {self._reasserts}/{REASSERT_MAX})")
             try:
                 self._flip_s = None
                 flipped = await self._home_flip_cec(stick, target)
-                self._flip_gen += 1
                 if not flipped:
                     self.note = (f"TV input unknown: {stick.host} couldn't take the TV "
                                  f"(try {self._reasserts}/{REASSERT_MAX})")
@@ -796,7 +872,7 @@ class Controller:
                     self.on_target = target
                     self._visible_bad_since = None if how else time.time()
             finally:
-                self._flipping = False
+                self._screen_settle("re-assert over")
 
     def _stuck_loading(self, stick: Stick, target: str, state: str | None) -> bool:
         """hardening.sticks: a player that has read "buffering"/"connecting" for STUCK_BUFFER_S in a
@@ -831,6 +907,8 @@ class Controller:
         if (not self.live_control or self.input_unknown or self._busy() or self._flipping
                 or (self.visible_watch_ok is not None and not self.visible_watch_ok())):
             return
+        if self._roles_check():
+            return   # [fix] `main` fell back to a stick the TV isn't showing: never resume the game on it
         stick, target = self.main, self.on_target
         if stick is None or not target:
             self._visible_bad_since = None
@@ -862,13 +940,16 @@ class Controller:
             # Repair in its own task (up to ~30 s with a deep link), so a real switch (submit) or
             # Pause can cancel it instead of queueing behind it on the lock.
             if not (self._resume_task and not self._resume_task.done()):
-                self._resume_task = asyncio.create_task(self._watch_visible())
+                self._resume_kind = "repair"
+                self._resume_task = asyncio.create_task(self._watch_visible(), name=f"visible_repair:{target}")
             return
+        self._resume_kind = "repair"
         self._visible_fix_at = now
         self._loading_since.pop((stick.host, target), None)   # a repair starts a fresh load
         async with self._lock:
             if self.main is not stick or self.on_target != target or self.input_unknown:
                 return
+            self.visible_m.to("repairing", why=f"{target} on {stick.host}: resume ladder")
             self.stage = {"stage": "resuming", "target": target, "reason": "the screen stopped playing; resuming it"}
             r0 = time.monotonic()
             how = await self._resume_playback(stick, target, 0.0)
@@ -876,12 +957,12 @@ class Controller:
             if how:
                 log.info("watchdog: %s playing again on %s (%s, %.1fs)", target, stick.host, how, took)
                 self.latency.record("resume", took)
-                self._visible_bad_since = None
                 self.note = ""
                 self.stage = {"stage": "confirmed", "target": target, "reason": f"resumed by {how.replace('_', ' ')}"}
             else:
                 self.note = f"The TV stopped playing {target}; couldn't restart it yet (retrying)"
                 self.stage = {"stage": "failed", "target": target, "reason": self.note}
+            self._visible_repair_end(how, "repair failed; retrying")
 
     def _schedule_visible_check(self, delay: float) -> None:
         """Re-check the stick on screen after `delay`, not at the next ~10 s keepalive. A switch
@@ -892,7 +973,8 @@ class Controller:
         async def later():
             await asyncio.sleep(max(0.0, delay) + 0.05)
             await self._watch_visible()
-        self._resume_task = asyncio.create_task(later())
+        self._resume_kind = "recheck"
+        self._resume_task = asyncio.create_task(later(), name="visible_recheck")
 
     async def _stick_watchdog(self) -> None:
         """Nobody touches the remote, so Fire OS would start its screensaver after 5 min and sleep
@@ -912,7 +994,7 @@ class Controller:
             if state == "Dreaming":
                 log.info("%s was in its screensaver: dismissing", s.host)
                 await s.key("KEYCODE_BACK")
-            elif state in ("Asleep", "Dozing") and s is self.main:
+            elif state in ("Asleep", "Dozing") and s is self.main and not self._roles_check():
                 log.info("%s (on screen) fell asleep: waking it", s.host)
                 await s.key("KEYCODE_WAKEUP")
                 # It may have stopped the stream: the visible-stick watchdog restarts it if it
@@ -972,6 +1054,7 @@ class Controller:
 
     @property
     def main(self) -> Stick | None:
+        """The stick on screen; if it dropped off adb, the first usable one (control.screen "fallback" says so)."""
         u = self.usable
         if not u:
             return None
@@ -979,10 +1062,7 @@ class Controller:
 
     @property
     def two_stick(self) -> bool:
-        u = self.usable
-        return (self.cfg.get("two_stick.enabled", True) and self.two_stick_ok and len(u) >= 2
-                and (self.tv.ready() or bool(self.tv.st_device) or self.cfg.get("two_stick.cec_flip", True))
-                and all(s.host in self.hdmi for s in u[:2]))
+        return self.two_stick_why() == ""   # control.two_stick + config, stick count, flip path, HDMI inputs
 
     @property
     def hidden(self) -> Stick | None:
@@ -1167,11 +1247,381 @@ class Controller:
         if self._refresh_task and not self._refresh_task.done() and self._refresh_task is not asyncio.current_task():
             self._refresh_task.cancel()
 
-    def _set_hidden(self, target: str | None, ready: bool, parked: Parked | None = None) -> None:
-        self.hidden_target, self.hidden_ready, self.parked = target, ready, parked
-        sp = getattr(self, "_snap_park", None)
-        if sp is not None and (target != sp.target or not ready or parked is not None):
-            self._snap_park = None   # [buffered jump] the stick changed under the park: it's not paused there any more
+    def __getattr__(self, name: str):
+        """Only for partial controllers (tests subclass Controller without calling __init__): the machines and
+        their payloads are created on first use. Anything else missing is a real AttributeError."""
+        make = _LAZY.get(name)
+        if make is None:
+            raise AttributeError(f"{type(self).__name__!s} object has no attribute {name!r}")
+        value = make(self)
+        object.__setattr__(self, name, value)
+        return value
+
+    # --- the screen machine (control.screen): which stick the TV shows, and whether a flip is under way ----
+    # _flipping and input_unknown are views of it: (unknown?, flipping?) -> known / flipping|resuming / unknown /
+    # reasserting. Every flip start bumps _flip_gen (a read that spans a flip is stale).
+
+    def _on_screen(self, m, old: str, new: str, why: str) -> None:
+        if new in ("flipping", "reasserting") and old not in FLIP_STATES:
+            self._flip_gen_n += 1
+
+    def _active_dropped(self) -> bool:
+        sticks = getattr(self, "sticks", None) or []
+        u = [s for s in sticks if s.controllable]
+        i = getattr(self, "active", 0)
+        return bool(u) and 0 <= i < len(sticks) and sticks[i] not in u
+
+    def _screen_rest(self) -> str:
+        return "fallback" if self._active_dropped() else "known"
+
+    def _screen_to(self, state: str, why: str) -> None:
+        self.screen_m.to(state, why=why)
+
+    def _screen_settle(self, why: str) -> None:
+        """A flip (or its resume) is over: back to unknown after a re-assert that didn't land, else known."""
+        st = self.screen_m.state
+        if st == "reasserting":
+            self.screen_m.to("unknown", why=why)
+        elif st in ("flipping", "resuming"):
+            self.screen_m.to(self._screen_rest(), why=why)
+
+    @property
+    def _flipping(self) -> bool:
+        return self.screen_m.state in FLIP_STATES
+
+    @_flipping.setter
+    def _flipping(self, value: bool) -> None:
+        st = self.screen_m.state
+        if value and st not in FLIP_STATES:
+            self.screen_m.to("reasserting" if st == "unknown" else "flipping", why="flip")
+        elif not value:
+            self._screen_settle("flip over")
+
+    @property
+    def input_unknown(self) -> bool:
+        return self.screen_m.state in ("unknown", "reasserting")
+
+    @input_unknown.setter
+    def input_unknown(self, value: bool) -> None:
+        st = self.screen_m.state
+        if value and st not in ("unknown", "reasserting"):
+            self.screen_m.to("reasserting" if st in FLIP_STATES else "unknown", why="TV input unknown")
+        elif not value and st == "reasserting":
+            self.screen_m.to("resuming", why="TV input known again (re-asserted)")
+        elif not value and st == "unknown":
+            self.screen_m.to(self._screen_rest(), why="TV input known again")
+
+    @property
+    def _flip_gen(self) -> int:
+        return self._flip_gen_n
+
+    @_flip_gen.setter
+    def _flip_gen(self, value: int) -> None:
+        self._flip_gen_n = int(value)
+
+    def _roles_check(self) -> bool:
+        """The stick the TV shows dropped off adb: `main` falls back to the other stick, which the TV is NOT
+        showing. Say so (state "fallback" + one log line) so the visible watchdog, restore and the WAKEUP of a
+        sleeping "main" don't act on a stick that isn't on screen. True = in fallback."""
+        st, dropped = self.screen_m.state, self._active_dropped()
+        if dropped and st == "known":
+            gone, now = self.sticks[self.active], self.main
+            log.warning("%s (on screen) dropped off adb; %s is main now but the TV doesn't show it: the screen "
+                        "watchdog waits for %s", gone.host, now.host if now else "-", gone.host)
+            self.screen_m.to("fallback", why=f"{gone.host} (on screen) dropped; main fell back to "
+                                             f"{now.host if now else '-'}")
+        elif not dropped and st == "fallback":
+            self.screen_m.to("known", why="the on-screen stick is back (or the TV moved)")
+        return self.screen_m.is_("fallback")
+
+    # --- two-stick mode (control.two_stick) and HDMI-CEC per stick (control.cec) --------------------------
+
+    @property
+    def two_stick_ok(self) -> bool:
+        return self.two_stick_m.is_("on")
+
+    @two_stick_ok.setter
+    def two_stick_ok(self, value: bool) -> None:
+        self.two_stick_m.to("on" if value else "degraded", why="two_stick_ok set")
+
+    def two_stick_why(self) -> str:
+        """Why two-stick mode (and so `hidden`) is off right now; "" = it's on."""
+        u = self.usable
+        if not self.cfg.get("two_stick.enabled", True):
+            return "disabled"
+        if not self.two_stick_ok:
+            return "degraded"
+        if len(u) < 2:
+            return "one_stick"
+        if not (self.tv.ready() or bool(self.tv.st_device) or self.cfg.get("two_stick.cec_flip", True)):
+            return "no_flip_path"
+        if not all(s.host in self.hdmi for s in u[:2]):
+            return "no_hdmi"
+        return ""
+
+    @property
+    def _cec_on(self) -> dict:
+        return self._cec_book
+
+    @_cec_on.setter
+    def _cec_on(self, value: dict) -> None:
+        self._cec_book = _CecBook(self.cec_m, value)
+
+    # --- the visible-stick watchdog (control.visible), the switch command (control.command), restart adopt ---
+
+    @property
+    def _visible_bad_since(self) -> float | None:
+        return self._vis_bad
+
+    @_visible_bad_since.setter
+    def _visible_bad_since(self, value: float | None) -> None:
+        self._vis_bad = value
+        if value is None:
+            self._vis_how = ""            # [fix] "how" is reset when healthy (it used to stay stale forever)
+            if not self.visible_m.is_("ok"):
+                self.visible_m.to("ok", why="playing")
+        elif self.visible_m.is_("ok"):
+            self.visible_m.to("bad", why=self._vis_how or "not playing")
+
+    @property
+    def _visible_state(self) -> str:
+        return "" if self.visible_m.is_("ok") else self._vis_how
+
+    @_visible_state.setter
+    def _visible_state(self, value: str) -> None:
+        self._vis_how = value or ""
+
+    def _visible_repair_end(self, how: str | None, why: str) -> None:
+        if how:
+            self._visible_bad_since = None
+        elif not self.visible_m.is_("ok"):
+            self.visible_m.to("bad", why=why)
+
+    @property
+    def _adopt_once(self) -> bool:
+        return self.adopt_m.is_("fresh")
+
+    @_adopt_once.setter
+    def _adopt_once(self, value: bool) -> None:
+        if value:
+            self.adopt_m.reset("fresh", why="adopt re-armed")
+        elif self.adopt_m.is_("fresh"):
+            self.adopt_m.to("adopted", why="adopted or passed")
+
+    @property
+    def _replayed(self) -> bool:
+        return self.adopt_m.is_("replayed")
+
+    @_replayed.setter
+    def _replayed(self, value: bool) -> None:
+        if value:
+            self.adopt_m.to("replayed", why="a rewound picture went on screen")
+        elif self.adopt_m.is_("replayed"):
+            self.adopt_m.reset("adopted", why="replayed cleared")
+
+    def _command_end(self) -> None:
+        """A switch command's _run is over: idle, or queued when a newer command is already waiting."""
+        newer = self._task is not None and self._task is not asyncio.current_task() and not self._task.done()
+        self.command_m.to("queued" if newer else "idle", why="newer command waiting" if newer else "done")
+
+    def _command_done(self, task: asyncio.Task) -> None:
+        if task is self._task and not self.command_m.is_("idle"):
+            self.command_m.to("idle", why="cancelled" if task.cancelled() else "done")
+
+    def machines_view(self) -> dict:
+        """Every control machine now (additive in switch_times()["machines"]): state, since, why, payloads."""
+        lock = self._lock
+        try:
+            why_off = self.two_stick_why()
+        except Exception:
+            why_off = "?"
+        self.offset_m.prune()
+        since = getattr(lock, "since", 0.0) or 0.0
+        return {
+            "standby": {**self.standby_m.view(), "target": self._sb_target},
+            "slot": {**self.slot_m.view(history=0), "job": self.stick_job(), "for": self._slot_payload},
+            "screen": {**self.screen_m.view(), "active": self.active, "flip_gen": self._flip_gen,
+                       "cec": self.cec_view, "reasserts": self._reasserts},
+            "two_stick": {**self.two_stick_m.view(history=0), "why_off": why_off},
+            "cec": self.cec_m.view(),
+            "offsets": [dict(v, behind_s=self.held.get(v.get("key", ""), 0.0)) for v in self.offset_m.view()],
+            "visible": {**self.visible_m.view(history=0), "how": self._visible_state, "task": self._resume_kind
+                        if self._resume_task and not self._resume_task.done() else ""},
+            "command": {**self.command_m.view(), "lock": {"locked": lock.locked(), "owner": getattr(lock, "owner", ""),
+                                                          "age_s": round(time.time() - since, 1) if since else 0.0}},
+            "adopt": self.adopt_m.view(history=0),
+        }
+
+    # --- the standby machine (control.standby): one state for what the hidden stick holds ----------------
+    # hidden_target, hidden_ready, parked, _snap_park, _left, _holding and _stuck_since are views of it, so a
+    # contradictory combination (ready while holding, a left hold and a replay park, a snap park on a stick that
+    # isn't ready) can't be represented. Every write goes through _sb_move (a declared edge).
+
+    def _sb_move(self, state: str, target: str | None, payload: Any = None, why: str = "") -> None:
+        if state == "empty":
+            target, payload = None, None
+        self._sb_target, self._sb_payload = target, payload
+        self.standby_m.to(state, why=why or f"{state} {target or ''}".strip())
+
+    def _set_hidden(self, target: str | None, ready: bool, parked: Parked | None = None, *, why: str = "",
+                    state: str | None = None) -> None:
+        """The one setter of what the hidden stick holds. `state` names a not-ready phase (scrubbing) explicitly.
+        Kept as they were: a snap park or a left hold when the same target stays ready (the old _set_hidden never
+        dropped those), and a pause-hold in progress when the same target is marked not ready."""
+        cur, same = self.standby_m.state, target is not None and target == self._sb_target
+        if target is None:
+            self._sb_move("empty", None, None, why or "cleared")
+        elif state is not None:
+            self._sb_move(state, target, None, why)
+        elif parked is not None:
+            if ready:
+                self._sb_move("replay_parked", target, parked, why or f"parked on replay {parked.replay_id}")
+            else:
+                self._sb_move("loading", target, None, why or "mid-park")
+        elif ready:
+            if same and cur in ("snap_parked", "left_hold"):
+                self._sb_move(cur, target, self._sb_payload, why)
+            else:
+                self._sb_move("ready", target, None, why or f"ready {target}")
+        elif same and cur == "holding":
+            self._sb_move(cur, target, self._sb_payload, why)
+        else:
+            self._sb_move("loading", target, None, why or f"loading {target}")
+
+    @property
+    def hidden_target(self) -> str | None:
+        return self._sb_target
+
+    @hidden_target.setter
+    def hidden_target(self, value: str | None) -> None:
+        if value != self._sb_target:
+            self._set_hidden(value, self.hidden_ready, self.parked, why="hidden_target set")
+
+    @property
+    def hidden_ready(self) -> bool:
+        return self.standby_m.state in STANDBY_READY
+
+    @hidden_ready.setter
+    def hidden_ready(self, value: bool) -> None:
+        if bool(value) != self.hidden_ready:
+            self._set_hidden(self._sb_target, bool(value), self.parked if value else None, why="hidden_ready set")
+
+    @property
+    def parked(self) -> Parked | None:
+        return self._sb_payload if self.standby_m.is_("replay_parked") else None
+
+    @parked.setter
+    def parked(self, value: Parked | None) -> None:
+        if value is not None:
+            self._sb_move("replay_parked", value.target, value, why=f"parked on replay {value.replay_id}")
+        elif self.standby_m.is_("replay_parked"):
+            self._sb_move("ready", self._sb_target, None, why="park dropped")
+
+    @property
+    def _snap_park(self) -> Parked | None:
+        return self._sb_payload if self.standby_m.is_("snap_parked") else None
+
+    @_snap_park.setter
+    def _snap_park(self, value: Parked | None) -> None:
+        if value is not None:
+            self._sb_move("snap_parked", value.target, value, why="paused before its snap")
+        elif self.standby_m.is_("snap_parked"):
+            self._sb_move("ready", self._sb_target, None, why="snap park rolled or dropped")
+
+    @property
+    def _left(self) -> LeftHold | None:
+        return self._sb_payload if self.standby_m.is_("left_hold") else None
+
+    @_left.setter
+    def _left(self, value: LeftHold | None) -> None:
+        if value is not None:
+            self._sb_move("left_hold", value.target, value, why="STK-07: holding the game we left")
+        elif self.standby_m.is_("left_hold"):
+            self._sb_move("ready", self._sb_target, None, why="left hold over")
+
+    @property
+    def _holding(self) -> tuple | None:
+        return self._sb_payload if self.standby_m.is_("holding") else None
+
+    @_holding.setter
+    def _holding(self, value: tuple | None) -> None:
+        if value is not None:
+            self._sb_move("holding", self._sb_target or value[1], value, why="pause-hold")
+        elif self.standby_m.is_("holding"):
+            self._sb_move("loading", self._sb_target, None, why="hold over")
+
+    @property
+    def _stuck_since(self) -> tuple[str, float] | None:
+        return self._sb_payload if self.standby_m.is_("stuck") else None
+
+    @_stuck_since.setter
+    def _stuck_since(self, value: tuple[str, float] | None) -> None:
+        if value is not None:
+            self._sb_move("stuck", value[0], tuple(value), why="not ready, nothing running")
+        elif self.standby_m.is_("stuck"):
+            self._sb_move("loading", self._sb_target, None, why="no longer stuck")
+
+    # --- the hidden stick's job slot (control.preload_slot) and the one "is a stick busy?" answer -----------
+
+    @property
+    def _preloading(self) -> tuple[str, str | None] | None:
+        return None if self.slot_m.is_("idle") else self._slot_payload
+
+    @_preloading.setter
+    def _preloading(self, value: tuple[str, str | None] | None) -> None:
+        if value is None:
+            self._slot_payload = None
+            self.slot_m.to("idle", why="slot freed")
+        else:
+            self._slot_payload = tuple(value)
+            if self.slot_m.is_("idle"):
+                self.slot_m.to("preload", why=f"preload {value[0]}")
+
+    @property
+    def _refreshing(self) -> str | None:
+        return self._slot_payload[0] if self.slot_m.is_("refresh") and self._slot_payload else None
+
+    @_refreshing.setter
+    def _refreshing(self, value: str | None) -> None:
+        if value is not None:
+            self._slot_payload = (value, None)
+            self.slot_m.to("refresh", why=f"refresh {value}")
+        elif self.slot_m.is_("refresh"):
+            self.slot_m.to("preload" if self._slot_payload else "idle", why="no longer a refresh")
+
+    @property
+    def _hold_task(self) -> asyncio.Task | None:
+        return self._preload_task if self.slot_m.is_("hold") else None
+
+    def _slot_start(self, kind: str, target: str, replay_id: str | None, coro) -> asyncio.Task:
+        """Start a job on the hidden stick in the one preload slot (_preload_task), owned until it ends."""
+        self._slot_payload = (target, replay_id)
+        self.slot_m.to(kind, why=f"{kind} {target}")
+        task = self._preload_task = asyncio.create_task(coro, name=f"{kind}:{target}")
+        task.add_done_callback(self._slot_done)
+        return task
+
+    def _slot_done(self, task: asyncio.Task) -> None:
+        if self._preload_task is task and not self.slot_m.is_("idle"):
+            self._slot_payload = None
+            self.slot_m.to("idle", why="job ended")
+
+    def _slot_free(self, why: str = "job ended") -> None:
+        """Only the job that owns the slot frees it (a displaced or cancelled one never clears its successor)."""
+        if self._preload_task is asyncio.current_task():
+            self._slot_payload = None
+            self.slot_m.to("idle", why=why)
+
+    def stick_job(self) -> str:
+        """The one answer to "is a stick busy?": "switch", the preload slot's kind, "lock:<owner>" or "".
+        Background work that yields to these (refresh wait, snap timer, TV-04 undo, watchdog) is not a job."""
+        if self._task and not self._task.done():
+            return "switch"
+        if self._preload_task and not self._preload_task.done():
+            return "preload" if self.slot_m.is_("idle") else self.slot_m.state
+        if self._lock.locked():
+            return "lock:" + (getattr(self._lock, "owner", "") or "?")
+        return ""
 
     def _live_on_hidden(self, target: str) -> bool:
         return self.hidden_target == target and self.hidden_ready and self.parked is None
@@ -1212,8 +1662,7 @@ class Controller:
         return self.standby[1]
 
     def _busy(self) -> bool:
-        return bool((self._task and not self._task.done()) or (self._preload_task and not self._preload_task.done())
-                    or self._lock.locked())
+        return bool(self.stick_job())
 
     def can_tune(self, target: str | None) -> bool:
         """Could the hidden stick go here right now? A tuner, a channel link, the app installed,
@@ -1403,7 +1852,8 @@ class Controller:
                 "flip_path": self.flip_path(), "flip_plan_s": round(self.flip_estimate(), 2),
                 "last_flip": dict(self.last_flip) if self.last_flip else None,
                 "input": {"unknown": self.input_unknown, "cec": self.cec_view, "reasserts": self._reasserts,
-                          "two_stick_ok": self.two_stick_ok}}
+                          "two_stick_ok": self.two_stick_ok},
+                "machines": self.machines_view()}
 
     # --- actions -----------------------------------------------------------------
 
@@ -1425,13 +1875,15 @@ class Controller:
         self._cancel_refresh()   # the new switch decides what the hidden stick gets; a flip starts a new refresh
         want = (target, replay_id if replay_back_s else None)
         if self._preload_task and not self._preload_task.done() and self._preloading != want \
-                and self._preload_task is not getattr(self, "_hold_task", None):
+                and not self.slot_m.is_("hold"):
             # [overseer Nov 7 23:39] a standby pause-hold isn't cancelled: 'start' switches from an unknown screen cut
             # every Prime hold off mid-pause (standby never ready). A switch that re-tunes that stick ends the hold
             # cleanly (_tune drops _holding); one on the other stick leaves it alone.
             self._preload_task.cancel()
         self._task = asyncio.create_task(self._run(target, replay_back_s, on_done, may_cut, replay_id, time.time(),
-                                                   entry_rewind_s, entry_cue, preloaded_only))
+                                                   entry_rewind_s, entry_cue, preloaded_only), name=f"switch:{target}")
+        self.command_m.to("queued", why=f"switch to {target}")
+        self._task.add_done_callback(self._command_done)   # also ends a command cancelled before it ever ran
         if on_done:
             self._task.add_done_callback(lambda task: on_done(
                 Outcome(False, target, 0.0, "switch cancelled; playback not confirmed", False)
@@ -1439,7 +1891,17 @@ class Controller:
 
     async def _run(self, target, replay_back_s, on_done, may_cut, replay_id=None, issued_at=None,
                    entry_rewind_s: float = 0.0, entry_cue: str = "", preloaded_only: bool = False) -> None:
+        try:
+            await self._run_locked(target, replay_back_s, on_done, may_cut, replay_id, issued_at, entry_rewind_s,
+                                   entry_cue, preloaded_only)
+        finally:
+            self._command_end()
+
+    async def _run_locked(self, target, replay_back_s, on_done, may_cut, replay_id, issued_at, entry_rewind_s,
+                          entry_cue, preloaded_only) -> None:
         async with self._lock:
+            if self._task is asyncio.current_task():
+                self.command_m.to("running", why=f"switch to {target}")
             self._preloaded_only = preloaded_only
             if replay_back_s:
                 self._adopt_once = False   # a rewound picture must never be adopted as live
@@ -1555,11 +2017,17 @@ class Controller:
                 # 2.33 s on the 4K Plus vs 3.74 s on the 4K 2023, so one median misprices one of them.
                 self.latency.record(f"{app}@{stick.model}", res.took)
             self._awake_at[stick.host] = time.time()
-            self.__dict__.setdefault("_tuned_at", {})[stick.host] = time.time()
+            self._tuned_at[stick.host] = time.time()
         return res
 
-    def _set_held(self, target: str, behind_s: float) -> None:
+    def _set_held(self, target: str, behind_s: float, how: str | None = None) -> None:
+        """The one writer of `held` and of the target's control.offset machine. how: "held" (a pause, a left
+        hold, a stall), "scrubbed" (the overlay scrub, label-read) or "restored" (data/held.json after a restart);
+        None keeps the current kind (a stall or a snap roll on top of a scrub stays scrubbed)."""
         old = self.held.get(target, 0.0)
+        m = self.offset_m[target]
+        state = "live" if not behind_s else (how or (m.state if m.state != "live" else "held"))
+        m.to(state, why=f"{behind_s:.1f}s behind live" if behind_s else "at the live edge")
         if old == behind_s:
             return
         if behind_s:
@@ -1573,7 +2041,6 @@ class Controller:
     # [overseer Nov 7 23:50] a restart forgot that the screen ran ~79 s behind (Prime SA@POR held, then flipped on): the
     # delay book said 17 s, so buffered cuts stopped and cut timing on that picture was wrong. The sticks keep playing
     # while the app restarts, so the measured offsets are saved and restored (any re-tune resets one to 0 as before).
-    HELD_MAX_AGE_S = 600.0
 
     def _held_path(self) -> Path | None:
         return self.buffer_log_path.parent / "held.json" if self.buffer_log_path is not None else None
@@ -1588,18 +2055,18 @@ class Controller:
             log.debug("held offsets not saved", exc_info=True)
 
     def restore_held(self, now: float | None = None) -> dict[str, float]:
-        """At start: the offsets saved within HELD_MAX_AGE_S (the app was down, nothing pressed a key)."""
+        """At start: the offsets saved within timing.behind_live_s.held_max_age_s (the app was down, nothing pressed a key)."""
         p = self._held_path()
         now = time.time() if now is None else now
         try:
             d = json.loads(p.read_text()) if p is not None and p.exists() else {}
         except (OSError, ValueError):
             return {}
-        if not d or now - float(d.get("ts") or 0.0) > self.HELD_MAX_AGE_S:
+        if not d or now - float(d.get("ts") or 0.0) > float(self.cfg.get("timing.behind_live_s.held_max_age_s", 600)):
             return {}
         got = {t: float(v) for t, v in (d.get("held") or {}).items() if v and float(v) > 0}
         for t, v in got.items():
-            self._set_held(t, v)
+            self._set_held(t, v, how="restored")
         if got:
             log.info("restored held offsets after a restart: %s", {t: round(v, 1) for t, v in got.items()})
         return got
@@ -1613,10 +2080,14 @@ class Controller:
         The resume is on time: it waits at most HOLD_RESUME_LOCK_S for the lock. A switch that holds
         the lock for longer (waiting on a safe moment) made a 60 s hold come out 81.7 s in the night
         lab. Without the lock it still only plays a stick nobody touched since the pause: any
-        re-tune (_tune) or retarget drops the hold, and `held` is only written if that's still so."""
+        re-tune (_tune) or retarget drops the hold, and `held` is only written if that's still so.
+        self._last_hold["end"]: "held", "displaced" (someone else took the stick: not a failure), "refused" (it
+        didn't pause) or "failed" (it didn't resume)."""
+        out = self._last_hold = {"host": stick.host, "target": target, "end": "failed", "at": time.time()}
         pkg = self._package(stick, target)
         async with self._lock:
             if self.hidden is not stick or self.hidden_target != target:
+                out["end"] = "displaced"
                 return False
             sent = await stick.key("KEYCODE_MEDIA_PAUSE")
             pb = await stick.playback(pkg) if sent and sent.ok else {}
@@ -1624,6 +2095,7 @@ class Controller:
                 await stick.key("KEYCODE_MEDIA_PLAY")
                 log.info("buffer: %s on %s didn't pause (%s); left at the live edge", target, stick.host,
                          pb.get("state"))
+                out["end"] = "refused"
                 return False
             paused_at = time.monotonic()
             token = object()
@@ -1641,6 +2113,7 @@ class Controller:
             locked = False
         try:
             if not ours():
+                out["end"] = "displaced"
                 return False      # flipped, retargeted or re-tuned meanwhile: whoever did that owns the stick
             if not locked:
                 log.info("buffer: resuming %s on %s on time; a switch holds the lock", target, stick.host)
@@ -1650,9 +2123,10 @@ class Controller:
             # three 75 s holds were thrown away as "didn't resume". Give it resume_settle_s to come back.
             end = time.monotonic() + float(self.cfg.get("timing.behind_live_s.resume_settle_s", 6.0))
             while sent and sent.ok and pb.get("state") != "playing" and time.monotonic() < end and ours():
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(float(self.cfg.get("timing.behind_live_s.resume_poll_s", 0.5)))
                 pb = await stick.playback(pkg)
             if not ours():
+                out["end"] = "displaced"
                 return False
             if pb.get("state") != "playing":
                 if not locked:
@@ -1672,8 +2146,9 @@ class Controller:
             # still_on fails and the next flip re-tunes it at the live edge, throwing the hold away.
             stick.remember(target, pb)
             held = round(base_s + held, 1)   # base_s: what it already ran behind (a watchdog top-up, STK-06)
-            self._set_held(target, min(held, float(self.cfg.get("timing.behind_live_s.max_s", 90.0)) + 5.0))
+            self._set_held(target, min(held, float(self.cfg.get("timing.behind_live_s.max_s", 90.0)) + 5.0), how="held")
             log.info("buffer: %s on %s held %.1fs behind live", target, stick.host, held)
+            out["end"] = "held"
             return True
         finally:
             if locked:
@@ -1730,7 +2205,7 @@ class Controller:
     def _scrub_park_refusal(self, target: str, back_s: float) -> str:
         """Why a YouTube TV replay can't be parked right now ('' = it can be tried): checked before any key."""
         from redzone.tuners import replay_park
-        if time.time() < self.__dict__.get("_replay_scrub_backoff", {}).get(target, 0.0):
+        if time.time() < self._replay_scrub_backoff.get(target, 0.0):
             return "a failed replay scrub on this channel is backing off"
         k = replay_park.lefts_for(back_s, self.cfg)
         cap = int(self.cfg.get("replay.yttv_max_lefts") or replay_park.PARK_DEFAULTS["yttv_max_lefts"])
@@ -1742,7 +2217,7 @@ class Controller:
         """[replay on the scrub, Nick Nov 7] Park the HIDDEN stick park_lead_s before the snap by the label-measured
         overlay scrub (redzone/tuners/replay_park.py). False = keep the current game (fails closed)."""
         from redzone.tuners import replay_park
-        backoff = self.__dict__.setdefault("_replay_scrub_backoff", {})
+        backoff = self._replay_scrub_backoff
         if time.time() < backoff.get(target, 0.0):
             return False   # a failed replay scrub isn't retried for replay.scrub_retry_s (no key storms)
         if self._task is asyncio.current_task():
@@ -1751,7 +2226,7 @@ class Controller:
         # there ('focus guard: no scrub label after the LEFT', 62 s): a freshly tuned stick waits it out first.
         # The replay is that much further back when the scrub starts. No key is sent during the wait.
         still_hidden = lambda: self.hidden is stick and not self._flipping   # noqa: E731
-        ready_at = self.__dict__.get("_tuned_at", {}).get(stick.host, 0.0) + float(
+        ready_at = self._tuned_at.get(stick.host, 0.0) + float(
             self.cfg.get("replay.park_after_tune_s", 22.0))
         if time.time() < ready_at:
             t_w = time.time()
@@ -1988,6 +2463,8 @@ class Controller:
             return await self._wait_safe_loop(may_cut, t0, look_at)
         finally:
             self._safe_waiting = False
+            if self._task is asyncio.current_task() and self.command_m.is_("waiting_safe"):
+                self.command_m.to("running", why="safe-moment wait over")
 
     async def _wait_safe_loop(self, may_cut, t0: float, look_at: float) -> float | None:
         while may_cut is not None and not may_cut():
@@ -1995,6 +2472,8 @@ class Controller:
             self._safe_waiting = mine
             if mine:
                 self.stage.update(stage="waiting_safe_exit", reason="waiting for the current screen's safe exit window")
+                if self.command_m.is_("running"):
+                    self.command_m.to("waiting_safe", why="no safe moment yet")
             if time.monotonic() - t0 >= MAX_SAFE_WAIT_S:
                 return None
             if mine and time.monotonic() >= look_at:
@@ -2018,7 +2497,7 @@ class Controller:
         a screenshot, CENTER only when a prompt is seen), never MEDIA_PLAY or a re-link to live."""
         stick = self.main
         if (stick is None or not self.live_control or self.input_unknown or self._flipping
-                or (self.visible_watch_ok is not None and not self.visible_watch_ok())):
+                or (self.visible_watch_ok is not None and not self.visible_watch_ok())) or self._roles_check():
             return
         replay = self.on_target is None
         target = self.on_target or self._replay_target(stick)
@@ -2049,6 +2528,7 @@ class Controller:
             return
         self._visible_fix_at = now
         self._loading_since.pop((stick.host, target), None)
+        self.visible_m.to("repairing", why=f"{target} on {stick.host}: during a switch wait")
         r0 = time.monotonic()
         if replay:
             how = "prompt" if await self._clear_screen_prompt(stick, target, pkg) else None
@@ -2058,10 +2538,10 @@ class Controller:
             log.info("watchdog (during a switch wait): %s playing again on %s (%s, %.1fs)", target,
                      stick.host, how, time.monotonic() - r0)
             self.latency.record("resume", time.monotonic() - r0)
-            self._visible_bad_since = None
             self.note = ""
         elif not replay:
             self.note = f"The TV stopped playing {target}; couldn't restart it yet (retrying)"
+        self._visible_repair_end(how, "repair during a switch wait failed")
 
     async def _paused_prompt_app(self, stick: Stick) -> str | None:
         """"<app>:" for an app on this stick that draws its own on-screen prompts (YouTube TV) and
@@ -2119,9 +2599,13 @@ class Controller:
                         if playback_ready(pb):
                             self.main.remember(target, pb)
         finally:
+            # [fix] every per-switch field ends with the switch: a later arm_entry_rewind (from a may_cut that
+            # outlived it) must not see this switch's cue, nor the next switch its "done"
             self._marks = None
             self._hidden_entry = 0.0
+            self._hidden_entry_done = False
             self._entry_rewind = 0.0
+            self._entry_cue = ""
             self._why = None
         marks.append(("done", time.time()))
         out.marks = marks
@@ -2336,7 +2820,7 @@ class Controller:
         if not self.live_control:
             return Outcome(False, target, work, "TV control was disabled", True, path=path)
         t1 = time.time()
-        self._flipping = True
+        self._screen_to("flipping", f"switch to {target} on {hid.host}")
         try:
             if replay:
                 if not await self._unpark(hid):
@@ -2408,12 +2892,12 @@ class Controller:
             flipped = await self._flip_to(hid)
             self._mark("flip_done")
         finally:
-            self._flipping = False
+            self._screen_settle("flip over")
         if not flipped:
-            self.two_stick_ok = False
             self._two_stick_retry_at = time.time() + TWO_STICK_RETRY_S
-            self._set_hidden(None, False)
             self.note = f"Two-stick mode off: couldn't switch TV input ({self.tv.last_error or 'unknown'})"
+            self.two_stick_m.to("degraded", why=self.note)
+            self._set_hidden(None, False, why="flip failed")
             log.warning(self.note)
             self._mark_input_unknown(self.on_target)
             self.on_target = None
@@ -2424,7 +2908,6 @@ class Controller:
         back = self._left if path == "left hold" else None   # STK-07: it's on screen now, so no longer a hold
         self._left = None
         self.active = self.sticks.index(hid)
-        self._flip_gen += 1
         self.on_target = None if replay else target
         self._replay_shown = (target, hid, self._flip_gen) if replay else None
         self._visible_bad_since = None
@@ -2455,7 +2938,7 @@ class Controller:
             # it right away (it's on screen now, so pressing play can't cut anything): a player that
             # paused anyway gets MEDIA_PLAY / one fresh link, the same ladder as after HOME.
             r0 = time.monotonic()
-            self._flipping = True
+            self._screen_to("resuming", f"checking {target} plays after the TV input change")
             self.stage.update(stage="resuming", reason="checking the game is still playing after the input change")
             try:
                 pkg = self._package(hid, target)
@@ -2470,7 +2953,7 @@ class Controller:
             except Exception:
                 log.exception("playing check after the TV input change crashed")
             finally:
-                self._flipping = False
+                self._screen_settle("resume check over")
             resume_s = time.monotonic() - r0
             if how is None:
                 detail += "; game not confirmed playing yet (watchdog will retry)"
@@ -2483,7 +2966,7 @@ class Controller:
             # (MEDIA_PLAY, then one fresh deep link if it landed on its home page). Not cancellable,
             # like the flip: a newer command waits for this instead of leaving the screen unknown.
             r0 = time.monotonic()
-            self._flipping = True
+            self._screen_to("resuming", f"confirming {target} plays after the HOME flip")
             self.stage.update(stage="resuming", reason="confirming the game is playing after the input change")
             try:
                 # Prime's player needs ~15 s to report again: at 6 s it read "none" and was re-linked
@@ -2492,7 +2975,7 @@ class Controller:
             except Exception:
                 log.exception("resume check after the flip crashed")
             finally:
-                self._flipping = False
+                self._screen_settle("resume over")
             resume_s = time.monotonic() - r0
             if how is not None:
                 self._mark("resume_done")
@@ -2511,7 +2994,7 @@ class Controller:
         if back is not None and how in ("auto", "media_play", "prompt"):
             # It played on from the dead ball we left it on: that far behind live now (the sync shifts by it).
             behind = back.behind_s(time.time())
-            self._set_held(target, behind)
+            self._set_held(target, behind, how="held")
             self._buffer_log("left_resumed", target, hid.host, behind, None)
             log.info("playbook=STK-07 %s resumed at the dead ball we left it on: %.1fs behind live", target, behind)
             detail += f"; resumed where we left it ({behind:.0f}s behind live)"
@@ -2643,8 +3126,11 @@ class Controller:
             if r.ok:
                 self._cec_on[stick.host] = False
                 log.info("%s: HDMI-CEC off again after the HOME fallback", stick.host)
+            elif self.cec_m[stick.host].is_("restoring"):
+                self.cec_m[stick.host].to("on", why="turning it off again failed")
         if self.cfg.get("two_stick.keep_cec_off", True):
-            self._cec_restore[stick.host] = asyncio.create_task(restore())
+            self.cec_m[stick.host].to("restoring", why="on for a HOME fallback; off again in 3 s")
+            self._cec_restore[stick.host] = asyncio.create_task(restore(), name=f"cec_restore:{stick.host}")
         return ok
 
     async def _is_active_source(self, stick: Stick) -> bool | None:
@@ -2951,13 +3437,17 @@ class Controller:
         instead of the game, twice, 20 s apart. Put the game back: a fresh deep link (relink, for
         the home screen) or the usual resume ladder. Only called when the game is clearly NOT
         playing there, so no live play can be cut. Returns how it came back, or None."""
-        if not self.live_control or self.input_unknown or self._flipping:
+        if not self.live_control or self.input_unknown or self._flipping or self._roles_check():
             return None
         # Runs as the controller's resume task: any real switch (submit) or Pause cancels it, so a
         # restore can never hold the controller for its whole 25-55 s relink.
         if self._resume_task and not self._resume_task.done():
-            return None
-        self._resume_task = asyncio.create_task(self._restore_visible(target, relink, why))
+            if self._resume_kind != "recheck":
+                return None   # a repair or another restore is running
+            # [fix] a pending re-check (a sleep timer) never blocks the supervisor's restore: the restore replaces it
+            self._resume_task.cancel()
+        self._resume_kind = "restore"
+        self._resume_task = asyncio.create_task(self._restore_visible(target, relink, why), name=f"restore:{target}")
         try:
             return await asyncio.shield(self._resume_task)
         except asyncio.CancelledError:
@@ -2971,6 +3461,7 @@ class Controller:
             if stick is None or self.input_unknown:
                 return None
             self.stage = {"stage": "resuming", "target": target, "reason": why or "the screen isn't showing the game"}
+            self.visible_m.to("restoring", why=why or f"restore {target}")
             self._visible_fix_at = time.time()
             r0 = time.monotonic()
             how: str | None
@@ -2985,13 +3476,13 @@ class Controller:
                 how = await self._resume_playback(stick, target, 0.0)
             if how:
                 self.on_target = target
-                self._visible_bad_since = None
                 self.latency.record("resume", time.monotonic() - r0)
                 self.note = ""
                 self.stage = {"stage": "confirmed", "target": target, "reason": f"restored by {how}"}
             else:
                 self.note = f"The TV isn't showing {target}; couldn't restore it yet"
                 self.stage = {"stage": "failed", "target": target, "reason": self.note}
+            self._visible_repair_end(how, "restore failed")
             return how
 
     def _book_flip(self, stick: Stick, target: str | None, flip_s: float | None, resume_s: float | None,
@@ -3131,9 +3622,8 @@ class Controller:
             self._last_preload = now
             self._cancel_refresh()
         self.preload_why = ""
-        self._preloading = (target, replay_id)
-        self._refreshing = target if refresh else None
-        self._preload_task = asyncio.create_task(self._preload(target, back_s, replay_id, now))
+        self._slot_start("refresh" if refresh else "preload", target, replay_id,
+                         self._preload(target, back_s, replay_id, now))
         return True
 
     async def _preload(self, target: str, back_s: float | None, replay_id: str | None, t0: float) -> None:
@@ -3189,8 +3679,7 @@ class Controller:
             self._set_hidden(None, False)   # stopped mid-tune: we don't know what it's showing
             raise
         finally:
-            if self._preload_task is asyncio.current_task():   # not a preload that displaced this one
-                self._preloading, self._refreshing = None, None
+            self._slot_free("preload ended")   # only if it still owns the slot (not one that displaced it)
 
     def _buffer_for(self, stick: Stick, target: str, res: TuneResult) -> float:
         """Seconds to hold this fresh hidden-stick tune behind live (0 = none)."""
@@ -3394,7 +3883,7 @@ class Controller:
         read_s = float(self.cfg.get("timing.behind_live_s.scrub_read_s", 8.0))
         # Each label read adds ~8 s (Nick, Nov 6: 60 s asked -> 67 s read), so ask that much less.
         ask = max(15.0, min(float(seconds), cap) - read_s)
-        self._set_hidden(target, False)
+        self._set_hidden(target, False, state="scrubbing", why=f"scrub ~{ask:.0f}s behind live")
 
         def still_hidden() -> bool:
             return self.hidden is stick and self.hidden_target == target and not self._flipping
@@ -3453,8 +3942,8 @@ class Controller:
             if pb.get("state") == "playing" and playback_ready(pb) and still_hidden():
                 behind = round(float(behind), 1)
                 stick.remember(target, pb, scrubbed_s=behind)
-                self._set_held(target, behind)
-                self._set_hidden(target, True)
+                self._set_held(target, behind, how="scrubbed")
+                self._set_hidden(target, True, why=f"scrubbed {behind:.0f}s behind live")
                 self.latency.record("yttv_scrub", took)
                 if self.on_label is not None:
                     try:
@@ -3504,6 +3993,10 @@ class Controller:
                else "preload_running" if self._preload_task is not None and not self._preload_task.done()
                else "lock_held" if self._lock.locked() else "flipping" if self._flipping
                else "scrub_backoff" if time.time() < self._scrub_backoff.get(target, 0.0)
+               # [fix] a restart restores `held` but no stick anchor (tuned/scrubbed): a target restored behind live
+               # is buffered already, so it isn't re-tuned + scrubbed just because the anchor is missing
+               else "already_held" if self.offset_m.state(target) == "restored"
+               and self.held.get(target, 0.0) >= self._bj_min_behind()
                else "start" if self._scrub_wanted(target)
                else "already_held" if self.held.get(target, 0.0) >= self._bj_min_behind()
                else "hold_start" if self._pause_hold_ok(target) else "scrub_not_wanted")
@@ -3514,17 +4007,14 @@ class Controller:
             # [overseer Nov 7 23:05] a Prime standby (NBA crunch time) was never buffered ('scrub_not_wanted' all
             # night): Prime holds a pause (Nov 6: 60 s pause -> 67.7 s behind), so pause it off screen instead
             log.info("buffered jump: %s on the hidden stick %s isn't buffered: pause-hold", target, hid.host)
-            self._set_hidden(target, False)
-            self._preloading = (target, None)
-            self._preload_task = asyncio.create_task(self._hold_standby(hid, target))
-            self._hold_task = self._preload_task
+            self._set_hidden(target, False, why="buffered jump: pause-hold")
+            self._slot_start("hold", target, None, self._hold_standby(hid, target))
             return True
         if why != "start":
             return False
         log.info("buffered jump: %s on the hidden stick %s isn't scrubbed: re-tune + scrub", target, hid.host)
-        self._set_hidden(target, False)
-        self._preloading = (target, None)
-        self._preload_task = asyncio.create_task(self._rescrub(hid, target))
+        self._set_hidden(target, False, why="buffered jump: re-tune + scrub")
+        self._slot_start("rescrub", target, None, self._rescrub(hid, target))
         return True
 
     def _bj_min_behind(self) -> float:
@@ -3549,29 +4039,44 @@ class Controller:
         it playing at the live edge, or re-tuned there). A failure backs the target off: no key storms."""
         ask = max(self._bj_min_behind() + 10.0, min(float(self.cfg.get("buffered_jump.behind_s", 75.0)),
                                                   float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
-        ok = False
+        ok, end, cancelled = False, "", False
         # [overseer Nov 7 23:14] one 75 s pause came back 'stopped' 3/3 on the hidden Prime stick: hold in short pauses
         chunk = max(5.0, float(self.cfg.get("buffered_jump.hold_chunk_s", 25.0)))
         try:
             done = 0.0
             while done < ask - 1.0:
                 step = min(chunk, ask - done)
+                self._last_hold = None
                 ok = await self._hold(hid, target, step, base_s=done)
                 if not ok:
+                    end = (self._last_hold or {}).get("end", "failed")
                     break
                 done = self.held.get(target, done + step)
         except asyncio.CancelledError:
+            cancelled = True
             raise
         except Exception:
             log.exception("buffered jump: pause-hold %s on %s", target, hid.host)
         finally:
-            if self._preload_task is asyncio.current_task():
-                self._preloading = None
-            if not ok:
+            self._slot_free("pause-hold ended")
+            # [fix] a hold that a switch displaced (re-tuned or flipped that stick) is not a failure: no backoff, and
+            # the stick is the switch's now (marking it ready here could call a stream mid-tune ready)
+            displaced = end == "displaced" or not (self.hidden is hid and self.hidden_target == target)
+            if not ok and not cancelled and not displaced:
                 self._scrub_backoff[target] = time.time() + float(self.cfg.get("timing.behind_live_s.scrub_retry_s",
                                                                                  120.0))
-            if self.hidden is hid and self.hidden_target == target:
-                self._set_hidden(target, True)
+            if self.hidden is hid and self.hidden_target == target and not displaced:
+                if cancelled:
+                    # [fix] cancelled mid-hold (Pause, shutdown): it may be paused at an unknown offset, so it is
+                    # never marked live-ready
+                    self._set_hidden(None, False, why="pause-hold cancelled: position unknown")
+                else:
+                    self._set_hidden(target, True, why="pause-hold " + ("held" if ok else end or "failed"))
+        if displaced:
+            self._buffer_log("hold_displaced", target, hid.host, self.held.get(target, 0.0), None, took=round(ask, 1),
+                             why="a switch took the stick")
+            log.info("buffered jump: pause-hold of %s on %s displaced by a switch (not a failure)", target, hid.host)
+            return
         self._buffer_log("held" if ok else "hold_failed", target, hid.host, self.held.get(target, 0.0), None,
                          took=round(ask, 1), why="" if ok else "pause-hold did not hold")
 
@@ -3604,9 +4109,8 @@ class Controller:
         if hid is None or self.hidden_target != target or hid.scrubbed(target) is None or self._busy() \
                 or not self._scrub_wanted(target):
             return False
-        self._set_hidden(target, False)
-        self._preloading = (target, None)
-        self._preload_task = asyncio.create_task(self._rescrub(hid, target))
+        self._set_hidden(target, False, why="label stale: redo the scrub")
+        self._slot_start("rescrub", target, None, self._rescrub(hid, target))
         return True
 
     async def _rescrub(self, hid: Stick, target: str) -> None:
@@ -3627,8 +4131,7 @@ class Controller:
             self._set_hidden(None, False)
             raise
         finally:
-            if self._preload_task is asyncio.current_task():
-                self._preloading = None
+            self._slot_free("rescrub ended")
 
     def plan_prime_multiview(self, tiles: list[str]) -> None:
         """The engine's pick of Prime NBA games for a multiview, best first (prime_multiview.plan_tiles)."""
@@ -3673,8 +4176,7 @@ class Controller:
             return
         if self._replay_scrubs(p.target):
             return   # a YouTube TV park is never re-scrubbed from behind live (unmeasured); _unpark refuses it
-        self._preloading = (p.target, p.replay_id)
-        self._preload_task = asyncio.create_task(self._reseek(p))
+        self._slot_start("reseek", p.target, p.replay_id, self._reseek(p))
 
     async def _reseek(self, p: Parked) -> None:
         try:
@@ -3683,10 +4185,10 @@ class Controller:
                 if hid is not None and self.parked is p:
                     await self._park(hid, p.target, time.time() - p.at, p.replay_id)
         except asyncio.CancelledError:
-            self._set_hidden(None, False)
+            self._set_hidden(None, False, why="reseek cancelled")
             raise
         finally:
-            self._preloading = None
+            self._slot_free("reseek ended")   # [fix] only the reseek that still owns the slot clears it
 
     def _verify_every(self) -> float:
         return float(self.cfg.get("two_stick.verify_s", 15))
@@ -3831,9 +4333,8 @@ class Controller:
         if self._busy() or not (dead or waited >= BUFFER_WAIT_S):
             self._verified_at = time.time() - self._verify_every() + VERIFY_SOON_S
             return False   # keep it as it is (still a usable stream) until the next dead ball
-        self._set_hidden(target, False)
-        self._preloading = (target, None)
-        self._preload_task = asyncio.create_task(self._rebuild_buffer(hid, target, now_s, err))
+        self._set_hidden(target, False, why="STK-06 rebuild")
+        self._slot_start("rebuild", target, None, self._rebuild_buffer(hid, target, now_s, err))
         return True
 
     async def _rebuild_buffer(self, hid: Stick, target: str, now_s: float, err: float) -> None:
@@ -3871,8 +4372,7 @@ class Controller:
             self._set_hidden(None, False)
             raise
         finally:
-            if self._preload_task is asyncio.current_task():
-                self._preloading = None
+            self._slot_free("rebuild ended")
             self._buffer_bad.pop(target, None)
             self._buffer_log("recovered" if ok else "rebuild_failed", target, hid.host, self.held.get(target, 0.0),
                              None, took=round(time.time() - since, 1))
@@ -3904,9 +4404,9 @@ class Controller:
             return False
         log.info("sync: %s on the hidden stick landed behind its live edge: re-tuning it at the edge", target)
         self._cancel_refresh()
-        self.hidden_ready = False
-        self._preloading, self._refreshing = (target, None), target
-        self._preload_task = asyncio.create_task(self._preload(target, None, None, time.time()))
+        # [fix] through _set_hidden: a direct hidden_ready write left a stale snap park behind
+        self._set_hidden(target, False, why="sync: re-tune at the live edge")
+        self._slot_start("refresh", target, None, self._preload(target, None, None, time.time()))
         return True
 
     def relink_visible_live(self, target: str) -> bool:
@@ -3930,9 +4430,7 @@ class Controller:
         if self._busy() or time.time() < self._asleep_until or not self.can_tune(target):
             return None
         self._cancel_refresh()
-        self._preloading, self._refreshing = (target, None), None
-        self._preload_task = asyncio.create_task(self._verify_hidden(target))
-        return self._preload_task
+        return self._slot_start("verify", target, None, self._verify_hidden(target))
 
     async def _verify_hidden(self, target: str) -> TuneResult | None:
         try:
@@ -3956,8 +4454,7 @@ class Controller:
             self._set_hidden(None, False)   # stopped mid-tune: we don't know what it's showing
             raise
         finally:
-            if self._preload_task is asyncio.current_task():
-                self._preloading, self._refreshing = None, None
+            self._slot_free("verify ended")
 
     async def scan_sunday_ticket(self, codes: list[str], games: list, on_found=None, *, may_run=None) -> dict[str, str]:
         """Flip through the Sunday Ticket channels and read each one's game title off the screen.
@@ -4029,5 +4526,7 @@ class Controller:
                         "role": role, "hdmi": self.hdmi.get(s.host),
                         "standby_for": self.hidden_target if s is self.hidden else None,
                         "ready": self.hidden_ready if s is self.hidden else None,
-                        "parked_replay": bool(self.parked) if s is self.hidden else None})
+                        "parked_replay": bool(self.parked) if s is self.hidden else None,
+                        "standby_state": self.standby_m.state if s is self.hidden else None,
+                        "link": s.link_m.view(history=0) if getattr(s, "link_m", None) is not None else None})
         return out

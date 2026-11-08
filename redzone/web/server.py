@@ -125,6 +125,25 @@ def build_app(engine: Engine) -> FastAPI:
     async def state():
         return JSONResponse(json.loads(json.dumps(engine.snapshot(), default=str)))
 
+    @app.get("/api/machines")
+    def machines_view(name: str = ""):
+        """Every explicit state machine: state, since, why, recent moves (redzone/fsm.py)."""
+        from redzone import fsm
+        rows = fsm.snapshot_all()
+        if name:
+            rows = [r for r in rows if r["machine"] == name or r["machine"].startswith(name + ".")]
+        return JSONResponse(json.loads(json.dumps({"machines": rows}, default=str)))
+
+    @app.get("/api/machines/history")
+    def machines_history(name: str = "", limit: int = 50):
+        """Saved moves from data/transitions.jsonl (survives restarts), newest last."""
+        from pathlib import Path
+
+        from redzone import fsm
+        from redzone.config import DATA
+        rows = fsm.read_transitions(DATA / "transitions.jsonl", name, max(1, min(limit, 500)))
+        return JSONResponse({"transitions": rows})
+
     @app.get("/api/stream")
     async def stream(request: Request):
         q: asyncio.Queue = asyncio.Queue()

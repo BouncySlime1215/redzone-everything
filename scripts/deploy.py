@@ -59,6 +59,20 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+try:   # stdlib-only (redzone/fsm.py + redzone/machines/): safe without the app's own dependencies
+    from redzone.machines.platform import DEPLOY as _DEPLOY_SPEC
+except Exception:   # a checkout whose machine specs can't import: same states, moves unchecked
+    _DEPLOY_SPEC = None
+
+# deploy.lifecycle (redzone/machines/platform.py), persisted as state.json["machine"]. ACTIVE = this
+# process is restarting/watching the app (the watchdog stands aside until `until`); UNFINISHED = the
+# deploy gate refuses until rollback or confirm. Old state.json files without "machine" are read from
+# their pending/rollback_failed keys.
+ACTIVE = ("switching", "watching", "rolling_back")
+UNFINISHED = ACTIVE + ("interrupted", "rollback_failed")
+STATES = tuple(_DEPLOY_SPEC.states) if _DEPLOY_SPEC is not None else (
+    "idle", "testing", "waiting_idle", "deferred", "deployed", "rolled_back") + UNFINISHED
+
 SERVICE_LABEL = "com.redzone.everything"
 AGENT_LABEL = "com.redzone.agent"
 
@@ -585,13 +599,45 @@ def judge(s: Settings, before: Health, base_err: Counter, samples: list[Health],
 
 # ---- the deployer ---------------------------------------------------------------------------------
 
+class _Unchecked:
+    """Stand-in for fsm.Machine when redzone.machines can't be imported: same reading API, no edge check."""
+
+    def __init__(self, state: str, clock):
+        self.state, self.since, self.why, self._clock = state, clock(), "", clock
+
+    def is_(self, *states: str) -> bool:
+        return self.state in states
+
+    def to(self, new: str, why: str = "", now: float | None = None) -> bool:
+        if new == self.state:
+            self.why = why or self.why
+            return False
+        self.state, self.since, self.why = new, self._clock() if now is None else now, why
+        return True
+
+
+def machine_state(st: dict) -> str:
+    """The lifecycle state a state.json holds (old files: derived from pending / rollback_failed)."""
+    name = (st.get("machine") or {}).get("state")
+    if name in STATES:
+        return name
+    p = st.get("pending")
+    if p:
+        return "rollback_failed" if isinstance(p, dict) and p.get("rollback_failed") else "interrupted"
+    return "idle"
+
+
 class Deployer:
     def __init__(self, settings: Settings, system: System, root: Path = ROOT, out=print):
         self.s, self.sys, self.root, self.out = settings, system, root, out
         self.dir = root / "data/deploy"
         self.state_path = self.dir / "state.json"
-        self.marker = self.dir / "in_progress.json"
+        self.marker = self.dir / "in_progress.json"   # mirror of an ACTIVE state for agent/watchdog.py
         self.snaps = Snapshots(root, settings.managed, settings.keep_releases)
+        self.m = (_DEPLOY_SPEC.new(clock=system.now) if _DEPLOY_SPEC is not None
+                  else _Unchecked("idle", system.now))   # replaced by _load() under the lock
+        self._until: float | None = None
+        self._commit = ""
 
     # state ---------------------------------------------------------------------------------------
     def state(self) -> dict:
@@ -599,6 +645,37 @@ class Deployer:
             return json.loads(self.state_path.read_text())
         except (OSError, ValueError):
             return {}
+
+    def _load(self, st: dict) -> None:
+        """Pick the lifecycle up from state.json. Called with the deploy lock held, so a state that says a
+        deploy is mid-flight is left over from a process that ended: it becomes interrupted (or idle when
+        nothing on the checkout had changed yet)."""
+        name = machine_state(st)
+        saved = st.get("machine") or {}
+        self.m = (_DEPLOY_SPEC.new(clock=self.sys.now, state=name) if _DEPLOY_SPEC is not None
+                  else _Unchecked(name, self.sys.now))
+        self.m.since = float(saved.get("since") or self.sys.now())
+        self.m.why = str(saved.get("why") or ("read from an older state.json" if not saved else ""))
+        if name in ACTIVE:
+            self._move(st, "interrupted", f"the deploy process ended while {name}")
+        elif name in ("testing", "waiting_idle"):
+            self._move(st, "idle", f"the deploy process ended while {name.replace('_', ' ')}; nothing switched")
+
+    def _move(self, st: dict, new: str, why: str, *, until: float | None = None, commit: str = "",
+              save: bool = True) -> None:
+        """The only way the lifecycle moves: state.json and the watchdog's marker are written from here."""
+        self.m.to(new, why)
+        if until is not None:
+            self._until, self._commit = until, commit
+        st["machine"] = {"state": new, "since": round(self.m.since, 1), "why": why[:300]}
+        if new in ACTIVE and self._until:
+            st["machine"]["until"] = self._until
+        if save:
+            self._save_state(st)
+        if new in ACTIVE and self._until:
+            _atomic_json(self.marker, {"commit": self._commit, "until": self._until})
+        else:
+            self.marker.unlink(missing_ok=True)
 
     def _save_state(self, st: dict) -> None:
         _atomic_json(self.state_path, st)
@@ -835,10 +912,11 @@ class Deployer:
     def deploy(self, dry_run: bool = False, skip_tests: bool = False, deps_ok: bool = False) -> int:
         with self.lock():
             st = self.state()
-            if st.get("pending"):
-                p = st["pending"]
-                raise DeployError(f"the deploy of {p['commit'][:9]} never finished its health watch; "
-                                  "run `deploy.py rollback` or `deploy.py confirm` first")
+            self._load(st)
+            if self.m.is_(*UNFINISHED) or st.get("pending"):
+                p = st.get("pending") or {}
+                raise DeployError(f"the deploy of {str(p.get('commit', '?'))[:9]} never finished its health watch "
+                                  f"({self.m.state}); run `deploy.py rollback` or `deploy.py confirm` first")
             free = self.sys.free_mb(self.root)
             if free < self.s.min_free_mb:
                 raise DeployError(f"only {int(free)} MB free (need {self.s.min_free_mb}); free space first")
@@ -846,6 +924,8 @@ class Deployer:
             target = self.fetch()
             if target == prev:
                 self.journal("current", msg=f"already on {prev[:9]}")
+                if not self.m.is_("idle", "deployed"):
+                    self._move(st, "idle", f"already on {prev[:9]}")
                 return EXIT_OK
             if self.dirty():
                 raise DeployError(f"tracked files are edited here: {', '.join(self.dirty()[:5])}; "
@@ -855,17 +935,22 @@ class Deployer:
                 raise DeployError("requirements.txt changed: install the new packages into .venv by hand, "
                                   "then deploy again with --deps-ok")
             if not skip_tests:
+                self._move(st, "testing", f"suite on {target[:9]}")
                 ok, tail = self.run_tests(target)
                 self.journal("tests", msg="passed" if ok else "FAILED", tail=tail)
                 if not ok:
+                    self._move(st, "idle", f"tests failed on {target[:9]}; nothing changed")
                     self.sys.push(f"Deploy of {target[:9]} stopped: tests failed. Nothing changed.")
                     self.out(tail)
                     return EXIT_TESTS
+            self._move(st, "waiting_idle", f"{target[:9]} ready; waiting for no live game")
             why = self.wait_idle()
             if why:
+                self._move(st, "deferred", why)
                 self.journal("deferred", msg=f"{why}; try again after the games")
                 return EXIT_DEFERRED
             if dry_run:
+                self._move(st, "idle", f"dry run: would switch {prev[:9]} -> {target[:9]}")
                 self.journal("dry_run", msg=f"would switch {prev[:9]} -> {target[:9]} and watch "
                                             f"{int(self.s.watch_s / 60)} min")
                 return EXIT_OK
@@ -883,12 +968,15 @@ class Deployer:
         before = Health.of(self.sys.fetch_state(self.s.api))
         base_err = self._errors(now - self.s.baseline_s, now)
         st.update(good=good, pending={"commit": target, "from": prev, "at": now})
-        self._save_state(st)
-        _atomic_json(self.marker, {"commit": target, "until": now + self.s.watch_s + self.s.startup_grace_s + 300})
+        # pending + the switching state + the watchdog marker are written together, from one state
+        self._move(st, "switching", f"{prev[:9]} -> {target[:9]}", commit=target,
+                   until=now + self.s.watch_s + self.s.startup_grace_s + 300)
         try:
             self.journal("switch", msg=f"{prev[:9]} -> {target[:9]}", commit=target)
             try:
                 started = self.switch_to(target)
+                if started:
+                    self._move(st, "watching", f"watching {target[:9]} for {int(self.s.watch_s / 60)} min")
                 v = self.watch(before, base_err) if started else \
                     Verdict(True, ["launchctl couldn't restart the app"], {})
             except Exception as e:   # a failed checkout, a crash in here: never leave it half-done
@@ -904,10 +992,11 @@ class Deployer:
                               "at": self.sys.now()}
                 hist.append({"commit": target, "from": prev, "result": "deployed", "at": now})
                 st["history"] = hist[-50:]
-                self._save_state(st)
+                self._move(st, "deployed", f"{target[:9]} healthy for {int(self.s.watch_s / 60)} min")
                 self.snaps.prune(self._protected(st))
                 self.sys.push(f"Deployed {target[:9]}: healthy for {int(self.s.watch_s / 60)} min.")
                 return EXIT_OK
+            self._move(st, "rolling_back", "; ".join(v.reasons)[:300] or "worse")
             ok = self.rollback_to(good["commit"], good["snapshot"], "; ".join(v.reasons))
             hist.append({"commit": target, "from": prev, "result": "rolled_back" if ok else "rollback_failed",
                          "reasons": v.reasons, "at": now})
@@ -915,7 +1004,8 @@ class Deployer:
             st["good"] = good
             if not ok:   # leave it flagged so the next deploy refuses until a person looks
                 st["pending"] = {"commit": target, "from": prev, "at": now, "rollback_failed": True}
-            self._save_state(st)
+            self._move(st, "rolled_back" if ok else "rollback_failed",
+                       f"back on {prev[:9]}" if ok else "the rollback didn't come up: needs a person")
             self.snaps.prune(self._protected(st))
             if ok:
                 self.sys.push(f"Deploy of {target[:9]} rolled back to {prev[:9]}: {'; '.join(v.reasons)}")
@@ -924,11 +1014,15 @@ class Deployer:
                           f"Run scripts/deploy.py status on the Mac.")
             return EXIT_ROLLBACK_FAILED
         finally:
+            if self.m.is_(*ACTIVE):   # something escaped: say so in the one state (the gate refuses next time)
+                st = self.state()
+                self._move(st, "interrupted", f"stopped while {self.m.state}")
             self.marker.unlink(missing_ok=True)
 
     def rollback(self, to: str | None = None) -> int:
         with self.lock():
             st = self.state()
+            self._load(st)
             good = st.get("good") or {}
             if good.get("commit") == self.head() and not st.get("pending"):
                 good = st.get("previous") or {}   # already on the last good: "undo the last deploy"
@@ -939,36 +1033,83 @@ class Deployer:
             if self.dirty():
                 raise DeployError(f"tracked files are edited here: {', '.join(self.dirty()[:5])}; "
                                   "a rollback would overwrite them. Commit or stash them first")
+            self._move(st, "rolling_back", f"asked by hand: to {commit[:9]}")
             ok = self.rollback_to(commit, snap, "asked by hand")
             if ok:
                 st.pop("pending", None)
-                if st.get("good", {}).get("commit") != commit:
+                old_good = st.get("good") or {}
+                if old_good.get("commit") != commit:
+                    if to:
+                        # --to: config/models stay as they are, so snapshot THEM as this commit's own (a later
+                        # automatic rollback to it restores the right files), and keep the version we left
+                        # as `previous` so it stays protected and one `rollback` away.
+                        snap = self.snaps.save(commit, self.sys.now(), "good")
+                        if old_good.get("commit"):
+                            st["previous"] = old_good
+                    else:
+                        st.pop("previous", None)
                     st["good"] = {"commit": commit, "snapshot": snap, "at": self.sys.now()}
-                    st.pop("previous", None)
             st.setdefault("history", []).append({"commit": commit, "result": "manual_rollback" if ok else
                                                   "rollback_failed", "at": self.sys.now()})
-            self._save_state(st)
+            self._move(st, "rolled_back" if ok else "rollback_failed",
+                       f"back on {commit[:9]} (by hand)" if ok else "the manual rollback didn't come up")
             return EXIT_OK if ok else EXIT_ROLLBACK_FAILED
 
-    def confirm(self) -> int:
-        """Accept a deploy whose watch was interrupted (e.g. the Mac slept): mark HEAD good."""
+    def confirm(self, force: bool = False) -> int:
+        """Accept a deploy whose watch was interrupted (e.g. the Mac slept): mark HEAD good. After a FAILED
+        rollback HEAD is whatever the half-done rollback left (the app may be down), so that needs --force."""
         with self.lock():
             st = self.state()
+            self._load(st)
             head = self.head()
+            if self.m.is_("rollback_failed") and not force:
+                raise DeployError("the last rollback failed, so the running commit isn't known to be good; check "
+                                  "the app, then `deploy.py rollback` or `deploy.py confirm --force`")
             st.pop("pending", None)
             st["good"] = {"commit": head, "snapshot": self.snaps.save(head, self.sys.now(), "good"),
                           "at": self.sys.now()}
-            self._save_state(st)
-            self.journal("confirmed", msg=f"{head[:9]} marked good by hand")
+            self._move(st, "deployed", f"{head[:9]} marked good by hand" + (" (--force)" if force else ""))
+            self.journal("confirmed", msg=f"{head[:9]} marked good by hand" + (" (forced)" if force else ""))
             return EXIT_OK
 
+    @contextlib.contextmanager
+    def _peek(self):
+        """A non-blocking shared lock for reading: yields True when no deploy holds the lock (the state on
+        disk is settled), False while one runs (state.json is still whole: it's written atomically)."""
+        if not self.dir.is_dir():
+            yield True
+            return
+        fh = (self.dir / "deploy.lock").open("a")
+        try:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                yield False
+                return
+            try:
+                yield True
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+        finally:
+            fh.close()
+
     def status(self) -> int:
-        st = self.state()
+        with self._peek() as settled:
+            st = self.state()
+        name = machine_state(st)
+        if settled and name in ACTIVE:
+            name = "interrupted"   # nobody holds the lock: that deploy process is gone
+        m = st.get("machine") or {}
+        self.out(f"deploy state:   {name}" + ("" if settled else " (a deploy is running now)")
+                 + (f" since {datetime.fromtimestamp(m['since']):%m-%d %H:%M}" if m.get("since") else "")
+                 + (f": {m['why']}" if m.get("why") else ""))
         self.out(f"running commit: {self.head()[:9]}")
         g = st.get("good") or {}
         self.out(f"last good:      {g.get('commit', '-')[:9]}  snapshot {g.get('snapshot', '-')}")
-        if st.get("pending"):
-            self.out(f"UNFINISHED deploy of {st['pending']['commit'][:9]} (run rollback or confirm)")
+        if st.get("pending") or name in ("interrupted", "rollback_failed"):
+            p = st.get("pending") or {}
+            self.out(f"UNFINISHED deploy of {str(p.get('commit', '?'))[:9]} ({name}): run rollback or confirm"
+                     + (" --force" if name == "rollback_failed" else ""))
         for h in (st.get("history") or [])[-5:]:
             self.out(f"  {datetime.fromtimestamp(h['at']):%m-%d %H:%M} {h['commit'][:9]} {h['result']}"
                      + (f" ({'; '.join(h.get('reasons') or [])})" if h.get("reasons") else ""))
@@ -978,10 +1119,19 @@ class Deployer:
 
 
 def deploy_in_progress(root: Path = ROOT, now: float | None = None) -> bool:
-    """For the watchdog: a deploy is restarting/watching the app, so leave restarts to it."""
+    """For the watchdog: a deploy is restarting/watching the app, so leave restarts to it. Reads the one
+    lifecycle state (ACTIVE until its `until`); an older state.json without it falls back to the marker."""
+    now = now if now is not None else time.time()
+    try:
+        st = json.loads((root / "data/deploy/state.json").read_text())
+        m = st.get("machine") if isinstance(st, dict) else None
+        if isinstance(m, dict) and m.get("state") in STATES:
+            return m["state"] in ACTIVE and float(m.get("until") or 0) > now
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
     try:
         m = json.loads((root / "data/deploy/in_progress.json").read_text())
-        return float(m.get("until", 0)) > (now if now is not None else time.time())
+        return float(m.get("until", 0)) > now
     except (OSError, ValueError, TypeError, AttributeError):
         return False
 
@@ -1002,7 +1152,8 @@ def main(argv: list[str] | None = None, system: System | None = None, root: Path
     d.add_argument("--skip-tests", action="store_true", help=argparse.SUPPRESS)
     r = sub.add_parser("rollback")
     r.add_argument("--to", help="a commit instead of the last good one (config/models left as they are)")
-    sub.add_parser("confirm")
+    c = sub.add_parser("confirm")
+    c.add_argument("--force", action="store_true", help="confirm even after a FAILED rollback (check the app first)")
     sub.add_parser("status")
     sub.add_parser("snapshot")
     sub.add_parser("snapshots")
@@ -1028,7 +1179,7 @@ def main(argv: list[str] | None = None, system: System | None = None, root: Path
         if a.cmd == "rollback":
             return dep.rollback(a.to)
         if a.cmd == "confirm":
-            return dep.confirm()
+            return dep.confirm(force=a.force)
         if a.cmd == "status":
             return dep.status()
         if a.cmd == "snapshot":
