@@ -135,3 +135,19 @@ async def test_read_screen_learns_a_prime_game_by_its_score_bug(one, text, want)
     c.target_names = lambda t: {"prime:orlgs": ["Magic", "Warriors"], "prime:nyknj": ["Knicks", "Nets"]}[t]
     assert await c.read_screen(["prime:orlgs", "prime:nyknj"]) == want
     assert c.on_target == want and tuner.calls == []
+
+
+def test_held_offsets_survive_a_restart(cfg, tmp_path):
+    """[overseer Nov 7 23:50] the screen ran ~79 s behind; after a restart the app thought 17 s."""
+    import time as _t
+    a = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    a.buffer_log_path = tmp_path / "buffer.jsonl"
+    a._set_held("prime:x", 78.9)
+    b = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    b.buffer_log_path = tmp_path / "buffer.jsonl"
+    seen = []
+    b.on_behind = lambda t, v, old: seen.append((t, v))
+    assert b.restore_held() == {"prime:x": 78.9} and b.held["prime:x"] == 78.9 and seen == [("prime:x", 78.9)]
+    c = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    c.buffer_log_path = tmp_path / "buffer.jsonl"
+    assert c.restore_held(now=_t.time() + 601) == {}     # too old: nothing trusted

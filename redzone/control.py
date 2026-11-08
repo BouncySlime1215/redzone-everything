@@ -1559,6 +1559,41 @@ class Controller:
             self.held.pop(target, None)
         if self.on_behind is not None:
             self.on_behind(target, behind_s, old)
+        self._save_held()
+
+    # [overseer Nov 7 23:50] a restart forgot that the screen ran ~79 s behind (Prime SA@POR held, then flipped on): the
+    # delay book said 17 s, so buffered cuts stopped and cut timing on that picture was wrong. The sticks keep playing
+    # while the app restarts, so the measured offsets are saved and restored (any re-tune resets one to 0 as before).
+    HELD_MAX_AGE_S = 600.0
+
+    def _held_path(self) -> Path | None:
+        return self.buffer_log_path.parent / "held.json" if self.buffer_log_path is not None else None
+
+    def _save_held(self) -> None:
+        p = self._held_path()
+        if p is None:
+            return
+        try:
+            p.write_text(json.dumps({"ts": time.time(), "held": self.held}))
+        except OSError:
+            log.debug("held offsets not saved", exc_info=True)
+
+    def restore_held(self, now: float | None = None) -> dict[str, float]:
+        """At start: the offsets saved within HELD_MAX_AGE_S (the app was down, nothing pressed a key)."""
+        p = self._held_path()
+        now = time.time() if now is None else now
+        try:
+            d = json.loads(p.read_text()) if p is not None and p.exists() else {}
+        except (OSError, ValueError):
+            return {}
+        if not d or now - float(d.get("ts") or 0.0) > self.HELD_MAX_AGE_S:
+            return {}
+        got = {t: float(v) for t, v in (d.get("held") or {}).items() if v and float(v) > 0}
+        for t, v in got.items():
+            self._set_held(t, v)
+        if got:
+            log.info("restored held offsets after a restart: %s", {t: round(v, 1) for t, v in got.items()})
+        return got
 
     async def _hold(self, stick: Stick, target: str, behind_s: float, base_s: float = 0.0) -> bool:
         """[time-shift buffer] Hold the hidden stick's fresh live tune behind_s behind the live edge:

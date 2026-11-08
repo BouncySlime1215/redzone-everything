@@ -338,6 +338,10 @@ class Engine:
     async def run(self) -> None:
         """Three loops: data (adaptive 3-10s), decisions (every second), housekeeping."""
         await self.control.start()
+        try:
+            self.control.restore_held()
+        except Exception:
+            log.exception("restore held offsets failed")
         if self.cfg.get("screen.mic_calibration", False):
             self.set_mic(True)
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
