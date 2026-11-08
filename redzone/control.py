@@ -74,6 +74,7 @@ PRELOAD_BACKOFF_S = 120.0  # a preload that failed isn't retried for this long
 STANDBY_REPAUSE_N = 3      # [APP-04] the same standby paused off screen this many times...
 STANDBY_REPAUSE_S = float(config.default("two_stick.standby_repause_s", 600))  # ...within this long is not CEC: the app is blocked there (a forced update)
 MIN_PRELOAD_GAP_S = 5.0    # never start preloads back to back faster than this
+STANDBY_NOT_READY = "standby not ready"   # [jump mode] a jump that may only flip to a ready standby found none
 CEC_RETRY_S = 600.0        # a stick whose CEC flip failed goes straight to the TV remote this long
 CEC_SYNC_S = 30.0          # re-ask the sticks which one is on screen this often (when idle)
 RESUME_WAIT_S = 6.0        # after a HOME flip, the relaunched app must be playing again within this
@@ -261,6 +262,8 @@ class Controller:
         self.active = 0                          # index of the stick on screen
         self.calibrated_flip: tuple[float, float] | None = None   # [calib.auto] (median, max) TV flip
         self.hidden_target: str | None = None    # what the hidden stick is playing or loading
+        self.preload_why = ""                    # [jump mode] why the last preload was refused ("" = started)
+        self._preloaded_only = False             # [jump mode] this switch may only flip to a ready standby
         self.hidden_ready = False                # ...and it's confirmed playing
         self._hidden_entry = 0.0                 # [seek model] entry rewind to run on the hidden stick before the flip
         self._hidden_entry_done = False
@@ -1179,6 +1182,10 @@ class Controller:
     def _live_on_hidden(self, target: str) -> bool:
         return self.hidden_target == target and self.hidden_ready and self.parked is None
 
+    def _refused(self, why: str) -> bool:
+        self.preload_why = why
+        return False
+
     def standby_ready(self, target: str | None) -> bool:
         """[jump mode] The hidden stick is playing this target live, ready for a flip."""
         return bool(target) and self.two_stick and self._live_on_hidden(target)
@@ -1408,8 +1415,9 @@ class Controller:
 
     def submit(self, target: str | None, replay_back_s: float | None = None, on_done=None,
                may_cut: Callable[[], bool] | None = None, replay_id: str | None = None,
-               entry_rewind_s: float = 0.0, entry_cue: str = "") -> None:
-        """Fire-and-forget; the newest command wins. A preload of some OTHER target is cancelled
+               entry_rewind_s: float = 0.0, entry_cue: str = "", preloaded_only: bool = False) -> None:
+        """Fire-and-forget; the newest command wins. preloaded_only [jump mode]: flip to the hidden stick's
+        ready stream or nothing (never a tune on the way: a jump that tunes misses its dead ball). A preload of some OTHER target is cancelled
         (queueing behind a tune we no longer want would add up to 10s); one loading this very
         target is kept, and the switch picks it up the moment it's ready."""
         # [guardrail] Never cancel mid-flip: the TV could end up on the other input while we think
@@ -1425,15 +1433,16 @@ class Controller:
         if self._preload_task and not self._preload_task.done() and self._preloading != want:
             self._preload_task.cancel()
         self._task = asyncio.create_task(self._run(target, replay_back_s, on_done, may_cut, replay_id, time.time(),
-                                                   entry_rewind_s, entry_cue))
+                                                   entry_rewind_s, entry_cue, preloaded_only))
         if on_done:
             self._task.add_done_callback(lambda task: on_done(
                 Outcome(False, target, 0.0, "switch cancelled; playback not confirmed", False)
             ) if task.cancelled() else None)
 
     async def _run(self, target, replay_back_s, on_done, may_cut, replay_id=None, issued_at=None,
-                   entry_rewind_s: float = 0.0, entry_cue: str = "") -> None:
+                   entry_rewind_s: float = 0.0, entry_cue: str = "", preloaded_only: bool = False) -> None:
         async with self._lock:
+            self._preloaded_only = preloaded_only
             if replay_back_s:
                 self._adopt_once = False   # a rewound picture must never be adopted as live
             self.stage = {"stage": "tuning", "target": target, "reason": "confirming the requested stream"}
@@ -1450,6 +1459,8 @@ class Controller:
             except Exception as e:  # never let a tuner bug kill the app
                 log.exception("tune crashed")
                 out = Outcome(False, target, 0.0, f"crashed: {e}", False)
+            finally:
+                self._preloaded_only = False
             self.last = out
             self.stage = {"stage": "confirmed" if out.ok else "failed", "target": target, "reason": out.detail}
             if on_done:
@@ -2042,6 +2053,10 @@ class Controller:
             return Outcome(False, target, 0.0, NO_STICK, False, screen_unchanged=True)
         if self.input_unknown:
             return Outcome(False, target, 0.0, "TV input is unknown; verify the visible stick before resuming", False)
+        if getattr(self, "_preloaded_only", False) and not replay_back_s \
+                and not (self.two_stick and self._live_on_hidden(target)):
+            # [jump mode, overseer Nov 7 20:01:50] a jump tuned on the way (29 s) and lost its dead ball
+            return Outcome(False, target, 0.0, STANDBY_NOT_READY, False, path="refused", screen_unchanged=True)
         mv = self.prime_mv
         if mv is not None and not replay_back_s and self.main is not None and mv.has_tile(self.main.host, target):
             out = await self._execute_tile(mv, target, may_cut, t0)
@@ -2149,6 +2164,10 @@ class Controller:
             path = "left hold"   # playbook=STK-07: paused at the dead ball we left it on; it plays after the flip
         elif not replay and self._live_on_hidden(target) and await self._steady_playing(hid, target) is not None:
             path = "preloaded"
+        elif getattr(self, "_preloaded_only", False):
+            # [jump mode] the ready standby stopped playing: no re-tune on a jump (it would miss the dead ball)
+            return Outcome(False, target, time.time() - t0, STANDBY_NOT_READY + " (stopped playing)", False,
+                           path="refused", screen_unchanged=True)
         else:
             # A standby that stopped (a stick that lost the TV input can pause its app) gets tuned
             # again here instead of failing the switch at flip time.
@@ -2978,7 +2997,7 @@ class Controller:
     # --- the hidden stick between switches ---------------------------------------------
 
     def preload(self, target: str | None, back_s: float | None = None, replay_id: str | None = None,
-                *, refresh: bool = False, user: bool = False) -> bool:
+                *, refresh: bool = False, user: bool = False, urgent: bool = False) -> bool:
         """Put the hidden stick on `target`: live, or parked on a replay (back_s from the live edge,
         replay_id). Returns True if a preload started. WHAT to preload is the engine's call
         (standby.Planner); this only refuses what can't or shouldn't happen right now.
@@ -2987,18 +3006,19 @@ class Controller:
         cancels it, even mid-tune. user=True is a game opened on the phone (engine._peek): it skips the
         preload gap and replaces a planner preload still loading, never a switch."""
         if not (self.live_control and self.two_stick and target) or self.input_unknown:
-            return False   # unknown input: the "hidden" stick may be the one on screen
+            return self._refused("no two-stick control" if not self.input_unknown else "TV input unknown")
         if not user and self._scrub_protected(target):
+            self.preload_why = "a scrubbed standby is kept"
             # [scrub entry] Nick's live test (Nov 7): a preload overwrote a scrubbed hidden stick. A scrubbed standby
             # is kept until it's flipped to (or its anchor expires / its label goes stale); only a game you open on
             # the phone replaces it.
             return False
         if self._steal_task and not self._steal_task.done():
-            return False   # playbook=TV-04: the "hidden" stick is the game the TV jumped off; keep it
+            return self._refused("TV-04 steal recovery holds the hidden stick")
         if replay_id is None and (target == self.on_target or self._live_on_hidden(target)):
-            return False
+            return self._refused("already there" if target != self.on_target else "that game is on screen")
         if replay_id is not None and self._parked_for(target, replay_id):
-            return False
+            return self._refused("already parked")
         now = time.time()
         if not refresh and self.can_tune(target) and self._plays(self.hidden, target):
             self._wish = (target, now)   # what the planner wants there, even if refused just now
@@ -3010,14 +3030,19 @@ class Controller:
             displace = self._preload_task   # what you opened on the phone wins over the planner's guess
         busy = bool(self._task and not self._task.done()) if displace else self._busy()
         if busy or now < self._asleep_until or not self.can_tune(target) or not self._plays(self.hidden, target) \
-                or (not refresh and not user and now - self._last_preload < MIN_PRELOAD_GAP_S):
-            return False
+                or (not refresh and not user and not urgent and now - self._last_preload < MIN_PRELOAD_GAP_S):
+            # [jump mode] why the standby didn't refill (data/jumps.jsonl standby rows)
+            return self._refused("a switch or preload is running" if busy else "standby stick asleep"
+                                 if now < self._asleep_until else "can't tune it now (failed tune backoff)"
+                                 if not self.can_tune(target) else "the hidden stick can't play it"
+                                 if not self._plays(self.hidden, target) else "preload gap")
         if displace is not None:
             log.info("planner wants %s on the hidden stick: dropping the refresh of %s", target, self._refreshing)
             displace.cancel()
         if not refresh:
             self._last_preload = now
             self._cancel_refresh()
+        self.preload_why = ""
         self._preloading = (target, replay_id)
         self._refreshing = target if refresh else None
         self._preload_task = asyncio.create_task(self._preload(target, back_s, replay_id, now))

@@ -901,3 +901,33 @@ def test_the_game_on_a_channel_is_the_live_one(eng):
                     "cin_hou": Where("youtubetv:fox", "FOX", "sure", True)})
     assert e._game_on_target("youtubetv:fox") == "cin_hou"
     assert e._game_on_target("youtubetv:espn") is None
+
+
+def test_jump_refill_is_urgent_and_logs_why_the_standby_waits(eng, tmp_path, monkeypatch):
+    """[overseer Nov 7 20:05] After a jump the standby is refilled at once (no 5 s preload gap), and a "standby" row
+    in jumps.jsonl says what it holds, whether it's ready and why a preload was refused."""
+    import json
+    from conftest import nfl
+    from redzone.decider.decider import Candidate
+    e, _ = eng
+    e._jump_log_path = tmp_path / "jumps.jsonl"
+    g = nfl("cin_hou", "HOU", "CIN")
+    e.merger.games["cin_hou"] = g
+    cands = {"cin_hou": Candidate(None, "youtubetv:fox")}
+    monkeypatch.setattr(e, "_replay_standby", lambda c: None)
+    monkeypatch.setattr(e.decider, "jump_next", lambda c, standby=None, tunable=None: "cin_hou")
+    calls = []
+
+    def preload(target, urgent=False, **kw):
+        calls.append((target, urgent))
+        e.control.preload_why = "a switch or preload is running"
+        return False
+    monkeypatch.setattr(e.control, "preload", preload)
+    e.decider.jump_holds["standby_not_ready"] = 3
+    assert e._jump_standby(cands, urgent=True)
+    assert calls == [("youtubetv:fox", True)]
+    row = json.loads(e._jump_log_path.read_text().splitlines()[-1])
+    assert row["event"] == "standby" and row["want"] == "cin_hou" and row["refill"] is True
+    assert row["preload"] == "a switch or preload is running" and row["holds"] == {"standby_not_ready": 3}
+    assert e._jump_standby(cands)   # a normal tick within 30 s: no second row
+    assert len(e._jump_log_path.read_text().splitlines()) == 1

@@ -1384,3 +1384,20 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   **`jump_mode.search_penalty` 20** (the standby prefers code channels, ~3-4 s, over locals by search, ~11-15 s,
   unless the local's moment is that much bigger). The standby pick also skips targets the hidden stick can't tune
   now (a failed tune's backoff), which had kept it empty. jump_mode.enabled itself unchanged (Nick's live setting).
+- 2026-11-08 (overseer's stick re-run of the replay park on fd1ba542: to_snap_s 1.5, but ok false on 'player is none
+  after PAUSE' while media_session read PAUSED right after and at +10/+20 s): **new defaults
+  `replay.pause_settle_s: 3`, `replay.pause_poll_s: 0.4`.** After the park's MEDIA_PAUSE the player is re-read every
+  0.4 s for up to 3 s and the park counts as held on the first 'paused'. Reason: the first read after PAUSE can be a
+  transient 'none' (#356 family). PR #419.
+- 2026-11-07 20:05 ET (overseer, first clean live measurement 0.2 jumps/min; preloaded jumps 2.7-4.0 s every time, so
+  readiness is the bottleneck): **new `jump_mode.go_when_ready` true** (when the standby's ready game lands on a dead
+  ball, jump at this dead ball once `min_plays` 1 aired here, not after `max_plays` 2). A jump now only ever flips to
+  the ready standby (control `preloaded_only`: a standby that stopped playing is refused as "standby not ready", never
+  re-tuned on the spot, which is what made the 20:01:50 "tuned" jump). After every jump the standby is refilled at
+  once (preload skips the 5 s gap). jumps.jsonl adds fail_detail (IPs redacted), "standby" status rows (every ~30 s:
+  standby game, ready, why a preload was refused) and split hold codes (standby_not_ready / ready_not_dead /
+  no_game_at_dead_ball). jump_mode.enabled itself unchanged (Nick's live setting).
+- 2026-11-08 01:16Z (overseer, Nick's #1 live complaint: a timeout on MIA@ND held the screen 46 s, "stay: timeout",
+  with OU@FLA ready on the standby): in jump mode a break on the game on screen (timeout, end of quarter, injury,
+  review, score) that the fresh feed is still in, once it has reached the screen, is a free leave for a jump, with
+  no visit-and-return length needed. The arrival on the other game still has to land on a dead ball (Rule #1).

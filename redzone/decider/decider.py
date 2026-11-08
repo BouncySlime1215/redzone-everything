@@ -34,7 +34,7 @@ from typing import Callable
 
 from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S, PLAY_LEN_S, DelayBook, Event, Gate,
                                     Timeline, break_on_arrival, catchable, final_play_aired, leave_gate,
-                                    leave_window, resume_lead, resume_play)
+                                    leave_window, resume_lead, resume_play, STALE_DATA_S, _stoppage_reached)
 from redzone.decider.cuts import EntryPlan, plan_entry
 from redzone.decider.playbooks import Safety
 from redzone.decider.scenarios import Scenarios
@@ -331,6 +331,7 @@ class Decider:
         self.standby_ready: Callable[[str], bool] | None = None
         self.slow_tune: Callable[[str], bool] | None = None
         self.jump_holds: Counter = Counter()
+        self._jump_break_at: dict[str, float] = {}   # [jump mode] when the feed first said "break" for a game
 
     # ----- inputs -----------------------------------------------------------
 
@@ -2252,6 +2253,8 @@ class Decider:
             return None
         d = self.delays.get(cur.target or "unknown")
         flip = float(self.cfg.get("jump_mode.flip_s", 3.2)) if required_s is None else required_s
+        if self._jump_break_on_screen(gid, cur, tl, d, now):
+            return Gate(True, "break on screen (jump: nothing to cut)", True)
         if tl.dead.marks:
             m = self._jump_margin(d, now)
             until = tl.dead.dead_until(now - d.mu - m)
@@ -2262,6 +2265,33 @@ class Decider:
             return self._gate(cur, now)
         finally:
             self.current = saved
+
+    def _jump_break_on_screen(self, gid: str, cur: Candidate, tl: Timeline, d, now: float) -> bool:
+        """[overseer Nov 8 01:16Z: a timeout on MIA@ND held the screen 46 s with the standby ready] A break
+        (timeout, end of quarter, injury, review, score) that the FRESH feed is still in, and that has reached
+        the screen, is a dead ball for a jump: the feed runs ~mu ahead of the screen, so a break that hasn't
+        ended in the data can't have ended on screen, and no visit-and-return length is needed (the rotation
+        doesn't come back). The break counts as on screen once the play before it surely finished airing."""
+        first = self._jump_break_at.get(gid)
+        if not cur.scored.is_break:
+            self._jump_break_at.pop(gid, None)
+            return False
+        if first is None:
+            first = self._jump_break_at[gid] = now
+        if tl.fresh_at is None or now - tl.fresh_at > STALE_DATA_S:
+            return False
+        m = 2 * d.current_sigma(now)
+
+        def resumed(since: float, pid=None) -> bool:   # a play logged after the break began: it's over in the data
+            return any(e.kind == "play" and e.seen > since and not (pid and e.pid == pid) for e in tl.events)
+        start = tl.last("stop_start")
+        if start is not None and not resumed(start.lo, start.pid):
+            reached = _stoppage_reached(tl, start, d.mu, m)
+        elif not resumed(first):   # no stoppage entry for it: from when the feed first said "break" (it began no later)
+            reached = first + d.mu + m + AFTER_PLAY_BUFFER_S
+        else:
+            return False
+        return now >= reached
 
     def jump_may_leave(self, gid: str | None, cands: dict[str, Candidate], now: float, required_s: float) -> bool:
         """At the flip: the jump may cut away from gid now (the engine's may_cut for a jump)."""
@@ -2342,7 +2372,7 @@ class Decider:
         return self._next_snap_s(gid, cands, now) - after_s
 
     def _jump_best(self, cands, now: float, exclude: str | None) -> tuple[str, dict] | None:
-        rows, unready = [], 0
+        rows, unready, ready = [], 0, 0
         ready_only = bool(self.cfg.get("jump_mode.ready_only", True)) and self.standby_ready is not None
         for gid, x in self._jump_pool(cands).items():
             if gid == exclude:
@@ -2352,12 +2382,15 @@ class Decider:
                 # dead ball: jump only onto the hidden stick's ready game; the standby re-tunes for the next one
                 unready += 1
                 continue
+            ready += 1
             r = self._jump_value(gid, x, cands, now)
             if r is not None:
                 rows.append((r[0], gid, r[1]))
         if not rows:
-            if unready:
-                self.jump_holds["standby_not_ready"] += 1
+            # [overseer Nov 7 20:05] one code per tick: nothing ready on the standby / the ready game is mid-play
+            # or in an ad on arrival / no other game at all (they were counted together before)
+            self.jump_holds["standby_not_ready" if unready and not ready else "ready_not_dead"
+                            if ready_only and ready else "no_game_at_dead_ball"] += 1
             return None
         _, gid, info = max(rows, key=lambda z: z[0])
         return gid, info
@@ -2428,8 +2461,7 @@ class Decider:
             or held >= float(c.get("jump_mode.max_hold_s", 90))
         best = self._jump_best(cands, now, exclude=self.current)
         if best is None:
-            self.jump_holds["no_game_at_dead_ball"] += 1
-            return None
+            return None   # _jump_best counted why
         gid, info = best
         hot = info["snap"] or info["big"]
         # [Nick: "at EVERY dead ball ... flip if the other stick holds a game whose next snap is coming"] even with
@@ -2438,7 +2470,11 @@ class Decider:
         mine = self._jump_snap_wait(self.current, cur, cands, now)
         sooner = info["snap"] and info["snap_in_s"] + info["cost_s"] + float(c.get("jump_mode.snap_gain_s", 10)) < mine
         info["here_snap_s"] = round(mine, 1)
-        if not due and not (seen >= int(c.get("jump_mode.min_plays", 1)) and hot) and not sooner:
+        # [overseer Nov 7 20:05] the standby's game is ready and lands on a dead ball: go at this dead ball (after
+        # min_plays here), not after the play budget. Readiness is the bottleneck, so a ready flip isn't wasted.
+        ready_go = bool(c.get("jump_mode.go_when_ready", True)) and self.standby_ready is not None \
+            and self.standby_ready(cands[gid].target) and seen >= int(c.get("jump_mode.min_plays", 1))
+        if not due and not (seen >= int(c.get("jump_mode.min_plays", 1)) and hot) and not sooner and not ready_go:
             self.jump_holds["budget_left"] += 1
             return None
         if on_break:
@@ -2450,7 +2486,7 @@ class Decider:
         elif seen >= int(c.get("jump_mode.min_plays", 1)) and hot:
             why = "hot_target"
         else:
-            why = "sooner_snap"
+            why = "sooner_snap" if sooner else "standby_ready"
         info = {**info, "why": why, "plays_seen": seen, "held_s": round(held, 1), "gate": g.why,
                 "holds": dict(self.jump_holds)}
         self.jump_holds = Counter()

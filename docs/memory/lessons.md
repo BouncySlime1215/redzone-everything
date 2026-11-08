@@ -387,3 +387,11 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   control._execute ("no stick connected", ok=True, 0 s) and set on_target: the switch log filled with phantom
   "start ALA@LSU ok=True took 0 s" rows that inflated switch counts. Only mode.dry_run is a simulated success now;
   no stick is a refused switch (ok=False, screen_unchanged, not the target's fault).
+- 2026-11-07 (jump mode, overseer 20:01:50): a jump decided on a READY standby still went out "tuned" (30 s): at the
+  flip `_execute_two` needs the hidden stick steady-PLAYING (FLIP_STEADY_WAIT_S 3 s) and otherwise re-tunes it on the
+  spot. The readiness check in the decider and the one at the flip were different. Fix: a jump submits with
+  `preloaded_only`, which refuses ("standby not ready", screen unchanged) instead of re-tuning.
+- 2026-11-08 (jump mode): a long timeout blocked jumps because the leave gate only trusts a break with no resume in
+  the data while the data "covers" the screen or the break is under its usual length. A slow feed fails "covered",
+  so a timeout past its floor read as "play on screen". The feed is ~35 s ahead of the screen: if the fresh feed is
+  still in the break, the screen is too (once the play before it has aired). The jump gate uses that now.
