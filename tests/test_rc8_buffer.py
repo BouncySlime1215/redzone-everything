@@ -103,7 +103,7 @@ def test_flip_touches_one_league_and_rollback_survives_a_merge(cfg):
     assert cfg.get(R.RC8_FLAG) is False                                         # never a global key
     cfg.update({"league_overrides": R.rollback(cfg.overrides, "nba")})      # deep merge: explicit false wins
     assert not R.is_on(cfg, "nba")
-    assert config.for_league(cfg, "decider.entry.start_timed", "nba") is False   # restored to shipped
+    assert config.for_league(cfg, "decider.entry.start_timed", "nba") is True    # restored to shipped (D-02: on)
     after = cfg.data["league_overrides"]
     for lg, blk in before.items():
         for k, v in blk.items():

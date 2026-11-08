@@ -30,5 +30,5 @@ def test_unknown_landing_enters_by_default_and_waits_when_refused():
 def test_floor_and_unknown_flags_ship_off():
     from redzone import config
     assert config.default("decider.entry.conformal.enabled") is False
-    assert config.default("decider.entry.unknown_wait_leagues") == []
+    assert config.default("decider.entry.unknown_wait_leagues") == ["nfl", "nba", "nhl", "mlb"]   # [D-01]
     assert all(v == 0 for v in config.default("decider.entry.conformal.tau").values())

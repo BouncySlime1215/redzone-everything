@@ -263,8 +263,20 @@ reasoner:                  # live game reasoner (redzone/reasoner): lock_in per 
 
 decider:
   switch_margin: 10
+  mine_late_closeness: 0.2   # [D-11] "your team late and close": closeness at or above this (Decider._mine_late)
   entry:
-    hold_only: [nhl, nba]     # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
+    enabled: true             # [D-11] the entry timing itself (off: every switch goes straight in)
+    allow_live_fallback: false  # [D-01] Rule #1: no go-in-live exit without this (crunch_now live/rewind, max_wait_s, rewind_only, no_wait_leagues, imminent chases)
+    leagues: [nfl]            # [D-11] full cut timing (entries, holding for a big play, stretching a stoppage)
+    rewind: true              # [D-11] an entry may land with a short DVR rewind to the dead ball before the play
+    fastest_s: 4              # [D-11] the picture can come up this soon after the command
+    max_rewind_s: 120         # [D-11] the furthest an entry rewinds to reach a dead ball
+    relaxed_margin_s: 8       # [D-11] the "centred" pass's delay doubt
+    urgent_margin_s: 2        # [D-11] the "urgent" pass's delay doubt
+    thin_margin_leagues: [nba, nhl, nfl]   # [D-08] only these leagues (gated) may land on the centred / urgent thin margin
+    visit_min_s: 90           # [D-11] a stop expected to run at least this much longer is worth a visit
+    no_wait_leagues: []       # [D-11] needs allow_live_fallback: enter live unless a rewind lands it clean
+    hold_only: [nhl, nba, mlb]     # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off. MLB: D-02
     whistle_band_s: 3        # [EXP-610] scrub path only: a basketball flip needs a clock-stopped dead ball for +- this many s
     rewind_only: []      # leagues whose entries land on a dead ball with a rewind when one fits, never wait
     landing_lag_s: 0     # [landing lag] a fresh tune comes up up to this much later than the live edge (one-sided)
@@ -272,13 +284,13 @@ decider:
                              # pause: on the HIDDEN stick seek past the dead ball, play up to it, pause, flip, play
     possession_start: "off"  # [possession start] off | crunch | all: cue to the last dead ball before the possession, never wait while one is in reach
     confirmed_dead_only: false  # [data gap] a dead window opens only on a logged stoppage (a lone substitution means the stoppage is missing)
-    unknown_wait_leagues: []  # [EXP-089] never enter on a landing the data can't call ("play may be live"): rewind to a known dead ball or wait. Off ([]) until its gate passes
+    unknown_wait_leagues: [nfl, nba, nhl, mlb]  # [EXP-089, D-01] never enter on a landing the data can't call ("play may be live"): rewind to a known dead ball or wait (league.base: cfb is nfl, cbb is nba)
     conformal:               # [EXP-024] conformal floor on entries: no landing on less doubt than tau x sigma (off until its gate passes)
       enabled: false
       tau: {nfl: 0, nba: 0, nhl: 0}   # per league, from conformal risk control on dev (alpha 0.005 a timed entry); 0 = no floor
     ended_strict: false  # [landing lag] a switch off a finished game never takes the urgent (thin-margin) landing
-    crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
-    max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
+    crunch_now: wait         # [D-01] entries inside crunch's last 2:00 / OT: wait (rewind or wait for a whistle, like any entry) | live, rewind (only with allow_live_fallback)
+    max_wait_s: {}         # [D-01] per league, only with allow_live_fallback: a whistle wait into a final period / off a finished game goes live after this (none: Rule #1 waits)
     hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
     user_timed: true         # [EXP-741] one phone tap also waits until the joined game's picture would come up on a dead
                              # ball (Nick Nov 4 10:55 PM); the second "Go now" tap still cuts at once. Off: a tap only
@@ -294,7 +306,7 @@ decider:
                              # stick has stopped (two equal reads >= 1.5 s apart, newest <= 5 s old), waits while it runs,
                              # and uses the feed plan only when unreadable; shadow only logs every Prime bug clock read to
                              # data/tap_bug.jsonl (taps never wait for it; gradable with user_timed off)
-    start_timed: false       # [EXP-739] the night's first pick waits for a whistle / rewinds like any entry (off: goes in
+    start_timed: true        # [EXP-739, D-02] the night's first pick (and every restart: kind "start") waits for a whistle / rewinds like any entry (off: goes in
                              # live, which landed 6 NHL first picks 10-32 s after the opening faceoff, autopsy #302)
     lag_floor_s: 0           # [EXP-211] an open stoppage counts as dead only as far as a feed at least this slow would
                              # show the restart (0 = off; graded NHL value 71.3 = feed lag q90, EXP-303)
@@ -408,18 +420,28 @@ jump_mode:                 # [Nick Nov 7 12:52, "should be 4-5 switches every mi
   replays: true            # a queued big-play catch-up takes the hidden stick (parked before its snap); the
                            # decider's replay switches go through jump mode untouched
   log: true                # every jump to data/jumps.jsonl (ids, numbers and short reason codes only)
+  mine_prior: 30           # [D-04] rotation value points for a game you have a stake in (your team, your bet)
+  league_prior: 4          # [D-04] rotation value points per league-order step (NFL first ... MLB last)
+  join:                    # [Nick 2026-11-08 landing bars, jump + buffered modes, YouTube TV and Prime, with the delay margin]
+    after_shot: [nba, cbb]  # basketball's only mid-possession landing: the walk up court right after a made shot / defensive rebound
+    walk_s: 14             # the picture comes up within this long after the shot (the delay margin must fit inside it)
+    transition_s: 7        # the next action this soon after the shot is a transition play: no landing there, the prior safe point instead
+    after_play_s: 18       # football: prefer the picture up this long after the whistle (the replay), when the window still has room
+    walk_after_s: 1        # the shot (or rebound) is stamped ~1 s before the ball is clear
+    walk_guard_s: 2        # the next action's stamp can lead its start: the walk ends this far before it
 
 buffered_jump:             # [overseer Nov 8 01:50Z / Nick 20:45 "play by play moment from moment"] jump mode with BOTH sticks
                            # scrubbed ~75 s behind live (yttv_seek overlay scrub, label read): the play-by-play already holds
                            # every snap and whistle about to air, so each cut is planned (redzone/decider/buffered.py). Needs
                            # jump_mode.enabled too. Sim: scripts/buffered_jump_sim.py. Stick test: scripts/buffered_jump_try.py
   enabled: false           # OFF: Nick turns it on at runtime (POST /api/settings {"changes":{"buffered_jump":{"enabled":true}}})
-  leagues: [nfl, cfb, nba, cbb, wcbb]   # [overseer Nov 8 22:15] + basketball (fouls, FTs, timeouts, violations are the
+  leagues: [nfl, cfb, nba, cbb]   # [overseer Nov 8 22:15] + basketball (fouls, FTs, timeouts, violations are the
                            # dead balls; a made basket's inbound is too short for the delay margin). Others: jump mode's rules
   behind_s: 75             # scrub depth asked of each fresh YouTube TV tune (lands ~79 s: 16.8 k + 28.5, k=3)
   min_behind_s: 45         # a stick less behind than this (label) isn't a buffered picture: jump mode's own rules run
   hold_chunk_s: 25         # [overseer Nov 7] a Prime standby is pause-held in pauses this short (75 s in one came back 'stopped' 3/3)
   keep_standby_s: 120      # [overseer Nov 7] screen game gone/unknown: a 'start' to another game waits this long for the buffered standby's free cut
+  restart_hold_s: 120      # [P-04] after a restart, the unknown screen counts as the saved game (for the leave rule) this long or until adopted
   flip_s: 3.2              # slowest input flip to the ready standby (live tonight 2.5-3.7 s)
   flip_fast_s: 2.0         # fastest
   margin_sigmas: 2         # delay doubt each side of a leave / landing (sim: 2 sigma at the 4 s floor = 0 mid-play)
