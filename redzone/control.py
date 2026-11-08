@@ -339,6 +339,7 @@ class Controller:
         self._resume_task: asyncio.Task | None = None   # "did the relaunched app resume?" after a HOME flip
         self._cec_synced_at = 0.0
         self._adopt_once = True                  # first switch after start may adopt the screen
+        self._replayed = False                   # a rewound picture was shown since start: never read back as live
         self.target_names: Callable[[str], list[str]] | None = None   # engine: team names for a target
         self.prime_plan: list[str] = []          # engine: Prime NBA games for a multiview, best first
         self._flip_gen = 0                       # bumped on every flip: a CEC read that spans one is stale
@@ -1429,6 +1430,7 @@ class Controller:
             self._preloaded_only = preloaded_only
             if replay_back_s:
                 self._adopt_once = False   # a rewound picture must never be adopted as live
+                self._replayed = True
             self.stage = {"stage": "tuning", "target": target, "reason": "confirming the requested stream"}
             try:
                 self._tuned_on = None
@@ -1791,6 +1793,31 @@ class Controller:
                 return False
         sent = await stick.key("KEYCODE_MEDIA_PLAY")
         return bool(sent and sent.ok)
+
+    async def read_screen(self, targets) -> str | None:
+        """[overseer Nov 7 23:00] After a restart nothing says which game the TV shows (on_target None), so jump
+        mode held 'screen_game_unknown' for the whole night. Read the main stick's YouTube TV media session and
+        adopt the one live target whose channel it names. No tune, no key: a read only. Never after a replay
+        (a rewound picture is not live), never during a switch or flip, never on an unknown input."""
+        stick = self.main
+        if (self.on_target is not None or self._replayed or stick is None or self.input_unknown or self._flipping
+                or (self._task and not self._task.done()) or self._lock.locked()):
+            return None
+        yt = sorted({t for t in targets if t and t.startswith("youtubetv:")})
+        pkg = self._package(stick, yt[0]) if yt else None
+        if not pkg:
+            return None
+        pb = await stick.playback(pkg)
+        if pb.get("pkg") != pkg or not playback_ready(pb):
+            return None
+        hits = [t for t in yt if (m := channel_matcher(t)) is not None and m(pb) is True]
+        if len(hits) != 1 or self.on_target is not None or self.main is not stick or (self._task and not self._task.done()):
+            return None
+        self._adopt_once = False
+        log.info("read back the screen after a restart: %s (%s)", hits[0], pb.get("subtitle"))
+        stick.remember(hits[0], pb)
+        self.on_target = hits[0]
+        return hits[0]
 
     async def _still_on_visible(self, target: str) -> bool:
         if self.main is None:

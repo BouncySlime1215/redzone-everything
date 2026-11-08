@@ -900,6 +900,10 @@ class Engine:
             except Exception:
                 log.exception("drift check failed")
             try:
+                await self._relearn_screen()
+            except Exception:
+                log.exception("screen read-back failed")
+            try:
                 await self._device_keepalive()
                 self._tick += 1
                 if self._tick % 360 == 0:
@@ -2696,6 +2700,26 @@ class Engine:
         except Exception:
             log.debug("queue item enrich failed", exc_info=True)
         return item
+
+    async def _relearn_screen(self) -> str | None:
+        """[overseer Nov 7 23:00] After a restart decider.current is None and jump mode holds forever
+        ('screen_game_unknown'). Learn it from control.on_target, else read the main stick back (control.read_screen).
+        Only while nothing is pending; a live game on that channel first (_game_on_target)."""
+        dec, c = self.decider, self.control
+        if (dec.current is not None or self._pending_decision is not None or self.recorded.active
+                or self.cfg.get("mode.dry_run", True)):
+            return None
+        target = getattr(c, "on_target", None)
+        if target is None:
+            live = [w.target for g, w in self.where.items() if getattr(w, "target", None)
+                    and getattr(self.merger.games.get(g), "phase", None) == Phase.LIVE]
+            target = await c.read_screen(live) if hasattr(c, "read_screen") else None
+        gid = self._game_on_target(target) if target else None
+        if gid is None or dec.current is not None or self._pending_decision is not None:
+            return None
+        dec.adopt(gid)
+        log.info("screen game re-learned after a restart: %s on %s", gid, target)
+        return gid
 
     def _game_on_target(self, target: str | None) -> str | None:
         """The game a channel is showing now: a LIVE game on it first. `where` maps every game on the board,

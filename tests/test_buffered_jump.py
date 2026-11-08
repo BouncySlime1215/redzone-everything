@@ -382,3 +382,25 @@ def test_pass_bar_windows():
     assert cut["partial_plays"] == 1 and cut["windows_pass"] == 0
     mid = sim.pass_bar([("a", 0.0, 150.0, 0.0), ("b", 150.0, 600.0, 0.0)], spans, ads, cuts, [50.0], 0.0, 600.0)
     assert mid["windows_pass"] == 0
+
+
+def test_unknown_screen_after_a_restart_is_a_free_cut(cfg, clock):
+    """[overseer Nov 7 22:40] after a restart decider.current is None: 514 'screen_game_unknown' holds with a ready,
+    scrubbed standby. The same free cut as a gone game, still landing on a dead ball."""
+    dec, delays = setup(cfg, clock)
+    scene(dec, clock)
+    dec.current = None
+    d = dec.decide(cands(b=50))
+    assert d.kind == "jump" and d.target == "b" and d.jump["why"] == "bj_screen_gone", (d.reason, dict(dec.jump_holds))
+
+
+def test_a_re_learned_screen_game_ends_the_unknown_hold(cfg, clock):
+    """[overseer Nov 7 23:00] the stick read back the screen's game after a restart: decider.adopt learns it
+    (no tune), so jump mode runs on it again instead of holding 'screen_game_unknown'."""
+    dec, delays = setup(cfg, clock)
+    scene(dec, clock)
+    dec.current = None
+    dec.adopt("a")
+    assert dec.current == "a" and dec._arrival_until == 0.0 and dec._screen_log[-1][1] == "a"
+    dec.decide(cands(b=50))
+    assert dec.jump_holds.get("screen_game_unknown", 0) == 0, dict(dec.jump_holds)

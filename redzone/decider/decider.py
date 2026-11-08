@@ -477,6 +477,15 @@ class Decider:
         self.log.append(d)
         return d
 
+    def adopt(self, gid: str) -> None:
+        """[overseer Nov 7 23:00] The TV already shows gid (read back from the stick after a restart): learn the
+        screen game without a tune, so jump mode stops holding 'screen_game_unknown'."""
+        self._commit(gid, kind="adopt")
+        self._screen_log.pop()
+        self._screen_log.pop()
+        self._screen_log.append((self._clock(), gid))
+        self._arrival_until = 0.0
+
     def confirm(self, d: Decision, cands: dict[str, Candidate]) -> None:
         """Commit an observed playback change, with screen time from confirmation."""
         if self._proposal_home and self._proposal_home[0] is d:
@@ -2621,7 +2630,10 @@ class Decider:
             self.jump_holds[off] += 1
             return None
         cur = cands.get(self.current or "")
-        if cur is None and self.current and self.current not in PSEUDO and self.buffered_on() \
+        # [overseer Nov 7 22:40] also current None: after every restart the screen's game is unknown and jump mode held
+        # 'screen_game_unknown' for 10+ min (514 ticks on 0b0f8534) with a ready, scrubbed standby. The normal decider
+        # already 'start's from an unknown screen; the landing is still timed on a dead ball (Rule #1 on entry).
+        if cur is None and (self.current is None or self.current not in PSEUDO) and self.buffered_on() \
                 and d.kind not in ("user", "crunch"):
             # [overseer Nov 8 22:15] the screen's game left the feed (over, or dropped from the list): nothing on screen
             # to cut out of, so it's a free cut onto the first ready standby that lands on a dead ball (ahead of the

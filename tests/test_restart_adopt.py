@@ -83,3 +83,32 @@ async def test_non_youtube_tv_adoption_is_unchanged(one, monkeypatch):
     c.sticks = [stick]
     assert await c._still_on_visible("prime:abc")
     assert c.on_target == "prime:abc" and c._adopt_once is False
+
+
+async def test_read_screen_learns_the_live_channel_after_a_restart(one):
+    """[overseer Nov 7 23:00] on_target None after a restart: a read-back (no tune) names the screen's channel."""
+    c, tuner = one
+    stick = ShowingStick("a:5555", subtitle="ESPN")
+    c.sticks = [stick]
+    assert await c.read_screen(["youtubetv:fox", "youtubetv:espn"]) == "youtubetv:espn"
+    assert c.on_target == "youtubetv:espn" and tuner.calls == []
+    assert await c.read_screen(["youtubetv:espn"]) is None    # already known: no second read
+    assert stick.reads == 1
+
+
+@pytest.mark.parametrize("subtitle,state", [("FOX", "playing"), ("", "playing"), ("ESPN", "paused")])
+async def test_read_screen_needs_one_ready_channel_match(one, subtitle, state):
+    c, tuner = one
+    c.sticks = [ShowingStick("a:5555", subtitle=subtitle, state=state)]
+    assert await c.read_screen(["youtubetv:espn"]) is None
+    assert c.on_target is None
+
+
+async def test_read_screen_never_after_a_replay(one):
+    c, tuner = one
+    c.sticks = [ShowingStick("a:5555", subtitle="ESPN")]
+    c.submit("youtubetv:espn", 30.0, lambda out: None)
+    await c._task
+    c.on_target = None
+    assert await c.read_screen(["youtubetv:espn"]) is None    # a rewound picture is never read back as live
+
