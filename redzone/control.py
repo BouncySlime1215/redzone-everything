@@ -1179,6 +1179,16 @@ class Controller:
     def _live_on_hidden(self, target: str) -> bool:
         return self.hidden_target == target and self.hidden_ready and self.parked is None
 
+    def standby_ready(self, target: str | None) -> bool:
+        """[jump mode] The hidden stick is playing this target live, ready for a flip."""
+        return bool(target) and self.two_stick and self._live_on_hidden(target)
+
+    def slow_tune(self, target: str | None) -> bool:
+        """[jump mode] A YouTube TV target reached only by in-app search (the locals): ~11-15 s, not ~3-4 s."""
+        if not target or not target.startswith("youtubetv:"):
+            return False
+        return self._ref(target)[1].startswith("search:")
+
     def _parked_for(self, target: str, replay_id: str | None) -> bool:
         p = self.parked
         return bool(p and replay_id and p.replay_id == replay_id and p.target == target

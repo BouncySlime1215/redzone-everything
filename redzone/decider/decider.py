@@ -326,6 +326,10 @@ class Decider:
         # [jump mode, Nick Nov 7] rotation over every live game: when each game was last left, and why the
         # rotation didn't jump on the ticks since the last jump (short codes, for data/jumps.jsonl)
         self.jump_left_at: dict[str, float] = {}
+        # [jump mode, overseer Nov 7 18:55] the controller's view of the hidden stick: is this target playing there,
+        # ready for a ~3 s flip (None: no such knowledge, e.g. the simulator); and is it a slow search tune (a local)
+        self.standby_ready: Callable[[str], bool] | None = None
+        self.slow_tune: Callable[[str], bool] | None = None
         self.jump_holds: Counter = Counter()
 
     # ----- inputs -----------------------------------------------------------
@@ -2338,33 +2342,48 @@ class Decider:
         return self._next_snap_s(gid, cands, now) - after_s
 
     def _jump_best(self, cands, now: float, exclude: str | None) -> tuple[str, dict] | None:
-        rows = []
+        rows, unready = [], 0
+        ready_only = bool(self.cfg.get("jump_mode.ready_only", True)) and self.standby_ready is not None
         for gid, x in self._jump_pool(cands).items():
             if gid == exclude:
+                continue
+            if ready_only and not self.standby_ready(x.target):
+                # [overseer Nov 7 18:55] the first live jump tuned a search local on the spot (30 s) and lost the
+                # dead ball: jump only onto the hidden stick's ready game; the standby re-tunes for the next one
+                unready += 1
                 continue
             r = self._jump_value(gid, x, cands, now)
             if r is not None:
                 rows.append((r[0], gid, r[1]))
         if not rows:
+            if unready:
+                self.jump_holds["standby_not_ready"] += 1
             return None
         _, gid, info = max(rows, key=lambda z: z[0])
         return gid, info
 
-    def jump_next(self, cands: dict[str, Candidate], standby: str | None = None) -> str | None:
+    def jump_next(self, cands: dict[str, Candidate], standby: str | None = None,
+                  tunable: Callable[[str], bool] | None = None) -> str | None:
         """The game the hidden stick should tune next: the rotation's best other game by priority and time away
         (whether it's at a dead ball right now doesn't matter: by the time it's tuned, it will have moved on).
         Keeps the standby's game unless another beats it by jump_mode.standby_margin (no re-tune churn)."""
         now = self._clock()
         c = self.cfg
-        pool = {gid: x for gid, x in self._jump_pool(cands).items() if gid != self.current}
+        # [overseer Nov 7 18:55] a target the hidden stick can't tune right now (a failed tune's backoff, an app it
+        # lacks) is skipped: picking it every tick left the standby empty all afternoon
+        pool = {gid: x for gid, x in self._jump_pool(cands).items()
+                if gid != self.current and (tunable is None or x.target == standby or tunable(x.target))}
         if not pool:
             return None
         cap = float(c.get("jump_mode.rotate_cap_s", 300))
         per = float(c.get("jump_mode.rotate_per_min", 6))
+        slow = float(c.get("jump_mode.search_penalty", 20))
 
         def val(gid: str) -> float:
             away = min(cap, now - self.jump_left_at.get(gid, now - cap))
-            return pool[gid].scored.score + per * away / 60.0 - (100.0 if gid in self._screen_break else 0.0)
+            # a code channel tunes in ~3-4 s, a local by search ~11-15 s: the local only for a much bigger moment
+            pen = slow if self.slow_tune is not None and self.slow_tune(pool[gid].target) else 0.0
+            return pool[gid].scored.score + per * away / 60.0 - pen - (100.0 if gid in self._screen_break else 0.0)
         best = max(pool, key=val)
         keep = next((gid for gid, x in pool.items() if standby and x.target == standby), None)
         if keep is not None and val(keep) >= val(best) - float(c.get("jump_mode.standby_margin", 8)):

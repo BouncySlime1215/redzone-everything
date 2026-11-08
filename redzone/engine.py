@@ -138,6 +138,9 @@ class Engine:
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
+        # [jump mode] jumps go only onto the hidden stick's ready game (one stick: there's no standby to wait for)
+        self.decider.standby_ready = lambda t: not self.control.two_stick or self.control.standby_ready(t)
+        self.decider.slow_tune = self.control.slow_tune
         if data_dir:
             from redzone import calibration
             self.control.calibrated_flip = calibration.flip_prior(self.cfg, data_dir.parent)
@@ -1873,7 +1876,7 @@ class Engine:
             return False
         if self.cfg.get("jump_mode.replays", True) and self._replay_standby(cands) is not None:
             return False   # a big-play catch-up is queued: the normal plan parks it on the hidden stick (replay_park)
-        gid = self.decider.jump_next(cands, standby=self.control.standby[0])
+        gid = self.decider.jump_next(cands, standby=self.control.standby[0], tunable=self.control.can_tune)
         target = cands[gid].target if gid in cands else None
         if not target:
             return False
