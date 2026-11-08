@@ -1447,7 +1447,9 @@ class Engine:
             self.store.decision(d)
             self._last_logged_reason = d.reason
             self._last_logged_gate = gate
-        if d.action in ("switch", "replay") and d.target:
+        # [Nick, Nov 8 live] replay turned off mid-loop: no replay is acted on from that tick
+        replay_off = d.action == "replay" and not self.cfg.get("replay.enabled", True)
+        if d.action in ("switch", "replay") and d.target and not replay_off:
             self._act(d, before, cands)
         else:
             self._preload_standby(cands, redzone)
@@ -1583,6 +1585,9 @@ class Engine:
                         self.decider._screen_log.append((time.time(), "replay" if replay_exit is not None else before))
                     # A visible failure counts as an error below (3 in 5 minutes -> safe mode),
                     # not straight to safe mode: one app hiccup must not end the night.
+            if not out.ok and not out.dry_run and not cancelled and d.action == "replay" and d.replay is not None:
+                # [Nick, Nov 8 live] every failed replay backs off, whichever path it took (it looped at ~2 Hz)
+                self.decider.replay_failed(d.replay)
             if (not out.ok and not out.dry_run and d.action == "switch" and d.kind != "user" and target
                     and not out.detail.startswith(NOT_THE_TARGETS_FAULT)):
                 self._fail_cool[target] = time.time() + self.cfg.get("decider.fail_cooldown_s", 90)

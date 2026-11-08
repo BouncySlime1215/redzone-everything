@@ -1383,3 +1383,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `replay.pause_settle_s: 3`, `replay.pause_poll_s: 0.4`.** After the park's MEDIA_PAUSE the player is re-read every
   0.4 s for up to 3 s and the park counts as held on the first 'paused'. Reason: the first read after PAUSE can be a
   transient 'none' (#356 family). PR #419.
+- 2026-11-08 (overseer's live report on 2df593ea, replay ON: a UGA@MISS catch-up failed 'replay seek failed; kept
+  current game' about every 0.5 s until a restart; the park's 120 s backoff stopped keys, not the decision):
+  **new defaults `replay.fail_retry_s: 120`, `replay.max_fails: 2`.** Every failed replay (any path) is not decided
+  again for 120 s and leaves the catch-up queue after 2 failures; a YouTube TV replay that can't be parked (scrub
+  backing off, or more LEFTs than yttv_max_lefts) is refused before the hidden stick is tuned (screen untouched);
+  a replay decision is never acted on while replay.enabled is off. PR #419.
