@@ -1389,3 +1389,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   again for 120 s and leaves the catch-up queue after 2 failures; a YouTube TV replay that can't be parked (scrub
   backing off, or more LEFTs than yttv_max_lefts) is refused before the hidden stick is tuned (screen untouched);
   a replay decision is never acted on while replay.enabled is off. PR #419.
+- 2026-11-08 (overseer's live run on 879d99ed, replay ON: 0 replays ran, every catch-up refused at the stick
+  as too deep, '197s back needs 14 LEFTs (> 8)' up to 694 s): **new default `replay.scrub_max_play_age_s: 110`.**
+  With replay.yttv_seek scrub, a YouTube TV play older than 110 s is never queued or picked (8 LEFTs reach about
+  117 s back at the park; the tune and the live-edge delay are counted); keys mode and other apps are unchanged.
+  The decider's generic selection tests set it to 0. PR #419.

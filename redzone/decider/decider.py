@@ -559,6 +559,17 @@ class Decider:
         x = self._known.get(game_id or "")
         return x.target if x else self._target_of.get(game_id or "")
 
+    def _parkable(self, m: Missed, now: float) -> bool:
+        """[Nick, Nov 8 live, 879d99ed] A YouTube TV replay is a hidden-stick scrub of at most replay.yttv_max_lefts
+        15 s steps (~117 s back at the park), so a play older than replay.scrub_max_play_age_s (tune + park time and
+        the live-edge delay counted) can never be parked: every catch-up at 164-694 s was refused. Not queued."""
+        cap = float(self.cfg.get("replay.scrub_max_play_age_s", 110) or 0)
+        if cap <= 0 or self.cfg.get("replay.yttv_seek", "scrub") != "scrub":
+            return True
+        if (self.target_of(m.game_id) or "youtubetv:").split(":", 1)[0] != "youtubetv":
+            return True
+        return now - m.t <= cap
+
     def _replayable(self, x: Candidate | None) -> bool:
         if x is None or not x.target:
             return False
@@ -624,7 +635,7 @@ class Decider:
                     self.queue.append(m)
         montage_age = max(max_age, self.cfg.get("replay.montage_age_s", 14400))
         self.queue = [m for m in self.queue if not m.replayed and m.game_id in pool
-                      and now - m.t <= (montage_age if self._rw(m.game_id) else max_age)]
+                      and now - m.t <= (montage_age if self._rw(m.game_id) else max_age) and self._parkable(m, now)]
 
     # ----- [replay.redzone_way] catch-up the RedZone way (Nick, Nov 4) ----------------------------
     # T1 everything dead: replay / reel (as before). T2 lull: nothing live worth staying for and a
@@ -741,7 +752,7 @@ class Decider:
         team's own game is on screen, so its live snaps aren't traded for its old ones."""
         crunch_on = not montage and self._crunch_on(cands)
         games = self._replay_pool(cands)
-        pool = [m for m in self.queue if m.game_id != exclude and m.retry_at <= now
+        pool = [m for m in self.queue if m.game_id != exclude and m.retry_at <= now and self._parkable(m, now)
                 and self._replayable(games.get(m.game_id))
                 and (not crunch_on or self._mine_cant_wait(m, now))]
         if not montage:     # [T5] older plays wait for the end-of-window montage (RedZone way, per league)
@@ -758,6 +769,7 @@ class Decider:
             recent = now - self.cfg.get("replay.instant_window_s", 900)
             done_ids = {(d.game_id, d.pid) for d in self.done_replays if d.replayed}
             pool = [m for m in self.done_replays if m.seen_live and m.t >= recent and m.retry_at <= now
+                    and self._parkable(m, now)
                     and (m.game_id, m.pid) not in done_ids and m.game_id in cands and m.game_id != exclude
                     and self._replayable(cands[m.game_id])]
         if budget is not None:
@@ -1905,7 +1917,7 @@ class Decider:
         w = float(c.get("replay.resume_window_s", 180))
         games = self._replay_pool(cands)
         fresh = [m for m in self.queue if m.game_id != self.current and not m.seen_live and not m.replayed
-                 and m.retry_at <= now
+                 and m.retry_at <= now and self._parkable(m, now)
                  and self._aired_age(m, now) <= w and self._replayable(games.get(m.game_id))]
         if not fresh:
             return None
