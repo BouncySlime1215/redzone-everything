@@ -1287,3 +1287,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-07 (overseer 23:20 ET): new defaults buffered_jump.hold_chunk_s 25 and timing.behind_live_s.resume_settle_s 6.
   A Prime standby is pause-held in short pauses (one 75 s pause read 'stopped' after PLAY 3/3 on the hidden stick) and
   a hold's resume waits up to 6 s for 'playing' before reloading at the live edge.
+- 2026-11-07 (overseer 23:35 ET, runtime, Nick: "if no jumps in the first min it's broke"): sources.fastcast on (shadow
+  check 107 paired plays, 100% coverage, 19 s median lead over polling, 0 disagreements); timing.behind_live_s.scrub_fallback
+  live (a failed scrub leaves a ready live-edge standby, not an unusable one); jump_mode.leagues restored to
+  [cfb, nfl, nba, nhl, cbb] (basketball is in buffered mode now).

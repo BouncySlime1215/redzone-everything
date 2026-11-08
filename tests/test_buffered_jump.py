@@ -469,3 +469,22 @@ def test_hold_waits_for_a_prime_resume_that_reads_stopped_first(cfg, tmp_path):
     t = "prime:amzn1.dv.gti.x"
     c._set_hidden(t, True)
     assert asyncio.run(c._hold(hid, t, 0.1)) is True
+
+
+def test_a_scrub_in_backoff_costs_nothing_with_the_live_fallback(cfg, tmp_path):
+    """[overseer Nov 7 23:35] a ready live-edge standby whose scrub is backing off was priced +28 s (never landed)."""
+    import time as _t
+
+    from tests.test_control import ChannelMap, FakeStick, ctl
+
+    cfg.update({"mode": {"dry_run": False}, "jump_mode": {"enabled": True}, "buffered_jump": {"enabled": True},
+                "timing": {"behind_live_s": {"scrub_fallback": "live"}}})
+    c = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    c.sticks = [FakeStick("a:5555"), FakeStick("b:5555")]
+    c.hdmi = {"a:5555": "HDMI1", "b:5555": "HDMI2"}
+    c.scrub_of = lambda t: True
+    assert c._scrub_cost("youtubetv:espn") >= 28.0
+    c._scrub_backoff["youtubetv:espn"] = _t.time() + 60
+    assert c._scrub_cost("youtubetv:espn") == 0.0
+    c.cfg.update({"timing": {"behind_live_s": {"scrub_fallback": "keep"}}})
+    assert c._scrub_cost("youtubetv:espn") >= 28.0      # keep: the switch would refuse, so it is never cheap

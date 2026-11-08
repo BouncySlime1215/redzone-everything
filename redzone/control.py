@@ -3295,6 +3295,11 @@ class Controller:
         hid = self.hidden
         if hid is not None and self._live_on_hidden(target) and hid.scrubbed(target) is not None:
             return 0.0
+        if self._scrub_fallback_live() and time.time() < self._scrub_backoff.get(target or "", 0.0):
+            # [overseer Nov 7 23:35] a scrub in backoff isn't tried at the switch (it fails at once and flips at the
+            # live edge): pricing it at 28 s demanded a 31 s sure dead window, so a ready ESPN standby never landed
+            # (520 'bj_screen_gone_no_landing' with a Final game on screen)
+            return 0.0
         samples = sorted(self.latency.samples.get("yttv_scrub") or ())
         p90 = samples[min(len(samples) - 1, math.ceil(len(samples) * .9) - 1)] if samples else 0.0
         return max(float(self.cfg.get("timing.behind_live_s.scrub_cost_s", 28.0)), p90)
