@@ -2,14 +2,24 @@
  "about": "Source of docs/roadmap.md (scripts/northstar.py ranks it against docs/northstar.md). metric: a key of scripts/northstar.py METRICS or null (process work, scores 0). expected_delta: estimated change in that line's unit (points for a rate, per-100-landings for mid_play, seconds for switch_p95), positive = toward the target. priority: the director's order for today (1 = first); null = ranked by score. status: queued | working | review | done | blocked.",
  "items": [
   {
-   "id": "NFM",
+   "id": "PASSBAR",
    "priority": 0,
+   "work": "Pass bar (Nick, Nov 7 22:15; restated Nov 8 per N5): in every sport show every touchdown and 95%+ of red-zone trips live, with as many cuts as the events need (about 5 per 10 min, up to 9-14 when busy; the old 75 jumps in 10 min is dropped), 0 commercial seconds on screen, every shown play in full, 0 mid-play joins and 0 mid-play leaves. Measured per 10-minute window by scripts/buffered_jump_try.py watch. Mechanics first (buffered jump on both sticks, both HDMIs, Prime and YouTube TV); the when-to-jump model comes after.",
+   "metric": null,
+   "effort_days": null,
+   "owner": "coordinator; plan in docs/PLAN.md",
+   "status": "working",
+   "source": "Nick 2026-11-07 22:15/22:17; N5 2026-11-08"
+  },
+  {
+   "id": "NFM",
+   "priority": 6,
    "work": "NOGGIN FOUNDATION MODEL, the Noggin's main track (Nick 4:45 PM Nov 4). Event-token sequences per game plus the cross-game slate from the factory (~1B tokens, real + self-play); self-supervised pretraining (next event, its time, next stoppage); fine-tuned heads for Watch Value, crunch enter/exit, break start/length, big-play-next, game importance; hand features become optional inputs. ~100-300M params on Kaggle T4s within 30 GPU-h/week; distilled to the Reflex (<5 ms), plus a 3B-class Mind/MLX tier on the Mac (<=2 GB). Gates: locked nights, oracle rank agreement, calibration. Design: docs/noggin-foundation-model.md.",
    "metric": "pct_of_oracle",
    "expected_delta": 20,
    "effort_days": 10,
    "owner": "lane 1 (Noggin training); Kaggle via the overseer",
-   "status": "design doc this cycle (06); factory emits event-token shards next round",
+   "status": "design doc done; deferred: Nick, Nov 7 21:05, wants the switching mechanics first and the when-to-jump model later (docs/PLAN.md P1 then P2)",
    "source": "Nick 2026-11-04 4:45 PM"
   },
   {
@@ -358,6 +368,8 @@
   }
  ],
  "notes": [
+  "> **The plan is [docs/PLAN.md](PLAN.md).** This roadmap is generated from the Nov 6 northstar run and is history where it disagrees with it. Order of work: PASSBAR first (Nick, Nov 7 21:05: mechanics before the when-to-jump model).",
+  "",
   "## Planning loop",
   "",
   "1. **Nightly** (`.github/workflows/northstar.yml`, ~10:00 UTC): runs `scripts/northstar.py --night-seeds 8` on `integration/next`, commits docs/northstar.md, docs/northstar-history.jsonl and this file back to `integration/next`, and uploads them as an artifact.",

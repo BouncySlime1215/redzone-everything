@@ -1,6 +1,13 @@
 # Status board
 
-Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-04 05:45 UTC.
+> **STALE (audit R11, 2026-11-08).** This board was last written 2026-11-04 05:45 UTC; it does not show jump mode,
+> buffered jump, the pass bar or anything after Nov 4. **The plan is [docs/PLAN.md](PLAN.md)**; live state is in
+> [handoff.md](handoff.md) §5 and `data/deploy/deploy.jsonl`. The table below is history. Items closed since:
+> the SmartThings breaker and HOME/CEC fallback (#44), jump mode and buffered jump (Nov 7-8, OFF by default, Nick turns
+> them on at runtime), NBA and CBB in buffered mode (Nov 8). Closed by decision, not code: SmartThings is dropped
+> (N1), women's college basketball is off (N2).
+
+Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-04 05:45 UTC (not kept up since).
 `integration/next` has #1-#3, #5-#12, #14, #15, #17 (reasoner, off), #19-#36, #38-#56 and the RC 3 deploy fixes
 (see `docs/integration.md`). Tests: 1843 passed, 11 skipped; ruff clean; leak_check 15 pass / 0 fail / 13 pending.
 #51 eval honesty (night-bootstrap gate; locked gate 41/10/45), #52-#56 timing (SmartThings 2 s cost, behind-live scoring, landing histograms, source race, NHL 120 s break floor).
@@ -12,12 +19,10 @@ The draft release PR #37 is closed (Nick, Nov 3 10:45 PM); the deploy fetches `i
 
 ## Usage rules from the user (hard)
 
-- **All RedZone work stops at 90 % of the user's weekly Claude usage.** The last 10 % is for school.
-  The user pauses the project at 88-89 %. Kaggle runs need no Claude usage and continue during a pause.
+- **All RedZone work stops at 88 % of the user's weekly Claude usage** (the only cap; older 90 % text was wrong).
+  The last 12 % is for school. The user pauses the project at 88 %. Kaggle runs need no Claude usage and continue during a pause.
 - From 75 %: no new threads; finish and merge what's open; keep this file current so a pause is resumable.
-- Pacing (Nick, Nov 3 10:45 PM ET, at 48 %): work non-stop to **89 % at 5 PM ET Wed**. Checkpoints
-  **62 % at 8 AM, 78 % at 1 PM**. Behind pace: **3 working threads overnight, up to 5 when needed**; more than
-  3 points ahead, drop threads. Lean turns: scorecards only for the leagues a change touches, no idle polling.
+- Pacing: the Nov 3-4 checkpoints (89 % at 5 PM Wed etc.) are obsolete; only the 88 % cap applies.
 - Overnight focus: **switch timing** and **error handling everywhere**. No live TV or stick tests tonight
   (Nick tests Wed evening). Mac light. 95 % gates on locked unseen nights; anything that misses ships OFF.
 
@@ -104,7 +109,7 @@ All numbers come from the full scorecards on pinned `eval-data-v1` (every card r
 
 The target is the user's "100 % on every measure, no errors". Where 100 % is physically
 impossible, the feasible ceiling is computed from the data and the gap is measured against it.
-Crunch conflicts follow the user's league order **NFL > CFB > NBA > the rest**: the winning game
+Crunch conflicts follow the user's league order **NFL > CFB > NBA > NCAA basketball > NHL > MLB** (Nick, Nov 4 and Nov 8: NFL = CFB only when both are in crunch, NFL first otherwise; women's college basketball is off): the winning game
 counts and must be 100 % live, and a lower-priority overlap that gets a replay is not a miss.
 **The ceiling computation is not built yet (INTEGRATION, next up), so every ceiling below reads
 "pending".**

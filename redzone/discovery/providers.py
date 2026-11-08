@@ -12,7 +12,7 @@ Discovery after the owner selects and signs into their devices:
 3. Which one?   best_source() ranks every way to watch a game: something we can tune now,
                 never a blacked-out feed, your team's own broadcast for your teams (the
                 national feed otherwise), then YouTube TV (fast, and it can rewind for
-                catch-up replays) > Prime Video > ESPN > Peacock > Fubo > the rest.
+                catch-up replays) > Prime Video > ESPN > Fubo > the rest.
 
 The guardrail that matters most lives here too: is_purchase_screen().  Tuners must never
 press OK on a screen offering a purchase, trial or plan -- on Fire TV a blind OK there has
@@ -76,11 +76,11 @@ PROVIDERS: tuple[Provider, ...] = (
 BY_KEY = {p.key: p for p in PROVIDERS}
 RANK = {p.key: i for i, p in enumerate(PROVIDERS)}
 # Apps a tuner exists for (built-in: youtubetv/prime/espn; the rest: redzone/tuners/providers.py).
-TUNER_APPS = frozenset({"youtubetv", "prime", "espn", "peacock", "fubo", "paramount", "max",
+TUNER_APPS = frozenset({"youtubetv", "prime", "espn", "fubo", "paramount", "max",
                         "netflix", "nflplus", "nba", "appletv", "dazn"})
 # eventlinks provider -> app that plays it.  TV-Everywhere apps (NBC Sports, CBS Sports, TNT,
 # truTV, Marquee) are left out on purpose: the same channels are on YouTube TV.
-LINK_APPS = {"prime": "prime", "espn": "espn", "espnplus": "espn", "peacock": "peacock",
+LINK_APPS = {"prime": "prime", "espn": "espn", "espnplus": "espn",
              "paramount": "paramount", "max": "max", "nflplus": "nflplus", "nba": "nba",
              "dazn": "dazn", "appletv": "appletv", "netflix": "netflix", "fubo": "fubo"}
 # Fubo station ids for national channels (community-shared map on the Channels DVR forum;
@@ -93,15 +93,15 @@ NATIONAL_NETS = frozenset({"espn", "espn2", "espnu", "espnews", "abc", "tnt", "t
                            "nbcsn", "peacock", "prime", "fox", "fs1", "fs2", "cbs", "cbssn",
                            "nflnetwork", "nbatv", "nhlnetwork", "mlbnetwork", "usa", "netflix",
                            "appletv", "max", "accn", "secn", "btn", "cw"})
-# Apps used only when nothing else that isn't risky can play the game.  Everything on Peacock
-# is simulcast on NBC / NBCSN, which YouTube TV carries (and can rewind): the owner never
-# needs Peacock, so it is the last resort.
-LAST_RESORT = frozenset({"peacock"})
+# Never a source (CLAUDE.md: "Never use Peacock"; Nick, DEV-01/D-07).  Everything on Peacock is
+# simulcast on NBC / NBCSN, which YouTube TV carries (and can rewind), so Peacock is not needed.
+# Enforced in gather_sources and best_source, whatever the Noggin flags say.
+BANNED_APPS = frozenset({"peacock"})
 # YouTube TV channels that carry Peacock's games, best guess first (NBCSN carries Peacock's
 # NBA/NHL nights since its Nov 2025 relaunch; NBC the big ones).
 PEACOCK_ON_YTTV = ("nbcsn", "nbc")
 # Broadcast-only apps (no event link found yet): say where it is even if we can't tune it.
-LABEL_ONLY = {"peacock": "Peacock", "netflix": "Netflix", "appletv": "Apple TV", "max": "HBO Max"}
+LABEL_ONLY = {"netflix": "Netflix", "appletv": "Apple TV", "max": "HBO Max"}
 
 
 def roles_from_packages(installed: Iterable[str]) -> dict[str, str]:
@@ -368,8 +368,14 @@ def _risky(s: Source, g: GameState, side: str | None) -> bool:
 
 def _rank_key(s: Source, g: GameState, side: str | None) -> tuple:
     return (0 if s.tunable else 1, 1 if _risky(s, g, side) else 0,
-            1 if s.provider in LAST_RESORT else 0, _feed_rank(s, side),
+            _feed_rank(s, side),
             RANK.get(s.provider, len(RANK)), 0 if s.kind == "event" else 1)
+
+
+def is_banned(s: Source) -> bool:
+    """A source on a banned app (Peacock): by provider, or by a `peacock:<id>` target."""
+    prefix = (s.target or "").split(":", 1)[0].lower()
+    return s.provider in BANNED_APPS or prefix in BANNED_APPS
 
 
 def _states(available) -> dict[str, ProviderState]:
@@ -408,11 +414,11 @@ def best_source(game: GameState, candidates: Iterable[Source], available=None,
 
     Order: tunable now > not risky (Apple geo flag / League Pass during national TV) > your
     team's own broadcast (national for other games; alt-casts and Spanish feeds last) >
-    provider (YouTube TV, Prime Video, ESPN, Peacock, Fubo, others) > exact event link.
+    provider (YouTube TV, Prime Video, ESPN, Fubo, others; never Peacock) > exact event link.
     Never picks a source marked blacked out, or an app that isn't installed/subscribed.
     A choice you made on the phone ("you set it") always wins untouched.
     """
-    cands = [c for c in candidates or () if isinstance(c, Source)]
+    cands = [c for c in candidates or () if isinstance(c, Source) and not is_banned(c)]
     for c in cands:
         if c.confidence == "you set it":
             return Pick(c.target, c.label, c.confidence, c.tunable, provider=c.provider,
@@ -611,12 +617,12 @@ def gather_sources(g: GameState, base: Where | None, links: Mapping[str, list[di
     for c in cands:
         key = c.target or f"{c.provider}:?"
         out[key] = _merge(out[key], c) if key in out else c
-    return [_game_skip(g, apply_skip(c, skips), skips) for c in out.values()]
+    return [_game_skip(g, apply_skip(c, skips), skips) for c in out.values() if not is_banned(c)]
 
 
 def peacock_on_yttv(g: GameState, channel_map: ChannelMap | None, have=()) -> list[Source]:
     """A game on Peacock is also on NBC / NBCSN: offer those YouTube TV channels (only the
-    ones whose channel codes we have), so Peacock stays the last resort."""
+    ones whose channel codes we have), since Peacock itself is never a source."""
     if channel_map is None or "peacock" not in _nets(g):
         return []
     out, searched = [], []

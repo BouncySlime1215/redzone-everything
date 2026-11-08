@@ -119,10 +119,11 @@ def test_peacock_games_go_to_nbcsn_and_nbc_on_youtube_tv(tmp_path):
     book.links[g.game_id] = {"providers": {"peacock": [{"ref": "main", "feed": "national"}]}}
     p = book.choose(g, cm.where(g), channel_map=cm)
     assert p.target == "youtubetv:nbcsn" and p.tunable and "NBCSN" in p.why
-    assert [a.target for a in p.alternates][:2] == ["youtubetv:nbc", "peacock:main"]
+    assert [a.target for a in p.alternates][0] == "youtubetv:nbc"
+    assert not any((a.target or "").startswith("peacock:") for a in p.alternates)   # Peacock is never offered
 
 
-def test_peacock_is_only_used_when_no_youtube_tv_code_exists(tmp_path):
+def test_peacock_is_never_used_even_when_no_youtube_tv_code_exists(tmp_path):
     cm = ChannelMap(tmp_path / "ch.json")
     cm.codes.update({"nbc": "bbbbbbbbbbb"})
     g = game(gid="g9", broadcasts=["Peacock"])
@@ -136,7 +137,7 @@ def test_peacock_is_only_used_when_no_youtube_tv_code_exists(tmp_path):
     channels_mod.SEARCH_CHANNELS = frozenset()
     try:
         srcs = prov.gather_sources(g, cm.where(g), {"peacock": [{"ref": "main"}]}, channel_map=cm)
-        assert prov.best_source(g, srcs).target == "peacock:main"    # last resort, still played
+        assert not (prov.best_source(g, srcs).target or "").startswith("peacock:")   # banned, not a last resort
     finally:
         channels_mod.SEARCH_CHANNELS = old_search
     assert not prov.peacock_on_yttv(game(broadcasts=["ESPN"]), cm)
