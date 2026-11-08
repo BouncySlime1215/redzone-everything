@@ -72,6 +72,19 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 
 ## Gates and quality
 
+- 2026-11-08: **Grader and release gate re-frozen at v47: they see every league and can only get stricter** (package E of
+  the P1 sprint; Nick N5, pass bar: 0 mid-play, 0 commercial seconds, every red-zone trip). Gate: `entries mid-play = 0`
+  is now a hard row on the per-night path too (a card with 1 mid-play entry in 300 used to PASS); a card not graded on
+  the locked split FAILs; a MEASURED crunch miss (and a real 0% of your-team crunch) FAILs, PENDING only when n = 0;
+  new rows "entries mid-commercial = 0" and "dead air = 0"; every one of NFL, CFB, NBA, CBB, NHL, MLB has a row, PENDING
+  (not absent) when it has no scorecard; league promotion needs `mid_play_cuts == 0` and a PENDING for a dropped line.
+  `docs/gate_baseline.json` entries_mid_play ceilings re-based to 0 (they were NBA 10 of 20, NHL 2, demo 2). Grader:
+  `lab/leverage.py` and `grading.is_big/is_crunch` read `league.base` + `pro_period` (CFB, CBB, WCBB were never
+  high-leverage or crunch); `outcome_label` gets WCBB rows. Numbers that get worse by design: NFL crunch live 72.7%
+  now FAILs (was PENDING), the demo's 76% crunch FAILs, NFL/NBA/NHL mid-commercial and dead air FAIL, and CFB/CBB/MLB
+  read PENDING. Also: brain splits are the time split by whole night (`splits.league_split`), not a crc32 hash; a
+  backtest knows no team records (end-of-game leak); NHL playoff OT is 20:00 with no shootout. Why: the audit
+  (docs/audits/2026-11-08-feeds-scoring.md, -rules-and-config.md) found gates that could not fail.
 - 2026-11-04 11:00 AM: **The replay window is 2-3 MINUTES max, not 10.** North Star `big_seen_10min` becomes `big_seen_3min` (live or replayed within 3 min, >= 99%), plus a stretch row `big_seen_2min`; `your_team_big` counts replays within 3 min. Graded on dev and locked, live and candidate (`backtest.CATCHUP_3_S`/`CATCHUP_2_S`). Product: the reel/replay queue (T2-T4 collision replays) targets the very next dead window; a replay that can't air within 3 min is skipped or folded into a later montage; clairvoyance and possession-start entry are the main way to see moments LIVE.
 - 2026-11-04 10:55 AM: **Gates raised and made honest against the hindsight oracle** (Nick: "95% was a compromise"). Big plays seen live per league: **>= 95% of oracle value** (the share of the DP ceiling on the same nights; ceilings now about NFL 91/93, NBA 93/100, NHL 85/90 dev/locked). Live or replayed within 10 min >= 99%. Mid-play cuts 0. Landings in dead time **>= 98%** (was 95%). `pct_of_oracle` rows gate at 95% (was 90%). Every oracle-backed row shows its gap to 100% of oracle. Pace brake lifted; hard stop at 89-90% of weekly usage.
 - 2026-11-04 12:45 AM: **Timing gate rows added** (overnight plan item 6): "entries mid-play = 0" and

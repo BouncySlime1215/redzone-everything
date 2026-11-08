@@ -252,7 +252,7 @@ def forecast(g: GameState | None, clocks: tuple = ()) -> Forecast:
     if base == League.NFL:
         if p in (1, 3) and clk <= 60:
             return Forecast(0.8, LEN["nfl_quarter"], "the quarter's about to end")
-        if p in (2, 4) and 120 < clk <= 165:
+        if p in (2, 4) and 120 < clk <= 165 and not lg.college:   # college has no two-minute warning (F11)
             return Forecast(0.8, LEN["nfl_2min"], "two-minute warning coming")
         if kind == "punt":
             return Forecast(0.75, LEN["nfl_punt"], "punt: commercial before the next snap")

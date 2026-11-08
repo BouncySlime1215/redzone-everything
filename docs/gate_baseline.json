@@ -1,5 +1,5 @@
 {
- "note": "Today = codex/resume-redzone 5f0e6a1 graded on the LOCKED test split of eval-data-v1 (redzone/lab/splits.py: newest 25% of nights per league; scripts/ci_scorecard.py --split test) plus the Nov 1 demo. The release gate never lets entries mid-play rise above these.",
+ "note": "Today = codex/resume-redzone 5f0e6a1 graded on the LOCKED test split of eval-data-v1 (redzone/lab/splits.py: newest 25% of nights per league; scripts/ci_scorecard.py --split test) plus the Nov 1 demo. The release gate never lets entries mid-play rise above these. Re-based 2026-11-08 (grader v47, audit R4): the Nov 3 ceilings for entries_mid_play (NBA 10 of 20, NHL 2 of 140, demo 2 of 183) were frozen above Rule #1, so the ratchet let a 50% mid-play NBA card pass; it is now 0 everywhere (the hard bar). The other lines are still the Nov 3 measurements and are only reported, never gated, by the release gate.",
  "cards": {
   "nfl": {
    "metrics": {
@@ -50,7 +50,7 @@
     "big_plays": 16,
     "crunch_plays": 179,
     "entries": 20,
-    "entries_mid_play": 10,
+    "entries_mid_play": 0,
     "entries_in_break": 8,
     "entry_wait_s": 61.9,
     "plays_missed_entry": 3,
@@ -81,7 +81,7 @@
     "big_plays": 208,
     "crunch_plays": 235,
     "entries": 140,
-    "entries_mid_play": 2,
+    "entries_mid_play": 0,
     "entries_in_break": 68,
     "entry_wait_s": 79.7,
     "plays_missed_entry": 0,
@@ -151,7 +151,7 @@
     },
     "cut_timing": {
      "entries": 183,
-     "entries_mid_play": 2,
+     "entries_mid_play": 0,
      "entries_in_break": 77,
      "entry_wait_s": 21.1,
      "plays_missed_entry": 0,

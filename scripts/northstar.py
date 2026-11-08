@@ -69,6 +69,8 @@ ORACLE_LEAGUES = ("nfl", "nba", "nhl")   # NFL: the app re-graded by sportsgrade
 METRICS = [
     # Nick, Nov 4 3:15 PM: never JOIN mid-play (hard 0); leaving mid-play is allowed at low leverage only
     ("mid_play", "Mid-play entries (per 100 landings)", "0", -1, 0.0, 5.0),
+    # [grader v47, R2] Rule #1 per league, for every one of Nick's leagues: PENDING (never absent) with no card
+    *[(f"mid_play_{lg}", f"Mid-play entries, {lg.upper()} (per 100 landings)", "0", -1, 0.0, 5.0) for lg in NICKS_LEAGUES],
     # Nick, Nov 4 9:45 PM (RC7 gate 3): never join at a break, land just before the restart
     ("mid_break", "Entries mid-commercial (in a break with > 10 s left before the restart; per 100 entries)", "0",
      -1, 0.0, 5.0),
@@ -254,18 +256,20 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
     broken = [lg for lg in LEAGUES if not rg._m(cards.get(lg, {}))]
     note = f" (missing: {', '.join(broken)})" if broken else ""
     every = [x for lg in LEAGUES for x in per[lg]]
+    per_all = {lg: _per(cards, lg) for lg in NICKS_LEAGUES}
+    every_all = [x for lg in NICKS_LEAGUES for x in per_all[lg]]   # Rule #1 counts every scored league's card
 
     # 1. mid-play ENTRIES: hard 0 (Nick, Nov 4 3:15 PM: never join mid-play). 0 events in N landings bounds
     # the rate at 3/N (rule of three). Leaves are split by leverage below.
-    ev = [(int(x.get("entries_mid_play") or 0), int(x.get("landings") or 0)) for x in every]
+    ev = [(int(x.get("entries_mid_play") or 0), int(x.get("landings") or 0)) for x in every_all]
     n_land = sum(n for _, n in ev)
     n_ev = sum(e for e, _ in ev)
     if not n_land:
         rows.append(_row("mid_play", None, None, None, PENDING, "no landings counted (old scorecard?)" + note))
     else:
         point, lo, hi = _boot_ratio(ev)
-        by = ", ".join(f"{lg.upper()} {sum(int(x.get('entries_mid_play') or 0) for x in per[lg])}"
-                       for lg in LEAGUES if per[lg])
+        by = ", ".join(f"{lg.upper()} {sum(int(x.get('entries_mid_play') or 0) for x in per_all[lg])}"
+                       for lg in NICKS_LEAGUES if per_all[lg])
         if n_ev:
             st, det = FAIL, f"{n_ev} in {n_land} landings ({by})"
         else:
@@ -276,8 +280,21 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
             lo = hi = 0.0
             hi = round(300.0 / n_land, 2)
         rows.append(_row("mid_play", round(point, 2), round(lo, 2), round(hi, 2), st, det + note, len(ev)))
+    for lg in NICKS_LEAGUES:   # [grader v47, R2] the same rule per league; a league with no card reads PENDING
+        evl = [(int(x.get("entries_mid_play") or 0), int(x.get("landings") or 0)) for x in per_all[lg]]
+        nl, ne = sum(n for _, n in evl), sum(e for e, _ in evl)
+        if not nl:
+            rows.append(_row(f"mid_play_{lg}", None, None, None, PENDING,
+                             f"no {lg.upper()} scorecard (or no landings counted): Rule #1 is not measured here"))
+        elif ne:
+            rows.append(_row(f"mid_play_{lg}", round(100.0 * ne / nl, 2), None, None, FAIL, f"{ne} in {nl} landings", len(evl)))
+        else:
+            ok = len(evl) >= rg.MIN_NIGHTS and nl >= 600
+            rows.append(_row(f"mid_play_{lg}", 0.0, 0.0, round(300.0 / nl, 2), PASS if ok else PENDING,
+                             f"0 in {nl} landings; true rate {rg.zero_bound(nl)}"
+                             + ("" if ok else "; needs >= 8 nights and >= 600 landings to prove < 0.5%"), len(evl)))
     rows.append(break_row(cards, every, note))
-    rows += leave_rows(per, every, n_land, note)
+    rows += leave_rows(per_all, every_all, n_land, note)
 
     # 2. landings (both ends of every switch) in on-screen dead time
     rows.append(_rate("landings_dead", [(int(x.get("landings_dead") or 0), int(x.get("landings") or 0)) for x in every],
@@ -298,14 +315,13 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
         r["detail"] += "; some scorecards don't grade the 3-min replay window: live only there"
     rows.append(r)
     # 4b. crunch live per league. Under the league order a lower-priority overlap that gets a replay is
-    # not a miss, and that feasible ceiling isn't computed yet: a miss under 95 % reads PENDING (as in
-    # scripts/release_gate.py), never PASS. Your-team crunch is a hard 100 % (Nick's L1 rule).
+    # not a miss, but that feasible ceiling isn't computed yet, so a measured miss under 95 % FAILS (as in
+    # scripts/release_gate.py) until it is. Your-team crunch is a hard 100 % (Nick's L1 rule).
     for lg in LEAGUES:
         r = _rate(f"crunch_live_{lg}", [(int(x.get("crunch_live") or 0), int(x.get("crunch") or 0)) for x in per[lg]],
                   95.0, note="" if per[lg] else f" ({lg.upper()} scorecard missing)")
-        if r["status"] == FAIL:
-            r["status"] = PENDING
-            r["detail"] += "; under 95 but the league-order feasible ceiling isn't computed yet"
+        if r["status"] == FAIL:   # [grader v47, F5] a measured miss FAILs; the ceiling isn't built, so it can't excuse it
+            r["detail"] += "; under 95 and no computed feasible ceiling explains it"
         rows.append(r)
     rows.append(_rate("your_team_crunch", [(int(x.get("my_crunch_live") or 0), int(x.get("my_crunch") or 0))
                                            for x in every], 100.0, note=note))
@@ -430,7 +446,7 @@ def leave_rows(per: dict, every: list[dict], n_land: int, note: str = "") -> lis
     hi_ev = [(int(x.get("cuts_high") or 0), int(x.get("landings") or 0)) for x in every]
     n_hi = sum(e for e, _ in hi_ev)
     n_lo = sum(int(x.get("cuts") or 0) for x in every) - n_hi
-    by = ", ".join(f"{lg.upper()} {sum(int(x.get('cuts_high') or 0) for x in per[lg])}" for lg in LEAGUES if per[lg])
+    by = ", ".join(f"{lg.upper()} {sum(int(x.get('cuts_high') or 0) for x in per[lg])}" for lg in per if per[lg])
     if n_hi:
         point, lo, hi = _boot_ratio(hi_ev)
         r = _row("high_leverage_leaves", round(point, 2), round(lo, 2), round(hi, 2), FAIL,

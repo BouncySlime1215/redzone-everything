@@ -6,7 +6,7 @@ from scripts import release_gate as rg
 def card(per):
     n = sum(x["entries"] for x in per)
     mid = sum(x["entries_mid_play"] for x in per)
-    return {"metrics": {"eval_data": rg.HELDOUT["eval_data"], "mid_play_cuts": 0, "entries": n,
+    return {"metrics": {"eval_data": rg.HELDOUT["eval_data"], "split": "test", "mid_play_cuts": 0, "entries": n,
                         "entries_mid_play": mid, "per_night": per}}
 
 

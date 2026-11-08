@@ -32,12 +32,15 @@ from redzone.models import PERIOD_S, REGULATION, League
 from redzone.sources import espn
 
 # Wall-clock seconds after the moment that the outcome may happen in (pre-registered, EXP-302).
-HORIZON = {League.NBA: 180.0, League.CBB: 180.0, League.NHL: 300.0, League.NFL: 300.0, League.CFB: 300.0,
-           League.MLB: 600.0}
+HORIZON = {League.NBA: 180.0, League.CBB: 180.0, League.WCBB: 180.0,   # WCBB row: grader v47, F16 (was a KeyError)
+           League.NHL: 300.0, League.NFL: 300.0, League.CFB: 300.0, League.MLB: 600.0}
 # Spread of the final margin per second of game clock: the final-margin SD over a regulation game.
-WP_SPREAD = {League.NBA: 12.0 / math.sqrt(2880), League.CBB: 11.0 / math.sqrt(2400), League.NHL: 2.3 / math.sqrt(3600),
-         League.NFL: 14.0 / math.sqrt(3600), League.CFB: 17.0 / math.sqrt(3600)}
-FINISH_MARGIN = {League.NBA: 3, League.CBB: 3, League.NHL: 1, League.NFL: 8, League.CFB: 8, League.MLB: 1}
+# MLB has no game clock, so it has no row here: it gets flip labels only (win_prob / game_left return None).
+WP_SPREAD = {League.NBA: 12.0 / math.sqrt(2880), League.CBB: 11.0 / math.sqrt(2400),
+             League.WCBB: 11.0 / math.sqrt(2400), League.NHL: 2.3 / math.sqrt(3600),
+             League.NFL: 14.0 / math.sqrt(3600), League.CFB: 17.0 / math.sqrt(3600)}
+FINISH_MARGIN = {League.NBA: 3, League.CBB: 3, League.WCBB: 3, League.NHL: 1, League.NFL: 8, League.CFB: 8,
+                 League.MLB: 1}
 WP_SWING = 0.20
 CONTEXT_AUC_MAX = 0.95
 MIN_BLIND = 600          # blind moments per league before a lock grade can PASS or FAIL (Nick: >= 600)

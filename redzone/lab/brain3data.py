@@ -22,13 +22,12 @@ Split: by NIGHT (``night``, YYYYMMDD ET). Every game of one evening lands in the
 """
 from __future__ import annotations
 
-import zlib
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from redzone.lab import datasets, sportsdata
+from redzone.lab import datasets, splits, sportsdata
 from redzone.lab.datasets import STOPPAGE_CODE
 
 TRAINING3_DIR = datasets.ROOT / "data" / "training3"
@@ -49,10 +48,16 @@ NBA_TV_TIMEOUT_S = 140.0
 from redzone.scoring.brain3 import KC, KCLASS, NHL_PENALTIES, SEQ, V3_EXTRA, kclass  # noqa: E402,F401
 
 
-def night_split(night: str, valid: float = 0.15, test: float = 0.15) -> str:
-    """train / valid / test by night (every game of one evening in the same split)."""
-    u = (zlib.crc32(("night:" + str(night)).encode()) % 10_000) / 10_000
-    return "test" if u < test else "valid" if u < test + valid else "train"
+def night_splits(league: str, nights) -> dict[str, str]:
+    """night -> "train" / "valid" / "test": the TIME split by whole night (oldest train, newest >= 25% locked
+    test; redzone/lab/splits.py under the active pin). Replaces the crc32 hash of the night (grader v47, F6):
+    a hash put ~70% of the locked nights in train and made every brain number leaked. `league` may be an
+    archive name ("espn_nhl")."""
+    lg = str(league).removeprefix("espn_")
+    key = {n: str(n).replace("-", "") for n in set(nights)}
+    sp = splits.league_split(lg, key.values())
+    where = {**{n: "train" for n in sp.train}, **{n: "valid" for n in sp.valid}, **{n: "test" for n in sp.test}}
+    return {n: where.get(k, "train") for n, k in key.items()}
 
 
 # ----------------------------------------------------------------------------- per-league typing
@@ -272,7 +277,7 @@ def derive3(league: str, e: pd.DataFrame) -> pd.DataFrame:
     for h in HORIZONS:
         e.loc[~inplay, f"stop{h}"] = np.nan
     e.loc[~inplay, "stop_type"] = np.nan
-    e["split"] = e.night.map(night_split)
+    e["split"] = e.night.map(night_splits(league, e.night.unique()))
     return e.drop(columns=["_st"])
 
 

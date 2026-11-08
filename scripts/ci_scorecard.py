@@ -45,7 +45,9 @@ def cards(a) -> list[tuple[str, list[str], Path]]:
     """(name, argv, data it needs) for each scorecard in the slice."""
     sp = ["--split", a.split] if getattr(a, "split", "all") != "all" else []
     out = [("nfl", ["scripts/eval.py", "--n", str(a.nfl_n), *sp], Path("data/archive/nfl"))]
-    for lg in ("nba", "nhl"):
+    # [grader v47, R2] cfb / cbb / mlb run the same eval_sports grader on their archives. Opt in (--leagues cfb,cbb)
+    # until each is verified to run clean: the release gate shows them PENDING (not absent) meanwhile.
+    for lg in ("nba", "nhl", *[x for x in (getattr(a, "leagues", "") or "").split(",") if x in ("cfb", "cbb", "mlb")]):
         out.append((lg, ["scripts/eval_sports.py", lg, "--nights", str(a.nights), *sp], Path(f"data/archive/{lg}")))
     if a.resync:
         # [auto sync] the same slice with live Kalman re-sync modelled (backtest.run resync), so the
@@ -103,6 +105,8 @@ def main(argv=None) -> int:
                     help="also run NFL/NBA/NHL with sync error +-3 s and a dropping, late feed")
     ap.add_argument("--full", action="store_true", default=os.environ.get("RZ_SCORECARD_FULL") == "1",
                     help="the whole merge scorecard (NFL 16 slates, NBA/NHL 14 nights) instead of the slice")
+    ap.add_argument("--leagues", default=os.environ.get("RZ_SCORECARD_LEAGUES", ""),
+                    help="extra leagues to grade with eval_sports, comma list of cfb,cbb,mlb (default none)")
     ap.add_argument("--timeout", type=float, default=None,
                     help="seconds per scorecard (default 900, 2400 with --full)")
     a = ap.parse_args(argv)
@@ -122,6 +126,8 @@ def main(argv=None) -> int:
             print(f"{name}: skipped, no {needs}", flush=True)
             continue
         card, err, took = run_one(root, args, a.timeout)
+        if isinstance(card, dict):
+            card.setdefault("split", a.split)   # [grader v47, F4] the gate FAILs a card not graded on the locked split
         result["cards"][name] = {"metrics": card, "seconds": round(took)} if card is not None \
             else {"error": err, "seconds": round(took)}
         print(f"{name}: {'ok' if card is not None else err} ({took:.0f} s)", flush=True)

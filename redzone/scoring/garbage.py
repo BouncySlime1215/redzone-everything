@@ -34,8 +34,8 @@ _REGULATION = ByLeague({League.NFL: 4, League.NBA: 4, League.NHL: 3, League.MLB:
 def threshold(g: GameState) -> int | None:
     """Smallest margin that counts as garbage time right now (None = can't be garbage yet)."""
     per = pro_period(g.league, g.period, g.clock_s)  # men's college halves read as NBA quarters
-    if per > _REGULATION[g.league] and g.league != League.MLB:
-        return None  # overtime is never garbage
+    if per > _REGULATION[g.league]:
+        return None  # overtime and extra innings are never garbage (grader v47, F13: MLB used to be exempt)
     best = None
     for min_per, max_clock, margin in _RULES[g.league]:
         if per < min_per:
