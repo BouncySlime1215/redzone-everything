@@ -281,3 +281,24 @@ def test_a_park_without_the_youtubetv_package_presses_nothing():
     probe = Probe()
     r = run(rp.park(Stick(), 63.0, probe=probe))
     assert not r.ok and "package" in r.reason and Stick.log == [] and probe.armed_on == []
+
+
+def test_a_freshly_tuned_stick_waits_out_the_banner_before_the_scrub(scrub):
+    """[Nick, Nov 8 3778a401] right after a tune YouTube TV's LIVE/title banner swallows keys ('focus guard: no scrub
+    label after the LEFT', 62 s). The park waits replay.park_after_tune_s from the tune, sends nothing meanwhile, and
+    asks the scrub for that much more."""
+    c, calls, result = scrub
+    c.cfg.update({"replay": {"park_after_tune_s": 0.6}})
+    result["r"] = landing(0.1)
+    c._tuned_at = {c.hidden.host: time.time()}
+    t = time.time()
+    assert run(c._park(c.hidden, "youtubetv:fox", 60.0, "p1"))
+    assert calls and calls[0][1] >= 60.5 and time.time() - t >= 0.5
+
+
+def test_a_stick_that_turns_visible_during_the_banner_wait_presses_nothing(scrub):
+    c, calls, result = scrub
+    c.cfg.update({"replay": {"park_after_tune_s": 5.0}})
+    c._tuned_at = {c.hidden.host: time.time()}
+    c._flipping = True
+    assert not run(c._park(c.hidden, "youtubetv:fox", 60.0, "p1")) and calls == [] and c.hidden.log == []

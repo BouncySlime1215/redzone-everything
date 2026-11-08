@@ -15,6 +15,9 @@ def sc(gid, score, lock=None, is_break=False, league=League.NFL):
 @pytest.fixture
 def dec(cfg, clock):
     delays = DelayBook({"youtubetv": 40.0, "prime": 35.0}, sigma_default=15.0, clock=clock)
+    # these selection tests model catch-ups of any age; the YouTube TV scrub's park-age cap (replay.scrub_max_play_age_s,
+    # a stick limit) has its own tests in tests/test_replay_fail_backoff.py
+    cfg.update({"replay": {"scrub_max_play_age_s": 0}}, record=False)
     d = Decider(cfg, delays, clock=clock)
     with_fresh_timing(d, clock)
     return d

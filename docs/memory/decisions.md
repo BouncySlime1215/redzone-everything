@@ -1265,3 +1265,13 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   short for the delay margin). With buffered_jump on: no catch-up replay queue (it took the standby: 'yields to a queued
   replay'), no scrub inside a switch (tune + banner wait + scrub + safe wait held the command lock 156 s), and a screen
   game that left the feed is a free cut onto a ready standby that lands dead.
+- 2026-11-08 (overseer's live run on 879d99ed, replay ON: 0 replays ran, every catch-up refused at the stick
+  as too deep, '197s back needs 14 LEFTs (> 8)' up to 694 s): **new default `replay.scrub_max_play_age_s: 110`.**
+  With replay.yttv_seek scrub, a YouTube TV play older than 110 s is never queued or picked (8 LEFTs reach about
+  117 s back at the park; the tune and the live-edge delay are counted); keys mode and other apps are unchanged.
+  The decider's generic selection tests set it to 0. PR #419.
+- 2026-11-08 (overseer's 3778a401 report: a scrub right after a tune failed 'focus guard: no scrub label after the
+  LEFT' in 62 s, YouTube TV's post-tune banner swallows keys ~20-30 s): **new default `replay.park_after_tune_s: 22`**
+  (a replay park on a freshly tuned stick waits this long from the tune, no keys, then scrubs that much further
+  back) and **`replay.scrub_max_play_age_s` 110 -> 95** (the wait makes the park ~22 s deeper; 8 LEFTs still
+  reach it). PR #419.

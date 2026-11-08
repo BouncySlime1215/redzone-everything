@@ -1540,6 +1540,7 @@ class Controller:
                 # 2.33 s on the 4K Plus vs 3.74 s on the 4K 2023, so one median misprices one of them.
                 self.latency.record(f"{app}@{stick.model}", res.took)
             self._awake_at[stick.host] = time.time()
+            self.__dict__.setdefault("_tuned_at", {})[stick.host] = time.time()
         return res
 
     def _set_held(self, target: str, behind_s: float) -> None:
@@ -1690,6 +1691,19 @@ class Controller:
             return False   # a failed replay scrub isn't retried for replay.scrub_retry_s (no key storms)
         if self._task is asyncio.current_task():
             self.stage["stage"] = "rewinding"
+        # [Nick, Nov 8 3778a401] after a tune YouTube TV's LIVE/title banner sits up ~20-30 s and keys do nothing
+        # there ('focus guard: no scrub label after the LEFT', 62 s): a freshly tuned stick waits it out first.
+        # The replay is that much further back when the scrub starts. No key is sent during the wait.
+        still_hidden = lambda: self.hidden is stick and not self._flipping   # noqa: E731
+        ready_at = self.__dict__.get("_tuned_at", {}).get(stick.host, 0.0) + float(
+            self.cfg.get("replay.park_after_tune_s", 22.0))
+        if time.time() < ready_at:
+            t_w = time.time()
+            while time.time() < ready_at:
+                if not still_hidden():
+                    return False
+                await asyncio.sleep(min(0.5, ready_at - time.time()))
+            back_s += time.time() - t_w
         probe = self.label_probe
         if probe is None:
             # the scrub-entry label reader (timing.behind_live_s.label_reader) is off: a replay still never parks
@@ -1699,8 +1713,7 @@ class Controller:
                 self._replay_probe = LabelProbe(self.cfg)
             probe = self._replay_probe
         r = await replay_park.park(stick, back_s, probe=probe, cfg=self.cfg,
-                                   pkg=self._package(stick, target),
-                                   still_hidden=lambda: self.hidden is stick and not self._flipping)
+                                   pkg=self._package(stick, target), still_hidden=still_hidden)
         if r.moved:
             stick.behind_on = target   # keys moved it: the next live tune of target resets first (#391)
         self._last_seek_sent = r.lefts
