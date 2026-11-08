@@ -149,6 +149,15 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-08 (Nick; DEV-01/D-07): **Peacock is never a source.** Dropped from `TUNER_APPS`, `LINK_APPS`, `LABEL_ONLY` and `LAST_RESORT` in discovery and filtered by `BANNED_APPS` in `gather_sources` and `best_source`, whatever the Noggin flag says; Peacock games still map to NBC/NBCSN on YouTube TV (`peacock_on_yttv`). Feature flags `flags.*` are not wired (audit R3); docs now name the real per-subsystem keys.
 - 2026-11-08 (audit R12): `jump_mode.leagues` default stays `[cfb, nfl]`; NBA/CBB join through `buffered_jump.leagues`. NHL and MLB are NOT in the jump rotation by default; the pass bar is checked per sport only where jump mode runs. Add them to the default when their graded cards exist.
 
+- 2026-11-08 (N4, switch-path audit S-4): **a phone tap (Back, Focus, Replay, like Watch this) waits for a dead ball unless
+  tapped twice.** Before, those three cut mid-play at once. North Star: never leave a high-leverage moment.
+- 2026-11-08 (audit S-3): a jump's leave margin is max(jump_mode.flip_s, the measured slow flip on the current path)
+  instead of a fixed 3.2 s: the old game plays on until the input changes, and HOME flips run 2-6 s.
+- 2026-11-08 (audit DEV-09): `two_stick.identity_check` (default true): each stick's HDMI port and serial are checked
+  against devices.json at start and on reconnect; a definite mismatch turns two-stick mode off with a phone alert.
+- 2026-11-08 (audit S-11): a replay is only ever seeked on the hidden stick, for every app: one-stick replays are
+  refused (Nick, Nov 7: the viewer never sees a rewind).
+
 ## AI
 
 - 2026-11-04 10:55 AM: **The Noggin is fully self-taught: no training signal from Nick.** His 👍/👎, overrides, lock-ins and taps never feed any training, labelling, suggestion or grading path (crunch policy, Pick, Priority L2 suggestions, E23). Allowed sources: the hindsight oracle on archived nights, self-play/simulation, the Teacher's automated nightly review, objective pbp outcomes, stick/sync telemetry. His buttons stay controls only. North Star: `right_game` (agreement with his taps) is replaced by `pct_of_oracle` (% of hindsight-oracle value achieved, mean of NFL/NBA/NHL). `priority.suggest_from_feedback` removed.

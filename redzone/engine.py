@@ -13,6 +13,7 @@ import logging
 import re
 import subprocess
 import time
+from dataclasses import replace as _replace
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -80,6 +81,24 @@ _IPISH = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b|\b[0-9a-f]{2}(?::[0-9
 def _redact(detail: str) -> str:
     """A failure's first clause for a public log row: no IP addresses, ports or MACs."""
     return _IPISH.sub("<host>", _short_why(detail or ""))[:80]
+
+
+def _stage_times(tr: dict | None, out) -> dict:
+    """Seconds each stage of a switch took (numbers only; a stage that didn't run is left out): the bottleneck
+    numbers for data/jumps.jsonl and the switches table. tr = the switch's trace (redzone/trace.py)."""
+    sp = (tr or {}).get("spans") or {}
+    marks = {n: t for n, t in (getattr(out, "marks", None) or [])}
+
+    def gap(a: str, b: str) -> float | None:
+        return round(max(0.0, marks[b] - marks[a]), 2) if a in marks and b in marks else None
+    queued = [x for x in (sp.get("decide"), sp.get("queued")) if x is not None]
+    rec = {"stage_decide_s": round(sum(queued), 2) if queued else None,   # decided -> the controller starts it
+           "stage_tune_s": sp.get("tune"), "stage_scrub_s": gap("scrub_start", "scrub_done"),
+           "stage_park_s": gap("tune_done", "park_done"), "stage_wait_s": sp.get("safe_wait"),   # may_cut's wait
+           "stage_play_to_flip_s": gap("snap_play", "flip_start"),   # a parked stick rolling before the flip
+           "stage_flip_s": sp.get("flip"), "stage_picture_s": sp.get("resume"),   # input changed -> confirmed playing
+           "stage_to_picture_s": sp.get("to_picture"), "stage_total_s": sp.get("total")}
+    return {k: v for k, v in rec.items() if v is not None}
 
 
 def _league_of(g) -> str | None:
@@ -252,6 +271,7 @@ class Engine:
             self.control.edge_probe = EdgeProbe(self.cfg)   # [edge prior] probe the hidden stick's live edge, <= 1/30 min
         self.control.on_edge_read = self.edge_read
         self.control.on_behind = self._on_behind
+        self.control.on_alert = lambda text: self.toast(text, "error")   # DEV-09: a wrong stick is worth saying
         # [buffer.watchdog STK-06] a lost hold is rebuilt only while that game is in a dead ball
         self.control.dead_ball = self._target_dead
         self.control.buffer_log_path = data_dir.parent / "buffer.jsonl" if data_dir else None
@@ -379,6 +399,7 @@ class Engine:
     # ------------------------------------------------------------------ state machines (redzone/machines/decider.py)
     # The old attribute names are properties on them; class-level defaults keep a half-built Engine readable.
     _pend = None
+    _tap_forced = None   # [N4] the waiting tap whose second tap arrived (one object; cleared when it resolves)
     _hold_d: dict | None = None
     _focus_susp: tuple | None = None
     _LAZY = {"pending_m": M.ENGINE_PENDING, "standby_m": M.STANDBY_PLAN, "hold_m": M.HOLD, "focus_m": M.FOCUS_SUSPEND}
@@ -1803,6 +1824,8 @@ class Engine:
             if resolved[0] or self._pending_decision is not d:
                 return
             resolved[0] = True
+            if self._tap_forced is d:
+                self._tap_forced = None
             superseded = out.detail.startswith(SUPERSEDED)
             self._pend, self._pending_done = None, None
             self.pending_m.to("idle", ("superseded" if superseded else "confirmed" if out.ok else "failed")
@@ -1836,6 +1859,8 @@ class Engine:
                     and not out.detail.startswith(NOT_THE_TARGETS_FAULT)):
                 self._fail_cool[target] = time.time() + self.cfg.get("decider.fail_cooldown_s", 90)
             detail = {"took": out.took, "detail": out.detail, "path": out.path, "waited": round(out.waited, 1)}
+            if d.kind == "user" and not out.ok and "no safe moment" in out.detail:
+                self.toast(f"No dead ball in time for {self._name(d.target)}: tap twice to go now", "info")
             try:
                 prov["guard"] = {"rule": "no mid-play cut", "waited_s": round(out.waited, 1),
                                  "let_through": out.ok and not out.screen_unchanged}
@@ -1846,8 +1871,9 @@ class Engine:
                 trace.emit(self.trace_sink, detail["trace"])
             except Exception:   # a trace must never cost the switch its row
                 log.exception("switch trace failed")
+            detail["stages"] = _stage_times(detail.get("trace"), out)
             if d.kind == "jump":
-                self._log_jump(d, before, target, out, cmd_ts)
+                self._log_jump(d, before, target, out, cmd_ts, detail["stages"])
                 if out.ok and not out.dry_run:
                     # [jump mode] refill the hidden stick right away with the rotation's next pick: the
                     # game we just left is on it now, and readiness is the whole bottleneck
@@ -1879,8 +1905,8 @@ class Engine:
                     forced[0] = True   # the cut goes through on your second tap, not on a safe moment
                     return True
                 forced[0] = False
-                return (not self._hold_waits(d) or self.safe_to_leave(before, required_s=8.0)) \
-                    and self._tap_lands_dead(d, target)
+                # [N4, S-4] every tap waits for a dead ball; only a second tap (_forced_go) cuts mid-play
+                return self.safe_to_leave(before, required_s=8.0) and self._tap_lands_dead(d, target)
             if time.time() < d.at + float(getattr(d, "defer_s", 0.0) or 0.0):
                 return False   # [EXP-803 A1] the break's tail: cut at the planned moment, not before
             if d.kind == "jump":
@@ -1890,13 +1916,16 @@ class Engine:
                 now = time.time()
                 cost = self.control.deadline_cost(target)
                 g = self.merger.games.get(d.target or "")
+                # [S-2] this polls for up to 25 s: judge on the scores of NOW (a low-leverage game can turn into a red
+                # zone trip during the wait), like _entry_valid does for other switches
+                live = {gid: _replace(c, scored=self.scored[gid]) if gid in (before, d.target) and gid in self.scored
+                        else c for gid, c in cands.items()}
                 # [overseer Nov 7 23:43] every veto is named (data/jumps.jsonl 'veto', one log line per change): two
                 # buffered cuts waited 25 s on a bare 'no safe moment to cut'
                 veto = ("not_live" if not g or g.phase != Phase.LIVE else "feed_stale" if self.feeds.stale(g.game_id)
                         else "target_moved" if getattr(self.where.get(g.game_id), "target", None) != target
-                        else "landing" if not self.decider.jump_lands_dead(d.target, cands.get(d.target), now, cost)
-                        else "leave" if not self.decider.jump_may_leave(
-                            before, cands, now, float(self.cfg.get("jump_mode.flip_s", 3.2))) else "")
+                        else "landing" if not self.decider.jump_lands_dead(d.target, live.get(d.target), now, cost)
+                        else "leave" if not self.decider.jump_may_leave(before, live, now, self._leave_margin()) else "")
                 if veto and (d.jump or {}).get("veto") != veto:
                     log.info("jump to %s vetoed at the flip: %s (cost %.1f s)", d.target, veto, cost)
                 if d.jump is not None:
@@ -1910,6 +1939,11 @@ class Engine:
                             entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0,
                             entry_cue=getattr(d, "cue", "") if d.action == "switch" else "",
                             preloaded_only=d.kind == "jump")   # [jump mode] a jump only flips to a ready standby
+
+    def _leave_margin(self) -> float:
+        """[S-3] Seconds a leave's dead window must outlast: the configured flip, never less than the measured slow
+        end of a flip on the path we'd use now (the old game plays on until the TV's input changes)."""
+        return max(float(self.cfg.get("jump_mode.flip_s", 3.2)), self.control.flip_upper())
 
     def pending_age(self, now: float) -> float:
         """Seconds the pending switch has been running, as of wall-clock `now`. If the wall clock
@@ -2098,7 +2132,7 @@ class Engine:
 
     def safe_to_leave(self, gid: str | None, required_s: float = 0.0) -> bool:
         """Re-checked right before a two-stick input flip: is a play on screen in the game we're leaving?"""
-        if not gid or gid == REDZONE:
+        if not gid or gid in (REDZONE, REEL):   # [S-5] a pseudo game has no timeline and no play to cut
             return True
         if self.decider.replaying or self.decider.after_replay:
             return time.time() >= max(self.decider.replay_until, self.decider.replay_exit_after)
@@ -2234,7 +2268,7 @@ class Engine:
         except OSError:
             pass
 
-    def _log_jump(self, d, before: str | None, target: str | None, out, cmd_ts: float) -> None:
+    def _log_jump(self, d, before: str | None, target: str | None, out, cmd_ts: float, stages: dict | None = None) -> None:
         """One row per jump: who, why, and what it cost. No raw text (the repo is public)."""
         if self._jump_log_path is None or not self.cfg.get("jump_mode.log", True):
             return
@@ -2244,7 +2278,7 @@ class Engine:
                "standby": self._game_on_target(self.control.standby[0]), "standby_ready": bool(self.control.hidden_ready),
                # [pass bar audit, scripts/buffered_jump_try.py] which ESPN league to read each game's play-by-play from
                "from_league": _league_of(self.merger.games.get(before or "")),
-               "to_league": _league_of(self.merger.games.get(d.target or ""))}
+               "to_league": _league_of(self.merger.games.get(d.target or "")), **(stages or {})}
         if not out.ok:
             rec["fail"] = "cancelled" if out.detail.startswith("switch cancelled") else "no_safe_moment" \
                 if "no safe moment" in out.detail else "standby_not_ready" \
@@ -2446,7 +2480,7 @@ class Engine:
             u.focus_game = gid
             u.focus_mode = FocusMode(value or "focus")
             if dec.current != gid:
-                self._act_manual(gid)
+                return True, self._tap_said(self._tap(gid), f"Focused on {self._name(gid)}")
             return True, f"Focused on {self._name(gid)}"
         if action == "autopilot":
             u.focus_game, u.focus_mode = None, FocusMode.AUTOPILOT
@@ -2487,8 +2521,7 @@ class Engine:
             if not dec.stack:
                 return False, "Nowhere to go back to"
             prev = dec.stack[-1]
-            self._act_manual(prev)
-            return True, f"Back to {self._name(prev)}"
+            return True, self._tap_said(self._tap(prev), f"Back to {self._name(prev)}")
         if action == "watch":
             if not gid:
                 return False, "Pick a game"
@@ -2521,8 +2554,7 @@ class Engine:
             m = next((m for m in dec.queue if m.pid == str(value)), None)
             if not m:
                 return False, "That replay isn't available anymore"
-            self._act_manual(m.game_id, replay=m)
-            return True, f"Replaying: {m.label[:60]}"
+            return True, self._tap_said(self._tap(m.game_id, replay=m), f"Replaying: {m.label[:60]}")
         if action == "scan_st":
             return self._start_st_scan()
         if action == "mic":
@@ -2645,9 +2677,27 @@ class Engine:
         return True
 
     def _forced_go(self, d: Decision) -> bool:
-        """Your second "Go now" tap on the held game: it cuts at once, even mid-play (Nick, Nov 5)."""
+        """Your second tap: on the held game ("Go now", Nick, Nov 5) or on a waiting Back / Focus / Replay (N4). It cuts
+        at once, even mid-play."""
         h = self.hold
-        return bool(h and d.kind == "user" and d.action == "switch" and d.target == h["game_id"] and h.get("force"))
+        return d is self._tap_forced or bool(h and d.kind == "user" and d.action == "switch"
+                                             and d.target == h["game_id"] and h.get("force"))
+
+    def _tap(self, gid: str, replay: Missed | None = None) -> bool:
+        """[N4, S-4] A phone tap (Back, Focus, Replay) waits for a dead ball; the same tap again while it waits goes now.
+        True = this was that second tap."""
+        p = self._pending_decision
+        if p is not None and p.kind == "user" and p.target == gid and p.action == ("replay" if replay else "switch") \
+                and (replay is None or (p.replay is not None and p.replay.pid == replay.pid)):
+            self._tap_forced = p
+            return True
+        self._act_manual(gid, replay=replay)
+        return False
+
+    def _tap_said(self, second: bool, said: str) -> str:
+        if second:
+            return f"{said}: going now"
+        return said if self.cfg.get("mode.dry_run", True) else f"{said} at the next dead ball (tap again to go now)"
 
     def _lock_expired(self) -> None:
         """[lock wait] The decider gave up on a locked game it couldn't reach: drop the lock (and the
@@ -2664,11 +2714,6 @@ class Engine:
             dec.user.locked_game = None
         self.toast(f"Couldn't get to {self._name(gid)} ({why}) — back on autopilot", "error")
         log.warning("lock on %s given up: %s", gid, why)
-
-    def _hold_waits(self, d: Decision) -> bool:
-        """A switch to the held game honors the never-cut-mid-play rule unless you forced it."""
-        h = self.hold
-        return bool(h and d.action == "switch" and d.target == h["game_id"] and not h.get("force"))
 
     def _release_hold(self, msg: str) -> tuple[bool, str]:
         dec, u = self.decider, self.decider.user

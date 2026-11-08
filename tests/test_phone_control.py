@@ -65,16 +65,16 @@ def test_manual_switch_waits_for_a_safe_moment_unless_tapped_again(engine):
     engine.hold = {"game_id": a, "force": False, "since": time.time(), "auto_resume": True,
                    "resume_at": None, "why": ""}
     d = Decision(time.time(), "switch", a, "you selected this game", State.PAUSED, kind="user")
-    assert engine._hold_waits(d)
+    assert not engine._forced_go(d)
     # second tap while the switch is still waiting -> force
     engine.decider.user.locked_game = a
     engine._pending_decision = d
     ok, msg = engine.action("hold", a)
     assert ok and "now" in msg
-    assert engine.hold["force"] and not engine._hold_waits(d)
-    # other user switches (catch-up replays, go back) are untouched
+    assert engine.hold["force"] and engine._forced_go(d)
+    # other user switches (catch-up replays, go back) aren't forced by the hold's tap
     other = Decision(time.time(), "replay", a, "x", State.PAUSED, kind="user")
-    assert not engine._hold_waits(other)
+    assert not engine._forced_go(other)
 
 
 def test_auto_resume_counts_down_when_the_held_game_turns_garbage(client, engine):

@@ -388,7 +388,8 @@ async def test_an_unparked_replay_holds_still_while_waiting_for_a_safe_moment(tw
     assert pause < last_play < flip
 
 
-async def test_single_stick_replay_rewind_counts_the_tune_time(cfg, tmp_path, monkeypatch):
+async def test_single_stick_replay_is_refused_never_rewound_on_screen(cfg, tmp_path, monkeypatch):
+    """[S-11] One stick has no hidden stick to seek on: a replay is refused before any key, for every app."""
     cfg.update({"mode": {"dry_run": False}, "replay": {"seek_step_s": 0.5, "seek_wake_presses": 0,
                                                                 "seek_stall_min_s": 0, "seek_stall_max_s": 0}})
     ch = ChannelMap(tmp_path / "ch.json")
@@ -397,8 +398,7 @@ async def test_single_stick_replay_rewind_counts_the_tune_time(cfg, tmp_path, mo
     c.sticks = [FakeStick("a:5555")]
     monkeypatch.setitem(ctl.TUNERS, "youtubetv", FakeTuner(slow={"youtubetv:espn": 0.6}))
     out = await c.execute("youtubetv:espn", replay_back_s=3.0)
-    # 3.0s back + ~0.6s spent tuning (- 1s allowed late) = 6 presses of 0.5s; ignoring the tune time gave 4
-    assert out.ok and out.path == "single" and rewind_presses(c.sticks[0]) >= 6
+    assert not out.ok and out.screen_unchanged and rewind_presses(c.sticks[0]) == 0
 
 
 # --- learned switch times -----------------------------------------------------------------------
