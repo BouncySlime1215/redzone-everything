@@ -9,7 +9,7 @@ def test_down_or_hung_app_is_restarted():
     assert rules(Obs(api_ok=False, api_fail_streak=2)).action == "restart_service"
     assert rules(Obs(api_ok=False, api_fail_streak=1)) is not None   # one miss: no restart yet
     assert rules(Obs(api_ok=False, api_fail_streak=1)).action != "restart_service"
-    assert rules(Obs(live_games=2, log_age_s=600)).action == "restart_service"
+    assert rules(Obs(live_games=2, heartbeat_age_s=600)).action == "restart_service"   # the app's loop stopped
     assert rules(Obs(live_games=0, log_age_s=6000)).action == "none"   # quiet night, quiet log
 
 
@@ -19,7 +19,7 @@ def test_known_noise_is_left_alone_and_unknown_errors_go_to_the_model():
 
 
 def test_offline_stick_reconnects_then_asks_for_power():
-    assert rules(Obs(sticks_offline=["h:5555"], offline_min=2)).action == "reconnect_stick"
+    assert rules(Obs(sticks_offline=["h:5555"], offline_min=5)).action == "reconnect_stick"
     v = rules(Obs(sticks_offline=["h:5555"], offline_min=30))
     assert v.action == "notify" and "power" in v.why
 
@@ -78,3 +78,33 @@ def test_stick_reconnects_are_rate_limited_and_never_crash(monkeypatch):
     assert "likely powered off" in w.act(v, Obs(sticks_offline=["h:5555"]))
     t[0] += 60
     assert w.act(v, Obs(sticks_offline=["h:5555"])) == "reconnected recently; waiting"
+
+
+def test_p03_a_quiet_log_is_not_a_hang_when_the_app_still_ticks():
+    """Repro: Nov 7-8 had 39 log gaps of 240 s+ (up to 1065 s) on healthy live nights; the old rule
+    (live_games and log_age_s >= 240 -> restart_service) would have restarted a healthy app mid-play.
+    Cause: judging 'hung' from service.log's mtime. Now: from the app's own heartbeat."""
+    for gap in (240, 600, 976, 1000, 1065):
+        o = Obs(live_games=1, log_age_s=gap, api_ok=True, heartbeat_age_s=2.0)
+        assert rules(o).action == "none", gap
+        assert guard(rules(o), o).action == "none"
+    assert rules(Obs(live_games=1, log_age_s=1000)).action == "none"           # an older app: heartbeat unknown
+    v = rules(Obs(live_games=1, log_age_s=30, heartbeat_age_s=300))            # loop stopped, API still answers
+    assert v.action == "restart_service" and "hung" in v.why
+    assert guard(v, Obs(live_games=1, heartbeat_age_s=300, crunch_on_screen=True)).action == "notify"
+    assert rules(Obs(api_ok=False, api_fail_streak=2)).action == "restart_service"   # a dead API is still down
+
+
+def test_p09_the_watchdog_leaves_a_fresh_offline_stick_to_the_app():
+    """Repro: policy returned reconnect_stick on the first check a stick was offline, so the watchdog ran
+    `adb disconnect` under an in-flight switch while the app's own supervisor was also reconnecting."""
+    assert rules(Obs(sticks_offline=["h:5555"], offline_min=0.2)).action == "none"
+    assert rules(Obs(sticks_offline=["h:5555"], offline_min=3)).action == "none"
+    assert rules(Obs(sticks_offline=["h:5555"], offline_min=5, switch_in_flight=True)).action == "none"
+    assert guard(Verdict("reconnect_stick", "x", "h:5555"), Obs(sticks_offline=["h:5555"], offline_min=6,
+                                                               switch_in_flight=True)).action == "none"
+    assert rules(Obs(sticks_offline=["h:5555"], offline_min=5)).action == "reconnect_stick"
+
+
+def test_p03_p09_new_fields_stay_out_of_the_trained_prompt():
+    assert Obs(heartbeat_age_s=500, switch_in_flight=True).text() == Obs().text()

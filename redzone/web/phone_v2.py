@@ -1129,7 +1129,10 @@ def router(engine) -> APIRouter:
     async def vote(body: dict):
         if not _enabled(engine):
             return _off()
-        v = int(body.get("vote") or 0)
+        try:
+            v = int(body.get("vote") or 0)
+        except (TypeError, ValueError):   # "x", [1], {}: a 200 with ok false, not a 500 and a logged traceback
+            return {"ok": False, "message": "vote is -1, 0 or 1"}
         if v not in (-1, 0, 1):
             return {"ok": False, "message": "vote is -1, 0 or 1"}
         key = str(body.get("key") or "")

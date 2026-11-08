@@ -13,7 +13,9 @@ Deploy steps, in order. Nothing on the running checkout changes before step 5.
  2. `git fetch origin integration/release`; nothing to do if HEAD is already there.
  3. Refuse if tracked files are edited, or requirements.txt changed (install deps by hand first).
     Untracked files (data/, agent/model/, .venv-agent/, local docs) never block a deploy.
- 4. Run the test suite on the new commit in a separate worktree (data/deploy/stage), at background
+ 4. Run the test suite on the new commit in a separate worktree (data/deploy/stage), but only while no game
+    is live or about to start and the governor is normal (else exit 2: the suite is a heavy job and the Mac is
+    8 GB, P-06; run it on CI and deploy with --skip-tests, or set test_when_busy), at background
     priority (`nice -n 10`; `test_priority: background` uses `taskpolicy -b` on the Mac, which is about
     2x slower: it timed out at 60 min where nice 10 took 30 min, Nov 5). The suite runs on several
     workers (pytest-xdist, one test file per worker, `test_workers`) when the venv has it, else serially.
@@ -27,8 +29,9 @@ Deploy steps, in order. Nothing on the running checkout changes before step 5.
  7. Watch health for 10 minutes against the old version's last 10 minutes: API up, no crash loop,
     no burst of new errors or switch failures, feeds and sticks no worse. The watchdog leaves
     restarts to this script while the deploy marker is present.
- 8. Healthy -> record the commit as last good. Worse -> check out the last good commit, restore its
-    config/models snapshot, restart, and verify that the rollback itself came back up.
+ 8. Healthy -> record the commit as last good. Worse -> wait for a break like a deploy does (unless the app
+    is dead), then check out the last good commit, restore its config/models snapshot, restart, and verify
+    that the rollback itself came back up. A fresh snapshot of what it overwrites is taken first (restorable).
 
 Exit codes: 0 deployed (or already current), 1 error/refused, 2 deferred (game live),
             3 tests failed (nothing changed), 4 rolled back, 5 rollback FAILED (needs a person).
@@ -100,6 +103,11 @@ class Settings:
     deselect: list[str] = field(default_factory=list)   # known Mac/hardware-only tests to skip
     live_wait_s: float = 0.0          # 0: defer at once if a game is live; else poll this long
     live_poll_s: float = 300.0
+    test_when_busy: bool = False      # run the suite on the Mac while a game is live or the governor isn't normal (off: it
+                                      # defers; run the suite on CI and deploy with --skip-tests instead, P-06)
+    rollback_wait_s: float = 7200.0   # an automatic rollback waits this long for a break (or an idle app) before it restarts (P-05)
+    rollback_grace_s: float = 300.0   # the app must answer this soon after a rollback restart (120 s was too short, P-15)
+    feed_bad_s: float = 180.0         # a feed/stick must be down this long, all the way to the end, to roll back (P-15)
     at_break: bool = False            # --at-break: allow live games while the one on screen is at halftime
     if_paused: bool = False           # --if-paused: allow live games while the app reports auto-switching paused
     soon_s: float = 900.0             # a game starting this soon counts as live
@@ -368,6 +376,31 @@ class Snapshots:
                       "files": files})
         return rid
 
+    def config_keys_lost(self, discard: str, target: str, rel: str = "data/config.yaml") -> list[str]:
+        """Dotted settings in snapshot `discard` that restoring snapshot `target` replaces or removes. Best effort:
+        [] when yaml or a file isn't there."""
+        try:
+            import yaml
+            def leaves(rid: str) -> dict:
+                digest = self.get(rid)["files"].get(rel)
+                if not digest:
+                    return {}
+                raw = yaml.safe_load((self.store / digest).read_text()) or {}
+                out: dict = {}
+
+                def walk(node, path):
+                    if isinstance(node, dict) and node:
+                        for k, v in node.items():
+                            walk(v, f"{path}.{k}" if path else str(k))
+                    else:
+                        out[path] = node
+                walk(raw, "")
+                return out
+            old, new = leaves(discard), leaves(target)
+        except Exception:
+            return []
+        return sorted(k for k, v in old.items() if k and new.get(k, object()) != v)
+
     def get(self, rid: str) -> dict:
         if not re.fullmatch(r"[\w.-]+", rid):
             raise DeployError(f"bad snapshot id {rid!r}")
@@ -500,15 +533,19 @@ class Health:
     api_ok: bool
     sources_bad: int = 0
     sticks_offline: int = 0
+    bad_names: frozenset = frozenset()      # which feeds were failing (judged by name, not by count, P-15)
+    offline_hosts: frozenset = frozenset()  # which sticks were offline
 
     @classmethod
     def of(cls, st: dict | None) -> "Health":
         if st is None:
             return cls(api_ok=False)
         h = st.get("health") or {}
-        return cls(api_ok=True,
-                   sources_bad=sum(1 for s in h.get("sources") or [] if source_failing(s)),
-                   sticks_offline=sum(1 for s in h.get("sticks") or [] if s.get("state") == "offline"))
+        bad = frozenset(str(s.get("name") or s.get("id") or i) for i, s in enumerate(h.get("sources") or [])
+                        if source_failing(s))
+        off = frozenset(str(s.get("host") or i) for i, s in enumerate(h.get("sticks") or [])
+                        if s.get("state") == "offline")
+        return cls(api_ok=True, sources_bad=len(bad), sticks_offline=len(off), bad_names=bad, offline_hosts=off)
 
 
 # A long break: halftime, or an NHL intermission. Timeouts and short quarter breaks don't count
@@ -603,12 +640,20 @@ def judge(s: Settings, before: Health, base_err: Counter, samples: list[Health],
         r.append(f"{len(new_sigs)} new kind(s) of error, e.g. {top[:100]!r} x{new_sigs[top]}")
     if new_sw > base_sw + s.switch_fail_slack:
         r.append(f"{new_sw} switch failures vs {base_sw} before")
-    tail = after[-3:]
-    if before.api_ok and len(tail) == 3:   # a feed or stick down at the end that was fine before
-        if min(h.sources_bad for h in tail) > before.sources_bad:
-            r.append(f"{min(h.sources_bad for h in tail)} sports feed(s) failing vs {before.sources_bad} before")
-        if min(h.sticks_offline for h in tail) > before.sticks_offline:
-            r.append(f"{min(h.sticks_offline for h in tail)} stick(s) offline vs {before.sticks_offline} before")
+    # A feed or stick down at the end that was fine before. The SAME ones must be down through the whole of the last
+    # feed_bad_s (a flap that ended or began in the last minute, or a different feed each sample, is the outside
+    # world, not the new version): one sample of the old version is a poor baseline, Nov 4 and Nov 8 rolled back
+    # healthy deploys on a count of 2 vs 1 (P-15).
+    tail = after[-max(3, round(s.feed_bad_s / s.sample_s)):]
+    if before.api_ok and len(tail) >= 3:
+        new_feeds = frozenset.intersection(*(h.bad_names for h in tail)) - before.bad_names
+        new_sticks = frozenset.intersection(*(h.offline_hosts for h in tail)) - before.offline_hosts
+        if new_feeds:
+            r.append(f"{len(new_feeds)} sports feed(s) failing ({', '.join(sorted(new_feeds))}) "
+                     f"vs {before.sources_bad} before")
+        if new_sticks:
+            r.append(f"{len(new_sticks)} stick(s) offline ({', '.join(sorted(new_sticks))}) "
+                     f"vs {before.sticks_offline} before")
     return Verdict(bool(r), r, {"samples": len(samples), "api_misses": misses, "errors_before": base_n,
                                 "errors_after": new_n, "switch_fail_before": base_sw,
                                 "switch_fail_after": new_sw, "pid_changes": pid_changes})
@@ -655,6 +700,7 @@ class Deployer:
                   else _Unchecked("idle", system.now))   # replaced by _load() under the lock
         self._until: float | None = None
         self._commit = ""
+        self._agent_told = False
 
     # state ---------------------------------------------------------------------------------------
     def state(self) -> dict:
@@ -789,6 +835,28 @@ class Deployer:
             return 1
         return n
 
+    def tests_gate(self, st: dict) -> str:
+        """"" when the suite may run on this Mac now. It is a 30-60 minute job on up to 4 workers: with a game live
+        or about to start, or the governor not at normal, it would push the Mac to memory pressure and switch the
+        score-bug OCR off during play (P-06). Waits up to live_wait_s like the restart gate does."""
+        if self.s.test_when_busy:
+            return ""
+        deadline = self.sys.now() + self.s.live_wait_s
+        moved = False
+        while True:
+            cur = self.sys.fetch_state(self.s.api)
+            why = busy(cur, self.sys.now(), self.s.soon_s)
+            level = (((cur or {}).get("health") or {}).get("governor") or {}).get("level")
+            if not why and level in ("eco", "critical"):
+                why = f"the Mac is in {level} mode ({(((cur or {}).get('health') or {}).get('governor') or {}).get('why', '')})"
+            if why and not moved:   # idle -> waiting_idle is the declared edge to a deferral
+                moved = True
+                self._move(st, "waiting_idle", f"waiting for a quiet Mac before the tests: {why}"[:300])
+            if not why or self.sys.now() >= deadline:
+                return why
+            self.journal("waiting", msg=why)
+            self.sys.sleep(min(self.s.live_poll_s, max(1.0, deadline - self.sys.now())))
+
     def wait_idle(self) -> str:
         """"" when it's safe to restart; otherwise why not (after waiting up to live_wait_s)."""
         deadline = self.sys.now() + self.s.live_wait_s
@@ -805,6 +873,31 @@ class Deployer:
                 return why
             self.journal("waiting", msg=why)
             self.sys.sleep(min(self.s.live_poll_s, max(1.0, deadline - self.sys.now())))
+
+    def wait_for_break(self, st: dict, why: str) -> str:
+        """An automatic rollback is a restart like a deploy's, so it waits for the same safe moment: no live game,
+        or the game on screen at halftime/intermission, or auto-switching paused. A dead API doesn't wait (nothing
+        is on screen under our control, and that is when the fix is most wanted). Waits at most rollback_wait_s,
+        then goes ahead and says so. Returns "" when it is safe (or the wait ran out)."""
+        s = self.s
+        deadline = self.sys.now() + s.rollback_wait_s
+        told = False
+        while True:
+            busy_why = busy(self.sys.fetch_state(s.api), self.sys.now(), max(s.soon_s, s.watch_s),
+                            at_break=True, if_paused=s.if_paused)
+            if not busy_why:
+                return ""
+            if self.sys.now() >= deadline:
+                self.journal("rollback_gate_expired", msg=f"{busy_why}; rolling back anyway after "
+                                                          f"{int(s.rollback_wait_s / 60)} min")
+                return busy_why
+            if not told:
+                told = True
+                self.journal("rollback_waiting", msg=f"{busy_why}; the rollback waits for a break ({why[:120]})")
+                self.sys.push(f"Deploy is worse ({why[:120]}); rolling back at the next break: {busy_why}.")
+            self._move(st, "rolling_back", f"waiting for a break: {busy_why}"[:300],
+                       until=self.sys.now() + 300, commit=self._commit)   # keeps the watchdog standing aside
+            self.sys.sleep(30.0)
 
     # Untracked files in the way --------------------------------------------------------------------
     # The Mac's checkout carries local, untracked files (data/, agent/model/, .venv-agent/, docs
@@ -872,8 +965,20 @@ class Deployer:
         self.clear_way(commit)
         self.sys.git("checkout", "--quiet", "--detach", commit)
         ok = self.sys.restart(SERVICE_LABEL)
-        self.sys.restart(AGENT_LABEL)   # the watchdog should run the same code; fine if not installed
+        self._restart_agent()
         return ok
+
+    def _restart_agent(self) -> None:
+        """The watchdog should run the same code. A failed restart used to be ignored ("fine if not installed"):
+        the Mac ran with no watchdog from Nov 3 to Nov 8 and nothing said so (P-02). Say so once per deploy."""
+        if self.sys.restart(AGENT_LABEL):
+            return
+        self.journal("agent_restart_failed", msg=f"{AGENT_LABEL} did not restart: the watchdog is not loaded "
+                                                 "(python -m agent.install --write, then launchctl bootstrap it)")
+        if not self._agent_told:
+            self._agent_told = True
+            self.sys.push("The watchdog is not running: its launchd job did not restart. Install it with "
+                          "python -m agent.install --write, then launchctl bootstrap it.")
 
     def watch(self, before: Health, base_err: Counter) -> Verdict:
         s = self.s
@@ -912,19 +1017,31 @@ class Deployer:
     def rollback_to(self, commit: str, snapshot: str | None, why: str) -> bool:
         """Put the last good code + config/models back and check the app came up again."""
         self.journal("rollback", msg=f"to {commit[:9]}: {why}", commit=commit, snapshot=snapshot)
+        discard = None
         try:
+            if snapshot:
+                # What the restore is about to overwrite (a phone setting, a measured switch cost saved during
+                # the watch) is kept as its own snapshot and named, never lost silently (P-13).
+                discard = self.snaps.save(commit, self.sys.now(), "discarded")
             self.sys.git("checkout", "--quiet", "--force", "--detach", commit)
             self.put_back_all(but=commit)
             if snapshot:
                 changed = self.snaps.restore(snapshot)
                 self.journal("restored", msg=f"{len(changed)} config/model file(s)", files=changed[:50])
+                lost = self.snaps.config_keys_lost(discard, snapshot) if discard else []
+                if lost:
+                    shown = ", ".join(lost[:8]) + (f" (+{len(lost) - 8} more)" if len(lost) > 8 else "")
+                    self.journal("config_discarded", msg=f"the rollback replaced {len(lost)} setting(s) saved since "
+                                                         f"the switch: {shown}; kept as snapshot {discard}", keys=lost[:50])
+                    self.sys.push(f"Rollback replaced {len(lost)} setting(s) changed during the watch: {shown}. "
+                                  f"Kept as snapshot {discard} (deploy.py restore {discard}).")
         except DeployError as e:
             self.journal("rollback_failed", msg=str(e))
             return False
         self.sys.restart(SERVICE_LABEL)
-        self.sys.restart(AGENT_LABEL)
+        self._restart_agent()
         t0 = self.sys.now()
-        while self.sys.now() - t0 < self.s.startup_grace_s:
+        while self.sys.now() - t0 < self.s.rollback_grace_s:
             if self.sys.fetch_state(self.s.api) is not None:
                 return True
             self.sys.sleep(5.0)
@@ -958,6 +1075,12 @@ class Deployer:
                 raise DeployError("requirements.txt changed: install the new packages into .venv by hand, "
                                   "then deploy again with --deps-ok")
             if not skip_tests:
+                why = self.tests_gate(st)
+                if why:
+                    self._move(st, "deferred", why)
+                    self.journal("deferred", msg=f"{why}; the suite is a heavy job on an 8 GB Mac. Run it on CI and "
+                                                 "deploy with --skip-tests, or try again after the games")
+                    return EXIT_DEFERRED
                 self._move(st, "testing", f"suite on {target[:9]}")
                 ok, tail = self.run_tests(target)
                 self.journal("tests", msg="passed" if ok else "FAILED", tail=tail)
@@ -986,7 +1109,9 @@ class Deployer:
             raise DeployError(f"not enough disk to snapshot {snap_mb:.0f} MB of config/models")
         # Whatever runs now is the last good version (it was confirmed by the previous deploy, or
         # it's what the user has been running). Its config/models as of right now go with it, so a
-        # rollback keeps settings the user changed since the last deploy.
+        # rollback keeps settings the user changed since the last deploy. Settings changed AFTER this point
+        # (during the watch) are overwritten by the rollback, so rollback_to snapshots them first and names
+        # them in the journal and the push (P-13).
         good = {"commit": prev, "snapshot": self.snaps.save(prev, now, "pre"), "at": now}
         before = Health.of(self.sys.fetch_state(self.s.api))
         base_err = self._errors(now - self.s.baseline_s, now)
@@ -1020,6 +1145,7 @@ class Deployer:
                 self.sys.push(f"Deployed {target[:9]}: healthy for {int(self.s.watch_s / 60)} min.")
                 return EXIT_OK
             self._move(st, "rolling_back", "; ".join(v.reasons)[:300] or "worse")
+            self.wait_for_break(st, "; ".join(v.reasons))
             ok = self.rollback_to(good["commit"], good["snapshot"], "; ".join(v.reasons))
             hist.append({"commit": target, "from": prev, "result": "rolled_back" if ok else "rollback_failed",
                          "reasons": v.reasons, "at": now})

@@ -64,7 +64,7 @@ SCREEN_LADDER = {"paused": ("resume_player", "clear_prompt", "retune_stick"),
                  "prompt": ("clear_prompt", "retune_stick"),
                  "frozen": ("retune_stick",), "stopped": ("retune_stick",)}
 # Obs fields the trained model never saw: kept out of Obs.text(), its prompt.
-NEW_FIELDS = ("launchd_exit", "on_screen", "screen", "screen_dead_s", "safe_mode", "safe_min", "paused",
+NEW_FIELDS = ("heartbeat_age_s", "switch_in_flight", "launchd_exit", "on_screen", "screen", "screen_dead_s", "safe_mode", "safe_min", "paused",
               "feed_stale_s", "net_down", "components", "person", "failed", "trying")
 
 
@@ -75,6 +75,8 @@ class Obs:
     log_age_s: float = 0.0            # seconds since the service last wrote its log
     live_games: int = 0
     crunch_on_screen: bool = False    # crunch time / your team late is on the TV right now
+    heartbeat_age_s: float = -1.0     # seconds since the app's own loop last ticked (/api/state health.supervisor); -1 = unknown
+    switch_in_flight: bool = False    # the app is in the middle of a switch (health.supervisor.switch_in_flight)
     sticks_offline: list[str] = field(default_factory=list)
     offline_min: float = 0.0          # how long the longest-offline stick has been gone
     away: bool = False                # the Mac isn't on the home network: sticks can't answer, not a fault
@@ -145,7 +147,10 @@ CAT_KIND = {"benign": "cosmetic", "flip": "person", "source": "upstream", "stick
             "switch": "core_loop", "feed": "upstream", "config": "person", "disk": "storage",
             "resource": "resource", "permission": "permission"}
 
-STALE_LOG_S = 240.0       # a live night with no log line this long: the service is hung
+HEARTBEAT_STALE_S = 120.0  # the app answers HTTP but its own loop hasn't ticked this long (it ticks every 10 s): hung
+# The log going quiet is NOT a hang: a healthy app logs nothing for 4-17 min between plays (39 such gaps on
+# Nov 7-8). "Hung" is judged from the app's heartbeat, or from the API not answering at all (P-03).
+APP_OWNS_RECONNECT_MIN = 4.0   # the app's own supervisor retries a stick at 2 min plus one try; the watchdog waits longer (P-09)
 LOW_DISK_MB = 1200.0
 MAX_RESTARTS_HOUR = 3
 SCREEN_DEAD_S = 90.0      # the app's own visible-stick watch acts at 8 s; past this it didn't work
@@ -212,8 +217,9 @@ def _rules(o: Obs) -> Verdict | None:
                        kind="permission" if o.launchd_exit == 78 else "core_loop")
     if not o.api_ok and o.api_fail_streak >= 2:
         return Verdict("restart_service", f"the app hasn't answered {o.api_fail_streak} checks in a row")
-    if o.live_games and o.log_age_s >= STALE_LOG_S:
-        return Verdict("restart_service", f"games are live but the app has been silent {int(o.log_age_s)} s (hung)")
+    if o.live_games and o.heartbeat_age_s >= HEARTBEAT_STALE_S:
+        return Verdict("restart_service", f"games are live and the app's loop hasn't ticked in "
+                       f"{int(o.heartbeat_age_s)} s though its API answers (hung)")
     if o.disk_free_mb < LOW_DISK_MB:
         return Verdict("prune_disk", f"only {int(o.disk_free_mb)} MB free on disk")
     cats: dict[str, int] = {}
@@ -237,8 +243,12 @@ def _rules(o: Obs) -> Verdict | None:
         if o.offline_min >= 10:
             return Verdict("notify", f"stick {o.sticks_offline[0]} has been offline {int(o.offline_min)} min: "
                            "check its power (wall adapter, not the TV's USB)", o.sticks_offline[0])
-        return Verdict("reconnect_stick", "a stick stopped answering: drop and reconnect its adb link",
-                       o.sticks_offline[0])
+        # One owner for stick reconnects: the app (supervisor.rule_adb, at 2 min). The watchdog is the
+        # second line: only after the app's own try had time to work, and never mid-switch (P-09).
+        # Until then the other rules below still get their say.
+        if not o.switch_in_flight and o.offline_min >= APP_OWNS_RECONNECT_MIN:
+            return Verdict("reconnect_stick", "a stick stayed offline after the app's own reconnect: "
+                           "drop and reconnect its adb link", o.sticks_offline[0])
     if o.net_down and o.live_games and not o.away:
         return Verdict("notify", "every score source is failing at once: is the Mac's internet down?", kind="network")
     v = _screen_fix(o)
@@ -328,6 +338,9 @@ def _guard(v: Verdict, o: Obs) -> Verdict:
             return Verdict("none", "safe mode isn't on", source="guard", kind=v.kind)
         if o.paused:
             return Verdict("none", "a person paused auto-switching; leaving it paused", source="guard", kind=v.kind)
+    if v.action == "reconnect_stick" and o.switch_in_flight:
+        return Verdict("none", "a switch is in flight: the watchdog leaves adb alone", source="guard",
+                       kind="stick_link")
     if v.action == "reconnect_stick" and (o.away or o.route_issue):
         return Verdict("none", "away from home or routes broken: reconnecting a stick can't help", source="guard")
     if v.action == "reconnect_stick" and v.target not in o.sticks_offline:
