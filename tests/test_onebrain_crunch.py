@@ -100,7 +100,8 @@ def test_the_grading_predicate_matches_the_old_copy(monkeypatch):
             continue
         play = {"period": {"number": p}, "homeScore": abs(d), "awayScore": 0}
         monkeypatch.setattr(grading, "play_clock", lambda league, pl, c=c: c)
-        assert sportsgrade.is_crunch(lg, play) == old_is_crunch(lg, p, c, abs(d)), (lg, p, c, d)
+        # grader v47 (F2): a college league reads its pro league's row, in the pro league's periods
+        assert sportsgrade.is_crunch(lg, play) == old_is_crunch(lg.base, pro_period(lg, p, c), c, abs(d)), (lg, p, c, d)
 
 
 def test_two_minute_drill_is_one_definition():

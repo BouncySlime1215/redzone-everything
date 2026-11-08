@@ -149,7 +149,7 @@ def test_committed_roadmap_is_valid():
 
 def test_priority_rows():
     r = rows_by(ns.table(cards(9, crunch_live=8)))
-    assert r["crunch_live_nfl"]["status"] == ns.PENDING        # 80 % but the feasible ceiling isn't computed
+    assert r["crunch_live_nfl"]["status"] == ns.FAIL           # 80 % measured; no feasible ceiling explains it
     assert r["crunch_live_nfl"]["value"] == pytest.approx(80.0)
     assert r["your_team_crunch"]["status"] == ns.PASS
     assert r["league_order"]["status"] == ns.PENDING and r["pct_of_oracle"]["status"] == ns.PENDING
@@ -268,3 +268,18 @@ def test_crunch_exit_line_is_pending_until_graded_then_a_rate():
             x["crunch_exits"], x["crunch_exits_ok"] = 4, 4
     r = rows_by(ns.table(c))["crunch_exit_acc"]
     assert r["value"] == 100.0 and r["status"] in (ns.PASS, ns.PENDING)
+
+
+def test_a_mid_play_row_per_league_pending_when_there_is_no_card():
+    """R2: every one of Nick's leagues has a mid_play row; no card reads PENDING, never absent."""
+    r = rows_by(ns.table(cards(20)))     # 20 nights x 40 landings: enough evidence for a PASS per league
+    for lg in ns.NICKS_LEAGUES:
+        assert f"mid_play_{lg}" in r, lg
+    assert r["mid_play_nfl"]["status"] == ns.PASS
+    for lg in ("cfb", "cbb", "mlb"):
+        assert r[f"mid_play_{lg}"]["status"] == ns.PENDING
+    c = cards(20)
+    c["cfb"] = {"metrics": {"per_night": [night(i, mid=1) for i in range(3)]}}    # a CFB card with mid-play entries
+    r = rows_by(ns.table(c))
+    assert r["mid_play_cfb"]["status"] == ns.FAIL
+    assert r["mid_play"]["status"] == ns.FAIL      # the pooled Rule #1 line sees CFB too

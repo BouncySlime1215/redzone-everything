@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from redzone import crunch
 from redzone.decider.screen import CONTINUOUS, _is_marker
-from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
+from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage, pro_period
 from redzone.sources import espn
 
 # ByLeague: a college league (CFB, CBB) reads its pro league's row (grader v11; oracle.py read PLAY_LEN[lg])
@@ -100,6 +100,7 @@ def is_dead_ball(league: str, typ: str) -> bool:
 
 def is_big(league: League, p: dict, prev: dict | None) -> bool:
     t = play_type(p)
+    orig, league = league, league.base            # [grader v47] a college league is judged by its pro league's rule
     if league == League.NFL:
         return bool(p.get("scoringPlay")) or "interception" in t or "fumble recovery (opponent)" in t \
             or bool(p.get("isTurnover"))
@@ -112,6 +113,7 @@ def is_big(league: League, p: dict, prev: dict | None) -> bool:
             return False
         per = espn._int(espn._get(p, "period", "number")) or 0
         c = play_clock(league, p)
+        per = pro_period(orig, per, c)
         if per < 4 or c is None or c > 120 or prev is None:
             return False
         hs, as_ = espn._int(prev.get("homeScore")), espn._int(prev.get("awayScore"))
@@ -125,7 +127,8 @@ def is_crunch(league: League, p: dict) -> bool:
     hs, as_ = espn._int(p.get("homeScore")), espn._int(p.get("awayScore"))
     if hs is None or as_ is None:
         return False
-    return crunch.inside(crunch.row("graded", league), per, c, abs(hs - as_))   # [one brain] the crunch table
+    # [one brain] the crunch table; [grader v47] a college league reads its pro league's row and period
+    return crunch.inside(crunch.row("graded", league.base), pro_period(league, per, c), c, abs(hs - as_))
 
 
 # ---- where a cut may land (dead ball on screen) and leave ------------------------------------------

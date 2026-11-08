@@ -186,7 +186,7 @@ class Merger:
         if takes:
             merged = g
             if cur is not None:
-                merged = _fill_gaps(g, cur)
+                merged = _fill_gaps(_carry_plays(g, cur), cur)
             merged.sources = dict(cur.sources) if cur else {}
             merged.sources[source] = now
             merged.updated_at = now
@@ -298,6 +298,28 @@ def _takes_over(g: GameState, cur: GameState) -> bool:
     a = g.last_play.wallclock if g.last_play else None
     b = cur.last_play.wallclock if cur.last_play else None
     return a is None or b is None or a >= b
+
+
+CARRY_CLOCK_S = STALE_AFTER_S / 4   # about one poll: how far apart two readings may be for one to speak for the other
+
+
+def _carry_plays(g: GameState, cur: GameState) -> GameState:
+    """[grader v47, F10] A scoreboard poll (clock and score only) that is a few seconds fresher than the
+    summary must not wipe the summary's last play and stoppage: the dead-ball flag flickered to UNKNOWN and the
+    play timeline saw a play-less state. Carry them over from the previous leader when g has none and the two
+    are the same moment (same period, same score, clocks within one poll). Never overwrites anything g knows."""
+    if g.last_play is not None or g.recent_plays or (cur.last_play is None and not cur.recent_plays):
+        return g
+    if (g.period != cur.period or (g.home.score, g.away.score) != (cur.home.score, cur.away.score)
+            or g.phase != cur.phase):
+        return g
+    if g.clock_s is not None and cur.clock_s is not None and abs(g.clock_s - cur.clock_s) > CARRY_CLOCK_S:
+        return g
+    g = copy.copy(g)   # the per-source copy of this feed stays as the feed sent it
+    g.last_play, g.recent_plays = cur.last_play, list(cur.recent_plays)
+    if g.stoppage == Stoppage.UNKNOWN:
+        g.stoppage = cur.stoppage
+    return g
 
 
 def _fill_gaps(dst: GameState, src: GameState) -> GameState:
