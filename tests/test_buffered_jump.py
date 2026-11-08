@@ -488,3 +488,37 @@ def test_a_scrub_in_backoff_costs_nothing_with_the_live_fallback(cfg, tmp_path):
     assert c._scrub_cost("youtubetv:espn") == 0.0
     c.cfg.update({"timing": {"behind_live_s": {"scrub_fallback": "keep"}}})
     assert c._scrub_cost("youtubetv:espn") >= 28.0      # keep: the switch would refuse, so it is never cheap
+
+
+def test_a_switch_does_not_cancel_a_standby_pause_hold(cfg, tmp_path, monkeypatch):
+    """[overseer Nov 7 23:39] 'start' switches from an unknown screen cancelled each Prime hold mid-pause."""
+    import asyncio
+
+    from tests.test_control import ChannelMap, FakeStick, ctl
+
+    cfg.update({"mode": {"dry_run": False}, "jump_mode": {"enabled": True}, "buffered_jump": {"enabled": True}})
+    c = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    c.sticks = [FakeStick("a:5555"), FakeStick("b:5555")]
+    c.hdmi = {"a:5555": "HDMI1", "b:5555": "HDMI2"}
+    gate = asyncio.Event()
+
+    async def hold(stick, target, behind_s, base_s=0.0):
+        await gate.wait()
+        return False
+    monkeypatch.setattr(c, "_hold", hold)
+
+    async def run(*a, **k):
+        return None
+    monkeypatch.setattr(c, "_run", run)
+
+    async def go():
+        t = "prime:amzn1.dv.gti.x"
+        c._set_hidden(t, True)
+        assert c.buffer_standby(t)
+        task = c._preload_task
+        c.submit("youtubetv:espn")
+        await asyncio.sleep(0)
+        assert not task.cancelled() and not task.done()
+        gate.set()
+        await task
+    asyncio.run(go())

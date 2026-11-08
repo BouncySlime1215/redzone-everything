@@ -1415,7 +1415,11 @@ class Controller:
             self._resume_task.cancel()
         self._cancel_refresh()   # the new switch decides what the hidden stick gets; a flip starts a new refresh
         want = (target, replay_id if replay_back_s else None)
-        if self._preload_task and not self._preload_task.done() and self._preloading != want:
+        if self._preload_task and not self._preload_task.done() and self._preloading != want \
+                and self._preload_task is not getattr(self, "_hold_task", None):
+            # [overseer Nov 7 23:39] a standby pause-hold isn't cancelled: 'start' switches from an unknown screen cut
+            # every Prime hold off mid-pause (standby never ready). A switch that re-tunes that stick ends the hold
+            # cleanly (_tune drops _holding); one on the other stick leaves it alone.
             self._preload_task.cancel()
         self._task = asyncio.create_task(self._run(target, replay_back_s, on_done, may_cut, replay_id, time.time(),
                                                    entry_rewind_s, entry_cue, preloaded_only))
@@ -3442,6 +3446,7 @@ class Controller:
             self._set_hidden(target, False)
             self._preloading = (target, None)
             self._preload_task = asyncio.create_task(self._hold_standby(hid, target))
+            self._hold_task = self._preload_task
             return True
         if why != "start":
             return False
