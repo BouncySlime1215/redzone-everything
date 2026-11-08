@@ -56,10 +56,10 @@ def test_a_catchup_too_old_to_park_is_dropped_not_refused(dec, clock, monkeypatc
     """[Nick, Nov 8 879d99ed] every catch-up was refused at the stick ('197s back needs 14 LEFTs (> 8)', up to 694 s):
     a YouTube TV play older than replay.scrub_max_play_age_s is never queued or picked."""
     _setup(dec, clock, True)
-    dec.cfg.update({"replay": {"scrub_max_play_age_s": 110}}, record=False)   # the shipped default
+    dec.cfg.update({"replay": {"scrub_max_play_age_s": 95}}, record=False)   # the shipped default
     monkeypatch.setattr(type(dec), "_best", lambda self, w, exclude=None: None)
     m = dec.queue[0]
-    m.t = clock.t - 100                                       # still parkable
+    m.t = clock.t - 90                                        # still parkable
     assert dec.decide(cands(a=40, w=10), commit=False).action == "replay"
     m.t = clock.t - 200                                       # past the window: never tried
     assert dec.decide(cands(a=40, w=10), commit=False).action != "replay"
@@ -69,6 +69,6 @@ def test_a_catchup_too_old_to_park_is_dropped_not_refused(dec, clock, monkeypatc
 def test_the_age_cap_only_binds_youtubetv_scrub_replays(dec, clock, monkeypatch):
     _setup(dec, clock, True)
     monkeypatch.setattr(type(dec), "_best", lambda self, w, exclude=None: None)
-    dec.cfg.update({"replay": {"yttv_seek": "keys", "scrub_max_play_age_s": 110}}, record=False)
+    dec.cfg.update({"replay": {"yttv_seek": "keys", "scrub_max_play_age_s": 95}}, record=False)
     dec.queue[0].t = clock.t - 200
     assert dec.decide(cands(a=40, w=10), commit=False).action == "replay"

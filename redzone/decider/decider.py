@@ -568,7 +568,7 @@ class Decider:
         """[Nick, Nov 8 live, 879d99ed] A YouTube TV replay is a hidden-stick scrub of at most replay.yttv_max_lefts
         15 s steps (~117 s back at the park), so a play older than replay.scrub_max_play_age_s (tune + park time and
         the live-edge delay counted) can never be parked: every catch-up at 164-694 s was refused. Not queued."""
-        cap = float(self.cfg.get("replay.scrub_max_play_age_s", 110) or 0)
+        cap = float(self.cfg.get("replay.scrub_max_play_age_s", 95) or 0)
         if cap <= 0 or self.cfg.get("replay.yttv_seek", "scrub") != "scrub":
             return True
         if (self.target_of(m.game_id) or "youtubetv:").split(":", 1)[0] != "youtubetv":
