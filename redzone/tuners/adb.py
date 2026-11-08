@@ -5,7 +5,8 @@ Why: Fire TV sticks are driven over the network by adb; each command has a timeo
 Guardrails:
 - Every command has a timeout; a hung adb never freezes the app.
 - Lost connection -> reconnect at every keepalive tick (~10s), forever, quietly.
-- "unauthorized" -> stop and tell you to approve the prompt on the TV.
+- "unauthorized" -> stop re-sending `adb connect` (it can re-raise the prompt over the game); retry
+  every UNAUTH_RETRY_S, and tell you to approve the prompt on the TV.
 - Package names are discovered with `pm list packages`, never assumed.
 - Speed: each stick keeps ONE `adb shell` open and sends commands down it (~10-40 ms each)
   instead of starting a new adb process per command (~80-250 ms each; a tune sends 5-30).
@@ -44,6 +45,7 @@ HANDSHAKE_S = 3.0      # a fresh shell must answer `echo ok` this fast (normally
 MAX_REPLY = 32 << 20   # biggest reply we'll buffer (a full UI dump is ~100 KB)
 AWAKE_TTL_S = 60.0     # trust "the stick is awake" this long before asking again
 STICK_HUNG = "stick not responding"   # detail prefix while a stick's breaker is open (not the target's fault)
+UNAUTH_RETRY_S = float(_config.default("tuners.unauthorized_retry_s", 300))  # an unauthorized stick is not re-connected faster than this (the prompt is on the TV)
 CONNECT_RETRY_MAX_S = 9.0   # a failed connect is retried at the next ~10 s keepalive tick, never later
 # [scrub entry] a scrubbed stream is trusted this long (Nick Nov 6: one 20-minute hold proven on TNT)
 SCRUB_TRUST_S = float(_config.default("timing.behind_live_s.scrub_trust_s", 1200))
@@ -57,6 +59,7 @@ YOUTUBE_PACKAGES = ["com.amazon.firetv.youtube", "com.google.android.youtube.tv"
 ESPN_PACKAGES = ["com.espn.gtv", "com.espn.score_center", "com.espn.androidtv", "com.espn.espnplus"]
 
 # Model code -> (name, os). From Amazon's device table; Vega sticks can't be controlled.
+# AFTCA002, AFTCL001, AFTCR001 and AFTMA08C15 are NOT yet verified against Amazon's table (DEV-14).
 MODELS = {
     "AFTMM": ("Fire TV Stick 4K (2018)", "Fire OS 6"), "AFTKA": ("Fire TV Stick 4K Max (2021)", "Fire OS 7"),
     "AFTSS": ("Fire TV Stick Lite / HD", "Fire OS 7"), "AFTSSS": ("Fire TV Stick (3rd gen)", "Fire OS 7"),
@@ -259,10 +262,13 @@ class Stick:
             detail = probe.out.strip()
             text = detail.lower()
         self.connect_error = detail[:300] or "ADB did not establish a usable shell"
-        if "unauthorized" in text or "failed to authenticate" in text:
-            self.state = "unauthorized"
-        else:
-            self.state = "offline"
+        unauthorized = "unauthorized" in text or "failed to authenticate" in text
+        self.state = "unauthorized" if unauthorized else "offline"
+        if unauthorized:
+            # DEV-15: every `adb connect` can re-raise the allow-debugging prompt over the game. Wait.
+            self._next_retry = now + UNAUTH_RETRY_S
+            self._backoff = CONNECT_RETRY_MAX_S
+            return False
         # Retry on the next keepalive tick (~10 s), always: `adb connect` is cheap, and a longer
         # backoff left a stick that was reachable again unconnected for up to a minute.
         self._next_retry = now + min(self._backoff, CONNECT_RETRY_MAX_S)
@@ -272,8 +278,10 @@ class Stick:
     async def identify(self) -> None:
         r = await self.shell("getprop ro.product.model; getprop ro.build.version.release; "
                              "getprop ro.build.version.name; settings get global device_name", timeout=6)
+        if not r.ok:
+            return   # a breaker message or "timeout/error..." is not a model (DEV-14)
         lines = [x.strip() for x in r.out.splitlines()]
-        if lines:
+        if lines and lines[0]:
             self.model = lines[0]
             known = MODELS.get(self.model)
             if known:
@@ -283,6 +291,9 @@ class Stick:
                 self.os = f"Fire OS (Android {lines[1]})" if len(lines) > 1 and lines[1] else "unknown"
             if len(lines) > 2 and lines[2] and "Fire" in lines[2]:
                 self.os = lines[2].split("(")[0].strip()
+            if not known and any("vega" in x.lower() for x in lines[1:3]):
+                # An unlisted model that says it runs Vega (new sticks appear before this table does).
+                self.os = "Vega OS"
         pk = await self.shell("pm list packages", timeout=10)
         installed = set(re.findall(r"package:([\w.]+)", pk.out))
         for role, cands in (("youtubetv", YTTV_PACKAGES), ("prime", PRIME_PACKAGES), ("youtube", YOUTUBE_PACKAGES),

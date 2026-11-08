@@ -557,6 +557,9 @@ multiview:                 # YouTube TV multiview as a switch path (redzone/tune
   must_have: 2             # reopen only when one of the top this-many YTTV games isn't a tile
   costs: {mv_open: 15.0, mv_expand: 1.5, mv_collapse: 1.0, mv_step: 0.35}   # seconds, until measured
 tuners:                    # per-app switch paths
+  unauthorized_retry_s: 300   # [DEV-15] an adb-unauthorized stick is not re-connected faster than this (re-raises the TV prompt)
+  diagnose_timeout_s: 4       # [DEV-17] a failed tune's screen read (names "signed out" etc.) is cut after this
+  launch_timeout_s: 30     # [DEV-11] `am start -W` (an app deep link) waits this long: a cold start can top 15 s
   prime_multiview: false   # Prime NBA multiview (redzone/tuners/prime_multiview.py): a switch between its
                            # tiles is ~1 s of remote navigation, no relaunch. Off until a live Prime NBA
                            # night passes the gate (>= 95% right tile under 2 s, 0 mid-play entries)
@@ -603,6 +606,11 @@ two_stick:
   unavailable_backoff_s: 0  # [Nick live test Nov 7] a standby tune that stopped at an account/payment/UNAVAILABLE screen keeps
                             # that game off the standby this long (0 = the usual 120 s retry). Suggested 900
   standby_repause_s: 600     # [APP-04] the same standby pausing again within this long is a blocked app (a forced update)
+  smartthings_cloud: false # [Nick N1, 2026-11-08] SmartThings is DROPPED ($0 rule; free access ends 2026-12-15): off = "disabled by
+                           # policy": no cloud call, no probe, no alert, the planner stops counting it. Local key + CEC only
+  tv_verify_deadline_s: 2.5     # [DEV-03] a TV input readback never holds a flip longer than this
+  tv_local_lock_wait_s: 3.0     # [DEV-16] a key waits this long for the shared TV socket (a keepalive or key using it)
+  tv_maintain_timeout_s: 20.0   # [DEV-10] one keepalive's TV upkeep is cut after this
   cec_flip: true           # HOME -> HDMI-CEC Active Source as the last-resort flip (the TV's own input change,
                            # set up by scripts/tv_setup.py, goes first when it's proven)
   enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment
