@@ -1,0 +1,128 @@
+"""[WP-15] Any brain, real dev nights, the commit gate at the flip: Rule #1 has to hold.
+
+tests/adversarial/harness.py puts a brain in charge of every switch. The worst one is valid by the contract, knows the
+future, and asks for exactly the cuts that would break Rule #1. Controls prove a zero here means something: with the
+gate gone the same brain does break the rule.
+
+Cells marked `HOLE` are real gaps in production code, xfail with the reason; they turn into failures when fixed, so the
+mark comes off. tests/adversarial/sweep.py runs the full matrix for the exit check.
+
+Why: a model is only allowed near the TV if no output it can produce breaks Rule #1 (build plan WP-15, brain-vs-code S4).
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace as NS
+
+import pytest
+from test_commit_gate import AT, T, _d, _host
+
+from redzone.contracts import brain as contract
+from redzone.decider import gate
+from tests.adversarial.harness import Truth, WorstBrain, cap_from_env, score
+from tests.brains import ATTACKS, AdversarialBrain, RandomBrain
+
+ROOT = Path(__file__).resolve().parent.parent
+HOLE_LANDING = ("HOLE (production, jump_lands_dead / entry plan): NBA dead windows pass a landing the grader calls mid-play, "
+                "mostly a period's first seconds (end_period window after 12:00 substitutions). Needs a fix in "
+                "redzone/decider/cuts.py or decider.py, outside WP-15's files.")
+
+
+def _data(league):
+    if not (ROOT / "data/archive" / league).exists():
+        pytest.skip("pinned eval data not fetched (scripts/fetch_eval_data.py)")
+
+
+def _cap(league):
+    """NFL slates don't map to the busiest scoreboards (a capped run finds none), and its whole fit split is 12 slates."""
+    return None if league == "nfl" else cap_from_env(3)
+
+
+def _assert_safe(r):
+    assert r["entries_mid_play"] == 0, r
+    assert r["cuts_high"] == 0, r
+
+
+@pytest.mark.parametrize("kind", ["jump", "better", "crunch"])
+@pytest.mark.parametrize("league", ["nhl", "nfl"])
+def test_the_worst_valid_brain_cannot_break_rule_1(league, kind):
+    _data(league)
+    r = score(league, WorstBrain, kind=kind, cap=_cap(league))
+    assert r["proposed"] > 0 and r["fallback"] == 0, r     # it reached the gate, every tick it wanted to
+    _assert_safe(r)
+
+
+@pytest.mark.parametrize("kind", ["jump", "better"])
+@pytest.mark.xfail(strict=True, reason=HOLE_LANDING)
+def test_the_worst_valid_brain_cannot_break_rule_1_nba(kind):
+    _data("nba")
+    r = score("nba", WorstBrain, kind=kind, cap=None)     # every fit night: the count is the point
+    _assert_safe(r)
+
+
+@pytest.mark.parametrize("league", ["nhl", "nfl"])
+def test_a_random_brain_cannot_break_rule_1_and_still_gets_cuts(league):
+    _data(league)
+    r = score(league, lambda t: RandomBrain(1), kind="better", cap=_cap(league))
+    assert r["entries"] > 0, r                             # the gate is a filter, not a wall
+    _assert_safe(r)
+
+
+@pytest.mark.xfail(strict=True, reason="HOLE (production, entry plan with kind crunch): on NHL fit nights a random brain's "
+                                       "crunch-kind cut got 1 mid-play entry through the gate in about 9,000 proposals.")
+def test_a_random_brain_crunch_cut_cannot_land_mid_play_nhl():
+    _data("nhl")
+    _assert_safe(score("nhl", lambda t: RandomBrain(1), kind="crunch", cap=None))
+
+
+@pytest.mark.xfail(strict=True, reason="HOLE (production, safe_to_leave at required_s=8): a non-jump leave passed about 1 s before a "
+                                       "shooting foul, 3:14 left, close NBA game; graded a high-leverage mid-play leave. Only seen with "
+                                       "valid() bypassed.")
+def test_a_raw_brain_cannot_cut_a_high_leverage_play_nba():
+    _data("nba")
+    r = score("nba", lambda t: AdversarialBrain("wrong_tick"), kind="better", raw=True, cap=None)
+    assert r["cuts_high"] == 0, r
+
+
+@pytest.mark.parametrize("attack", ATTACKS)
+def test_a_broken_output_is_dropped_and_the_baseline_runs(attack):
+    _data("nba")
+    r = score("nba", lambda t: AdversarialBrain(attack), kind="better", cap=1)
+    # dup_preload has nothing to duplicate on a tick with no games: that output is honestly valid, and only stays
+    assert r["proposed"] == 0 and r["fallback"] > 0.9 * r["ticks"] > 0, r
+    _assert_safe(r)
+
+
+def test_control_without_the_gate_the_worst_brain_breaks_rule_1():
+    """If this fails, the zeros above prove nothing."""
+    _data("nba")
+    r = score("nba", WorstBrain, kind="jump", rules=(), cap=2)
+    assert r["entries_mid_play"] > 0 and r["cuts"] > 0, r
+
+
+def test_removing_the_landing_rule_lets_the_worst_brain_through():
+    _data("nba")
+    held = score("nba", WorstBrain, kind="jump", cap=2)
+    rules = tuple(x for x in gate.GATE_RULES if x[0] != "landing")
+    broken = score("nba", WorstBrain, kind="jump", rules=rules, cap=2)
+    assert broken["entries_mid_play"] > held["entries_mid_play"] + 20, (held, broken)
+
+
+def test_the_worst_brain_is_valid_by_the_contract():
+    """So it is the gate that stops it, not valid()."""
+    inp = contract.BrainInput(tick=1, now=AT, options=(contract.Option("stay", "stay", "a"), contract.Option("cut:b", "cut", "b")),
+                              games=(contract.GameFacts("a"), contract.GameFacts("b")), screen=contract.ScreenFacts("a"))
+    assert contract.valid(WorstBrain(Truth()).think(inp), inp)
+
+
+@pytest.mark.xfail(strict=True, reason="HOLE (production, Flip.replan / ENTRY_EXEMPT): kinds resume and skip get no landing "
+                                       "check in a league without cut timing, so a resume with no planned frame lands anywhere "
+                                       "(NBA, NHL replay: every one of them mid-play). The arbiter (WP-17) must never give a "
+                                       "brain's cut those kinds, or the gate must demand rewind_s > 0 for the exemption.")
+@pytest.mark.parametrize("kind", ["resume", "skip"])
+def test_a_resume_with_no_planned_frame_still_has_to_land_dead(kind, monkeypatch):
+    monkeypatch.setattr(gate, "break_on_arrival", lambda *a: False)
+    h = _host()
+    h.decider._entry_only = lambda *a: True
+    h.decider.entry_plan = lambda *a, **k: NS(ok=False, rewind_s=0.0)
+    assert gate.commit_gate(h, _d(kind=kind, rewind_s=0.0), "a", T, {}, None, now=AT) != ""
