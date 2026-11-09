@@ -1059,6 +1059,12 @@ class Timeline:
         # [mid-play guard] a break starts on screen no earlier than the LATEST it could have started.
         stop_lo, at = _bounds(lp, now, prev_fresh) if lp else (
             (prev_fresh or now) - FEED_LAG_MAX_S, now - FEED_LAG_MIN_S)
+        if lp and not first_poll and self.league in CONTINUOUS and lp.id not in {p.id for p in new}:
+            # A stoppage with no new play (the owner feed's flag laid on another feed's copy, /score's intermission):
+            # that old play doesn't date it. The ball stays live between plays here, so it began after that play,
+            # and the latest it could have begun is just before this poll.
+            stop_lo = max(at, (prev_fresh or now) - FEED_LAG_MAX_S)
+            at = max(stop_lo, now - FEED_LAG_MIN_S)
         stopped = g.stoppage not in (Stoppage.NONE, Stoppage.UNKNOWN)
         if stopped and not self._stopped:
             self.events.append(Event(at, "stop_start", g.stoppage.value,
