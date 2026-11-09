@@ -1075,6 +1075,24 @@ def ladder_line(control, now: float) -> dict | None:
     return v if (v["last"] or v["cooling"]) else None
 
 
+BEHIND_MIN_S = 5.0   # a stick held this far behind live is showing the past
+
+
+def screen_behind(engine, gid: str | None) -> bool:
+    """True when the TV shows `gid` behind live: a catch-up replay, or a stick held (time-shifted) by more than
+    BEHIND_MIN_S. The live feed would spoil whatever is on screen, so the phone must say nothing from it."""
+    dec = engine.decider
+    if gid is None or gid != dec.current:
+        return False
+    if getattr(dec, "replaying", None):
+        return True
+    target = getattr(engine.where.get(gid), "target", None)
+    try:
+        return bool(target) and float(engine.control.held.get(target) or 0.0) >= BEHIND_MIN_S
+    except (TypeError, ValueError):
+        return False
+
+
 def router(engine) -> APIRouter:
     r = APIRouter(prefix="/api/v2")
 
@@ -1254,8 +1272,10 @@ def router(engine) -> APIRouter:
         if not _enabled(engine) or not engine.cfg.get("phone.orient"):
             return _off()
         gid = game or engine.decider.current
-        return {"enabled": True, "beat_s": float(engine.cfg.get("phone.orient_beat_s")),
-                "beat": orientation(getattr(engine.merger, "games", {}).get(gid)) if gid else None}
+        beat = orientation(getattr(engine.merger, "games", {}).get(gid)) if gid else None
+        if beat is not None and screen_behind(engine, gid):
+            beat = None   # the beat is the LIVE score and clock: never flash it over a replay or a time-shifted stream
+        return {"enabled": True, "beat_s": float(engine.cfg.get("phone.orient_beat_s")), "beat": beat}
 
     @r.get("/provenance")
     async def get_provenance(key: str = ""):
