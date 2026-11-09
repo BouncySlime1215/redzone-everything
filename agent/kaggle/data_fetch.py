@@ -47,6 +47,10 @@ RETRIES = 4
 CHUNK = 1 << 20
 
 
+class StopRun(RuntimeError):
+    """Raised by a fetcher when the whole source must stop (a block, a robots no): not one more request is made."""
+
+
 @dataclasses.dataclass
 class Item:
     """One unit of resume: a shard group built from one or more URLs (or local paths)."""
@@ -68,6 +72,7 @@ class SourceSpec:
     csv_delimiter: str = ","
     all_strings: bool = False              # read csv as text (safe against type drift; cast downstream)
     add_args: Callable[[argparse.ArgumentParser], None] | None = None
+    manifest_extra: dict = dataclasses.field(default_factory=dict)   # e.g. the personal-use tag, copied into the manifest
 
 
 class Fetcher:
@@ -382,6 +387,9 @@ class Run:
                 break
             try:
                 done = self.build_item(idx, item)
+            except StopRun:
+                self.save()
+                raise
             except Exception as e:  # one bad item (404, bad zip) must not lose the others
                 self.state["failed"][item.name] = f"{type(e).__name__}: {e}"[:300]
                 self.save()
@@ -416,6 +424,7 @@ class Run:
             "items_total": n_items,
             "shards": len(shard_hashes),
             "bytes": sum(f["bytes"] for d in done.values() for f in d["files"]),
+            **self.spec.manifest_extra,
         }
         _write_json(self.out / f"manifest_{self.spec.name}.json", row)
         pq.write_table(pa.Table.from_pylist([row]), self.out / f"manifest_{self.spec.name}.parquet")
@@ -423,7 +432,9 @@ class Run:
 
 
 def _suffix(url: str) -> str:
-    base = url.split("?")[0].lower()
+    """File type of a url. A '#...ext' fragment names the type when the path has none (an API that returns csv)."""
+    frag = url.split("#", 1)[1].lower() if "#" in url else ""
+    base = (frag if frag.endswith((".csv", ".parquet")) else url.split("#")[0].split("?")[0]).lower()
     for s in (".tar.gz", ".csv.gz", ".tsv.gz", ".zip", ".tgz", ".tar", ".parquet", ".csv", ".gz"):
         if base.endswith(s):
             return s
