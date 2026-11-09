@@ -1093,7 +1093,8 @@ def maxrate_params(a) -> MR:
               prep_s=a.mr_prep, games=a.mr_games, block_s=a.mr_block, replay_depth_s=a.mr_replay_depth, replay_repeats=a.mr_replay_repeats,
               truth=a.mr_truth, snap_known=a.mr_snap_known, snap_sd=a.mr_snap_sd, pre_s=a.mr_pre, post_s=a.mr_post,
               err_sd=a.mr_err_sd, guard_sigmas=a.mr_guard_sigmas, behind_min=a.mr_behind_min, behind_max=a.mr_behind_max,
-              fail_p=a.mr_fail, policy=a.mr_policy, lag_s=a.lag, lag_sd=a.lag_sd, mix=parse_mix(a.mr_mix))
+              fail_p=a.mr_fail, policy=a.mr_policy, lag_s=a.lag, lag_sd=a.lag_sd, mix=parse_mix(a.mr_mix),
+              arb=Arb(save_leave=False) if a.mr_no_save_leave else None)
 
 
 # (WP-11) rows of --maxrate-mix: the same editor settings, only the app mix changes. Flat = today's one prep for all.
@@ -1204,6 +1205,7 @@ def main(argv=None) -> int:
                     help="read dev nights only (redzone/lab/splits.py). test is the locked set and is refused. Default fit: the locked nights are never read by accident")
     ap.add_argument("--mr-slate-max", type=int, default=0, help="only slates of at most this many games")
     ap.add_argument("--mr-policy", choices=("fifo", "edf", "arbiter"), default=MR().policy, help="which ready play a free stick takes")
+    ap.add_argument("--mr-no-save-leave", action="store_true", help="arbiter: Arb.save_leave off, a must-show about to die never leaves a play mid-way (the live default)")
     ap.add_argument("--json")
     a = ap.parse_args(argv)
     global LG
