@@ -3,6 +3,7 @@
 Owner: INTEGRATION. Changing a shape here is an interface change: open it as its own small PR into
 integration/next, list the callers, and update tests/test_contracts.py in the same PR.
 """
+from redzone.contracts import brain
 from redzone.contracts.breaks import BreakForecast, BreakKind, BreakModel
 from redzone.contracts.budget import BUDGET_MS, TickTimer
 from redzone.contracts.clock import Clock
@@ -27,6 +28,7 @@ CONTRACT_VERSION = 1
 
 
 __all__ = [
+    "brain",
     "BreakForecast",
     "BreakKind",
     "BreakModel",
