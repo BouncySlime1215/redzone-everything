@@ -685,7 +685,7 @@ class Engine:
         self._sync_measure(s.target, s.sample, "flip", s.flip_wall, max(SIGMA["flip"], s.error_s))
         d = self.delays.boundary(s.target, s.sample, s.flip_wall)
         try:
-            self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="boundary")
+            self.store.calibration(s.target, s.sample - d.behind, d.mu, d.sigma, kind="boundary")
         except Exception:
             log.exception("could not save a boundary delay sample")
 
@@ -695,7 +695,7 @@ class Engine:
         self.sync_probe.frame_k(s.target, s.sample, s.onset, max(SIGMA["score"], s.error_s))
         d = self.delays.screen(s.target, s.sample, s.onset)
         try:
-            self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="screen")
+            self.store.calibration(s.target, s.sample - d.behind, d.mu, d.sigma, kind="screen")
         except Exception:
             log.exception("could not save a score-bug delay sample")
 
@@ -3250,7 +3250,7 @@ class Engine:
         sample = tap - e.seen
         self._sync_measure(target, sample, "tap", time.time())
         d = self.delays.calibrate(target, sample)
-        self.store.calibration(target, sample, d.mu, d.sigma)
+        self.store.calibration(target, sample - d.behind, d.mu, d.sigma)   # as the book keeps it: DelayBook.load adds no hold back
         return True, f"Matched {e.label[:60]}; delay {d.mu:.0f}s (±{2*d.sigma:.0f}) for {describe(target)}"
 
     def _name(self, gid: str | None) -> str:

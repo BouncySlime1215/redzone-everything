@@ -289,6 +289,8 @@ class ScoreBugWatcher:
             self._clock_prev.pop(key, None)
             self._window.pop(key, None)
             self._run.pop(key, None)
+            # a new tune is a new stream: a change or clock read queued against the old picture would time the new one
+            self.pending = [p for p in self.pending if p[1] != target]
             try:
                 self.on_tune(target, wall)
             except Exception:

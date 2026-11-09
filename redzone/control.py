@@ -4689,6 +4689,12 @@ class Controller:
                     return
                 verdict.action = "unknown"
                 dm.forget(key)
+            if verdict.action == "ok" and got is not None and not still_hidden():
+                # the stick flipped to the screen mid-read: the read was fine, it is not a failed check. Keep what it
+                # measured (the picture is that far behind) and leave the flip's own bookkeeping alone.
+                self._set_held(t, round(float(got), 1))
+                self._buffer_log("drift_flipped", t, hid.host, 0.0, verdict.drift_s, measured_s=verdict.measured_s)
+                return
             hid.behind_on = t            # keys moved it: the next tune of t resets through another channel
             self._set_held(t, 0.0)       # never shown as buffered on a failed / missing check
         self._buffer_log("drift_" + verdict.action, t, hid.host, 0.0, verdict.drift_s, measured_s=verdict.measured_s)
