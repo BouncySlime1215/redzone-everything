@@ -43,6 +43,11 @@ def arriving(now: float, until: float) -> bool:
     return now < until
 
 
+def tunable(gid: str, x, muted) -> bool:
+    """We know where this game is on, its data isn't stale, and Nick didn't mute it."""
+    return bool(x.target) and not x.stale and gid not in muted
+
+
 @dataclass(frozen=True)
 class Facts:
     """What the rules read for one tick. Built by `Decider.legal_facts`; epoch s."""

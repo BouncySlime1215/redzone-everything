@@ -1694,7 +1694,7 @@ class Decider:
             return d                       # our own big play is on its way: stay for it
         best = None
         for gid, x in cands.items():
-            if gid == self.current or gid in PSEUDO or not x.target or x.stale or gid in self.user.muted \
+            if gid == self.current or gid in PSEUDO or not legal.tunable(gid, x, self.user.muted) \
                     or not self._lookahead_on(x):
                 continue
             a = ahead(self.timelines.get(gid), self.delays.get(x.target), now, maxs)
@@ -1928,7 +1928,7 @@ class Decider:
                 if x.scored.raw > 0 or x.scored.moment > 0 or x.scored.is_break or gid in PSEUDO}
         cur = cands.get(self.current) if self.current else None
         watchable = {gid: x for gid, x in live.items()
-                     if x.target and not x.stale and gid not in u.muted}
+                     if legal.tunable(gid, x, u.muted)}
 
         block = legal.user_block(self.safe_mode, u.paused, u.locked_game if u.locked_game in cands else None,
                                  u.manual_until, now)
@@ -2625,7 +2625,7 @@ class Decider:
         """Every live tunable game the rotation may visit (its leagues, a timeline, not muted or stale)."""
         u = self.user
         return {gid: x for gid, x in cands.items()
-                if gid not in PSEUDO and x.target and not x.stale and gid not in u.muted and gid in self.timelines
+                if gid not in PSEUDO and legal.tunable(gid, x, u.muted) and gid in self.timelines
                 and (x.scored.raw > 0 or x.scored.moment > 0 or x.scored.is_break) and self._jump_league(x)}
 
     def _jump_hold(self, x: Candidate) -> str | None:
@@ -3190,7 +3190,7 @@ class Decider:
         """[redzone mode] The hottest watchable NFL drive (heat >= redzone_mode.hot_heat) whose next
         snap isn't behind a break, on the feed or on screen."""
         hot = [(x.scored.factors.get("drive_heat", 0.0), x.scored.score, gid) for gid, x in cands.items()
-               if gid not in PSEUDO and x.target and not x.stale and gid not in self.user.muted
+               if gid not in PSEUDO and legal.tunable(gid, x, self.user.muted)
                and self._is_hot(x, heat) and not x.scored.is_break and gid not in self._screen_break]
         return max(hot)[2] if hot else None
 
@@ -3203,8 +3203,8 @@ class Decider:
             return None
         cap = float(self.cfg.get("redzone_mode.takeover_break_p", 0.5))
         hot = [(x.scored.score, gid) for gid, x in watchable.items()
-               if gid != self.current and gid not in PSEUDO and x.target and not x.stale
-               and gid not in self.user.muted and x.scored.league.base == League.NFL
+               if gid != self.current and gid not in PSEUDO and legal.tunable(gid, x, self.user.muted)
+               and x.scored.league.base == League.NFL
                and x.scored.lock == "red zone drive" and not x.scored.is_break
                and gid not in self._screen_break and x.scored.factors.get("break_p", 0.0) < cap]
         return max(hot)[1] if hot else None
@@ -3239,7 +3239,7 @@ class Decider:
         if not c.get("redzone_mode.enabled", True) or not c.get("redzone_mode.nfl_priority", True):
             return cands
         hot = [x.scored for gid, x in cands.items()
-               if gid not in PSEUDO and x.target and not x.stale and gid not in self.user.muted
+               if gid not in PSEUDO and legal.tunable(gid, x, self.user.muted)
                and not x.scored.is_break and self._is_hot(x)]
         if not hot:
             return cands

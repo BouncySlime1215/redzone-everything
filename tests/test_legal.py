@@ -26,3 +26,13 @@ def test_user_block_order():
 def test_arriving_holds_until_the_picture_is_up():
     assert legal.arriving(99.9, 100.0) and not legal.arriving(100.0, 100.0)
     assert legal.legal_options(legal.Facts(now=99.0, arrival_until=100.0)) == (legal.STAY,)
+
+
+def test_tunable():
+    class X:
+        def __init__(self, target, stale=False):
+            self.target, self.stale = target, stale
+    assert legal.tunable("a", X("yt:a"), set())
+    assert not legal.tunable("a", X(None), set())
+    assert not legal.tunable("a", X("yt:a", stale=True), set())
+    assert not legal.tunable("a", X("yt:a"), {"a"})
