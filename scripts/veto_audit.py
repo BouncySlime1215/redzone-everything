@@ -20,6 +20,14 @@ controls)  policy (Nick's stated priorities)  caution (an old limit with no meas
 stick or a landing in progress)  missing_data. `protected` is how many of a rule's refusals really would have landed
 mid-play or left a high-leverage play, by the grader's own facts: it checks the class, it never sets it.
 
+`lost_after_catchup` (SIMULATED, per rule, at two reaches): of `lost`, what the catch-up route still would not have shown.
+After the night, the unseen must-sees go to the route on the ticks it was open (arbiter.catchup_pick and _arbiter_catchup's
+own checks, on a tick the replay stayed), one clip at a time in arbiter.plan_clips order. A clip goes only when the game on
+screen sits at a dead ball long enough to leave, air the clip and come back before play restarts, so it can't join or leave
+mid-play. Reach 95 s is the measured floor, 180 s is Nick's never-3-minutes-late cap; real rewind reach is unproven on the
+TV. Clips can't move the replay's own cuts. `avoidable lost` is lost_after_catchup without the moments whose refusal was
+`protected`: what no rule protected and no replay made up.
+
 This is a replay: seek, prep and feed lag are model constants, so stick_prep and missing_data rules can only be judged
 on the TV. It is info only: not a gate, nothing frozen is imported. Stdout: the ranked table.
 
@@ -50,7 +58,7 @@ if ROOT.as_posix() not in sys.path:
 from redzone import engine as engine_mod  # noqa: E402
 from redzone.contracts import brain as contract  # noqa: E402
 from redzone.decider import gate  # noqa: E402
-from redzone.decider.decider import Decider, Decision  # noqa: E402
+from redzone.decider.decider import Decider, Decision, _holds_replays  # noqa: E402
 from redzone.engine import Engine  # noqa: E402
 from redzone.grading import dead_at, lag_of  # noqa: E402
 from redzone.lab import backtest, leverage, splits, sportsgrade  # noqa: E402
@@ -63,6 +71,9 @@ SCRIPTS = {"nfl": ("scripts/eval.py", []), "nba": ("scripts/eval_sports.py", ["n
 PLAY_LEN_S = 7.0    # backtest.run's play_len: the picture must be up this long before the play's end to have seen it
 RUN_UP_S = 75.0     # how far ahead the hindsight brain looks, and how far back a refusal is charged to a moment
 SCALE = 10.0        # one value point is this many brain points, so a single must-see clears the arbiter's margin
+REACHES = (95, 180)  # catch-up rewind reach, s: the measured floor (YouTube TV) and Nick's never-3-minutes-late cap
+CLIP_S = arbiter.DEFAULT_PARAMS.plan_clip_s   # one catch-up clip holds the screen this long
+PREP_S = 15.0        # buffered_jump_sim.MR.prep_s: a free stick takes this long to set a clip up
 
 RULE1, USER, POLICY, CAUTION, STICK, DATA = "rule1", "user", "policy", "caution", "stick_prep", "missing_data"
 CLASSES: dict[str, str] = {
@@ -222,6 +233,7 @@ class Tally:
     high: Counter = field(default_factory=Counter)        # leave rules: of any_rule, ticks a high-leverage play was on screen
     log: dict = field(default_factory=lambda: defaultdict(list))    # game -> [(t, first, alone?)]
     screen: list = field(default_factory=list)            # (picture up at, game)
+    route: list = field(default_factory=list)             # (t, game on screen) when the catch-up route was open on a stay tick
 
 
 def judge(host: Decider, pick: str, cands: dict, now: float) -> tuple[list[str], arbiter.Choice | None, list[str], Decision | None]:
@@ -270,6 +282,7 @@ class AuditDecider(Decider):
         top = max(self.pick_scores, key=lambda o: (self.pick_scores[o], o))
         stay = Decision(now, "stay", self.current, f"brain {self.brain.name}: stay", base.state, owner=base.owner)
         if top == "stay" or self.pick_scores[top] <= self.pick_scores.get("stay", 0.0):
+            self._note_route(cands, now)
             return stay
         pick = top.removeprefix("cut:")
         t.wanted += 1
@@ -279,6 +292,7 @@ class AuditDecider(Decider):
         if blockers:
             self._charge(pick, blockers, now)
         if chosen is None or chosen.verb == "stay":
+            self._note_route(cands, now)
             return stay
         if chosen.game_id != pick:      # the arbiter's floor picked another legal game: it still faces the gate
             d = Decision(now, "switch", chosen.game_id, f"arbiter over {self.brain.name}", base.state, kind="better", owner=base.owner)
@@ -288,12 +302,24 @@ class AuditDecider(Decider):
                 d.rewind_s = plan.rewind_s
             vetoes = [n for n, rule in gate.GATE_RULES if rule(f)]
         if vetoes:
+            self._note_route(cands, now)
             return stay
         t.went += 1
         self._commit(d.target, kind=d.kind)
         self._land_behind(d.target, d.rewind_s)
         t.screen.append((now + self.truth.tune_s, d.target))
         return d
+
+    def _note_route(self, cands: dict, now: float) -> None:
+        """Would the live catch-up route be open on this stay tick? The same checks as Decider._arbiter_catchup, then catchup_pick."""
+        cur = cands.get(self.current or "")
+        if cur is None or not self.cfg.get("replay.enabled", True) or _holds_replays(cur.scored) or cur.scored.crunch_now \
+                or cur.scored.high_leverage or self._crunch_on(cands):
+            return
+        p = self._arbiter_params()
+        opts = legal.legal_options(self.legal_facts(cands, now))
+        if arbiter.catchup_pick([("clip", 0, now)], opts, self._arbiter_show(cands, now, p), now, p) is not None:
+            self.tally.route.append((now, self.current))
 
     def _charge(self, pick: str, blockers: list[str], now: float) -> None:
         t, first = self.tally, blockers[0]
@@ -306,7 +332,7 @@ class AuditDecider(Decider):
             t.any_rule[b] += 1
             t.protected[b] += int(mid if b in LEAVE_RULES else lands)
             t.high[b] += int(high and b in LEAVE_RULES)
-        t.log[pick].append((now, first, len(blockers) == 1))
+        t.log[pick].append((now, first, len(blockers) == 1, bool(mid if first in LEAVE_RULES else lands)))
 
 
 def seen(air: Air, screen: list) -> bool:
@@ -315,8 +341,40 @@ def seen(air: Air, screen: list) -> bool:
     return i >= 0 and screen[i][1] == air.game_id
 
 
+def last_flip(m: Air, reach: float, tune_s: float) -> float:
+    """The last second a catch-up of this play can start: its picture must be up within `reach` of the play's start on air,
+    and never 180 s or more after it (Nick's rule)."""
+    return m.at - PLAY_LEN_S + min(reach, 180.0) - tune_s
+
+
+def catchup_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> set[Air]:
+    """SIMULATED: the unseen moments the catch-up route would have shown at this rewind reach. See the module docstring."""
+    tune, shown, free_at = truth.tune_s, set(), float("-inf")
+    need = 2.0 * tune + CLIP_S          # leave, the clip, come back: all inside one dead ball on the game on screen
+    cuts = sorted(s[0] - tune for s in t.screen)
+    for now, gid in t.route:
+        if now < free_at:
+            continue
+        pool = [m for m in unseen if m not in shown and m.at + PREP_S <= now <= last_flip(m, reach, tune)]
+        r = truth.replays.get(gid)
+        if not pool or r is None:
+            continue
+        dead, _, left = dead_at(r.league, r.wall, r.plays, now - lag_of(truth.lag, gid))
+        i = bisect.bisect_left(cuts, now)
+        if not dead or left < need or (i < len(cuts) and cuts[i] < now + need):
+            continue
+        cands = [(k, m.value, m.at, last_flip(m, reach, tune), CLIP_S, m.at + PREP_S) for k, m in enumerate(pool)]
+        first = arbiter.plan_clips(cands, now, tune, PREP_S)
+        if first is not None:
+            shown.add(pool[first])
+            free_at = now + need
+    return shown
+
+
 def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
     """Charge every unseen must-see moment to the last refusal of its game in the run-up. Seen and uncharged are counted."""
+    unseen = [m for ms in truth.moments.values() for m in ms if not seen(m, t.screen)]
+    shown = {r: catchup_shown(unseen, t, truth, r) for r in REACHES}
     for gid, ms in truth.moments.items():
         log = t.log.get(gid, [])
         times = [e[0] for e in log]
@@ -327,18 +385,23 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
                 continue
             i = bisect.bisect_right(times, m.at - truth.tune_s - PLAY_LEN_S) - 1
             if i >= 0 and times[i] >= m.at - RUN_UP_S:
-                _, rule, only = log[i]
+                _, rule, only, *real = log[i]
                 league_row["lost"][rule] += m.value
                 league_row["moments"][rule] += 1
                 if only:
                     league_row["lost_alone"][rule] += m.value
+                for r in REACHES:
+                    if m not in shown[r]:
+                        league_row["lost_after_catchup"][str(r)][rule] += m.value
+                        league_row["avoidable_lost"][str(r)] += 0.0 if (real and real[0]) else m.value
             else:
                 league_row["not_asked"] += m.value
 
 
 def new_row() -> dict:
     return {"must_total": 0.0, "must_seen": 0.0, "not_asked": 0.0, "lost": Counter(), "lost_alone": Counter(), "moments": Counter(),
-            "ticks": 0, "wanted": 0, "went": 0, "refused": Counter(), "alone": Counter(), "any_rule": Counter(), "protected": Counter(), "high": Counter()}
+            "ticks": 0, "wanted": 0, "went": 0, "refused": Counter(), "alone": Counter(), "any_rule": Counter(), "protected": Counter(), "high": Counter(),
+            "lost_after_catchup": {str(r): Counter() for r in REACHES}, "avoidable_lost": {str(r): 0.0 for r in REACHES}}
 
 
 def card(script: str, *args: str) -> dict:
@@ -434,12 +497,15 @@ def merge(rows: list[dict]) -> dict:
         for key in ("alone", "any_rule", "protected", "high", "lost", "lost_alone", "moments"):
             for rule, v in r[key].items():
                 out.setdefault(rule, _blank(rule))[key] += v
+        for reach, by_rule in r["lost_after_catchup"].items():
+            for rule, v in by_rule.items():
+                out.setdefault(rule, _blank(rule))[f"after_{reach}"] += v
     return dict(sorted(out.items(), key=lambda kv: -kv[1]["lost"]))
 
 
 def _blank(rule: str) -> dict:
     return {"class": CLASSES.get(rule, "unclassified"), "refused": 0, "alone": 0, "any_rule": 0, "protected": 0, "high": 0, "lost": 0.0,
-            "lost_alone": 0.0, "moments": 0}
+            "lost_alone": 0.0, "moments": 0, **{f"after_{r}": 0.0 for r in REACHES}}
 
 
 def table(rows: list[dict], *, top: int = 25) -> str:
@@ -453,7 +519,26 @@ def table(rows: list[dict], *, top: int = 25) -> str:
         c, pct = r["card"], 100.0 * r["must_seen"] / r["must_total"] if r["must_total"] else 0.0
         lines.append(f"{r['league']}/{r['brain']}: must-see seen {pct:.1f}% of {r['must_total']:.0f}, not asked {r['not_asked']:.0f}, "
                      f"wanted {r['wanted']} went {r['went']}, mid-play {c['entries_mid_play']}/{c['entries']}, high-lev leaves {c['cuts_high']}, all mid-play leaves {c['mid_play_leaves']}")
-    return "\n".join(lines)
+    return "\n".join(lines + catchup_lines(rows))
+
+
+def catchup_lines(rows: list[dict]) -> list[str]:
+    """lost_after_catchup per rule at each reach, its totals, and the one avoidable-lost number per reach. Simulated."""
+    merged = merge(rows)
+    lines = ["", "lost after catch-up (SIMULATED: real rewind reach is unproven on the TV)",
+             f"{'rule':<28}{'lost':>8}" + "".join(f"{'reach ' + str(r) + 's':>13}" for r in REACHES)]
+    for rule, v in merged.items():
+        if v["lost"]:
+            lines.append(f"{rule:<28}{v['lost']:>8.1f}" + "".join(f"{v[f'after_{r}']:>13.1f}" for r in REACHES))
+    lines.append(f"{'TOTAL':<28}{sum(v['lost'] for v in merged.values()):>8.1f}"
+                 + "".join(f"{sum(v[f'after_{r}'] for v in merged.values()):>13.1f}" for r in REACHES))
+    for r in REACHES:
+        lines.append(f"avoidable lost, simulated reach {r} s: {avoidable(rows, r):.1f}  (no catch-up route, refusal not protected)")
+    return lines
+
+
+def avoidable(rows: list[dict], reach: int) -> float:
+    return sum(row["avoidable_lost"][str(reach)] for row in rows)
 
 
 def parse_sets(items) -> dict:
@@ -486,7 +571,7 @@ def main() -> int:
             rows = list(ex.map(run_one, jobs))
     print(table(rows))
     if a.json:
-        a.json.write_text(json.dumps({"sets": sets, "rows": rows, "rules": merge(rows)}, indent=1))
+        a.json.write_text(json.dumps({"sets": sets, "rows": rows, "rules": merge(rows), "avoidable_lost": {str(r): avoidable(rows, r) for r in REACHES}}, indent=1))
     return 0
 
 

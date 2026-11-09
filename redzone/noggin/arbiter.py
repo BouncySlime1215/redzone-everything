@@ -16,7 +16,8 @@ Order of `choose`, first match wins:
      ordered by trigger rank, then brain score
   5. hold one replay after a score on screen, unless a higher trigger is waiting
   6. late narrowing and the visit budget thin out everything that is not floor
-  7. no usable brain opinion (null, invalid, stale): today's decider, untouched. Otherwise the best brain score
+  7. no usable brain opinion (null, invalid, stale): today's decider, untouched. Otherwise the best brain score, inside the
+     L1 class. With `arbiter.class_bonus` (off) class adds points instead, so a much stronger moment elsewhere can win
 
 The RedZone rules (trigger order, decide last, late narrowing, a visit budget that keeps one for the final two minutes,
 stay for one replay, stop whipping when one game is left) come from reporting about the show, not from measurement:
@@ -80,6 +81,9 @@ class Params:
     plan_clip_s: float = 30.0         # how long one aired clip holds the screen, for the plan (the sim's clips run about this)
     save_leave: bool = False          # a must-show about to die may leave a low-leverage, not-owed play mid-way. OFF until
                                       # Nick decides: in the sim it took low-leverage mid-play leaves from 16 to 284
+    class_bonus: bool = False         # [P1] brain's pick: L1 class adds points instead of filtering. The floor keeps its filter
+    class_bonus_pts: float = 20.0     # per class: your team +40, crunch +20, open 0 (scores run 0..100). A judgment, not fitted
+    class_tie_pts: float = 2.0        # within this many points it's a tie: class first, then league order
 
     @classmethod
     def from_config(cls, get: Callable[..., object]) -> "Params":
@@ -125,6 +129,7 @@ class Show:
     close: frozenset[str] = frozenset()            # games close enough to stay on the list when late
     visits: Mapping[str, int] = field(default_factory=dict)     # visits inside visit_window_s
     final_two: frozenset[str] = frozenset()        # games in their final two minutes
+    league_rank: Mapping[str, int] = field(default_factory=dict)   # game -> place in models.LEAGUE_ORDER, for class_bonus ties
 
 
 @dataclass(frozen=True)
@@ -361,6 +366,24 @@ def _thin(pool: Sequence[brain.Option], floor: Mapping[str, object], show: Show,
     return out
 
 
+def _class_of(o: brain.Option, show: Show) -> int:
+    return show.current_class if o.verb == "stay" else o.l1_class
+
+
+def bonus_score(o: brain.Option, scores: Mapping[str, float], show: Show, p: Params) -> float:
+    """The brain's score plus the class bonus: your team and crunch keep their priority as points, so they can be beaten."""
+    return float(scores.get(o.id, -float("inf"))) + p.class_bonus_pts * (2 - _class_of(o, show))
+
+
+def class_bonus_pick(pool: Sequence[brain.Option], scores: Mapping[str, float], show: Show, p: Params) -> brain.Option:
+    """The best score after the class bonus. Anything within class_tie_pts of the top is a tie, and a tie follows the north
+    star: your team, then crunch, then league order, then the score. Stay competes at the class of the game on screen."""
+    score = {o.id: bonus_score(o, scores, show, p) for o in pool}
+    top = max(score.values())
+    near = [o for o in pool if score[o.id] >= top - p.class_tie_pts]
+    return min(near, key=lambda o: (_class_of(o, show), show.league_rank.get(o.game_id or show.current or "", NOT_FLOOR), -score[o.id], o.id))
+
+
 def choose(inp: brain.BrainInput, out: brain.BrainOutput | None, baseline: str = STAY_ID, *, musts: Iterable[Must] = (),
            show: Show = Show(), p: Params = DEFAULT_PARAMS, planned: str | None = None) -> Choice:
     """One legal option, or `option=None` when today's decider picked something outside the list (see Choice). `planned`,
@@ -394,10 +417,14 @@ def choose(inp: brain.BrainInput, out: brain.BrainOutput | None, baseline: str =
     if out is None or not brain.valid(out, inp) or not out.scores:
         chosen = _base(baseline, thin, stay, pool)
         return Choice(chosen, "baseline" if chosen is None or chosen.id == baseline else "thinned")
-    l1thin = [o for o in lowest_l1_class(thin, show.current_class)] or [stay]
-    best = max(l1thin, key=lambda o: (out.scores.get(o.id, -float("inf")), o.id))
-    if best.verb != "stay":
+    if p.class_bonus:
+        best = class_bonus_pick(thin, out.scores, show, p)
+        s_best, s_stay = bonus_score(best, out.scores, show, p), bonus_score(stay, out.scores, show, p)
+    else:
+        l1thin = [o for o in lowest_l1_class(thin, show.current_class)] or [stay]
+        best = max(l1thin, key=lambda o: (out.scores.get(o.id, -float("inf")), o.id))
         s_best, s_stay = out.scores.get(best.id, -float("inf")), out.scores.get(stay.id, -float("inf"))
+    if best.verb != "stay":
         if s_best - s_stay < p.brain_margin:
             return Choice(stay, "margin")
     return Choice(best, "brain")

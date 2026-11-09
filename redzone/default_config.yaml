@@ -1191,6 +1191,8 @@ arbiter:                   # [build plan WP-17] picks among legal options, with 
   plan: false              # [MUST-LIVE] schedule must-show clips across both sticks
   save_leave: false        # [MUST-LIVE] may leave a low-leverage play to save a dying must-show; Nick decides
   last_game_to_live: false # [VETO-AUDIT] a finished game on screen may cut to the one game still live
+  class_bonus: false       # [P1] a brain's pick: your team and crunch add points instead of filtering; the must-show floor is unchanged
+  class_bonus_pts: 20.0    # [P1] per class: your team +40, crunch +20, open 0
 
 slate:                     # [build plan WP-18] blocks of a few games, then catch-up, late narrowing; NBA misses its exit bar
   enabled: false
