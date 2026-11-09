@@ -863,7 +863,7 @@ def _is_game_end(kind: str) -> bool:
 def _entry_label(p, league: League) -> str:
     """[quiet break] What a play-by-play entry says about the moment right after it, for a feed that
     then goes quiet: "period_end" (end of a quarter/half/period, or the clock read 0:00), "score"
-    (a scoring play in a stop-start sport: try/kickoff/ad follow), else ""."""
+    (a scoring play in football: try/kickoff/ad follow), else ""."""
     k = f"{p.kind or ''} {getattr(p, 'type_text', '') or ''}".lower().replace("_", " ")
     if "end" in k and "game" not in k and any(w in k for w in ("period", "quarter", "half", "regulation", "inning")):
         return "period_end"
@@ -872,7 +872,7 @@ def _entry_label(p, league: League) -> str:
     clock = getattr(p, "clock", None)
     if clock is not None and clock <= 0.0 and getattr(p, "period", None) is not None:
         return "period_end"
-    if p.scoring and league not in CONTINUOUS:
+    if p.scoring and league.base == League.NFL:   # baseball's next batter is up in ~20 s: no try, kickoff or ad
         return "score"
     if clock is not None and getattr(p, "period", None) is not None and league not in CONTINUOUS \
             and (p.period or 0) < 4:
@@ -1138,7 +1138,7 @@ QUIET_KINDS = ("period_end", "score")
 
 def quiet_break(tl: Timeline, mu: float, margin: float, now: float, tune_s: float) -> Gate | None:
     """[quiet break, Nick Nov 7 12:40] The data on this game went quiet right after an entry that
-    starts a dead spell: a period end / 0:00 clock, or a score in a stop-start sport. During the ad that
+    starts a dead spell: a period end / 0:00 clock, or a score in football. During the ad that
     follows, the feed logs nothing, so the stale-data and uncalibrated-delay rules below blocked leaving
     exactly when it was safest. Treat that entry as an official stoppage: it is on screen once it has
     surely aired (seen + mu + margin) and stays a break for floor_s[kind] after it (the same
