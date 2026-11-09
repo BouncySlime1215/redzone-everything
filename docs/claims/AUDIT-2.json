@@ -1,0 +1,10 @@
+{
+  "card": "AUDIT-2",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "tests/test_audit2_*.py"
+  ],
+  "started": 1794216831,
+  "expires": 1794389631
+}
