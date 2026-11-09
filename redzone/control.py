@@ -332,12 +332,16 @@ class LatencyBook:
             d = json.loads(path.read_text())
         except (OSError, ValueError):
             return
-        for k, v in (d.get("samples") or {}).items():
-            for x in (v or [])[-self.keep:]:
+        if not isinstance(d, dict):
+            return
+        samples, preloaded = d.get("samples"), d.get("preloaded")
+        for k, v in (samples if isinstance(samples, dict) else {}).items():
+            for x in (v if isinstance(v, list) else [])[-self.keep:]:
                 if isinstance(x, (int, float)) and not isinstance(x, bool):
                     self.record(str(k), float(x))
-        for k, v in (d.get("preloaded") or {}).items():
-            self.preloaded[str(k)] = deque((bool(x) for x in (v or [])[-self.keep:]), maxlen=self.keep)
+        for k, v in (preloaded if isinstance(preloaded, dict) else {}).items():
+            self.preloaded[str(k)] = deque((bool(x) for x in (v if isinstance(v, list) else [])[-self.keep:]),
+                                           maxlen=self.keep)
         self.dirty = False
 
 
