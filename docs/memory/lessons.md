@@ -425,3 +425,20 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
 - 2026-11-09 (data research): the license check treated NBA terms and Statcast as blocked, and the coordinator asked Nick again, though his Nov 5 ruling ("data = B", personal use) already allowed public sports APIs with restrictive terms. Lesson: read decisions.md for a standing ruling before asking or blocking.
 
 - 2026-11-09 (coordinator): a one-line wiring change called `apply_config` on the module instead of the `ChannelMap` object, and the commit went out in the same command as a failing test. It lasted one commit. Lesson: gate the commit on the test result; a script that prints a failure and commits anyway is no gate.
+- 2026-11-09 (AUDIT-OLD): with `sources.nba_primary` on, every NBA game read HALFTIME from the end of Q2 to the final. `enrich_nba` starts from a copy of the merged game, so a guard meant for "the board just said halftime" also caught the old one, and the merger's stoppage owner then forced it onto ESPN's copy too. Lesson: a value copied in from the previous state is not evidence; only what this payload says may keep a state alive. Test: tests/test_audit_old_feeds.py.
+
+- 2026-11-09 (AUDIT-OLD): a source benched for backward jumps could stay benched for the whole game. Each poll behind its own high-water mark counted as another jump and pushed the bench end out again, so the re-baseline that ends a bench never came. Lesson: a timeout that the failing condition can renew is not a timeout. Test: tests/test_audit_old_feeds.py.
+
+- 2026-11-09 (AUDIT-OLD): the first NHL power play of a game stayed on the merged state to the final, and suppressed the TV-timeout forecast with it. `_fill_gaps` reads None as "unknown", but a feed that can see strength means "even strength" by it. Lesson: before filling a gap, ask whether the copy could have known; a missing value and a stated "none" look the same in a dataclass. Test: tests/test_audit_old_feeds.py.
+
+- 2026-11-09 (AUDIT-OLD): the poll loop and keep-awake both treated a game as "about to start" only while its listed start was in the future. Past it, a game ESPN still calls `pre` fell back to `polling.idle_s` (300 s, more under the governor), so an early-slot kickoff could be first seen minutes late and caffeinate stopped right at kickoff. Lesson: a listed time is an estimate; a window that closes on it needs the event itself, or a grace period, to close it. Test: tests/test_audit_old_governor.py.
+
+- 2026-11-09 (AUDIT-OLD): `rule_stuck_switch` returned early while a switch was in flight, so its "controller command running" clock never saw the gap and a brand-new command could be cancelled as stuck the moment the switch ended. Lesson: a "held since" clock only means "without a break" if every path through the rule updates it. Test: tests/test_audit_old_supervisor.py.
+
+- 2026-11-09 (AUDIT-OLD): a TV key that timed out waiting for the socket was reported "maybe delivered" whenever an older timed-out `warm()` had left `_drop_pending` set, so a key that never ran blocked the fallback. Lesson: tell two kinds of timeout apart at the place that knows which one it is, not later from shared state. Test: tests/test_audit_old_tv.py.
+
+- 2026-11-09 (AUDIT-OLD): the stick breaker only guarded `shell()`. `screen_text`, `screencap` and the raw `exec-out` reads start their own adb process, so a hung stick still cost 12 to 15 s each. Lesson: a guard on the common path doesn't cover the paths written to avoid it; check each door. Test: tests/test_audit_old_adb.py.
+
+- 2026-11-09 (AUDIT-OLD): `adb._adb` killed its process on timeout but not on cancel, unlike `Stick.run`, so a cancelled `adb connect` or `disconnect` outlived its caller. Lesson: two copies of the same subprocess wrapper drift; when one gets a cleanup, grep for the other. Test: tests/test_audit_old_adb.py.
+
+- 2026-11-09 (AUDIT-OLD): `ensure_awake` marked a stick awake even when the WAKEUP key was refused (breaker open, shell failure), so for 60 s nothing tried to wake it again. Lesson: record the state you confirmed, not the one you asked for. Test: tests/test_audit_old_adb.py.

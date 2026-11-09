@@ -151,6 +151,10 @@ def _local_never_sent(e: Exception) -> bool:
         "ConnectionFailure", "WebSocketBadStatusException", "WebSocketAddressException")
 
 
+class _SocketBusy(asyncio.TimeoutError):
+    """Timed out WAITING for the local socket, so nothing of ours ran: a definite non-delivery."""
+
+
 @dataclass
 class InputEvidence:
     """Transport acceptance and the TV's reported input are separate facts."""
@@ -552,7 +556,10 @@ class SamsungTV:
         """Run `fn` (blocking samsungtvws calls) on a worker thread, one at a time (DEV-16): warm() and key()
         share ONE socket, and wait_for cannot cancel a thread. The lock is released when the THREAD ends, not
         when we stop waiting, and a socket drop requested meanwhile happens then too."""
-        await asyncio.wait_for(self._local_lock.acquire(), wait_s)
+        try:
+            await asyncio.wait_for(self._local_lock.acquire(), wait_s)
+        except asyncio.TimeoutError:
+            raise _SocketBusy("the remote socket is in use") from None
         task = asyncio.ensure_future(asyncio.to_thread(fn))
 
         def done(t):
@@ -589,7 +596,7 @@ class SamsungTV:
                 return True
             except Exception as e:
                 # Timed out WAITING for the lock (nothing of ours ran) vs timed out RUNNING (may have been sent).
-                busy = isinstance(e, asyncio.TimeoutError) and not self._drop_pending
+                busy = isinstance(e, _SocketBusy)
                 self.last_error = ("TV remote socket busy (a keepalive or key is still using it)" if busy
                                    else f"local key failed: {e or type(e).__name__}")
                 if not busy:
