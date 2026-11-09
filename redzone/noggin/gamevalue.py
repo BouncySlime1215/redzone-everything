@@ -30,6 +30,10 @@ hands. It adds the state after the head play (next down, drive so far, red zone 
 league-relative numbers so one pooled model reads a score the same way in every sport. value_link "rank" marks a LambdaRank head: its
 scores become points through strictly increasing knots, so the order the ranker learned is exactly the order the brain sees.
 
+Features v5 (RZ_GV_FEATURES=v5, off by default) are v4 plus the kept columns of redzone/noggin/wide_features.py, listed in a file RZ_GV_V5_KEPT names and
+written by scripts/kaggle_gamevalue_select.py. The generator makes 100,000+ candidates; a model reads only the kept ones, so quote the kept count as what it uses.
+No kept list stops the import: a v5 run with no list has no meaning.
+
 A pooled model (league "all", meta "leagues") loads for any league it was trained on and has no state table.
 
 Promotion is not a flag here: `promotion` needs the real Planner, measured on the same nights, beaten on the hold-set test nights, then 7 of 7 shadow
@@ -67,6 +71,7 @@ RELATIVE_FEATURES = ("league_id", "game_frac_left", "margin_scores", "margin_z",
 V4_FEATURES = DRIVE_FEATURES + DERIVED_FEATURES + RELATIVE_FEATURES
 GV_FEATURE_SETS = {"v2": _BASE_FEATURES, "v3": _BASE_FEATURES + HISTORY_FEATURES, "v4": _BASE_FEATURES + HISTORY_FEATURES + V4_FEATURES}
 GV_FEATURES_ENV = "RZ_GV_FEATURES"
+GV_WIDE_BOUNDS = (-1e9, 1e9)         # a kept v5 column has no physical range of its own: finite is the check
 # Physical sanity, not the training range: -1 is the shards' "missing". since_head_s stops where the shards stop (a 900 s
 # feed gap plus the 180 s lag cap): a feed staler than any training row gets no estimate.
 GV_BOUNDS = {"period": (-1, 20), "clock_left": (-1, 3600), "game_left": (-1, 14400), "is_ot": (0, 1), "late": (0, 1),
@@ -102,12 +107,15 @@ def select_features(version: str) -> None:
     """Make `version` the active feature list. v2 stays the default; RZ_GV_FEATURES=v3 picks the history features for a whole
     run (the shard builder and the trainer read it at import). An unknown name stops the import."""
     global GV_FEATURES_VERSION, GV_FEATURES, _COL, _LO, _HI
+    if version == "v5":                # the only version whose columns live in a file: no kept list, no v5 (wide_features says where)
+        from redzone.noggin import wide_features
+        GV_FEATURE_SETS["v5"] = GV_FEATURE_SETS["v4"] + wide_features.load_kept()
     if version not in GV_FEATURE_SETS:
         raise ValueError(f"{GV_FEATURES_ENV}={version!r}: known versions are {sorted(GV_FEATURE_SETS)}")
     GV_FEATURES_VERSION, GV_FEATURES = version, GV_FEATURE_SETS[version]
     _COL = {f: i for i, f in enumerate(GV_FEATURES)}
-    _LO = np.array([GV_BOUNDS[f][0] for f in GV_FEATURES], float)
-    _HI = np.array([GV_BOUNDS[f][1] for f in GV_FEATURES], float)
+    _LO = np.array([GV_BOUNDS.get(f, GV_WIDE_BOUNDS)[0] for f in GV_FEATURES], float)
+    _HI = np.array([GV_BOUNDS.get(f, GV_WIDE_BOUNDS)[1] for f in GV_FEATURES], float)
 
 
 select_features(os.environ.get(GV_FEATURES_ENV, "v2"))

@@ -32,6 +32,8 @@ Features v4 (RZ_GV_FEATURES=v4) are v3 plus the drive state, closeness and leagu
 rows only one source has (gamevalue.feed_row), and yards_to_goal reads -1 once the ball has changed hands, because ESPN and nflverse put that
 field in different places then. Rows and labels are the same plays either way; only the features change.
 
+Features v5 (RZ_GV_FEATURES=v5) are v4 plus the kept columns of wide_features.py. Those read only plays at or before the feed head and never the decision.
+
 Sources: only what docs/agents/data/2026-11-09-sports-data-gaps.md lists as licence-cleared, see `public_status`.
 NBA and CBB (hoopR) stay off in code unless `personal_nba=True`, because Nick has not ruled on that report's conditional row.
 """
@@ -52,8 +54,10 @@ from redzone.context.tokens import PERSONAL_USE
 from redzone.moments.detect import Detected, clock_s, detect, football_drives, game_span, parse_ts
 from redzone.noggin import factory
 from redzone.noggin import gamevalue as G
+from redzone.noggin import wide_features as W
 
 FEATURES_VERSION, VALUE_FEATURES, VALUE_COLUMNS = "", (), ()     # set by select_features below
+_STATE_VERSIONS = ("v4", "v5")   # the versions built on the drive state and the feed_row filter
 HORIZON_S, TIER1_S, GRID_S, MAX_GAP_S, LAG_CAP_S = 180.0, 60.0, 30.0, 900.0, 180.0
 TIER_WEIGHTS = {1: 5.0, 2: 2.0, 3: 0.5}      # scripts/holdset.py WEIGHTS: same scale as the bar the brain must beat
 # pp_start waits on later penalties at the same game-clock tick (coincidental minors), so it is a label only.
@@ -207,6 +211,7 @@ class GameView:
     playoff: int
     history: G.History | None = None
     state: G.State | None = None
+    wide: W.Series | None = None
 
 
 def _value(x) -> float:
@@ -227,7 +232,7 @@ def _moment_arrays(moments) -> tuple[dict[int, np.ndarray], np.ndarray, np.ndarr
 
 def make_view(league: str, summary: dict, det: Detected, playoff: int = 0) -> GameView:
     plays = flat_plays(league, summary)
-    if FEATURES_VERSION == "v4":
+    if FEATURES_VERSION in _STATE_VERSIONS:
         plays = [x for x in plays if G.feed_row(league, x[1])]
     n = len(plays)
     arr = {k: np.full(n, -1.0) for k in ("period", "clock", "down", "distance", "ytg")}
@@ -257,7 +262,8 @@ def make_view(league: str, summary: dict, det: Detected, playoff: int = 0) -> Ga
     tier_t, pts_t, pts_cum = _moment_arrays(safe)
     return GameView(league, np.array([t for t, _ in plays], float), arr["period"], arr["clock"], home + away, home - away,
                     lc, last, arr["down"], arr["distance"], arr["ytg"], tier_t, pts_t, pts_cum, int(playoff),
-                    G.history_arrays(league, plays), G.state_arrays(league, plays) if FEATURES_VERSION == "v4" else None)
+                    G.history_arrays(league, plays), G.state_arrays(league, plays) if FEATURES_VERSION in _STATE_VERSIONS else None,
+                    W.track(league, plays) if FEATURES_VERSION == "v5" else None)
 
 
 def _count_in(times: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:
@@ -302,10 +308,17 @@ def features(v: GameView, head: np.ndarray, decision_t: np.ndarray) -> dict[str,
     }
     if FEATURES_VERSION != "v2":
         out.update(G.history_features(v.history, head))
-    if FEATURES_VERSION == "v4":
+    if FEATURES_VERSION in _STATE_VERSIONS:
         out.update(G.state_features(v.state, head))
         out.update(G.derived_features(v.league, out))
+    if FEATURES_VERSION == "v5":
+        out.update(W.features(v.wide, head, _wide_columns()))       # head only: no decision time, no cut, no label reaches these columns
     return out
+
+
+def _wide_columns() -> tuple[str, ...]:
+    """The kept v5 columns of the active list, in its order."""
+    return tuple(f for f in VALUE_FEATURES if f.startswith(W.PREFIX + W.SEP))
 
 
 FeatureFn = Callable[[GameView, np.ndarray, np.ndarray], dict]
@@ -366,6 +379,11 @@ def prefix_check(league: str, game_id: str, summary: dict, rows: pd.DataFrame, n
 # --- shards ---------------------------------------------------------------------------------------------------
 
 
+def _kept_sha() -> str:
+    """Hash of the active v5 columns, not the file: what a shard was built with."""
+    return hashlib.sha256(json.dumps(sorted(_wide_columns())).encode()).hexdigest()
+
+
 def shard_paths(out: Path, league: str, shard: str) -> tuple[Path, Path]:
     return Path(out) / league / f"{shard}.parquet", Path(out) / league / f"{shard}.json"
 
@@ -377,6 +395,8 @@ def shard_done(out: Path, league: str, shard: str) -> bool:
     if not (side.exists() and pq.exists()):
         return False
     info = json.loads(side.read_text())
+    if FEATURES_VERSION == "v5" and info.get("v5_kept_sha") != _kept_sha():
+        return False
     return bool(info.get("complete")) and info.get("features_version") == FEATURES_VERSION
 
 
@@ -392,6 +412,8 @@ def write_shard(out: Path, league: str, shard: str, rows: pd.DataFrame, info: di
     tmp = pq.with_suffix(".tmp")
     frame.to_parquet(tmp, compression="zstd", index=False)
     os.replace(tmp, pq)
+    if FEATURES_VERSION == "v5":
+        info = {**info, "v5_kept_sha": _kept_sha(), "v5_columns": list(_wide_columns())}
     meta = {**info, "league": league, "shard": shard, "rows": int(len(rows)), "complete": True,
             "features_version": FEATURES_VERSION, "rows_sha256": rows_sha(frame),
             "nights": sorted(rows["night"].unique().tolist()) if len(rows) else [],

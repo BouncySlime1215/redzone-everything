@@ -13,6 +13,8 @@ it against are all FAIL. Archive files for locked games are never opened: only s
 
 Features v4 get their own raw recomputation below (_raw_state): the drive state from nflverse's columns with this file's rules, and the
 league-relative numbers from this file's own constants, so a slip in gamevalue.state_arrays or a planted future shows up as a difference.
+Features v5 add kept wide columns (redzone/noggin/wide_features.py): the raw audit recomputes the sum-of-points, plays and scoring-plays ones from raw rows here (WIDE_RAW_RE),
+and the prefix rebuild compares every kept column on a cut-off feed, the check that catches any column reading the future.
 
 Stamps and the prefix rebuild only see what the shard builder and its adapter wrote, so a future fact an adapter put into a
 per-play field passes them. `--raw` is the check that catches it: for a sample of rows per game it reads the head play's
@@ -24,6 +26,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -49,7 +52,13 @@ HISTORY = ("pts_last3", "pts_last5", "swing_last5", "run_pts", "run_by_trailing"
 DRIVE = ("drive_plays", "drive_yards", "drive_clock_s", "drive_start_ytg", "rz_reached", "next_down", "next_distance", "poss_flip",
          "half_left", "two_minute", "timeouts_half")
 DERIVED = ("margin_class", "closeness", "crunch_eta_s", "league_id", "game_frac_left", "margin_scores", "margin_z", "pace_rel")
-FEATURES_BY_VERSION = {"v2": FEATURES, "v3": FEATURES + HISTORY, "v4": FEATURES + HISTORY + DRIVE + DERIVED}
+FEATURES_BY_VERSION = {"v2": FEATURES, "v3": FEATURES + HISTORY, "v4": FEATURES + HISTORY + DRIVE + DERIVED, "v5": FEATURES + HISTORY + DRIVE + DERIVED}
+V4_LIKE = ("v4", "v5")   # versions built on the drive state and the feed_row filter
+# v5 adds the kept columns of redzone/noggin/wide_features.py. The grammar is restated here so this file still does not import the builder; a test keeps the two in step.
+WIDE_RE = re.compile(r"^gv5__[a-z0-9_]+?__(all|home|away|lead|trail)__(p[0-9]+|s[0-9]+|game)__(sum|mean|rate|nz|max|std|slope|cum|per|since_s|since_p|streak)__(raw|lg|log)__"
+                     r"(none|close|late|crunch|last|margin|left|lead|down3|rz|short)$")
+WIDE_RAW_RE = re.compile(r"^gv5__(pts|plays|scoring)__(all|home|away)__(p[0-9]+|s[0-9]+)__sum__raw__none$")     # the kept columns the raw audit recomputes itself
+WIDE_RING = 256          # wide_features.RING: no window reaches further back than this many plays
 # league -> (points in one score, final-margin sd, points per 5 min, regulation seconds, league id): restated, and a test keeps it in step.
 SCALE = {"nfl": (7.0, 13.5, 3.75, 3600.0, 0.0), "nba": (2.5, 12.0, 24.0, 2880.0, 2.0), "cbb": (2.5, 11.0, 18.0, 2400.0, 3.0)}
 PERIODS = {"nfl": (4, 900.0), "nba": (4, 720.0), "cbb": (2, 1200.0)}
@@ -58,8 +67,8 @@ META = ("league", "season", "game_id", "game_key", "night", "source_night_id", "
 ALLOWED = frozenset(META + FEATURES + LABELS)
 
 
-def allowed_for(version: str) -> frozenset:
-    return frozenset(META + FEATURES_BY_VERSION[version] + LABELS)
+def allowed_for(version: str, wide: tuple = ()) -> frozenset:
+    return frozenset(META + FEATURES_BY_VERSION[version] + tuple(wide) + LABELS)
 
 
 PUBLIC_SOURCES = {"nflverse_pbp": "nfl"}
@@ -230,7 +239,7 @@ def _raw_history(league: str, g: pd.DataFrame, version: str = FEATURES_VERSION) 
             if r.play_type == "extra_point" or r.two_point_attempt == 1:
                 continue
             kind_text = factory._nfl_type(r)
-            if not kind_text or not wall or (version == "v4" and _one_source_only(kind_text, r.desc if isinstance(r.desc, str) else "")):
+            if not kind_text or not wall or (version in V4_LIKE and _one_source_only(kind_text, r.desc if isinstance(r.desc, str) else "")):
                 continue
             plays.append((wall, _n(r.total_home_score), _n(r.total_away_score), _raw_kind(league, kind_text, ""), r.qtr))
         elif league == "cfb":
@@ -381,6 +390,48 @@ def _raw_state(league: str, g: pd.DataFrame) -> dict[float, list[dict]]:
     return out
 
 
+def _raw_wide(league: str, g: pd.DataFrame, names: list[str]) -> dict[float, list[dict]]:
+    """{wall: [{wide column: value}]} for the kept columns WIDE_RAW_RE covers, from the raw rows with this file's own walk: last-N-plays or last-T-seconds sums of
+    points, plays and scoring plays, per side. The other kept columns are covered by the prefix rebuild, which compares every column on a cut-off feed."""
+    plays = []
+    for r in g.itertuples(index=False):
+        if league == "nfl":
+            wall = holdset.ts(r.time_of_day) if isinstance(r.time_of_day, str) else None
+            if r.play_type == "extra_point" or r.two_point_attempt == 1:
+                continue
+            kind_text = factory._nfl_type(r)
+            if not kind_text or not wall or _one_source_only(kind_text, r.desc if isinstance(r.desc, str) else ""):
+                continue
+            plays.append((wall, _n(r.total_home_score), _n(r.total_away_score)))
+        else:
+            wall = holdset.ts(r.wallclock)
+            if wall and not (league == "cfb" and _one_source_only(r.type_text if isinstance(r.type_text, str) else "", r.text if isinstance(r.text, str) else "")):
+                plays.append((wall, _n(r.home_score), _n(r.away_score)))
+    plays.sort(key=lambda x: x[0])
+    per_play = []
+    home = away = 0.0
+    for wall, h, a in plays:
+        dh, da = max(h - home, 0.0), max(a - away, 0.0)
+        home, away = h, a
+        per_play.append({"pts": {"all": dh + da, "home": dh, "away": da}, "plays": {"all": 1.0}, "scoring": {"all": float(dh > 0) + float(da > 0), "home": float(dh > 0), "away": float(da > 0)}})
+    out: dict[float, list[dict]] = {}
+    for i, (wall, _, _) in enumerate(plays):
+        row = {}
+        for name in names:
+            match = WIDE_RAW_RE.match(name)
+            stat, side, window = match.group(1), match.group(2), match.group(3)
+            span = int(window[1:])
+            first = max(i - WIDE_RING + 1, 0)
+            if window[0] == "p":
+                first = max(first, i - span + 1)
+            else:
+                while first < i and plays[first][0] <= wall - span:
+                    first += 1
+            row[name] = sum(per_play[j][stat].get(side, 0.0) for j in range(first, i + 1))
+        out.setdefault(wall, []).append(row)
+    return out
+
+
 def _same(a, b) -> bool:
     """Close enough for float32. A NaN in the shard is no number at all: the trainer drops that row."""
     if a != a:
@@ -388,7 +439,7 @@ def _same(a, b) -> bool:
     return bool(np.isclose(float(a), float(b), rtol=1e-5, atol=1e-3))
 
 
-def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name: str, rep: Report, version: str = FEATURES_VERSION):
+def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name: str, rep: Report, version: str = FEATURES_VERSION, wide: tuple = ()):
     """A sample of one game's rows against the raw source: the head play's fields, then the label."""
     make = {"nfl": holdset_public.nfl_summary, "cfb": holdset_public.cfb_summary}.get(league, holdset_public.hoops_summary)
     built = holdset.game_row(league, gid, make(g))
@@ -397,8 +448,10 @@ def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name
         return
     plays, events = _raw_plays(league, g), built[4]
     history = _raw_history(league, g, version) if version != "v2" else {}
-    state = _raw_state(league, g) if version == "v4" else {}
-    head_fields = tuple(f for f in RAW_FIELDS if not (version == "v4" and league == "nfl" and f == "yards_to_goal"))
+    state = _raw_state(league, g) if version in V4_LIKE else {}
+    head_fields = tuple(f for f in RAW_FIELDS if not (version in V4_LIKE and league == "nfl" and f == "yards_to_goal"))
+    wide_names = [n for n in wide if WIDE_RAW_RE.match(n)]
+    wide_raw = _raw_wide(league, g, wide_names) if wide_names else {}
     state_fields = DRIVE + DERIVED + (("yards_to_goal",) if league == "nfl" else ())
     picks = np.unique(np.linspace(0, len(rows) - 1, min(RAW_ROWS, len(rows))).astype(int))
     for r in rows.iloc[picks].itertuples(index=False):
@@ -416,7 +469,13 @@ def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name
             if not any(all(_same(getattr(r, f), c[f]) for f in HISTORY) for c in found):
                 wrong = [f"{f} {getattr(r, f)} vs raw {found[-1][f]}" for f in HISTORY if found and not _same(getattr(r, f), found[-1][f])]
                 rep.fail("raw_audit", f"{name}: game {gid} history differs from the raw source: {', '.join(wrong[:3]) or 'no raw play at the head'}")
-        if version == "v4":
+        if wide_names:
+            rep.checked["raw_wide_columns"] = max(rep.checked.get("raw_wide_columns", 0), len(wide_names))
+            found = wide_raw.get(float(r.feed_head_t)) or []
+            if not any(all(_same(getattr(r, f), c[f]) for f in wide_names) for c in found):
+                wrong = [f"{f} {getattr(r, f)} vs raw {found[-1][f]}" for f in wide_names if found and not _same(getattr(r, f), found[-1][f])]
+                rep.fail("raw_audit", f"{name}: game {gid} wide column differs from the raw source: {', '.join(wrong[:3]) or 'no raw play at the head'}")
+        if version in V4_LIKE:
             found = state.get(float(r.feed_head_t)) or []
             if not any(all(_same(getattr(r, f), c[f]) for f in state_fields) for c in found):
                 wrong = [f"{f} {getattr(r, f)} vs raw {found[-1][f]}" for f in state_fields if found and not _same(getattr(r, f), found[-1][f])]
@@ -428,7 +487,7 @@ def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name
             rep.fail("raw_audit", f"{name}: game {gid} label {r.value_next_3m} is not the events after its decision ({value})")
 
 
-def audit_raw(df: pd.DataFrame, league: str, shard: str, name: str, raw: Path, rep: Report, version: str = FEATURES_VERSION):
+def audit_raw(df: pd.DataFrame, league: str, shard: str, name: str, raw: Path, rep: Report, version: str = FEATURES_VERSION, wide: tuple = ()):
     """Public rows of one shard against <raw>/<league>/pbp_<shard>.parquet."""
     path = Path(raw) / league / f"pbp_{shard}.parquet"
     if not path.exists():
@@ -448,7 +507,7 @@ def audit_raw(df: pd.DataFrame, league: str, shard: str, name: str, raw: Path, r
         if str(gid) not in games:
             rep.fail("raw_audit", f"{name}: game {gid} is not in the raw source")
             continue
-        _audit_game(league, str(gid), games[str(gid)], rows, name, rep, version)
+        _audit_game(league, str(gid), games[str(gid)], rows, name, rep, version, wide)
 
 
 def check_label_copy(df: pd.DataFrame, name: str, rep: Report, features: tuple = FEATURES):
@@ -518,7 +577,11 @@ def check_dir(out: Path, archive: Path | None = None, allow_personal_nba: bool =
         if version not in FEATURES_BY_VERSION:
             rep.fail("sidecar", f"{name}: features {version}, this check knows {sorted(FEATURES_BY_VERSION)}")
             version = FEATURES_VERSION
-        allowed = allowed_for(version)
+        wide = tuple(info.get("v5_columns") or ()) if version == "v5" else ()
+        bad_names = [n for n in wide if not WIDE_RE.match(n)]
+        if bad_names:
+            rep.fail("columns", f"{name}: v5 columns that are not generated names: {bad_names[:5]}")
+        allowed = allowed_for(version, wide)
         df = pd.read_parquet(f)
         rep.checked["shards"] += 1
         rep.checked["rows"] += len(df)
@@ -542,9 +605,9 @@ def check_dir(out: Path, archive: Path | None = None, allow_personal_nba: bool =
         rep.checked["prefix_rows"] += int(info.get("prefix_checked") or 0)
         check_times(df, name, rep)
         check_nights(df, league, name, archive, cache, allow_personal_nba, rep)
-        check_label_copy(df, name, rep, FEATURES_BY_VERSION[version])
+        check_label_copy(df, name, rep, FEATURES_BY_VERSION[version] + wide)
         if raw is not None and (df.source != "archive").any():
-            audit_raw(df[df.source != "archive"], league, f.stem, name, raw, rep, version)
+            audit_raw(df[df.source != "archive"], league, f.stem, name, raw, rep, version, wide)
         pub = df[df.source != "archive"]
         seen["public_nights"].setdefault(league, set()).update(pub.night.astype(str).unique())
         games = df[["game_id", "night", "game_key", "source"]].drop_duplicates()
