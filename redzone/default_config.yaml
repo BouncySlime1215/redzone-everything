@@ -1190,6 +1190,7 @@ arbiter:                   # [build plan WP-17] picks among legal options, with 
   enabled: false
   plan: false              # [MUST-LIVE] schedule must-show clips across both sticks
   save_leave: false        # [MUST-LIVE] may leave a low-leverage play to save a dying must-show; Nick decides
+  last_game_to_live: false # [VETO-AUDIT] a finished game on screen may cut to the one game still live
 
 slate:                     # [build plan WP-18] blocks of a few games, then catch-up, late narrowing; NBA misses its exit bar
   enabled: false
