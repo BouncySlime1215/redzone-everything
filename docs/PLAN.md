@@ -92,6 +92,9 @@ At most 2 audit rounds when code and prod work; then 1-2 loops of safety measure
 
 ## 8. Log (coordinator, newest first)
 
+- 2026-11-08 night: P0 process gate closed (G-01..G-09). P1 sprint packages A-H, R, M, S merged one at a time; full suite
+  4359 passed, 0 failed. Not yet run on the real TV. Live tests are hidden-stick only until Nick says otherwise.
+
 - 2026-11-08: organization standard adopted (docs/STANDARD.md); wave-1 reports moved to docs/agents/<stream>/ with
   front matter; gate items G-01..G-08 opened. Standing streams scheduled (process 3x/day, training and data daily).
 - 2026-11-08: plan created; wave-1 research launched (process rules, code comprehension, locked results x3,
