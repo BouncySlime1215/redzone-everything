@@ -316,6 +316,7 @@ class Decider:
         self.history: deque[tuple[float, str, str]] = deque(maxlen=50)
         self.arbiter_brain: brain.Brain = arbiter.NullBrain()   # [arbiter] no brain yet; read only with arbiter.enabled on
         self.arbiter_log: Counter = Counter()                   # [arbiter] why each tick's choice went that way
+        self.arbiter_plan_memo: tuple = (None, None)            # [MUST-LIVE] (clips and stick it was asked about, its answer)
         self.slate_scene: slate_mod.Scene | None = None         # [slate] this tick's scene; None: flag off, today's rotation
         self.slate_log: Counter = Counter()                     # [slate] which mode each tick ran in
         self._slate_block: slate_mod.Block | None = None
@@ -2003,7 +2004,9 @@ class Decider:
         inp = brain.BrainInput(tick=len(self.log), now=now, options=opts)
         base = arbiter.STAY_ID if d.action != "switch" else f"cut:{d.target}"
         show = self._arbiter_show(cands, now, p)
-        ch = arbiter.choose(inp, self._arbiter_think(inp), base, musts=self._arbiter_musts(cands, now, p), show=show, p=p)
+        planned = self._arbiter_plan({g: x for g, x in cands.items() if g != self.current}, None, now, p)
+        ch = arbiter.choose(inp, self._arbiter_think(inp), base, musts=self._arbiter_musts(cands, now, p), show=show, p=p,
+                            planned=f"cut:{planned}" if planned is not None else None)
         self.arbiter_log[ch.why] += 1
         o = ch.option
         if d.action == "stay" and o is not None and o.verb == "stay" and not ch.why.startswith("floor:") \
@@ -2052,8 +2055,9 @@ class Decider:
         opts = (legal.STAY, *(brain.Option(id=f"cut:{g}", verb="cut", game_id=g, l1_class=self._arbiter_class(g, cands[g])) for g in infos))
         inp = brain.BrainInput(tick=len(self.log), now=now, options=opts)
         musts = self._arbiter_musts(cands, now, p)
+        planned = self._arbiter_plan({g: cands[g] for g in infos}, None, now, p)
         ch = arbiter.choose(inp, self._arbiter_think(inp), f"cut:{baseline}", musts=musts,
-                            show=self._arbiter_show(cands, now, p), p=p)
+                            show=self._arbiter_show(cands, now, p), p=p, planned=f"cut:{planned}" if planned is not None else None)
         self.arbiter_log[ch.why] += 1
         if ch.option is None or ch.option.game_id is None:
             self.jump_holds[f"arbiter_{ch.why}"] += 1
@@ -2063,9 +2067,134 @@ class Decider:
     def _arbiter_preload(self, pool: dict[str, Candidate], keep: str | None, now: float) -> str | None:
         """[jump mode] The game the hidden stick should take for the floor, when a route's deadline is still ahead."""
         p = self._arbiter_params()
+        planned = self._arbiter_plan_memoed(pool, keep, now, p)
+        if planned is not None:
+            return planned
         prep = {g: float(self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target))
                 for g, x in pool.items()}
         return arbiter.preload_target(self._arbiter_musts(pool, now, p), prep, keep, now, p)
+
+    # ----- [MUST-LIVE] plan_clips on a buffered picture: arbiter.plan picks the hidden stick's game and orders the floor -----
+
+    def _arbiter_prep_s(self, target: str | None) -> float:
+        return float(self.entry_cost(target) if self.entry_cost is not None else self._deadline_cost(target))
+
+    def _arbiter_plan_clips(self, pool: dict[str, Candidate], keep: str | None, now: float, p: arbiter.Params) -> tuple[arbiter.Clip, ...]:
+        """Every must-show this rewind can still reach and the screen hasn't shown, in the feed already (so causal). The
+        window is the sim's: from min_behind_s behind the live edge to replay.scrub_max_play_age_s behind it. A new park also
+        has to start within that age (_parkable); the stick already on the game (`keep`) needs no new one."""
+        flip = float(bj.cfg_get(self.cfg, "flip_s"))
+        shallow = float(bj.cfg_get(self.cfg, "min_behind_s"))
+        deep = max(shallow, float(self.cfg.get("replay.scrub_max_play_age_s", 95) or 95))
+        out = []
+        for gid, x in pool.items():
+            tl = self.timelines.get(gid)
+            if gid in PSEUDO or tl is None or not x.target:
+                continue
+            prep = 0.0 if gid == keep else self._arbiter_prep_s(x.target)
+            if not math.isfinite(prep):
+                continue
+            dl = self.delays.get(x.target)
+            edge = dl.mu - dl.behind
+            play_len = PLAY_LEN_S.get(tl.league, 8.0) or 8.0
+            for e in reversed(tl.events):
+                if e.kind != "play":
+                    continue
+                land = e.lo - play_len
+                last_flip = land + edge + deep - flip
+                if last_flip < now:
+                    break
+                if gid != keep and now - e.seen > deep:
+                    continue
+                rank = arbiter.trigger_rank(tl.league.value, self._moment_word(tl, e), p)
+                if rank == arbiter.NOT_FLOOR or self._saw(gid, e.lo + dl.mu - play_len, e.seen + dl.mu):
+                    continue
+                out.append(arbiter.Clip(f"{gid}:{e.pid or e.label}", gid, rank, land + edge + shallow - flip, last_flip,
+                                        p.plan_clip_s, max(now + prep, land + edge + 1.0)))
+        return tuple(out)
+
+    def _arbiter_stick_legal(self, cands: dict[str, Candidate], now: float) -> set[str]:
+        """Games a hidden stick may prepare: legal_options with the rules about this instant's flip set aside (the gate on
+        screen, a landing, a cut just made), because the flip comes later and is judged then. Nick's blocks and the
+        game-level rules (tunable, dark, banned app, focus) still apply."""
+        f = self.legal_facts(cands, now)
+        f = replace(f, gate_ok=True, moment_lock="", arrival_until=0.0, last_switch_at=None, dwell_min_s=0.0,
+                    games=tuple(replace(g, landable=True) for g in f.games))
+        return {o.game_id for o in legal.legal_options(f) if o.verb == "cut"}
+
+    def _arbiter_flip_legal(self, cands: dict[str, Candidate], now: float) -> set[str]:
+        """Games a buffered jump may cut to this tick: legal_options, with the two checks the buffered editor proves on its own
+        picture (the dead ball on screen, the landing) taken from it. The commit gate re-judges both at the flip."""
+        f = self.legal_facts(cands, now)
+        f = replace(f, gate_ok=True, games=tuple(replace(g, landable=True) for g in f.games))
+        return {o.game_id for o in legal.legal_options(f) if o.verb == "cut"}
+
+    def _arbiter_plan_input(self, pool: dict[str, Candidate], keep: str | None, now: float,
+                            p: arbiter.Params) -> tuple[arbiter.Clip, ...]:
+        """The plan's clips on legal games. Empty: not a buffered picture, arbiter.plan off, or nothing owed."""
+        if not p.plan or not self.buffered_on():
+            return ()
+        clips = self._arbiter_plan_clips(pool, keep, now, p)
+        if not clips:
+            return ()
+        ok = self._arbiter_stick_legal(pool, now)
+        return tuple(c for c in clips if c.game_id in ok)
+
+    def _arbiter_plan_answer(self, clips: tuple[arbiter.Clip, ...], pool: dict[str, Candidate], keep: str | None,
+                             now: float) -> str | None:
+        costs = sorted(c for c in (self._arbiter_prep_s(pool[g].target) for g in {x.game_id for x in clips}) if math.isfinite(c))
+        mid = costs[len(costs) // 2] if costs else 0.0
+        return arbiter.plan_game(clips, now, float(bj.cfg_get(self.cfg, "flip_s")), mid, keep, costs[-1] if costs else 0.0)
+
+    def _arbiter_plan(self, pool: dict[str, Candidate], keep: str | None, now: float, p: arbiter.Params) -> str | None:
+        """The game of the best run's first clip, or None: the usual pick decides."""
+        clips = self._arbiter_plan_input(pool, keep, now, p)
+        return self._arbiter_plan_answer(clips, pool, keep, now) if clips else None
+
+    def _arbiter_plan_memoed(self, pool: dict[str, Candidate], keep: str | None, now: float, p: arbiter.Params) -> str | None:
+        """The hidden stick's plan, asked again only when the clips or the stick change. Why: the answer moves with the clock
+        while nothing new is known, and every change of mind is a re-tune (the sim replans only when the feed reports a play)."""
+        clips = self._arbiter_plan_input(pool, keep, now, p)
+        if not clips:
+            self.arbiter_plan_memo = (None, None)
+            return None
+        key = (keep, tuple(sorted(c.id for c in clips)))
+        if self.arbiter_plan_memo[0] != key or self.arbiter_plan_memo[1] not in pool:
+            self.arbiter_plan_memo = (key, self._arbiter_plan_answer(clips, pool, keep, now))
+        return self.arbiter_plan_memo[1]
+
+    def _arbiter_save_leave(self, gid: str | None, cands: dict[str, Candidate], now: float) -> str | None:
+        """arbiter.save_leave (default off): the hidden stick's game when its must-show would die waiting out the play on the
+        screen and leaving that play is one the rules allow: gid low leverage, nothing owed airing there. The landing is
+        still judged, and the commit gate still refuses a high-leverage leave."""
+        if not self._arbiter_on():
+            return None
+        p = self._arbiter_params()
+        if not (p.plan and p.save_leave) or not self.buffered_on():
+            return None
+        cur, tl = cands.get(gid or ""), self.timelines.get(gid or "")
+        if cur is None or tl is None or not cur.target:
+            return None
+        s = cur.scored
+        if s.high_leverage or s.crunch or s.crunch_now or s.lock:
+            return None
+        dl = self.delays.get(cur.target)
+        play_len = PLAY_LEN_S.get(tl.league, 8.0) or 8.0
+        flip = float(bj.cfg_get(self.cfg, "flip_s"))
+        for e in reversed(tl.events):
+            if e.kind != "play":
+                continue
+            if e.seen + dl.mu + AFTER_PLAY_BUFFER_S < now:
+                break
+            if e.lo + dl.mu - play_len <= now + flip \
+                    and arbiter.trigger_rank(tl.league.value, self._moment_word(tl, e), p) != arbiter.NOT_FLOOR:
+                return None
+        ready = self.standby_ready
+        for g, x in self._jump_pool(cands).items():
+            if g != gid and (ready is None or ready(x.target)) and self._bj_pic(g, x, now) is not None \
+                    and arbiter.dying(self._arbiter_plan_clips({g: x}, g, now, p), now, flip, play_len):
+                return g
+        return None
 
     def _arbiter_moment_tiers(self, watchable: dict[str, Candidate], now: float) -> dict[str, int]:
         """gid -> the highest moment tier owed there (lower is better), for Ranked.key."""
@@ -3005,7 +3134,7 @@ class Decider:
             if tl is None or tl.fresh_at is None or now - tl.fresh_at > STALE_DATA_S + d.mu + 2 * d.current_sigma(now):
                 return True
         g = self._jump_gate(x, now, gid=gid, required_s=required_s)
-        return bool(g and g.safe)
+        return bool(g and g.safe) or self._arbiter_save_leave(gid, cands, now) is not None
 
     def _jump_plays_seen(self, gid: str, x: Candidate, now: float) -> int:
         """Plays that started and finished airing on screen since we landed on gid."""
@@ -3260,6 +3389,12 @@ class Decider:
         ready = self.standby_ready
         hs = [(gid, x) for gid, x in self._jump_pool(cands).items()
               if gid != self.current and (ready is None or ready(x.target)) and self._slate_allows(gid, now)]
+        if hs and self._arbiter_on() and self._arbiter_params().plan:
+            ok = self._arbiter_flip_legal(cands, now)
+            if not any(gid in ok for gid, _ in hs):
+                self.jump_holds["bj_not_legal"] += 1
+                return False
+            hs = [(gid, x) for gid, x in hs if gid in ok]
         pics = [(gid, p) for gid, x in hs if (p := self._bj_pic(gid, x, now)) is not None]
         if v is None:
             # [bootstrap, overseer Nov 8 21:47] the screen's stick was tuned at the live edge (before the flag, or a failed
@@ -3295,6 +3430,10 @@ class Decider:
                     else bj.Cut(False, "not_parked")
             else:
                 c = bj.cut_now(v, p, now, self.cfg, plays_seen=seen, land_s=self._bj_flip_cost(cands[gid].target))
+            if not c.go and c.why == "play_on_screen" and self._arbiter_save_leave(self.current, cands, now) == gid:
+                lands, h_snap = self._bj_lands(gid, p, cands, now)
+                if lands:
+                    c = bj.Cut(True, "save_leave", {"h_snap_s": round(h_snap, 1), "here_snap_s": 0.0, "plays_seen": seen})
             if c.go and (best is None or c.info.get("h_snap_s", 99) < best[1].info.get("h_snap_s", 99)):
                 best = (gid, c)
             elif best is None:

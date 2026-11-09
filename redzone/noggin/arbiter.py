@@ -26,7 +26,8 @@ docs/agents/data/2026-11-09-redzone-viewers-production.md. That is why each is i
 catch-up replays Nick accepted, and never parked waiting while a clip that can air first expires). The max-rate sim
 (scripts/buffered_jump_sim.py policy="arbiter") measures them. `catchup_pick` is the live decider's use of the same order
 (ARBITER-LIVE): only a tick the arbiter already chose to stay, only a must-show that already aired unseen, and the replay
-goes out as the decider's ordinary replay decision, so the commit gate judges it at the flip.
+goes out as the decider's ordinary replay decision, so the commit gate judges it at the flip. `plan_game` is the live use
+of `plan_clips` (MUST-LIVE): which game the hidden stick holds on a buffered picture, and which floor option goes first.
 
 Pure: no clock, no I/O, no decider import. `now` is passed in, so a replay gives the same choice.
 """
@@ -72,6 +73,10 @@ class Params:
     brain_margin: float = 3.0         # a brain's cut must beat stay by this many points
     flip_margin_s: float = 1.0        # seconds of slack on every route's deadline
     catchup_s: float = 600.0          # a missed must-show may still air as a replay this long after the play; 0 turns it off
+    plan: bool = True                 # buffered picture: the hidden stick takes the first clip of the best run (plan_game)
+    plan_clip_s: float = 30.0         # how long one aired clip holds the screen, for the plan (the sim's clips run about this)
+    save_leave: bool = False          # a must-show about to die may leave a low-leverage, not-owed play mid-way. OFF until
+                                      # Nick decides: in the sim it took low-leverage mid-play leaves from 16 to 284
 
     @classmethod
     def from_config(cls, get: Callable[..., object]) -> "Params":
@@ -222,6 +227,37 @@ def plan_clips(cands: Sequence[tuple], free_at: float, flip_s: float, next_prep_
     return keep if any(s[3] == keep for s in won) else min(won, key=lambda s: s[1])[3]
 
 
+@dataclass(frozen=True)
+class Clip:
+    """One must-show a hidden stick could still park on and air, for plan_game. Built by the decider from the feed."""
+    id: str
+    game_id: str
+    rank: int
+    opens: float           # first wall time the flip may start (the rewind's shallow end)
+    last_flip: float       # last wall time the flip may start (the rewind's deep end)
+    seconds: float         # how long it holds the screen
+    ready: float           # wall time this stick could be parked on it
+
+
+def plan_game(clips: Sequence[Clip], now: float, flip_s: float, next_prep_s: float, keep_game: str | None = None,
+              sure_prep_s: float | None = None) -> str | None:
+    """MUST-LIVE: the game the hidden stick should hold, the game of plan_clips' first clip. The stick holds a game and the
+    plan reads clips, so `keep_game` stands for its most valuable clip there. It only chooses a stick's job: a cut still
+    comes from the usual path, through legal options and the commit gate."""
+    if not clips:
+        return None
+    held = [c for c in clips if c.game_id == keep_game]
+    keep = max(held, key=lambda c: (clip_weight([c.rank]), -c.opens)).id if held else None
+    first = plan_clips([(c.id, clip_weight([c.rank]), c.opens, c.last_flip, c.seconds, c.ready) for c in clips], now, flip_s,
+                       next_prep_s, keep, sure_prep_s)
+    return next((c.game_id for c in clips if c.id == first), None)
+
+
+def dying(clips: Iterable[Clip], now: float, flip_s: float, play_s: float) -> bool:
+    """A held must-show that waiting out the play on screen would lose: its last flip comes before that whistle."""
+    return any(c.rank != NOT_FLOOR and now + play_s + flip_s > c.last_flip for c in clips)
+
+
 def catchup_pick(clips: Iterable[tuple[str, int, float]], options: Sequence[brain.Option], show: Show, now: float,
                  p: Params = DEFAULT_PARAMS) -> str | None:
     """The missed must-show to replay on a tick the arbiter chose to stay, or None. Each clip is (id, trigger rank, when the
@@ -323,8 +359,9 @@ def _thin(pool: Sequence[brain.Option], floor: Mapping[str, object], show: Show,
 
 
 def choose(inp: brain.BrainInput, out: brain.BrainOutput | None, baseline: str = STAY_ID, *, musts: Iterable[Must] = (),
-           show: Show = Show(), p: Params = DEFAULT_PARAMS) -> Choice:
-    """One legal option, or `option=None` when today's decider picked something outside the list (see Choice)."""
+           show: Show = Show(), p: Params = DEFAULT_PARAMS, planned: str | None = None) -> Choice:
+    """One legal option, or `option=None` when today's decider picked something outside the list (see Choice). `planned`,
+    an option id from plan_game, decides among the floor's options only: it can't add one."""
     pool = [o for o in inp.options if o.verb == "stay" or legal.kind_of(o.verb)]
     if p.decide_last:
         pool = [o for o in pool if o.verb == "stay" or o.earliest_s <= 0.0]
@@ -343,7 +380,7 @@ def choose(inp: brain.BrainInput, out: brain.BrainOutput | None, baseline: str =
     if floor:
         scored = out.scores if out is not None and brain.valid(out, inp) else {}
         byid = {o.id: o for o in l1}
-        best = min(floor, key=lambda i: (floor[i][0], -float(scored.get(i, 0.0)), i))
+        best = planned if planned in floor else min(floor, key=lambda i: (floor[i][0], -float(scored.get(i, 0.0)), i))
         rank, m = floor[best]
         if p.stay_replay_s > 0 and rank >= show.replay_rank and best != stay.id:
             return Choice(stay, "stay_replay")
