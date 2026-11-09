@@ -74,14 +74,19 @@ class ClockTape:
     """Per game, the feed's (period, clock) over the last TAPE_WINDOW seconds, so the clock as of a
     moment in the past can be read back. Unchanged readings are not stored; the first one keeps its time."""
 
-    def __init__(self, keep_s: float = TAPE_WINDOW):
+    def __init__(self, keep_s: float = TAPE_WINDOW, gap_s: float = 30.0):
         self.keep_s = float(keep_s)
+        self.gap_s = float(gap_s)   # no record for this long (nobody had the phone open): the feed in between is unknown
         self.rows: dict[str, list[tuple[float, int | None, int | None]]] = {}
+        self.last: dict[str, float] = {}   # when each game was last recorded, changed or not
 
     def record(self, gid: str, g: GameState, now: float | None = None) -> None:
         now = time.time() if now is None else now
         clock = None if g.clock_s is None else max(0, int(g.clock_s))
         rows = self.rows.setdefault(gid, [])
+        if now - self.last.get(gid, now) > self.gap_s:
+            rows.clear()   # a row before the gap can't stand for the clock during it
+        self.last[gid] = now
         if not rows or rows[-1][1:] != (g.period, clock):
             rows.append((now, g.period, clock))
         cut = now - self.keep_s

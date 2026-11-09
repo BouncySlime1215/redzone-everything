@@ -454,3 +454,13 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
 - 2026-11-09 (AUDIT-4): `on_target` was cleared before a tune that then sent no key, which left the watchdog blind with the old game still on screen. Lesson: clear a belief when the world may have changed, not when you intend to change it. Test: tests/test_audit4_screen.py.
 
 - 2026-11-09 (AUDIT-4): the age check in `restore_held` also threw away `behind_on`, a fact about the stick that doesn't age. Lesson: a staleness rule covers estimates, not facts that only an action can change. Test: tests/test_audit4_behind.py.
+
+- 2026-11-09 (AUDIT-5): `_preload`, `_hold_standby` and the rebuild called a standby ready whenever the target still matched, so a hold a switch displaced could mark that same target ready mid-tune. Lesson: "the target still matches" doesn't say what the stick is doing; ask the one who did the work how it ended. Test: tests/test_audit5_hold.py.
+
+- 2026-11-09 (AUDIT-5): Prime ignores a link to the game already playing, the tuner counted that as a fresh tune, and `held` went to 0 for a stream still behind. Lesson: AUDIT-4's "ok and something happened are different answers" had a second door. Test: tests/test_audit5_prime.py.
+
+- 2026-11-09 (AUDIT-5): `_fill` runs after `_dwell` and the arbiter, so its switch skipped the rules those stages apply. Lesson: a stage late in the pipeline owes every earlier stage's rule itself. Test: tests/test_audit5_fill.py.
+
+- 2026-11-09 (AUDIT-5): the clock tape and the no-bug stretch both treated "not observed" as "unchanged", because their reads stop when nobody is looking. Lesson: an observation stream needs its own gap rule. Tests: tests/test_audit5_clock.py, tests/test_audit5_labels.py.
+
+- 2026-11-09 (AUDIT-5): `_fill_seen` compared feed time to the screen log. Lesson: a timestamp has one clock; check which when it meets another. Test: tests/test_audit5_fill.py.
