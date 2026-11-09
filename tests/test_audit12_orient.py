@@ -38,5 +38,41 @@ def test_beat_hidden_on_a_time_shifted_stick(client, engine):
     _setup(engine, held=90.0)
     assert client.get("/api/v2/orient?game=g1").json()["beat"] is None
     assert phone_v2.screen_behind(engine, "g1") is True
-    engine.control.held["prime:x"] = 1.0
+    engine.control.held.clear()
     assert client.get("/api/v2/orient?game=g1").json()["beat"] is not None
+
+
+def _watch_setup(engine, held=None, replaying=None):
+    from redzone.models import League
+    from redzone.scoring.engine import Scored
+    _setup(engine, held=held, replaying=replaying)
+    s = Scored("g1", League.NFL, 50.0, 50.0, 0.0, 0.0, 0.0, "r", [], False, None, None, 0.0, crunch=True, factor="Tied late")
+    s.watch_value, s.watch_why = 60.0, "Go-ahead drive underway"
+    engine.scored["g1"] = s
+    engine.cfg.update({"phone": {"v2": True, "orient": True, "why_tag_min": 0}})
+
+
+def test_watch_strip_hides_live_lines_of_the_game_shown_in_the_past(client, engine):
+    _watch_setup(engine, held=90.0)
+    r = client.get("/api/v2/watch").json()
+    row = next(x for x in r["games"] if x["game_id"] == "g1")
+    assert row["context"] is None and row["why"] == "" and r["why_tag"] is None
+
+
+def test_watch_strip_keeps_the_lines_when_the_screen_is_live(client, engine):
+    _watch_setup(engine)
+    r = client.get("/api/v2/watch").json()
+    row = next(x for x in r["games"] if x["game_id"] == "g1")
+    assert row["why"] == "Go-ahead drive underway" and r["why_tag"]["text"] == "Go-ahead drive underway"
+    assert row["context"] and "down 3" in row["context"]
+
+
+def test_follow_line_hides_stat_text_of_the_game_shown_in_the_past(client, engine):
+    engine.cfg.update({"phone": {"follow": True}, "noggin": {"priority": {"prefs": {"followed_players": ["Jokic"]}}}})
+    _watch_setup(engine, held=90.0)
+    engine.cfg.update({"phone": {"v2": True, "follow": True}})
+    engine.merger.games["g1"].spotlight = {"name": "Nikola Jokic", "text": "Jokic hits the go-ahead three"}
+    rows = client.get("/api/v2/follow").json()["live"]
+    assert rows and rows[0]["on"] and all(h["text"] == "" for h in rows[0]["players"])
+    engine.control.held.clear()
+    assert client.get("/api/v2/follow").json()["live"][0]["players"][0]["text"]

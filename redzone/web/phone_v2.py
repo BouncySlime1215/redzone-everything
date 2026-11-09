@@ -1075,12 +1075,9 @@ def ladder_line(control, now: float) -> dict | None:
     return v if (v["last"] or v["cooling"]) else None
 
 
-BEHIND_MIN_S = 5.0   # a stick held this far behind live is showing the past
-
-
 def screen_behind(engine, gid: str | None) -> bool:
-    """True when the TV shows `gid` behind live: a catch-up replay, or a stick held (time-shifted) by more than
-    BEHIND_MIN_S. The live feed would spoil whatever is on screen, so the phone must say nothing from it."""
+    """True when the TV shows `gid` behind live: a catch-up replay, or a stick held (time-shifted: control.held
+    drops the entry when it is back at live). The live feed would spoil whatever is on screen, so the phone must say nothing from it."""
     dec = engine.decider
     if gid is None or gid != dec.current:
         return False
@@ -1088,7 +1085,7 @@ def screen_behind(engine, gid: str | None) -> bool:
         return True
     target = getattr(engine.where.get(gid), "target", None)
     try:
-        return bool(target) and float(engine.control.held.get(target) or 0.0) >= BEHIND_MIN_S
+        return bool(target) and float(engine.control.held.get(target) or 0.0) > 0.0
     except (TypeError, ValueError):
         return False
 
@@ -1235,12 +1232,19 @@ def router(engine) -> APIRouter:
         if not _enabled(engine):
             return _off()
         cur = engine.decider.current
-        return {"enabled": True, "now": time.time(), "current": cur,
-                "why_tag": why_tag(engine.scored.get(cur), float(engine.cfg.get("phone.why_tag_min"))) if cur else None,
-                "also_close": also_close(getattr(engine.merger, "games", {}), cur, league_order(engine.cfg))
-                if engine.cfg.get("phone.also_close") else [],
-                **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}),
-                               crunch_tracker(engine))}
+        behind = screen_behind(engine, cur)
+        out = {"enabled": True, "now": time.time(), "current": cur,
+               "why_tag": None if behind else
+               why_tag(engine.scored.get(cur), float(engine.cfg.get("phone.why_tag_min"))) if cur else None,
+               "also_close": also_close(getattr(engine.merger, "games", {}), cur, league_order(engine.cfg))
+               if engine.cfg.get("phone.also_close") else [],
+               **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}),
+                              crunch_tracker(engine))}
+        if behind:   # the TV shows this game in the past: its live situation line and reason would spoil it
+            for row in out["games"]:
+                if row["game_id"] == cur:
+                    row["context"], row["why"] = None, ""
+        return out
 
     @r.get("/follow")
     async def get_follow():
@@ -1248,8 +1252,11 @@ def router(engine) -> APIRouter:
         if not _enabled(engine) or not engine.cfg.get("phone.follow"):
             return _off()
         players = follow_names(engine.cfg.get("noggin.priority.prefs.followed_players") or []) or []
-        return {"enabled": True, "players": players, "max": FOLLOW_MAX,
-                "live": follow_view(getattr(engine.merger, "games", {}), players, engine.decider.current)}
+        live = follow_view(getattr(engine.merger, "games", {}), players, engine.decider.current)
+        for row in live:
+            if row["on"] and screen_behind(engine, row["game_id"]):   # live stat lines of a game the TV shows in the past
+                row["players"] = [{**h, "text": ""} for h in row["players"]]
+        return {"enabled": True, "players": players, "max": FOLLOW_MAX, "live": live}
 
     @r.post("/follow")
     async def set_follow(body: dict):
