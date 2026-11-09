@@ -1,0 +1,11 @@
+{
+  "card": "WP-11",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "scripts/buffered_jump_sim.py",
+    "tests/test_maxrate_sim.py"
+  ],
+  "started": 1794200876,
+  "expires": 1794373676
+}
