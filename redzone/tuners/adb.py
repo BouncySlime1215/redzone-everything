@@ -317,6 +317,8 @@ class Stick:
         r = await self.shell(PLAYBACK_CMD, timeout=4)
         report = parse_playback(r.out if r.ok else "", package)
         report.update(read_ok=r.ok, read_started=started, read_finished=time.monotonic())
+        if not r.ok and not r.out.strip():
+            report["no_sessions"] = True   # grep exits 1 on no match: the stick answered, and has no media session at all
         if self.observer is not None:
             try:
                 self.observer(self, report)

@@ -23,7 +23,7 @@ _FLIP = {ast.Lt: ast.LtE, ast.LtE: ast.Lt, ast.Gt: ast.GtE, ast.GtE: ast.Gt, ast
 
 @dataclass(frozen=True)
 class Mutant:
-    id: str          # stable: function:line:change[:n]
+    id: str          # stable: function:change:code[:n], so a line shift elsewhere in the file can't rename it
     source: str      # the changed module
 
 
@@ -38,6 +38,11 @@ def _replace(root: ast.AST, old: ast.AST, new: ast.AST) -> None:
             setattr(parent, f, new)
         elif isinstance(v, list) and any(x is old for x in v):
             setattr(parent, f, [new if x is old else x for x in v])
+
+
+def _code(node: ast.AST) -> str:
+    """The source a change touches, on one line. Names a site by what it is, so only editing that code renames it."""
+    return " ".join(ast.unparse(node.test if isinstance(node, ast.If) else node).split())
 
 
 def _sites(node: ast.AST, parent: ast.AST | None, rule: bool) -> list[str]:
@@ -133,7 +138,7 @@ def mutants(path: Path, want: set[str], *, rules: set[str] = frozenset(), rule_p
                     fn2 = dict(_named(t, want))[name]
                     target = list(ast.walk(fn2))[i]
                     _apply(fn2, target, change)
-                add(f"{name}:{getattr(node, 'lineno', 0)}:{change}", make)
+                add(f"{name}:{change}:{_code(node)}", make)
     for table in tables:
         top = next(n for n in tree.body if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == table)
         for j, elt in enumerate(top.value.elts):
