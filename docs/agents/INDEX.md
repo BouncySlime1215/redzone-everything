@@ -30,6 +30,12 @@ Standard: [docs/STANDARD.md](../STANDARD.md). Plan and process gate: [docs/PLAN.
 | R-VIEWER | 2026-11-08 | [Viewer experience of automated multi-game sports (research, 2026-11-08)](../research/2026-11-08/viewer-experience.md) | reviewed | 24 (19) | - |
 | W1-CONTEXT | 2026-11-08 | [Why / routes / relied-on context whenever an agent reads code](context/2026-11-08-code-context-on-read.md) | draft | 24 (20) | - |
 
+## data
+
+| id | date | title | status | sources (verified) | gate items |
+|---|---|---|---|---|---|
+| D-FIELDS-B | 2026-11-09 | [Math and machine learning data pools by subcategory, with pretrained models and a paid-source table (replaces the first 13-field scope; old findings kept as an appendix)](data/2026-11-09-math-ml-data-pools.md) | draft | 113 (99) | - |
+
 ## harness
 
 | id | date | title | status | sources (verified) | gate items |
