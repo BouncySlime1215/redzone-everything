@@ -478,7 +478,9 @@ class Decider:
 
     def _home_set(self, gid: str | None, at: float | None, why: str) -> None:
         """The one way a break visit changes: home_m follows (none / visit / visit_timed)."""
-        self._home, self._home_at = gid, at   # (a return time without a visit is kept, as before: inert)
+        if gid is None:
+            at = None   # [AUDIT-8] a return time dies with its visit: kept, the next visit started out overdue
+        self._home, self._home_at = gid, at
         self.home_m.to("none" if gid is None else "visit_timed" if at is not None else "visit", why)
 
     def _home_restore(self, home_before: tuple, why: str) -> None:
