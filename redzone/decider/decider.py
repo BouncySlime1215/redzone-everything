@@ -45,10 +45,10 @@ from redzone.decider.scenarios import Scenarios
 from redzone.contracts import brain
 from redzone.moments import fill as fill_ladder
 from redzone.moments import slate as slate_mod
-from redzone.noggin import arbiter, legal
+from redzone.noggin import arbiter, catchup, legal
 from redzone.noggin.lookahead import ahead
 from redzone.noggin.priority import NO_MOMENT as P_NO_MOMENT
-from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
+from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage, league_index
 from redzone import config as _config
 from redzone.decider import core
 from redzone.decider.core import BreakView, CoreState, DecisionCore, Knobs, MomentView, Option, SwitchPath
@@ -242,10 +242,13 @@ class Missed:
     aired: float = 0.0        # when it aired on the screen (wallclock; 0 = unknown, use t)
     retry_at: float = 0.0     # [Nick, Nov 8 live] a failed replay of this play isn't tried again before this
     fails: int = 0            # failed replays of this play (replay.max_fails drops it)
+    offset_s: float = 0.0     # [arbiter.catchup_route] where in the clip this airing starts: a later piece seeks past what already aired
+    piece_s: float = 0.0      # ...how long this piece holds the screen (0 = the old whole-replay timing)
+    marked_replay: bool = False   # ...the screen already showed this result: it airs labelled as a replay, never as news
 
     def back_s(self, now: float, delay_mu: float, play_len: float, lead_s: float = 3.0) -> float:
         """How far to rewind from the live edge (which shows real time now - delay)."""
-        return max(0.0, (now - delay_mu) - (self.t - play_len - lead_s))
+        return max(0.0, (now - delay_mu) - (self.t - play_len - lead_s + self.offset_s))
 
 
 REPLAY_BASE = {"td": 75, "goal": 75, "safety": 70, "turnover": 65, "hr": 60, "fg": 35}
@@ -412,8 +415,10 @@ class Decider:
     _entry_last: float = 0.0
     home_leaks: int = 0
     _leave_pick: LeaveHold | None = None
+    _route_doing: tuple[Missed, float] | None = None   # [arbiter.catchup_route] the clip in pieces: (the play, seconds of it already aired)
     _LAZY = {"owner_m": M.OWNER, "screen_m": M.DECIDER_SCREEN, "start_m": M.START, "gone_m": M.SCREEN_GONE, "home_m": M.DECIDER_HOME,
-             "safe_m": M.SAFE, "override_m": M.OVERRIDE, "lock_m": M.LOCK_WAIT, "entry_m": M.ENTRY_WAIT, "leave_m": M.LEAVE_WAIT}
+             "safe_m": M.SAFE, "override_m": M.OVERRIDE, "lock_m": M.LOCK_WAIT, "entry_m": M.ENTRY_WAIT, "leave_m": M.LEAVE_WAIT,
+             "catchup_m": M.CATCHUP_ROUTE}
 
     def __getattr__(self, name: str):
         spec = Decider._LAZY.get(name)
@@ -683,6 +688,8 @@ class Decider:
         if self.replaying:
             if self.safe_mode or self.user.paused or self.on_screen_at(now) != "replay":
                 self.abort_replay()
+            elif now >= self.replay_until and self._route_piece_ended(now):
+                pass
             elif now >= self.replay_until:
                 self._clip.replayed = True
                 self.done_replays.append(self._clip)
@@ -958,6 +965,8 @@ class Decider:
         cap = float(self.cfg.get("replay.scrub_max_play_age_s", 95) or 0)
         if cap <= 0 or self.cfg.get("replay.yttv_seek", "scrub") != "scrub":
             return True
+        if self.cfg.get("arbiter.catchup_route", False):   # the route's own reach decides, and catchup.py caps it under 180 s
+            cap = max(cap, float(self.cfg.get("arbiter.catchup_route_reach_s", 95) or 0))
         if (self.target_of(m.game_id) or "youtubetv:").split(":", 1)[0] != "youtubetv":
             return True
         return now - m.t <= cap
@@ -1267,6 +1276,8 @@ class Decider:
         to one step early, and if the screen runs 2σ further behind than we think, 2σ earlier
         still. clip_s alone (15 s from 3 s before the snap) can end mid-play. (Padding by the
         exact overshoot instead measured worse on the scorecard, so: the worst case.)"""
+        if m.piece_s > 0:
+            return 0.0        # [arbiter.catchup_route] a piece is timed to fit the screen's dead time and shows its play whole
         x = cands.get(m.game_id)
         d = self.delays.get((x.target if x else None) or self._known_target.get(m.game_id) or "unknown")
         tl = self.timelines.get(m.game_id)
@@ -1282,6 +1293,9 @@ class Decider:
             return
         if not m.replayed and not m.seen_live and m not in self.queue:
             self.queue.append(m)
+        if m.piece_s > 0:         # [arbiter.catchup_route] interrupted: the clip starts over from the top if the cap allows
+            m.offset_s, m.piece_s, self._route_doing = 0.0, 0.0, None
+            self.catchup_m.to("idle", "the piece was interrupted")
         self._clip = None
         self.replay_until = 0.0
         # the current picture is still old footage until a live tune
@@ -1289,7 +1303,9 @@ class Decider:
         self._screen_log.append((self._clock(), None))
 
     def _start_replay(self, m: Missed, cands, now: float, *, confirmed: bool = False) -> None:
+        piece = (m.offset_s, m.piece_s)
         self.abort_replay()
+        m.offset_s, m.piece_s = piece          # a confirm restarts the same replay: its piece keeps its place
         self._land_behind(None, 0.0)   # the replay seeks from the live edge; nothing stays behind
         if m in self.queue:
             self.queue.remove(m)
@@ -1297,7 +1313,9 @@ class Decider:
         self.screen_m.to("replaying", f"{'confirmed ' if confirmed else ''}replay: {m.kind} in {m.game_id}", now=now)
         # A real controller has already tuned, sought, and begun playback at
         # confirmation. Counting preparation again needlessly holds old footage.
-        duration = self.cfg.get("replay.clip_s", 15) if confirmed else self._replay_cost(m, cands)
+        duration = m.piece_s if m.piece_s > 0 else self.cfg.get("replay.clip_s", 15) if confirmed else self._replay_cost(m, cands)
+        if m.piece_s > 0 and not self.catchup_m.is_("airing"):
+            self.catchup_m.to("airing", f"piece at {m.offset_s:.0f} s of {m.game_id}:{m.pid}", now=now)
         self.replay_until = now + duration + self._replay_overrun(m, cands, now)
         self.replay_exit_after = self.replay_until
         if confirmed:
@@ -2035,7 +2053,8 @@ class Decider:
         return arbiter.Show(current=self.current, current_class=cls, live_games=len(live),
                             cuts_60s=sum(1 for t, _, _ in self.history if now - t < 60.0), replay_rank=replay_rank,
                             late=bool(close) and any(x.scored.late for x in live.values()), close=close, visits=visits,
-                            final_two=frozenset(g for g, x in live.items() if x.scored.lock == "final two minutes"))
+                            final_two=frozenset(g for g, x in live.items() if x.scored.lock == "final two minutes"),
+                            league_rank={g: league_index(x.scored.league, self.cfg) for g, x in live.items()} if p.class_bonus else {})  # read only by class_bonus
 
     def _arbiter_think(self, inp: brain.BrainInput) -> brain.BrainOutput | None:
         """The brain's scores for this tick. One that raises counts as no opinion; the tick goes on without it."""
@@ -2109,10 +2128,15 @@ class Decider:
         if h is not None and d.action != "stay":
             self._leave_end("released" if d.target == h.target else f"a {d.kind or d.action} switch came first", now)
 
+    def _leave_wait_s(self, h: LeaveHold) -> float:
+        """How long a held pick waits (legal.leave_wait_s, per league via league_overrides): a football play clock is not a
+        hockey shift. The slower of the game being left and the game landed on, since either can be the one holding it."""
+        return max(float(self._lc("legal.leave_wait_s", g, 45.0)) for g in (h.current, h.target))
+
     def _leave_expired(self, h: LeaveHold, cands: dict[str, Candidate], now: float) -> str:
         """Why the remembered pick is off ("" = still good): too long, the screen moved, the target can't be entered at all
         (gone, dark, untunable, a lock or a block of Nick's), not worth it. A landing that isn't there yet is what it waits for."""
-        if now - h.at >= float(self.cfg.get("legal.leave_wait_s", 45.0)):
+        if now - h.at >= self._leave_wait_s(h):
             return "waited too long"
         if self.current != h.current:
             return "the screen moved"
@@ -2170,6 +2194,8 @@ class Decider:
         queue, so everything that keeps a replay off the screen still applies (_parkable: YouTube TV reaches about 95 s
         back), and the commit gate judges it at the flip like any other replay. Not with buffered jump: its hidden stick is
         the next cut and the engine parks no replay on it (_scan_missed keeps no queue then)."""
+        if p.catchup_route:
+            return self._catchup_route(cands, now, p)
         queue = getattr(self, "queue", ())       # empty on every tick without a missed play
         cur = cands.get(self.current or "")
         if not queue or self.buffered_on() or not self.cfg.get("replay.enabled", True) or self._home is not None \
@@ -2181,6 +2207,93 @@ class Decider:
                  and self._parkable(m, now) and self._replayable(games.get(m.game_id))}
         pick = arbiter.catchup_pick([(i, self._arbiter_missed_rank(m, p), m.t) for i, m in ready.items()], opts, show, now, p)
         return ready.get(pick) if pick is not None else None
+
+    # ----- [arbiter.catchup_route] noggin/catchup.py: a missed must-see in the screen's dead time, in pieces if it must ---------
+
+    def catchup_gates(self, cur: Candidate | None, cands: dict[str, Candidate], now: float) -> tuple[bool, bool]:
+        """(the route may run at all, it may also run at a plain dead ball). Anything of Nick's stops it. A commercial is open whatever
+        is on screen; a plain dead ball keeps the old route's checks: not a held moment, a crunch or a high-leverage game."""
+        u = self.user
+        if cur is None or not self.cfg.get("replay.enabled", True) or self._home is not None or self.safe_mode or u.paused or u.locked_game \
+                or (u.manual_until or 0.0) > now or u.focus_mode != FocusMode.AUTOPILOT or self.buffered_on():
+            return False, False
+        s = cur.scored
+        return True, not (_holds_replays(s) or s.crunch_now or s.high_leverage or self._crunch_on(cands))
+
+    def _catchup_route_params(self, p: arbiter.Params) -> catchup.Route:
+        return catchup.Route(reach_s=min(p.catchup_route_reach_s, catchup.HARD_CAP_S), clip_s=p.plan_clip_s, flip_s=float(bj.cfg_get(self.cfg, "flip_s")))
+
+    def _catchup_span(self, cur: Candidate, now: float) -> tuple[float, bool] | None:
+        """How long the dead time on screen lasts, surely: (when play can restart on screen at the earliest, in a commercial?). None: mid-play."""
+        tl, dl = self.timelines.get(self.current or ""), self.delays.get(cur.target or "unknown")
+        dead = getattr(tl, "dead", None)
+        if dead is None:
+            return None
+        m = 2.0 * dl.current_sigma(now)
+        until = dead.dead_until(now - dl.mu - m)
+        return (until + dl.mu - m, bool(cur.scored.is_break)) if until is not None else None
+
+    def _catchup_seen(self, gid: str, since: float, now: float) -> bool:
+        """Has the screen shown this game since the moment aired? Then its result is known: the clip airs marked as a replay."""
+        return any(g == gid and t >= since for t, g in self._screen_log) or self.on_screen_at(since) == gid
+
+    def _catchup_route(self, cands: dict[str, Candidate], now: float, p: arbiter.Params) -> Missed | None:
+        """The missed must-see to air this tick as a piece, or None. Runs after the arbiter chose to stay; the commit gate still judges the flip."""
+        cur = cands.get(self.current or "")
+        doing = self._route_doing
+        if doing is not None and doing[0] not in self.queue:
+            doing = self._route_doing = None
+        ok, plain = self.catchup_gates(cur, cands, now)
+        span = self._catchup_span(cur, now) if ok else None
+        if span is None or not (span[1] or plain):
+            return None
+        r, games = self._catchup_route_params(p), self._replay_pool(cands)
+        def moment(m: Missed) -> catchup.Moment:
+            tl = self.timelines.get(m.game_id)
+            return catchup.Moment(f"{m.game_id}:{m.pid}", m.game_id, float(arbiter.clip_weight([self._arbiter_missed_rank(m, p)])), m.aired or m.t,
+                                  PLAY_LEN_S.get(tl.league, 8.0) if tl else 8.0)
+        ready = {f"{m.game_id}:{m.pid}": m for m in self.queue
+                 if m.game_id != self.current and not (m.seen_live or m.replayed) and m.retry_at <= now
+                 and self._replayable(games.get(m.game_id)) and self._arbiter_missed_rank(m, p) != arbiter.NOT_FLOOR}
+        if doing is not None and doing[0] is not None:
+            mine = moment(doing[0])
+            if catchup.overdue(mine, doing[1], now, r):
+                self._route_end(doing[0], "past the 180 s cap or the reach: dropped, counted lost", now)
+                return None
+            piece = catchup.next_piece((), now, span[0], doing=(mine, doing[1]), known=lambda x: self._catchup_seen(x.game_id, x.aired - x.play_s, now), r=r)
+        else:
+            piece = catchup.next_piece([moment(m) for m in ready.values()], now, span[0],
+                                       known=lambda x: self._catchup_seen(x.game_id, x.aired - x.play_s, now), r=r)
+        if piece is None:
+            return None
+        m = doing[0] if doing is not None else ready[piece.moment.id]
+        m.offset_s, m.piece_s, m.marked_replay = piece.offset_s, piece.seconds, m.marked_replay or piece.marked
+        return m
+
+    def _route_end(self, m: Missed, why: str, now: float) -> None:
+        if m in self.queue:
+            self.queue.remove(m)
+        self._route_doing = None
+        self.catchup_m.to("idle", why, now=now)
+
+    def _route_piece_ended(self, now: float) -> bool:
+        """A piece of a catch-up clip just ended on screen. More to come: the clip stays owed, and True is 'the tick is handled'."""
+        m = self._clip
+        if m is None or m.piece_s <= 0:
+            return False
+        clip = self._arbiter_params().plan_clip_s
+        offset = m.offset_s + m.piece_s
+        if offset >= clip - 0.5:
+            m.piece_s, m.offset_s, self._route_doing = 0.0, 0.0, None
+            self.catchup_m.to("idle", "the clip finished", now=now)
+            return False
+        m.piece_s, self._route_doing = 0.0, (m, offset)
+        if m not in self.queue:
+            self.queue.append(m)
+        self._clip = None
+        self.catchup_m.to("between", f"{clip - offset:.0f} s of the clip left", now=now)
+        self.screen_m.to("after_replay", "a piece of the clip ended", now=now)
+        return True
 
     def _arbiter_missed_rank(self, m: Missed, p: arbiter.Params) -> int:
         """The trigger rank of a queued play, from its own Timeline row. A play the Timeline no longer holds isn't owed."""
@@ -2742,7 +2855,7 @@ class Decider:
         return 0.0 if gid in PSEUDO else cands[gid].scored.score
 
     def _replay_decision(self, rp: Missed, state, gate_txt: str, now: float) -> Decision:
-        name = "instant replay" if rp.seen_live else "catch-up"
+        name = "instant replay" if rp.seen_live or rp.marked_replay else "catch-up"
         return Decision(now, "replay", rp.game_id, f"{name}: {rp.label}", State.REPLAY, gate_txt,
                         kind="replay", replay=rp)
 
@@ -4002,14 +4115,24 @@ class Decider:
             return Gate(True, "low-leverage moment: leaving mid-play is OK")
         return g
 
-    def _leavable(self, cur: Candidate, now: float | None = None, d=None) -> bool:
+    def held_low_leverage_exit(self, gid: str | None, live: dict[str, Candidate], now: float) -> bool:
+        """[legal.leave_low_leverage, off] May a held pick leave this game mid-play? Only in the listed leagues, and only by every rule
+        of _leavable: redzone/lab/leverage.py's high-leverage floor (live as scoring.engine.high_leverage and _high_lev_at while
+        it may still be on screen), your team, crunch or its run-up, a locked moment, late and close. A pick that isn't held never reads this."""
+        lgs = self.cfg.get("legal.leave_low_leverage") or []
+        cur = live.get(gid or "")
+        if not lgs or cur is None:
+            return False
+        return self._leavable(cur, now, self.delays.get(cur.target or "unknown"), leagues=lgs)
+
+    def _leavable(self, cur: Candidate, now: float | None = None, d=None, leagues=None) -> bool:
         """[cut rules, decider.leave.low_leverage] May the screen leave this game mid-play? Only at low
         leverage: never in crunch time or its run-up, a locked moment (red zone, power play, OT...), your
         team's game, or a close game late (decider.leave.sticky_*: down the stretch is sticky).
         [leave floor, EXP-208] Keyed on the FULL league (CBB is not NBA). Your team's game is never left
         mid-play, whatever its personal score (Q1 WSH sat under hold_personal), and neither is a
         close-and-late / overtime moment (scoring.engine.high_leverage, the grader's floor)."""
-        lgs = self.cfg.get("decider.leave.low_leverage") or []
+        lgs = self.cfg.get("decider.leave.low_leverage") or [] if leagues is None else leagues
         s = cur.scored
         if s.league.value not in lgs:
             return False

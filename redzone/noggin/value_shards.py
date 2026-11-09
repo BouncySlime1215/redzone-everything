@@ -172,7 +172,7 @@ def wall_ordered(league: str, summary: dict) -> dict:
     """The summary with its plays in wall-clock order (stable, so feed order breaks ties). The detectors are stateful and
     walk the list: when a play's stamp is later than the next plays' (hoopR has these), a cut feed lacks it while the full
     game has already counted it, so runs and lead changes fire differently. In wall order a cut feed is a true prefix.
-    Football keeps feed order: its only state is per drive and flat_plays does not regroup drives."""
+    Football keeps feed order here because its labels do; its features get wall order inside each drive from feature_detect."""
     if _football(league):
         return summary
     plays = sorted(summary.get("plays") or [], key=lambda p: parse_ts(p.get("wallclock")) or float("inf"))
@@ -189,6 +189,18 @@ def truncate(league: str, summary: dict, cut: float) -> dict:
     else:
         out["plays"] = [p for p in summary.get("plays") or [] if keep(p)]
     return out
+
+
+def feature_detect(league: str, summary: dict, game_id: str = "") -> Detected:
+    """The moments as a feed that grows play by play knows them; features read these, labels keep detect's hindsight.
+    Football's red-zone trip fires once per drive on the first qualifying snap the detector walks, and a drive is in feed order. With a
+    snap stamped earlier than the snap before it (the shape behind the nflverse 2003-04 leak-check failures), or an untimed snap, the first one walked is a snap a cut feed has not shown,
+    so the full game and the cut feed disagree. Walking each drive in wall order, untimed snaps last, makes a cut feed a true prefix."""
+    if not _football(league):
+        return detect(league, summary, game_id)
+    wall = lambda p: parse_ts(p.get("wallclock")) or float("inf")  # noqa: E731
+    drives = [{**dr, "plays": sorted(dr.get("plays") or [], key=wall)} for dr in football_drives(summary)]
+    return detect(league, {**summary, "drives": {"previous": drives}}, game_id)
 
 
 @dataclass
@@ -331,7 +343,7 @@ def build_rows(league: str, game_id: str, summary: dict, *, night: str, season: 
     det = detect(league, clean, game_id)
     if game_span(det.times) is None:
         return pd.DataFrame()
-    view = make_view(league, clean, det, playoff)
+    view = make_view(league, clean, feature_detect(league, clean, game_id), playoff)
     w = view.walls
     cuts = np.unique(np.concatenate((w, np.arange(w[0], w[-1] + 1.0, GRID_S))))
     lag = sample_lags(league, game_id, len(cuts))
@@ -367,7 +379,7 @@ def prefix_check(league: str, game_id: str, summary: dict, rows: pd.DataFrame, n
     for i in picks:
         r = rows.iloc[int(i)]
         cut_summary = truncate(league, clean, float(r.feed_cut_t))
-        view = make_view(league, cut_summary, detect(league, cut_summary, game_id), playoff)
+        view = make_view(league, cut_summary, feature_detect(league, cut_summary, game_id), playoff)
         head = np.array([len(view.walls) - 1])
         again = feature_fn(view, head, np.array([float(r.decision_t)]))
         for k, val in again.items():
