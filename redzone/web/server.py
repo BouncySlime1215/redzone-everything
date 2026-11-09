@@ -352,12 +352,15 @@ def build_app(engine: Engine) -> FastAPI:
 
     @app.post("/api/override")
     async def override(body: dict):
+        gid = body.get("game_id")
+        if not isinstance(gid, str) or not gid.strip():
+            return {"ok": False, "message": "Pick a game first"}
         target = body.get("target")
         if isinstance(target, str) and ("://" in target or "gti=" in target):
             target = _target_from_link(target)
             if not target:
                 return {"ok": False, "message": "Couldn't read that link — paste a tv.youtube.com/watch/… or Prime link"}
-        engine.channels.set_override(str(body.get("game_id")), target)
+        engine.channels.set_override(gid, target)
         engine.decide()
         engine.broadcast()
         return {"ok": True, "message": "Saved — I'll remember this"}
