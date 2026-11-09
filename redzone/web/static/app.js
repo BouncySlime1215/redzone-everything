@@ -200,6 +200,7 @@ function installEvents() {
   document.addEventListener("click", (e) => {
     const el = e.target.closest("[data-act], [data-go]");
     if (!el || el.disabled || el.getAttribute("aria-disabled") === "true") return;
+    if (el.getAttribute("aria-busy") === "true") return;   // its request is still out: a second tap is the same tap, not a second command
     if (el.dataset.go) { e.preventDefault(); while (topSheet()) closeSheet(topSheet()); go(el.dataset.go); return; }
     const fn = ACTIONS[el.dataset.act];
     if (!fn) return;
