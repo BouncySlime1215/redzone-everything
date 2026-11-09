@@ -1,0 +1,11 @@
+{
+  "card": "SHARDS-RAW",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "scripts/kaggle_value_shards.py",
+    "tests/test_value_shards_raw*.py"
+  ],
+  "started": 1794216487,
+  "expires": 1794389287
+}
