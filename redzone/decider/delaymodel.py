@@ -124,6 +124,21 @@ def replay_allows_floor(replay: dict | None, min_folds: int = 3) -> bool:
         return False
 
 
+def timing_replay_allows(evidence: dict | None, sigma_s: float, app: str, min_nights: int = 2, min_anchors: int = 20) -> bool:
+    """[timing] May an app state this doubt? Only with a whole-night hold-out over the app's own recorded anchors (scripts/
+    timing_replay.py) whose WORST night's error is within it: {"method": "whole_night_holdout", "app": app, "nights":
+    [{"night": str, "n": anchors graded, "rmse": s}, ...]}. A number wished for has no evidence and is refused."""
+    if not isinstance(evidence, dict) or evidence.get("method") != "whole_night_holdout" or evidence.get("app") != app:
+        return False
+    nights = evidence.get("nights") or []
+    try:
+        if len(nights) < min_nights or sum(int(n["n"]) for n in nights) < min_anchors:
+            return False
+        return all(int(n["n"]) > 0 and float(n["rmse"]) <= float(sigma_s) for n in nights)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
 class FeedBias:
     """How late each feed's wall clock runs against a feed with true event times, per league and source. The same
     scoring play reported by two sources (a game's score only happens once) gives one difference; the median of those is
