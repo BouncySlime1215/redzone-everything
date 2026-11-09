@@ -59,3 +59,74 @@ def test_plays_missed_during_the_tune():
     # Switch sent at screen time 1030 (black until 1035): the play 1033-1040 started in the dark.
     card = cutgrade.grade([r], [SwitchLog(1030 + lag, None, "g1", "better", "")], lag, 5.0)
     assert card.plays_missed_entry == 1
+
+
+# ---- [grader v49] the entry window after a made basket (Nick, Nov 9, decisions.md) ----
+
+def _hoops(league=League.NBA, first=("Jump Shot", True), after=()):
+    """A shot at wall 1000 (made or not), then `after` rows, with the clock running, so nothing is a dead ball."""
+    kind, made = first
+    plays = [_p("Substitution", "5:05"), _p(kind, "5:00", shootingPlay=True, scoringPlay=made), *(p for _, p in after),
+             _p("Jump Shot", "3:50", shootingPlay=True)]     # the game goes on: an entry after the last row isn't graded
+    wall = [900.0, 1000.0, *(w for w, _ in after), 1100.0]
+    return Replay(league, "n1", {}, plays, wall, "AAA @ BBB")
+
+
+def _enter(r, st, lag=30.0):
+    return cutgrade.grade([r], [SwitchLog(st - 5 + lag, None, "n1", "better", "")], lag, 5.0)
+
+
+def test_entry_inside_the_window_after_a_make_is_clean_but_stays_on_the_old_count():
+    r = _hoops(after=[(1040.0, _p("Jump Shot", "4:30", shootingPlay=True))])
+    c = _enter(r, 1006.0)     # past the old 4 s dead ball after a score
+    assert c.entries == 1 and c.entries_mid_play == 0 and c.entries_mid_play_strict == 1 and c.mid_entries == []
+    assert c.summary()["entries_mid_play_strict"] == 1 and c.summary()["entries_mid_play"] == 0
+
+
+def test_window_length_is_8_s_nba_and_9_s_cbb():
+    after = [(1040.0, _p("Jump Shot", "4:30", shootingPlay=True))]
+    assert _enter(_hoops(after=after), 1008.0).entries_mid_play == 0
+    assert _enter(_hoops(after=after), 1008.5).entries_mid_play == 1
+    assert _enter(_hoops(League.CBB, after=after), 1008.5).entries_mid_play == 0
+    assert _enter(_hoops(League.CBB, after=after), 1009.5).entries_mid_play == 1
+    assert _enter(_hoops(League.WCBB, after=after), 1006.0).entries_mid_play == 1     # women's college is not in the approval
+
+
+def test_entry_after_the_next_shot_is_not_clean():
+    r = _hoops(after=[(1006.0, _p("Jump Shot", "4:54", shootingPlay=True))])
+    c = _enter(r, 1007.0)     # inside 8 s of the make, but the next shot went up first
+    assert c.entries_mid_play == 1 and c.entries_mid_play_strict == 1 and len(c.mid_entries) == 1
+
+
+def test_entry_after_a_miss_or_a_rebound_is_not_clean():
+    assert _enter(_hoops(first=("Jump Shot", False)), 1006.0).entries_mid_play == 1
+    rebound = _hoops(first=("Jump Shot", False), after=[(1002.0, _p("Defensive Rebound", "4:58"))])
+    assert _enter(rebound, 1006.0).entries_mid_play == 1
+
+
+def test_a_made_free_throw_opens_no_window():
+    # the approval is for made baskets; the 8 and 9 s were measured on field goals
+    after = [(1040.0, _p("Jump Shot", "4:30", shootingPlay=True))]
+    assert after_bucket_says(_hoops(first=("Free Throw - 1 of 1", True), after=after), 1006.0) is False
+    assert after_bucket_says(_hoops(League.CBB, first=("MadeFreeThrow", True), after=after), 1006.0) is False     # college spelling
+
+
+def after_bucket_says(r, st):
+    return cutgrade.after_bucket(r.league, r.wall, r.plays, st)
+
+
+def test_the_window_is_entries_only_and_leaves_no_other_metric_moved():
+    r = _hoops(after=[(1040.0, _p("Jump Shot", "4:30", shootingPlay=True))])
+    c = _enter(r, 1006.0).summary()
+    assert c["landed_dead_pct"] == 0.0 and c["landings_in_dead_pct"] == 0.0 and c["entry_to_restart_hist"] == {"mid-play": 1}
+    left = cutgrade.grade([r], [SwitchLog(1006.0 + 30.0, "n1", "x", "better", "")], 30.0, 5.0)
+    assert left.leaves == 1 and left.leaves_in_dead == 0 and left.leaves_between_plays == 0
+
+
+def test_nfl_is_unchanged_by_the_window():
+    # a scoring play a second before the entry would open the window in basketball: NFL scores the same on both counts
+    plays = [_p("Rush", shootingPlay=True, scoringPlay=True), _p("Pass Reception")]
+    r = Replay(League.NFL, "g1", {}, plays, [1000.0, 1040.0], "AAA @ BBB")
+    assert not cutgrade.after_bucket(League.NFL, r.wall, r.plays, 1001.0)
+    c = cutgrade.grade([r], [SwitchLog(1037 - 5 + 40, None, "g1", "better", "")], 40.0, 5.0)
+    assert c.entries_mid_play == 1 and c.entries_mid_play_strict == 1

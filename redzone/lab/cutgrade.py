@@ -6,6 +6,9 @@ archive (real wallclocks, the stream's real delay), per league:
   entries_mid_play     the picture came up while a play was in progress (must be 0)
                        NFL/MLB: inside a play's [snap, whistle] on screen
                        NBA/NHL: the ball/puck was live (not a dead ball on screen)
+                       NBA/CBB entries only: clean from a made basket until min(8 s NBA / 9 s CBB, the next shot)
+                       (grader v49; Nick, Nov 9: "change it"; decisions.md). Leaves are unchanged.
+  entries_mid_play_strict  the same count without that window (the scoring before v49), so old results stay readable
   entry_wait_s         seconds of dead time watched after landing, until play resumed on screen
                        (huddle/line-up in football, the rest of a timeout, the faceoff wait)
   entries_in_break     landed inside a commercial break (timeout, score, period end...)
@@ -24,6 +27,8 @@ archive (real wallclocks, the stream's real delay), per league:
 Resume times are the real restart, not the next logged event: NFL/MLB the next play's start,
 NBA/CBB worked back from the first event that moved the game clock (wall - clock that ran),
 NHL the faceoff (or the next event less the resume lead).
+
+Why: a switch is only good if it lands where Nick can see the play start; this is the number that says so.
 """
 from __future__ import annotations
 
@@ -54,6 +59,7 @@ class CutCard:
     rewinds: int = 0            # entries that came up behind live on purpose (DVR rewind to a dead ball)
     rewind_s: float = 0.0
     flash_mid_play: int = 0     # [seek model] on-screen rewinds whose LIVE edge showed play before the seek took hold
+    entries_after_bucket: int = 0   # [grader v49] live-ball entries the made-basket window made clean; the old rule's extra mid-play entries
     mid_entries: list = field(default_factory=list)
     # [landing offsets] seconds of dead time left on screen when we cut away (leave) / when the new
     # picture came up (entry), until play restarted; mid-play landings are their own bucket
@@ -71,6 +77,11 @@ class CutCard:
             else:
                 setattr(self, k, getattr(self, k) + v)
 
+    @property
+    def entries_mid_play_strict(self) -> int:
+        """[grader v49] entries_mid_play as it was scored before the made-basket window."""
+        return self.entries_mid_play + self.entries_after_bucket
+
     def landed(self, which: str, dead: bool, left_s: float) -> None:
         h = self.leave_hist if which == "leave" else self.entry_hist
         b = hist_bucket(dead, left_s)
@@ -78,13 +89,14 @@ class CutCard:
 
     def landings(self) -> tuple[int, int]:
         """(landings in on-screen dead time, all landings): both ends of every switch (North Star)."""
-        good = self.leaves_in_dead + self.leaves_between_plays + self.entries - self.entries_mid_play
+        good = self.leaves_in_dead + self.leaves_between_plays + self.entries - self.entries_mid_play_strict
         return good, self.leaves + self.entries
 
     def summary(self) -> dict:
         pct = lambda a, b: round(100 * a / max(1, b), 1)  # noqa: E731
         return {"entries": self.entries, "entries_mid_play": self.entries_mid_play,
-                "landed_dead_pct": pct(self.entries - self.entries_mid_play, self.entries) if self.entries else 100.0,
+                "entries_mid_play_strict": self.entries_mid_play_strict,
+                "landed_dead_pct": pct(self.entries - self.entries_mid_play_strict, self.entries) if self.entries else 100.0,
                 "entries_in_break": self.entries_in_break,
                 "entries_mid_break": self.entries_mid_break,
                 "entry_wait_s": round(self.entry_wait_s / max(1, self.entries), 1),
@@ -97,7 +109,7 @@ class CutCard:
                 "entry_rewind_s": round(self.rewind_s / max(1, self.rewinds), 1),
                 # [landing offsets] the gate line: >= 95 % of landings (both ends) in on-screen dead time
                 "landings_in_dead_pct": pct(self.leaves_in_dead + self.leaves_between_plays
-                                            + self.entries - self.entries_mid_play, self.leaves + self.entries),
+                                            + self.entries - self.entries_mid_play_strict, self.leaves + self.entries),
                 "leave_to_restart_hist": _ordered(self.leave_hist),
                 "entry_to_restart_hist": _ordered(self.entry_hist)}
 
@@ -107,6 +119,11 @@ class CutCard:
 # Seconds. A frozen grader bar, not app timing, so it stays out of config.py (lanes tune config, not graders).
 BREAK_TAIL_BAR = 10.0
 HIST_EDGES = (3, 10, 30, 60, 120)   # seconds of dead time left on screen until the restart
+# [grader v49] Nick, Nov 9, "change it": a basketball entry is clean this long after a made basket, or until the next shot if
+# that is sooner. Fit-night 5th percentile, make to the next shot (scripts/bucket_join_measure.py). Entries only. Seconds.
+# A frozen grader bar like BREAK_TAIL_BAR, not app timing, so it stays out of config.py.
+# Why: he wants to join right after a bucket in transition, and the old rule called those joins mid-play.
+BUCKET_ENTRY_BAR = {League.NBA: 8.0, League.CBB: 9.0}
 
 
 def hist_bucket(dead: bool, left_s: float) -> str:
@@ -124,6 +141,21 @@ def hist_bucket(dead: bool, left_s: float) -> str:
 def _ordered(h: dict) -> dict:
     keys = ["mid-play"] + [hist_bucket(True, x) for x in (0, *HIST_EDGES)]
     return {k: h[k] for k in keys if h.get(k)}
+
+
+def after_bucket(league: League, wall: list[float], plays: list[dict], st: float) -> bool:
+    """Is screen time st inside the entry window after a made basket? The last shot on screen must be a made field goal,
+    at most BUCKET_ENTRY_BAR old. A later shot of any kind, or a miss and its rebound, closes it; so does a free throw."""
+    limit = BUCKET_ENTRY_BAR.get(league)
+    if limit is None:
+        return False
+    for k in range(_idx(wall, st), -1, -1):
+        if st - wall[k] > limit:
+            return False
+        if plays[k].get("shootingPlay"):
+            # no space: college feeds write "MadeFreeThrow", the NBA feed "Free Throw - 1 of 1"
+            return bool(plays[k].get("scoringPlay")) and "freethrow" not in _type(plays[k]).replace(" ", "")
+    return False
 
 
 def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
@@ -172,7 +204,9 @@ def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
                                         and _dead_at(dst.league, dst.wall, dst.plays, live + fl)[0])
         dead, brk, wait = _dead_at(dst.league, dst.wall, dst.plays, st)
         card.landed("entry", dead, wait)
-        if not dead:
+        if not dead and after_bucket(dst.league, dst.wall, dst.plays, st):
+            card.entries_after_bucket += 1
+        elif not dead:
             card.entries_mid_play += 1
             card.mid_entries.append((s.t, s.kind, f"{dst.matchup}"))
         card.entries_in_break += brk
