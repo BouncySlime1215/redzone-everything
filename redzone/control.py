@@ -2345,6 +2345,12 @@ class Controller:
         except OSError:
             log.debug("held offsets not saved", exc_info=True)
 
+    def _moved_behind(self, stick: Stick, target: str) -> None:
+        """A cancel skips the bookkeeping after the keys: without this mark the next tune books a stick still behind live
+        as the live edge (a same-channel link does not reset it, #391). Saved, so a restart keeps it too."""
+        stick.behind_on = target
+        self._save_held()
+
     def touch_held(self, every_s: float = 60.0) -> bool:
         """Heartbeat for data/held.json: restore_held trusts the file only if its `ts` is recent, but a steady
         hold never changes, so its `ts` was the time of the LAST CHANGE, and a restart an hour into a hold threw
@@ -2404,7 +2410,12 @@ class Controller:
             paused_at = time.monotonic()
             token = object()
             self._holding = (stick, target, token)
-        await asyncio.sleep(behind_s)
+        try:
+            await asyncio.sleep(behind_s)
+        except asyncio.CancelledError:
+            if target.split(":", 1)[0] in SCRUB_APPS:
+                self._moved_behind(stick, target)
+            raise
 
         def ours() -> bool:
             h = self._holding
@@ -2442,6 +2453,8 @@ class Controller:
                 log.warning("buffer: %s on %s didn't resume (%s); reloading at the live edge", target,
                             stick.host, pb.get("state"))
                 self._set_hidden(target, False)
+                if target.split(":", 1)[0] in SCRUB_APPS:
+                    stick.behind_on = target   # paused behind live, and a same-channel link would not bring it back
                 res = await self._tune_fresh(stick, target)
                 out["relinked"] = res.ok
                 self._set_hidden(target if res.ok else None, res.ok)
@@ -2548,8 +2561,12 @@ class Controller:
                 from redzone.tuners.yttv_label import LabelProbe
                 self._replay_probe = LabelProbe(self.cfg)
             probe = self._replay_probe
-        r = await replay_park.park(stick, back_s, probe=probe, cfg=self.cfg,
-                                   pkg=self._package(stick, target), still_hidden=still_hidden)
+        try:
+            r = await replay_park.park(stick, back_s, probe=probe, cfg=self.cfg,
+                                       pkg=self._package(stick, target), still_hidden=still_hidden)
+        except asyncio.CancelledError:
+            self._moved_behind(stick, target)
+            raise
         if r.moved:
             stick.behind_on = target   # keys moved it: the next live tune of target resets first (#391)
             self._save_held()
@@ -4356,6 +4373,7 @@ class Controller:
                 else:
                     res = await entering
             except asyncio.CancelledError:
+                self._moved_behind(stick, target)   # keys may have gone out (any switch cancels a preload mid-scrub)
                 raise
             except ImportError:
                 why = "yttv_seek not installed"
