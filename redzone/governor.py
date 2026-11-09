@@ -528,6 +528,13 @@ class Governor:
 
 # ---- keep the Mac awake for games that are about to start (P-10) --------------------------
 
+def starting_soon(start_time: float | None, now: float, soon_s: float = 900.0, late_s: float = 3600.0) -> bool:
+    """A not-yet-started game inside its pre-game window. A listed start is an estimate (an NFL 1:00 game kicks off
+    about 1:03, and a rain delay runs far longer), so the window stays open past it until the feed says live, for
+    late_s at most: a game still "pre" after that stops counting as about to start."""
+    return bool(start_time) and -late_s < start_time - now < soon_s
+
+
 def keep_awake_wanted(games, now: float, soon_s: float = 900.0, planned: bool = False) -> bool:
     """Should caffeinate run? While any game is live, inside its `soon_s` pre-game window, or planned for
     tonight (a plan_*.json exists). The idle poll can sleep for up to an hour: a Mac that slept before
@@ -538,8 +545,7 @@ def keep_awake_wanted(games, now: float, soon_s: float = 900.0, planned: bool = 
         phase = getattr(getattr(g, "phase", ""), "value", getattr(g, "phase", ""))
         if str(phase).lower() == "live":
             return True
-        t = getattr(g, "start_time", None)
-        if str(phase).lower() == "pre" and t and 0 < t - now < soon_s:
+        if str(phase).lower() == "pre" and starting_soon(getattr(g, "start_time", None), now, soon_s):
             return True
     return bool(planned)
 

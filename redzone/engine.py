@@ -25,7 +25,7 @@ from redzone.reel import REEL_DIR
 from redzone.cheap_labels import CheapLabels
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on, route_class
 from redzone.config import Config, ConfigError, for_league
-from redzone.governor import keep_awake_wanted
+from redzone.governor import keep_awake_wanted, starting_soon
 from redzone.control import NO_STICK, ROUTE_OFF_S, STANDBY_NOT_READY, Controller, Outcome
 from redzone.decider import buffered as bj
 from redzone.decider import gate
@@ -1023,7 +1023,7 @@ class Engine:
                 self.decider.note_error()
             self._reel_tick()
             live = any(g.phase == Phase.LIVE for g in self.merger.games.values())
-            soon = any(g.phase == Phase.PRE and g.start_time and 0 < g.start_time - time.time() < 900
+            soon = any(g.phase == Phase.PRE and starting_soon(g.start_time, time.time())
                        for g in self.merger.games.values())
             self._keep_awake(keep_awake_wanted(self.merger.games.values(), time.time(), planned=self._planned_soon()))
             if live:
