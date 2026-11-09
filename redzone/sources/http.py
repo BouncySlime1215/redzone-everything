@@ -32,6 +32,7 @@ BROWSER_HEADERS = {
 }
 MAX_BYTES = 8_000_000
 MAX_BACKOFF_S = 600.0
+MAX_CACHE_ENTRIES = 1000           # last-good copies kept; game URLs change daily, so the oldest are dropped
 LIVE_MAX_BACKOFF_S = 10.0          # ESPN is the live feed: an outage (5xx/network) is retried every 10 s at most
 LIVE_LIMITED_BACKOFF_S = 60.0      # ...but "too many requests" (403/429) backs off up to a minute
 FEED_STALE_S = 5.0                 # data this late past its next due poll = stale (see sources/feeds.py)
@@ -146,8 +147,19 @@ class Fetcher:
             except ValueError:
                 return cached.body if cached else None
             self._cache[url] = _Cached(body, r.headers.get("ETag"), self._clock(), r.headers.get("Last-Modified"), _age(r))
+            self._trim(keep=url)
             self._reset(host, url)
             return body
+
+    def _trim(self, keep: str) -> None:
+        """Bound the per-URL state: drop the oldest cached copies (never `keep`) and idle locks past the cap."""
+        if len(self._cache) > MAX_CACHE_ENTRIES:
+            old = sorted((u for u in self._cache if u != keep), key=lambda u: self._cache[u].fetched_at)
+            for u in old[:len(self._cache) - MAX_CACHE_ENTRIES]:
+                del self._cache[u]
+        if len(self._locks) > MAX_CACHE_ENTRIES:
+            for u in [u for u, lk in self._locks.items() if u != keep and not lk.locked()]:
+                del self._locks[u]
 
     async def get_bytes(self, url: str, max_bytes: int = 4_000_000) -> tuple[bytes, str] | None:
         """Raw bytes (images). Same backoff rules; no in-memory cache (callers cache on disk)."""
