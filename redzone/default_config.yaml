@@ -1188,6 +1188,8 @@ discovery:                 # [build plan WP-01]
 
 arbiter:                   # [build plan WP-17] picks among legal options, with a must-show floor; every cut still goes through the commit gate
   enabled: false
+  plan: false              # [MUST-LIVE] schedule must-show clips across both sticks
+  save_leave: false        # [MUST-LIVE] may leave a low-leverage play to save a dying must-show; Nick decides
 
 slate:                     # [build plan WP-18] blocks of a few games, then catch-up, late narrowing; NBA misses its exit bar
   enabled: false
