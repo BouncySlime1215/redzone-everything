@@ -66,6 +66,7 @@ class Pic:
     sigma: float       # its doubt (1 sd)
     gid: str = ""
     walk: tuple | None = None   # [landing bars] cuts.walk_params: basketball may land in the walk after a shot
+    leave_walk: tuple | None = None   # [slate] the same walk, as a way to LEAVE: set only at low leverage (Rule #1)
 
 
 @dataclass
@@ -84,6 +85,24 @@ def dead_through(p: Pic, now: float, until_wall: float, k: float) -> bool:
     m = _m(p, k)
     u = p.dt.dead_until(now - p.mu - m)
     return u is not None and u >= until_wall - p.mu + m
+
+
+def leaves(p: Pic, now: float, until_wall: float, k: float) -> bool:
+    """[slate] May the picture be left from now until until_wall: a dead ball, or (leave_walk set, low leverage only) the
+    walk up court after a shot. Transition plays are never walks, so this never leaves one."""
+    if dead_through(p, now, until_wall, k):
+        return True
+    if p.leave_walk is None:
+        return False
+    m = _m(p, k)
+    return p.dt.landing(now - p.mu - m, until_wall - p.mu + m, walk=p.leave_walk).state == "dead"
+
+
+def _here_snap(p: Pic, now: float) -> float:
+    """Seconds until V's next action on screen, counting the walk's end when we would be leaving in a walk."""
+    x = now - p.mu
+    w = _closed_window(p, x) if p.leave_walk is not None else None
+    return max(next_snap_in(p, now), w.end - x if w is not None and w.kind == "walk" else 0.0)
 
 
 def next_snap_in(p: Pic, at: float) -> float:
@@ -113,10 +132,10 @@ def cut_now(v: Pic, h: Pic, now: float, cfg=None, plays_seen: int = 0, land_s: f
     k = float(cfg_get(cfg, "margin_sigmas"))
     flip, fast = float(cfg_get(cfg, "flip_s")), float(cfg_get(cfg, "flip_fast_s"))
     lead_min, lead_max = float(cfg_get(cfg, "lead_min_s")), float(cfg_get(cfg, "lead_max_s"))
-    if not dead_through(v, now, now + flip, k):
+    if not leaves(v, now, now + flip, k):
         return Cut(False, "play_on_screen")
     ok, h_snap = lands(h, now, fast, max(flip, land_s), lead_min, k)
-    here = next_snap_in(v, now)
+    here = _here_snap(v, now)
     info = {"h_snap_s": round(h_snap, 1), "here_snap_s": round(here, 1), "plays_seen": plays_seen}
     if not ok:
         return Cut(False, "lands_live", info)
@@ -177,7 +196,7 @@ def park_in(h: Pic, now: float, cfg=None) -> float | None:
 def frozen(h: Pic, now: float, paused_at: float) -> Pic:
     """The hidden stick paused at wall time paused_at: its picture stopped at paused_at - mu, so right now it runs
     mu + (now - paused_at) behind real life (PLAY rolls it on from there)."""
-    return Pic(h.dt, h.mu + max(0.0, now - paused_at), h.sigma, h.gid, h.walk)
+    return Pic(h.dt, h.mu + max(0.0, now - paused_at), h.sigma, h.gid, h.walk, h.leave_walk)
 
 
 def cut_parked(v: Pic, h_parked: Pic, now: float, cfg=None, plays_seen: int = 0, land_s: float = 0.0) -> Cut:
@@ -185,10 +204,10 @@ def cut_parked(v: Pic, h_parked: Pic, now: float, cfg=None, plays_seen: int = 0,
     stick paused just before its snap. Rule #1 both ways: V surely dead through the flip, H lands dead."""
     k = float(cfg_get(cfg, "margin_sigmas"))
     flip, fast = float(cfg_get(cfg, "flip_s")), float(cfg_get(cfg, "flip_fast_s"))
-    if not dead_through(v, now, now + flip, k):
+    if not leaves(v, now, now + flip, k):
         return Cut(False, "play_on_screen")
     ok, h_snap = lands(h_parked, now, fast, max(flip, land_s), float(cfg_get(cfg, "lead_min_s")), k)
-    here = next_snap_in(v, now)
+    here = _here_snap(v, now)
     info = {"h_snap_s": round(h_snap, 1), "here_snap_s": round(here, 1), "plays_seen": plays_seen, "parked": True}
     if not ok:
         return Cut(False, "park_lands_live", info)

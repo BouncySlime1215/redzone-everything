@@ -43,6 +43,8 @@ from redzone.decider import cuts
 from redzone.decider.playbooks import Safety
 from redzone.decider.scenarios import Scenarios
 from redzone.contracts import brain
+from redzone.moments import fill as fill_ladder
+from redzone.moments import slate as slate_mod
 from redzone.noggin import arbiter, legal
 from redzone.noggin.lookahead import ahead
 from redzone.noggin.priority import NO_MOMENT as P_NO_MOMENT
@@ -314,6 +316,13 @@ class Decider:
         self.history: deque[tuple[float, str, str]] = deque(maxlen=50)
         self.arbiter_brain: brain.Brain = arbiter.NullBrain()   # [arbiter] no brain yet; read only with arbiter.enabled on
         self.arbiter_log: Counter = Counter()                   # [arbiter] why each tick's choice went that way
+        self.slate_scene: slate_mod.Scene | None = None         # [slate] this tick's scene; None: flag off, today's rotation
+        self.slate_log: Counter = Counter()                     # [slate] which mode each tick ran in
+        self._slate_block: slate_mod.Block | None = None
+        self._slate_peak = 0                                    # the night's most live games, so one left reads as the ending
+        self._slate_owed: set[str] = set()
+        self.fill_choice: fill_ladder.FillChoice | None = None  # [fill] the ladder's last answer (phone / reel read it)
+        self.fill_log: Counter = Counter()
         self.frozen_until = 0.0
         self.margin_bump_until = 0.0
         self.errors: deque[float] = deque(maxlen=10)
@@ -668,6 +677,10 @@ class Decider:
         d = self._time_entry(d, cands, now, home_before)
         d = self._dwell(d, cands, now, home_before)
         d = self._crunch_floor(d, d0, cands, now, home_before)
+        if self._slate_on():
+            self._slate_tick(cands, now)
+        else:
+            self.slate_scene = None   # turned off at runtime: today's rotation from this tick on
         # [owner] exactly one decider owns the TV this tick; the rotation's switch and its veto of the normal
         # decider's optional switches both follow from this one call (they used to check 8 and 4 conditions)
         owner, why = self._own(d, cands, now)
@@ -686,6 +699,7 @@ class Decider:
             # The visit that switch planned waits with it, like every other filter's stay.
             self._home_restore(home_before, "jump mode owns optional switches")
             d = Decision(now, "stay", self.current, f"jump mode: {d.reason}", d.state, d.gate, want=d.target)
+        d = self._fill(d, cands, now, owner)
         if d.action == "switch" and d.kind == "start" and self._restart_hold(cands, now):
             # [P-04] jump mode off too: the rotation's own hold (_jump) only runs when it owns the TV
             self._home_restore(home_before, "restart hold: a stay")
@@ -1923,11 +1937,18 @@ class Decider:
                 air_at = e.lo + dl.mu - play_len
                 if air_at < now:
                     break
-                m = arbiter.must_of(tl.league.value, arbiter.timeline_word(tl.league.base.value, e.play_kind, e.big),
-                                    gid, air_at, f"{gid}:{e.pid or e.label}", p)
+                m = arbiter.must_of(tl.league.value, self._moment_word(tl, e), gid, air_at, f"{gid}:{e.pid or e.label}", p)
                 if m is not None:
                     out.append(m)
         return tuple(out)
+
+    def _moment_word(self, tl: Timeline, e: Event) -> str:
+        """The floor's word for a live play. With slate on, football adds what the Timeline now carries (10+ gains, 3rd and
+        4th downs); off, exactly arbiter.timeline_word."""
+        word = arbiter.timeline_word(tl.league.base.value, e.play_kind, e.big)
+        if not self._slate_on() or tl.league.base != League.NFL or word in ("td", "turnover", "fg"):
+            return word
+        return slate_mod.football_word(e.ptype, e.gain, e.down, e.to_go) or word
 
     def _arbiter_class(self, gid: str | None, x: Candidate) -> int:
         """L1 class, the same one legal_facts gives an option: 0 your team, 1 crunch, 2 open."""
@@ -2794,10 +2815,61 @@ class Decider:
     def jump_on(self) -> bool:
         return bool(self.cfg.get("jump_mode.enabled", False))
 
+    # ----- [slate, WP-18] flag slate.enabled; redzone/moments/slate.py is the choice, these only gather its facts ------
+
+    def _slate_on(self) -> bool:
+        return bool(self.cfg.get("slate.enabled", False))
+
+    def _slate_params(self) -> slate_mod.Params:
+        return slate_mod.Params.from_config(self.cfg.get)
+
+    def _slate_tick(self, cands: dict[str, Candidate], now: float) -> None:
+        """This tick's scene for the rotation: built once, read by _jump_best, _buffered_jump and jump_next."""
+        pool = self._jump_pool(cands)
+        self._slate_owed = {m.game_id for m in self._arbiter_musts(pool, now, arbiter.DEFAULT_PARAMS)}
+        facts = [self._slate_facts(gid, x, now) for gid, x in pool.items()]
+        self._slate_peak = max(self._slate_peak, len(facts)) if facts else 0
+        scene = slate_mod.plan(facts, now=now, block=self._slate_block, peak=self._slate_peak, params=self._slate_params())
+        self._slate_block, self.slate_scene = scene.block or self._slate_block, scene
+        self.slate_log[f"{scene.mode}:{scene.phase}"] += 1
+
+    def _slate_facts(self, gid: str, x: Candidate, now: float) -> slate_mod.Facts:
+        s, tl = x.scored, self.timelines[gid]
+        left = self.jump_left_at.get(gid)
+        unseen = left is not None and any(e.kind == "play" and e.big and e.seen > left for e in tl.events)
+        return slate_mod.Facts(gid, s.league.value, float(s.score), bool(s.mine) or s.personal >= self.cfg.get("decider.crunch.hold_personal", 5),
+                               bool(s.crunch or s.crunch_now), bool(s.crunch or s.high_leverage), bool(s.late),
+                               bool(s.is_break or gid in self._screen_break), gid in self._slate_owed, unseen)
+
+    def _slate_allows(self, gid: str, now: float) -> bool:
+        """The scene allows this cut, and it isn't a ping-pong return. Flag off: always."""
+        scene = self.slate_scene
+        if scene is None:
+            return True
+        if gid not in scene.games:
+            self.jump_holds["slate_out_of_scene"] += 1
+            return False
+        if slate_mod.returns_too_soon(self.jump_left_at, gid, now, len(scene.games), gid in self._slate_owed, self._slate_params()):
+            self.jump_holds["slate_ping_pong"] += 1
+            return False
+        return True
+
+    def _may_leave_on_walk(self, gid: str | None, x: Candidate | None, now: float) -> bool:
+        """[slate] Basketball may be left in the walk up court after a shot, but only at low leverage (Rule #1)."""
+        if x is None or not self._slate_on() or x.scored.league.base != League.NBA or not self._slate_params().leave_after_shot:
+            return False
+        s = x.scored
+        if s.high_leverage or s.crunch or s.crunch_now or s.lock in CRUNCH_LOCKS or s.mine:
+            return False
+        recent = float(self.cfg.get("decider.leave.high_leverage_recent_s", 30.0))
+        return now - self._high_lev_at.get(gid or "", -math.inf) > recent
+
     def _jump_league(self, x: Candidate | None) -> bool:
         lgs = list(self.cfg.get("jump_mode.leagues") or [])
         if lgs and self.buffered_on():   # [overseer Nov 8 22:15] buffered runs in its own leagues too (NBA, CBB)
             lgs += list(bj.cfg_get(self.cfg, "leagues") or [])
+        if lgs and self._slate_on():     # [slate] NHL and MLB join the rotation
+            lgs += list(self._slate_params().leagues)
         return x is not None and (not lgs or x.scored.league.value in lgs)
 
     def _jump_pool(self, cands: dict[str, Candidate]) -> dict[str, Candidate]:
@@ -2851,6 +2923,9 @@ class Decider:
             until = tl.dead.dead_until(now - d.mu - m)
             if until is not None and until >= now + flip - d.mu + m:
                 return Gate(True, "dead ball on screen (play-by-play)")
+            walk = cuts.walk_params(self.cfg, cur.scored.league) if self._may_leave_on_walk(gid, cur, now) else None
+            if walk and tl.dead.landing(now - d.mu - m, now + flip - d.mu + m, walk=walk).state == "dead":
+                return Gate(True, "the walk after a shot, low leverage")
         # (this used to swap self.current for the call: another game's gate is asked by name now)
         g = self._gate(cur, now) if gid == self.current else self._gate_at(cur, now, gid)
         if g is not None and g.safe and (self.buffered_on() if strict is None else strict) \
@@ -2997,6 +3072,8 @@ class Decider:
         for gid, x in self._jump_pool(cands).items():
             if gid == exclude:
                 continue
+            if not self._slate_allows(gid, now):
+                continue
             if ready_only and not self.standby_ready(x.target):
                 # [overseer Nov 7 18:55] the first live jump tuned a search local on the spot (30 s) and lost the
                 # dead ball: jump only onto the hidden stick's ready game; the standby re-tunes for the next one
@@ -3030,7 +3107,8 @@ class Decider:
         # [overseer Nov 7 18:55] a target the hidden stick can't tune right now (a failed tune's backoff, an app it
         # lacks) is skipped: picking it every tick left the standby empty all afternoon
         pool = {gid: x for gid, x in self._jump_pool(cands).items()
-                if gid != self.current and (tunable is None or x.target == standby or tunable(x.target))}
+                if gid != self.current and (tunable is None or x.target == standby or tunable(x.target))
+                and slate_mod.may_cut_to(self.slate_scene, gid)}
         if not pool:
             return None
         cap = float(c.get("jump_mode.rotate_cap_s", 300))
@@ -3075,14 +3153,17 @@ class Decider:
         or its stick isn't at least min_behind_s behind live (by the label)."""
         if x is None or not x.target or not self.buffered_on():
             return None
-        lgs = bj.cfg_get(self.cfg, "leagues") or []
+        lgs = list(bj.cfg_get(self.cfg, "leagues") or [])
+        if lgs and self._slate_on():
+            lgs += list(self._slate_params().leagues)
         tl = self.timelines.get(gid)
         if tl is None or not tl.dead.marks or (lgs and x.scored.league.value not in lgs):
             return None
         d = self.delays.get(x.target)
         if d.behind < float(bj.cfg_get(self.cfg, "min_behind_s")):
             return None
-        return bj.Pic(tl.dead, d.mu, d.current_sigma(now), gid, cuts.walk_params(self.cfg, x.scored.league))
+        walk = cuts.walk_params(self.cfg, x.scored.league)
+        return bj.Pic(tl.dead, d.mu, d.current_sigma(now), gid, walk, walk if self._may_leave_on_walk(gid, x, now) else None)
 
     def _bj_lands(self, gid: str, p: bj.Pic, cands: dict[str, Candidate], now: float) -> tuple[bool, float]:
         at = self.snap_parked(cands[gid].target) if self.snap_parked is not None else None
@@ -3150,7 +3231,7 @@ class Decider:
         v = self._bj_pic(self.current or "", cur, now)
         ready = self.standby_ready
         hs = [(gid, x) for gid, x in self._jump_pool(cands).items()
-              if gid != self.current and (ready is None or ready(x.target))]
+              if gid != self.current and (ready is None or ready(x.target)) and self._slate_allows(gid, now)]
         pics = [(gid, p) for gid, x in hs if (p := self._bj_pic(gid, x, now)) is not None]
         if v is None:
             # [bootstrap, overseer Nov 8 21:47] the screen's stick was tuned at the live edge (before the flag, or a failed
@@ -3308,6 +3389,10 @@ class Decider:
             return None   # _jump_best counted why
         gid, info = best
         hot = info["snap"] or info["big"]
+        if self.slate_scene is not None and not slate_mod.pays_off(info["snap"], info["big"], on_break, gid in self._slate_owed,
+                                                                  self._slate_params()):
+            self.jump_holds["slate_no_payoff"] += 1
+            return None
         # [Nick: "at EVERY dead ball ... flip if the other stick holds a game whose next snap is coming"] even with
         # no play seen here yet, go where the next snap comes clearly sooner than ours (snap_gain_s): the
         # rotation chases snaps across games instead of sitting through this huddle
@@ -3338,6 +3423,93 @@ class Decider:
         reason = (f"jump: dead ball after {seen} play{'s' if seen != 1 else ''} ({why.replace('_', ' ')})"
                   f" -> {self._short_gid(gid)}" + (f": {', '.join(tags)}" if tags else ""))
         return Decision(now, "switch", gid, reason, State.WATCHING, g.why, kind="jump", jump=info)
+
+    # ----- [fill, WP-19 wired here] flag fill.enabled; redzone/moments/fill.py is the ladder, these only gather its facts
+
+    def _fill_games(self, cands: dict[str, Candidate], now: float, no_join: bool) -> list[fill_ladder.GameInfo]:
+        """Every game the ladder may know about, each fact proven or left off: joinable only if a jump would land on a dead
+        ball on a ready stick, watchable unless we know the game is neither yours nor kept (fail closed: no spoilers)."""
+        ready, out, seen = self.standby_ready, [], set()
+        for gid, x in cands.items():
+            if gid in PSEUDO or not x.target:
+                continue
+            seen.add(gid)
+            s = x.scored
+            brk = bool(s.is_break or gid in self._screen_break)
+            ok = (not no_join and not brk and gid != self.current and gid in self.timelines and legal.tunable(gid, x, self.user.muted)
+                  and (ready is None or ready(x.target)) and self.jump_lands_dead(gid, x, now))
+            mine = bool(s.mine) or s.personal >= self.cfg.get("decider.crunch.hold_personal", 5)
+            out.append(fill_ladder.GameInfo(gid, s.league.value, "live", on_break=brk, joinable=ok, mine=mine,
+                                            crunch=bool(s.crunch), watchable=mine))
+        for gid, tl in self.timelines.items():
+            if gid in seen or tl.final_at is None:
+                continue
+            x = self._known.get(gid)
+            if x is not None:   # a game we saw finish; yours stays watchable, so its result never leaks
+                mine = bool(x.scored.mine) or gid in self._yours
+                out.append(fill_ladder.GameInfo(gid, tl.league.value, "final", mine=mine, watchable=mine))
+        return out
+
+    def _fill_moments(self, cands: dict[str, Candidate], now: float) -> list:
+        """Tier 1-3 moments from the live feed, for the ladder's reel and highlight steps. Each already aired."""
+        from redzone.moments import tiers
+        from redzone.moments.detect import Moment
+        out = []
+        for gid, x in cands.items():
+            tl = self.timelines.get(gid)
+            if gid in PSEUDO or tl is None:
+                continue
+            try:
+                tiers.family(tl.league.value)
+            except KeyError:
+                continue               # a league without a tier list (women's college) feeds nothing
+            for e in tl.events:
+                word = self._moment_word(tl, e) if e.kind == "play" else ""
+                tier = tiers.tier_of(tl.league.value, word) if word else None
+                if word and tier:      # a word the tier list doesn't know is not shown: fail closed
+                    out.append(Moment(e.seen, gid, tier, word, e.pid or ""))
+        return out
+
+    def _fill(self, d: Decision, cands: dict[str, Candidate], now: float, owner: str) -> Decision:
+        """[fill] What the screen does when nothing must be shown: the ladder's answer, acted on only for a cut it can make
+        (a dead-ball join, a ready reel). Scores and the question for Nick wait in fill_choice for the phone. Only when the
+        screen's game is on a break (or the block's catch-up is due) and that game isn't holding the screen; only at a
+        dead ball; every switch still goes through the commit gate."""
+        if not self.cfg.get("fill.enabled", False) or d.action != "stay" or owner not in ("normal", "jump", "buffered"):
+            return d
+        cur = cands.get(self.current or "")
+        if cur is None or self.current in PSEUDO or self.replaying or self.safe_mode:
+            return d
+        s = cur.scored
+        reel_ready = REEL in cands and bool(cands[REEL].target)
+        catch_up = self.slate_scene is not None and self.slate_scene.phase == slate_mod.CATCH_UP and reel_ready
+        if not (s.is_break or self.current in self._screen_break or catch_up) or self._jump_hold(cur) or s.mine or s.high_leverage:
+            return d
+        moments = self._fill_moments(cands, now) if reel_ready else []
+        pick = fill_ladder.plan(self.cfg.get, self._fill_games(cands, now, catch_up), moments, now=now, seen=self._fill_seen(moments),
+                                clips_ready=reel_ready)
+        if pick is None:
+            return d
+        self.fill_choice = pick
+        self.fill_log[pick.action] += 1
+        g = self._jump_gate(cur, now)
+        if g is None or not g.safe:
+            return d
+        if pick.action == "join" and pick.game_id in cands:
+            x = cands[pick.game_id]
+            info = {"why": "fill_join", "buffered": self._bj_pic(pick.game_id, x, now) is not None, "gate": g.why, "snap": False,
+                    "big": False, "cost_s": round(self._bj_flip_cost(x.target), 1), "held_s": round(now - self.since, 1),
+                    "holds": dict(self.jump_holds)}
+            return Decision(now, "switch", pick.game_id, f"fill: on a break -> {self._short_gid(pick.game_id)}", State.WATCHING,
+                            g.why, kind="jump", jump=info)
+        if pick.action in ("reel", "highlights") and reel_ready:
+            self._home_set(self.current, None, "a fill reel")
+            return Decision(now, "switch", REEL, f"fill: {pick.reason}", State.WATCHING, g.why, kind="break_visit")
+        return d
+
+    def _fill_seen(self, moments: list) -> set:
+        """Moments already seen on the screen, by the ladder's key."""
+        return {fill_ladder.moment_key(m) for m in moments if self._saw(m.game_id, m.t - 5.0, m.t + 5.0)}
 
     def _count_hold(self, why: str) -> None:
         """[overseer Nov 8 01:50Z: "no jump rows, decision text is the normal decider"] every way the rotation stands
