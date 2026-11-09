@@ -34,7 +34,7 @@ DATA = Path(__file__).resolve().parent.parent / "data"
 # ESPN broadcast name (lowercased) -> our channel key
 NETWORKS = {
     "espn": "espn", "espn2": "espn2", "espnu": "espnu", "espnews": "espnews", "abc": "abc",
-    "espn+": "espnplus", "espn unlimited": "espnplus",
+    "espn+": "espnplus", "espn unlimited": "espnplus", "espn unlmtd": "espnplus",
     "fox": "fox", "fs1": "fs1", "fs2": "fs2", "cbs": "cbs", "nbc": "nbc", "cbssn": "cbssn",
     "nfl net": "nflnetwork", "nfl network": "nflnetwork", "nfln": "nflnetwork",
     "tnt": "tnt", "trutv": "trutv", "tbs": "tbs", "nba tv": "nbatv", "nbatv": "nbatv",
