@@ -43,6 +43,7 @@ Standard: [docs/STANDARD.md](../STANDARD.md). Plan and process gate: [docs/PLAN.
 | D-OPEN | 2026-11-09 | [Open data items settled: cricket provenance, StatsBomb American football, CBB row count, five catalog retries, and the two zeros](data/2026-11-09-data-open-items.md) | draft | 34 (26) | - |
 | D-OWN | 2026-11-09 | [Own-data inventory of RedZone data/ (what the system recorded itself, 2 to 8 Nov 2026)](data/2026-11-09-own-data-inventory.md) | draft | 30 (29) | - |
 | D-PRIORITY | 2026-11-09 | [RedZone, viewers and video production: what real data exists against 250M per area](data/2026-11-09-redzone-viewers-production.md) | draft | 74 (53) | - |
+| D-ROUTES | 2026-11-09 | [Robots-compliant routes for NFL, CFB, NBA and NCAAM play-by-play data](data/2026-11-09-allowed-routes.md) | draft | 27 (23) | - |
 | D-SPORTS-GAPS | 2026-11-09 | [Sports data gaps - portal searches, bigger league sets, long-tail sports, Kaggle metadata confirmation](data/2026-11-09-sports-data-gaps.md) | draft | 79 (58) | - |
 | D-VIDEO | 2026-11-09 | [Video production and broadcast editing data for RedZone's cut model](data/2026-11-09-video-production-data.md) | draft | 50 (33) | - |
 | D-VIEWERS | 2026-11-09 | [Public logs of what people choose, keep watching and abandon](data/2026-11-09-viewer-preference-logs.md) | draft | 36 (27) | - |

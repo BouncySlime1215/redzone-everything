@@ -1,0 +1,13 @@
+{
+  "card": "DATA-ROUTES",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "agent/kaggle/sports_common.py",
+    "agent/kaggle/fetch_sports_nba.py",
+    "agent/kaggle/fetch_sports_ncaam.py",
+    "tests/test_fetch_sports*.py"
+  ],
+  "started": 1794215936,
+  "expires": 1794388736
+}
