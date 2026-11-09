@@ -186,11 +186,14 @@ def nfl_summary(g):
 
 
 def hoops_summary(g):
-    """One hoopR game (DataFrame in sequence order) -> {'plays': [...]} as hoops() reads it."""
+    """One hoopR game (DataFrame in sequence order) -> {'plays': [...]} in wall-clock order, as hoops() reads it.
+    Wall order because the detectors are stateful and a few hoopR plays are stamped later than the plays after them:
+    value_shards detects in wall order, and the raw audit's labels come through here, so both must see one order."""
     from redzone.noggin import factory
     out = factory._plays_basketball(g)
     for p, r in zip(out, g.itertuples(index=False)):
         p["shootingPlay"] = bool(getattr(r, "shooting_play", False)) if getattr(r, "shooting_play", False) == getattr(r, "shooting_play", False) else False
+    out.sort(key=lambda p: holdset.ts(p["wallclock"]) or float("inf"))
     return {"plays": out}
 
 
