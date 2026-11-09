@@ -38,6 +38,7 @@ Standard: [docs/STANDARD.md](../STANDARD.md). Plan and process gate: [docs/PLAN.
 | D-FIELDS-A | 2026-11-09 | [Sports data pools by subcategory - largest open sources, licences, Kaggle fetch, and paid vendors (scope changed from 13 academic fields)](data/2026-11-09-sports-data-pools.md) | draft | 70 (52) | - |
 | D-FIELDS-B | 2026-11-09 | [Math and machine learning data pools by subcategory, with pretrained models and a paid-source table (replaces the first 13-field scope; old findings kept as an appendix)](data/2026-11-09-math-ml-data-pools.md) | draft | 113 (99) | - |
 | D-PRIORITY | 2026-11-09 | [RedZone, viewers and video production: what real data exists against 250M per area](data/2026-11-09-redzone-viewers-production.md) | draft | 74 (53) | - |
+| D-VIEWERS | 2026-11-09 | [Public logs of what people choose, keep watching and abandon](data/2026-11-09-viewer-preference-logs.md) | draft | 36 (27) | - |
 
 ## harness
 
