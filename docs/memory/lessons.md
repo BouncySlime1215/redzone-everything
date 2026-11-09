@@ -421,3 +421,5 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
 - 2026-11-09 (WP-05 review, W2-LOCKED-07): the documented scorecard command had no `--split`, and the default `all` grades the locked nights. Any builder following CLAUDE.md would have spent the locked set. The command now says `--split fit`.
 
 - 2026-11-09 (WP-04 full suite): `isinstance(tuner, PrimeTuner)` never matched in the running app, because `providers.DiagnosingTuner` wraps each built-in tuner. Passing only in import order that skips the wrap is a false pass: test the wrapped object too.
+
+- 2026-11-09 (data research): the license check treated NBA terms and Statcast as blocked, and the coordinator asked Nick again, though his Nov 5 ruling ("data = B", personal use) already allowed public sports APIs with restrictive terms. Lesson: read decisions.md for a standing ruling before asking or blocking.
