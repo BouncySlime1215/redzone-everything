@@ -1202,3 +1202,6 @@ labels:                    # [own-data job 17] extra logging only, for data no p
 
 views:                     # [build plan WP-21] the phone's clock as of the screen, not the feed
   screen_clock: false
+
+basketball:                # [NBA-BUCKET] land right after a made basket, including the transition after it (Nick, Nov 9)
+  join_after_bucket: false
