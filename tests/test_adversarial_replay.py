@@ -32,7 +32,8 @@ GRADER_WALLS = ("GRADER ARTIFACT, not a hole (WP-15B, all three landings checked
 
 
 def _data(league):
-    needs_eval_data(league)
+    if not (ROOT / "data/archive" / league).exists():
+        pytest.skip("pinned eval data not fetched (scripts/fetch_eval_data.py)")
 
 
 def _cap(league):

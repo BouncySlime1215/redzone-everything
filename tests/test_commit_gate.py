@@ -24,7 +24,6 @@ from test_rule1_review import test_01_whistle_timed_league_is_replanned_at_the_f
 from test_rule1_review import test_02_one_prime_tap_mid_play_waits as _tap_check
 from test_rule1_review import test_02_one_tap_with_no_play_by_play_waits as _tap_blind_check
 from test_rule1_review import test_02_second_tap_forces as _tap_second_check
-from eval_data_gate import needs_eval_data
 from test_switch_path_audit import _jump, _two_live
 
 from redzone import engine as engine_mod
@@ -611,7 +610,8 @@ LEAGUES = {"nfl": ("scripts/eval.py", ["--split", "valid"]),
 def test_replay_on_dev_nights_the_gate_keeps_rule_1(league):
     """Valid split only (dev data): the plumbing with no rule equals today's card; with every rule, no Rule #1 metric
     gets worse and mid-play entries and high-leverage leaves stay 0."""
-    needs_eval_data(league)
+    if not (ROOT / "data/archive" / league).exists():
+        pytest.skip("pinned eval data not fetched (scripts/fetch_eval_data.py)")
     script, args = LEAGUES[league]
     base = card(script, *args)
     with gated(rules=()):
