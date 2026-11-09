@@ -671,3 +671,58 @@ def test_replay_builtin_scenario():
     walled = lines[5]["failure"]
     assert walled["step"] == "stop" and "WSH" in lines[5]["queue"]["cant_reach"]
     json.dumps(lines, allow_nan=False)
+
+
+# ---- a stick that holds a game the queue can drop for free -----------------------------------------
+
+
+def test_tick_a_final_hidden_game_is_no_hidden_game():
+    """Repro: the stick's game ended and left the slate, so tick said hidden_unknown and only an owner could take the
+    stick. The planner-ranked game behind it never loaded (90 of 154 missed cuts in the night replay)."""
+    plan = gq.tick([game("B", planner_rank=1.0)], "S", "DONE", FREE, NOW, P, final={"DONE"})
+    assert (plan.want.entry.game, plan.swap, plan.why) == ("B", True, "stick_free")
+    assert plan.hidden is None
+
+
+def test_tick_a_merely_missing_hidden_game_keeps_the_stick():
+    plan = gq.tick([game("B", planner_rank=1.0)], "S", "GAP", FREE, NOW, P, final={"OTHER"})
+    assert (plan.swap, plan.why) == (False, "hidden_unknown")
+
+
+def test_tick_a_final_game_is_never_wanted_but_stays_on_screen():
+    plan = gq.tick([game("DONE", planner_rank=0.0), game("B", planner_rank=1.0)], "S", None, FREE, NOW, P, final=("DONE",))
+    assert plan.want.entry.game == "B" and "DONE" not in [r.entry.game for r in plan.rows]
+    assert gq.tick([game("S", planner_rank=0.0)], "S", None, FREE, NOW, P, final=["S"]).on_screen.entry.game == "S"
+
+
+@pytest.mark.parametrize("bad", [None, 5, "DONE", {"DONE": 1}, [None, 3]])
+def test_tick_a_bad_final_frees_nothing(bad):
+    plan = gq.tick([game("B", planner_rank=1.0)], "S", "DONE", FREE, NOW, P, final=bad)
+    assert (plan.swap, plan.why) == (False, "hidden_unknown")
+
+
+def test_swap_a_ready_game_nothing_ranks_gives_way():
+    """Repro: a hidden game on a break has no planner rank, yet its score and sunk prep kept the stick from the game
+    the decider was about to visit."""
+    plan = gq.tick([game("H", lvl=Level.R4, value=30.0), game("B", planner_rank=0.0, value=8.0)], "S", "H", FREE, NOW)
+    assert (plan.swap, plan.why) == (True, "hidden_unranked")
+
+
+def test_swap_an_unreachable_want_still_cannot_take_an_unranked_game():
+    want = game("B", route=PRIME, lvl=Level.R1, planner_rank=0.0, join_in_s=-1.0, lookahead_s=1.0)
+    assert not gq.replace(game("H", lvl=Level.R4), want, FREE, NOW)
+
+
+def test_swap_a_better_planner_class_beats_value():
+    """Repro: the ranking put a game coming up to its big moment first, then the raw score kept the BEST game held."""
+    held, want = game("H", lvl=Level.R4, planner_rank=1.0, value=90.0, standby_class=4), \
+        game("B", planner_rank=0.0, value=70.0, standby_class=3)
+    assert gq.replace(held, want, FREE, NOW)
+    assert not gq.replace(dc.replace(held, standby_class=3), want, FREE, NOW)
+    assert not gq.replace(dc.replace(held, standby_class=None), want, FREE, NOW)
+
+
+def test_swap_class_is_only_for_the_planner_rung():
+    held = game("H", lvl=Level.R4, brain_rank=1.0, value=90.0, standby_class=4)
+    want = game("B", brain_rank=0.0, value=70.0, standby_class=3)
+    assert not gq.replace(held, want, FREE, NOW)

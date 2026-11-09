@@ -101,20 +101,36 @@ def test_the_queue_does_not_churn_the_stick_like_the_planner(cfg):
     assert qr.simulate("on", tr, cfg)["loads"] <= qr.simulate("off", tr, cfg)["loads"]
 
 
-def test_a_hidden_game_that_left_the_slate_blocks_the_queue_but_not_the_fix(cfg):
+def test_a_final_hidden_game_frees_the_stick_and_a_merely_missing_one_does_not(cfg):
     """The flaw this harness found: gamequeue.tick says hidden_unknown when the stick holds a game that is no longer
-    an entry, and only an owner may take the stick, so a plain want never does."""
-    games = {"a": None, "b": 12, "c": None}   # b is loaded first, then ends at tick 12
+    an entry, so only an owner may take it. Final means free; a feed gap does not."""
+    games = {"a": None, "b": 12, "c": None}   # b is loaded first, then leaves the slate at tick 12
     plan = {0: ["b"], 13: ["c"]}
     tr = night(plan, games, [{"t": 40, "frm": "a", "to": "c", "kind": "switch"}])
-    stock = qr.simulate("on", tr, cfg)
-    fixed = qr.simulate("on", tr, cfg, free_gone="any")
+    gap = qr.simulate("on", tr, cfg)
     off = qr.simulate("off", tr, cfg)
-    assert off["cuts"][0]["ready"] and fixed["cuts"][0]["ready"]
-    assert not stock["cuts"][0]["ready"]
-    assert "hidden_unknown" in stock["why"]
-    assert qr.simulate("on", tr, cfg, free_gone="ended")["cuts"][0]["ready"]   # b is final, so this is the safe form
-    assert not qr.flaws(tr, fixed, off) and qr.flaws(tr, stock, off)[0]["at_window_start"]["why"] == "hidden_unknown"
+    assert off["cuts"][0]["ready"] and not gap["cuts"][0]["ready"]
+    assert "hidden_unknown" in gap["why"]
+    for tk in tr.ticks:
+        if tk["t"] >= 1000.0 + 10 * 12:
+            tk["final"] = {"b"}
+    ended = qr.simulate("on", tr, cfg)
+    assert ended["cuts"][0]["ready"] and "hidden_unknown" not in ended["why"]
+    assert not qr.flaws(tr, ended, off) and qr.flaws(tr, gap, off)[0]["at_window_start"]["why"] == "hidden_unknown"
+
+
+def test_the_wait_is_the_sticks_not_the_deciders(cfg):
+    """A game long ready while the decider holds for a dead ball waited on no stick (the 230 s and 280 s p90s)."""
+    tr = night({0: ["b"]}, {"a": None, "b": None}, [{"t": 40, "frm": "a", "to": "b", "kind": "switch"}],
+               wants={i: "b" for i in range(30, 40)})
+    assert qr.score_arm(tr, qr.simulate("on", tr, cfg), 90.0)["waits"] == [0.0]
+
+
+def test_the_wired_arm_leaves_planner_rung_ticks_to_the_planner(cfg):
+    """Engine._queue_standby: the queue owns a tick only above the planner rung, so with no want both arms match."""
+    tr = night({0: ["b"], 20: ["c"]}, {"a": None, "b": None, "c": None}, [{"t": 40, "frm": "a", "to": "c", "kind": "switch"}])
+    off, wired = qr.simulate("off", tr, cfg), qr.simulate("wired", tr, cfg)
+    assert wired["cuts"] == off["cuts"] and wired["swaps"] == off["swaps"]
 
 
 def test_a_swap_just_before_the_game_is_needed_is_counted(cfg):

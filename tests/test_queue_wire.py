@@ -338,6 +338,24 @@ def test_a_finished_game_loses_its_pin(rig):
     assert e.queue_pins == []
 
 
+def test_a_final_game_on_the_stick_frees_it_and_a_live_one_missing_does_not(rig):
+    from redzone.models import Phase
+    e = rig()
+    e.control.stick.target = target("b")
+    e._standby_options = lambda *a: [standby.Option("c", target("c"), standby.BEST, 60.0, "x")]
+    e.merger.games["b"] = types.SimpleNamespace(phase=Phase.POST)
+    assert e._queue_plan(cands_of({"a": 70, "c": 60})).why == "stick_free"
+    e.merger.games["b"] = types.SimpleNamespace(phase=Phase.LIVE)
+    assert e._queue_plan(cands_of({"a": 70, "c": 60})).why == "hidden_unknown"
+
+
+def test_eviction_is_told_what_the_ranking_weighed(rig):
+    e = rig()
+    e._standby_options = lambda *a: [standby.Option("c", target("c"), standby.MOMENT, 77.0, "x")]
+    row = e._queue_plan(cands_of({"a": 70, "c": 60})).want
+    assert (row.entry.value, row.entry.standby_class) == (77.0, standby.MOMENT)
+
+
 def test_snapshot_game_queue_only_with_the_flag(tmp_path):
     def snap(on):
         cfg = Config(user_path=tmp_path / f"{on}.yaml", history_dir=tmp_path / f"hist{on}")

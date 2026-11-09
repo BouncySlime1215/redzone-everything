@@ -17,7 +17,9 @@ often a wanted game is ready when the decider wants it. This replays whole archi
 runs once per night (backtest.run, the grader's own loop, no stick feedback), its candidates, wants and cuts are
 recorded, then the same trace drives two fake hidden sticks:
   off  today's `standby.Planner` path (queue.enabled false), failed targets sit out 120 s as control.can_tune does
-  on   `gamequeue.tick` (queue.enabled true), failures answered by `gamequeue.on_failure`
+  on   `gamequeue.tick` chooses for every tick, failures answered by `gamequeue.on_failure`
+  wired  the engine with queue.enabled true (Engine._queue_standby): the queue owns a tick only when its want is above
+       the planner rung; otherwise `standby.Planner` runs, as it does on the TV
 Both sticks share one physics: per-app tune and buffer seconds from `gamequeue.Params` (a Prime hold is max(buffer,
 behind_s)), one job at a time, a cut leaves the old game on the stick at the live edge. EVERY SECOND HERE IS A
 MODELED STICK TIME until the TV test queue measures real ones (docs/test-queue.md 3a). Failures are drawn from
@@ -126,6 +128,7 @@ HANG_S = 60.0            # a hung stick is unusable this long (modeled)
 PLANNER_BACKOFF_S = 120.0   # control.can_tune: "no failed attempt in the last couple of minutes"
 NO_BUFFER = ("replay", "resume", "skip")   # backtest.HS_NO_BUFFER: catch-up footage is not a live switch
 LEAGUES = ("nfl", "cfb", "nba", "cbb", "nhl", "mlb")
+ARMS = ("off", "on", "wired", "off_fail", "on_fail", "wired_fail")
 
 
 @dc.dataclass
@@ -145,6 +148,7 @@ def record_night(reps, targets, cfg, mine, step=None, seed=0) -> Trace:
     (keep_order and on_switch do nothing), so the decisions are the same as a run with no hidden stick."""
     from redzone import standby
     from redzone.lab import backtest as bt
+    from redzone.models import Phase
     trace = Trace("", [], [])
 
     class Recorder(bt.HiddenStick):
@@ -160,7 +164,8 @@ def record_night(reps, targets, cfg, mine, step=None, seed=0) -> Trace:
                                    games=states, my_teams=self.my_teams, want=getattr(decision, "want", None),
                                    return_bonus=float(self.cfg.get("decider.switch_margin", 10)))
             trace.ticks.append({"t": self.clock.t, "cands": dict(cands), "current": dec.current,
-                                "want": getattr(decision, "want", None), "opts": opts})
+                                "want": getattr(decision, "want", None), "opts": opts,
+                                "final": {g for g, s in states.items() if s.phase == Phase.POST}})
 
     real = bt.HiddenStick
     bt.HiddenStick = Recorder
@@ -253,13 +258,9 @@ def _draw(seed, night, game, k, app, fail_on: bool) -> gq.Failure | None:
     return None
 
 
-def simulate(arm: str, trace: Trace, cfg, p: gq.Params | None = None, *, fail_on: bool = False, seed: int = 0,
-             free_gone: str = "") -> dict:
-    """Drive one fake stick through a night. arm "off" is `standby.Planner`, arm "on" is `gamequeue.tick`.
-    free_gone (arm "on" only) is a SUGGESTED change, not shipped. gamequeue.tick answers "hidden_unknown" (owners
-    only) when the stick's game is not among the entries. "any": that game counts as no hidden game, so a reachable
-    game may take the stick. "ended": only when it never comes back on the slate (what the engine knows when the game
-    is final).
+def simulate(arm: str, trace: Trace, cfg, p: gq.Params | None = None, *, fail_on: bool = False, seed: int = 0) -> dict:
+    """Drive one fake stick through a night. arm "off" is `standby.Planner`, "on" is `gamequeue.tick` alone, "wired" is
+    the queue with the planner as its fallback, as Engine._queue_standby runs them.
     Returns raw records: one per cut, the stick's idle ticks, swaps, failures and the queue's reasons."""
     from redzone import standby
     p = p or gq.Params()
@@ -295,8 +296,9 @@ def simulate(arm: str, trace: Trace, cfg, p: gq.Params | None = None, *, fail_on
         for item in [x for x in pending if x[0] <= t]:
             pending.remove(item)
             _, g, target, kind, k_try = item
-            if arm == "off":
+            if arm != "on":
                 blocked[target] = t + PLANNER_BACKOFF_S
+            if arm == "off":
                 continue
             e = _entry(g, target, gs, t)
             mv = gq.on_failure(e, kind, k_try)
@@ -324,6 +326,7 @@ def simulate(arm: str, trace: Trace, cfg, p: gq.Params | None = None, *, fail_on
             app = _app(next((c.target for g, c in cands.items() if g == x), None) or _target_of(trace, x))
             rem = max(0.0, st.goal_at() - t) if st.game == x and st.replay is None else st.prep_s(app)
             out["cuts"].append({"t": t, "to": x, "ready": ready, "remaining_s": 0.0 if ready else rem,
+                                "ready_at": st.goal_at() if ready else t + rem,
                                 "held": st.game, "app": app, "wanted_at": _wanted_at(trace, x, t),
                                 "kind": sw["kind"]})
             frm = sw["frm"]
@@ -339,20 +342,21 @@ def simulate(arm: str, trace: Trace, cfg, p: gq.Params | None = None, *, fail_on
         # 4. plan
         if t < st.busy and t < st.r3 and st.game is None:
             continue   # a hung or failing stick is down; nothing to plan on it
-        if arm == "off":
+        plan = None if arm == "off" else _queue_tick(tk, st, gs, played, p, t)
+        if plan is None or (arm == "wired" and (plan.want is None or plan.want.rung >= gq.Rung.PLANNER)):
             opts = [o for o in tk["opts"] if blocked.get(o.target, 0.0) <= t]
             pick = planner.plan(opts, (st.target, st.replay))
             if pick is not None and (pick.target, pick.replay_id) != (st.target, st.replay):
                 start(pick.game_id, pick.target, pick.replay_id, t)
-        else:
-            plan = _queue_tick(tk, st, gs, played, p, t, free_gone, last_seen)
+        if plan is not None:
             out["why"][plan.why] = out["why"].get(plan.why, 0) + 1
             kind_h = "none" if st.game is None else "on_screen" if st.game == cur else \
                 ("ended" if last_seen.get(st.game, INF) < t else "gap") if st.game not in cands else "stale" if cands[st.game].stale else "candidate"
             out["hist"][t] = (st.game, st.ready(st.game, t), plan.want.entry.game if plan.want else None, plan.why,
                               {r.entry.game: (r.rung.name, r.level.name, round(r.prep, 1), r.reach)
                                for r in plan.rows[:6]}, kind_h)
-            if plan.swap and plan.want is not None and plan.want.route is not None:
+            if plan.swap and plan.want is not None and plan.want.route is not None and \
+                    (arm == "on" or plan.want.rung < gq.Rung.PLANNER):
                 w = plan.want
                 start(w.entry.game, f"{w.route.app}:{w.route.ref}", None, t)
         out.setdefault("ticks", 0)
@@ -397,34 +401,34 @@ def _entry(gid: str, target: str | None, gs: dict, t: float, **kw) -> gq.Entry:
     return gq.Entry(gid, routes, **kw)
 
 
-def _queue_tick(tk, st: FakeStick, gs: dict, played: set, p: gq.Params, t: float, free_gone: str = "", last_seen: dict | None = None) -> gq.Plan:
+def _queue_tick(tk, st: FakeStick, gs: dict, played: set, p: gq.Params, t: float) -> gq.Plan:
     entries = []
     state, buffered = st.level_state(t)
     for gid, c in tk["cands"].items():
         if c.stale and gid != st.game:
             continue
-        rank = next((i for i, o in enumerate(tk["opts"]) if o.game_id == gid and o.replay_id is None), None)
+        rank, opt = next(((i, o) for i, o in enumerate(tk["opts"]) if o.game_id == gid and o.replay_id is None), (None, None))
         held = st.game == gid and st.replay is None
         lv = gq.level_of(True, gid in played, state if held else None, buffered if held else False)
         if gid == tk["current"]:
             lv = gq.Level.R4
         entries.append(_entry(gid, c.target, gs, t, level=lv, committed=gid == tk["want"],
                               planner_rank=float(rank) if rank is not None else None,
-                              value=min(100.0, max(0.0, float(c.scored.score)))))
+                              standby_class=opt.cls if opt else None,
+                              value=min(100.0, max(0.0, float(opt.value if opt else c.scored.score)))))
     busy = t < st.busy
     stick = gq.Stick(busy_until=st.busy if busy else 0.0, job_game=st.game if busy else None,
                      job_to=(gq.Level.R3 if _klass(_app(st.target)) == gq.LIVE_EDGE else gq.Level.R4) if busy else None)
     hidden = st.game if st.replay is None else None
-    gone = hidden not in {e.game for e in entries}
-    if hidden == tk["current"] or (gone and (free_gone == "any" or (free_gone == "ended" and (last_seen or {}).get(hidden, INF) < t))):
-        hidden = None   # the stick plays what is on screen, or (suggested change) its game left the slate
-    return gq.tick(entries, tk["current"], hidden, stick, t, p)
+    if hidden == tk["current"]:
+        hidden = None   # the stick plays what is on screen
+    return gq.tick(entries, tk["current"], hidden, stick, t, p, tk.get("final", ()))
 
 
 def score_arm(trace: Trace, raw: dict, near_s: float) -> dict:
     """Per-night counts from one arm's raw records; sum them across nights, then call `summarize`."""
     cuts = raw["cuts"]
-    waits = [c["remaining_s"] + (c["t"] - c["wanted_at"]) for c in cuts]
+    waits = [max(0.0, c["ready_at"] - c["wanted_at"]) for c in cuts]   # the stick's wait; a decider holding for a dead ball isn't
     swaps_hit = 0
     for sw in raw["swaps"]:
         swaps_hit += any(c["to"] == sw["dropped"] and 0 <= c["t"] - sw["t"] <= near_s for c in cuts)
@@ -517,7 +521,7 @@ def run_nights(archive: Path, leagues, split: str, max_nights: int | None, step:
         keep = splits.nights_for(arch, split, end)
         sbs = sorted(sb for sb in arch.glob("scoreboard_*.json") if (not end or sb.stem.split("_")[-1] <= end))
         sbs = [sb for sb in sbs if keep is None or sb.stem.split("_")[-1] in keep]
-        parts: dict[str, list] = {k: [] for k in ("off", "on", "on_fix", "on_fix_ended", "off_fail", "on_fail")}
+        parts: dict[str, list] = {k: [] for k in ARMS}
         examples, used, why_hist, held_hist, n_flaw = [], 0, {}, {}, 0
         for sb in sbs[:max_nights] if max_nights else sbs:
             evs = json.loads(sb.read_text()).get("events", [])
@@ -538,9 +542,8 @@ def run_nights(archive: Path, leagues, split: str, max_nights: int | None, step:
             if not any(s["kind"] not in NO_BUFFER for s in tr.switches):
                 continue
             used += 1
-            for name, arm, fo in (("off", "off", False), ("on", "on", False), ("on_fix", "on", False), ("on_fix_ended", "on", False),
-                                  ("off_fail", "off", True), ("on_fail", "on", True)):
-                raw = simulate(arm, tr, cfg, fail_on=fo, seed=seed, free_gone={"on_fix": "any", "on_fix_ended": "ended"}.get(name, ""))
+            for name in ARMS:
+                raw = simulate(name.removesuffix("_fail"), tr, cfg, fail_on=name.endswith("_fail"), seed=seed)
                 parts[name].append(score_arm(tr, raw, near_s))
                 if name == "off":
                     off_raw = raw
@@ -564,7 +567,7 @@ def table(report: dict) -> str:
     rows = ["| league | arm | cuts | ready in time % | wanted->ready p50/p90 s | idle while wanted % | swapped just before needed |",
             "|---|---|---|---|---|---|---|"]
     for lg, d in report["leagues"].items():
-        for arm in ("off", "on", "on_fix", "on_fix_ended", "off_fail", "on_fail"):
+        for arm in ARMS:
             x = d.get(arm)
             if x:
                 rows.append(f"| {lg} | {arm} | {x['cuts']} | {x['ready_in_time_pct']} | {x['wanted_to_ready_p50_s']}/"

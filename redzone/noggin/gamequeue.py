@@ -146,6 +146,7 @@ class Entry:
     brain_rank: float | None = None
     planner_rank: float | None = None
     value: float = 0.0                # 0-100
+    standby_class: int | None = None  # the planner's class for it (standby.Option.cls); lower = more likely the next cut
 
 
 @dc.dataclass(frozen=True, slots=True)
@@ -382,6 +383,11 @@ def _swap(hidden: Row | None, want: Row, stick, p: Params) -> tuple[bool, str]:
         return True, "owner"
     if not want.reach:
         return False, "unreachable"
+    if hidden.rung == Rung.NOBODY:   # nothing ranks it now (on a break, a stale feed): prep already spent buys no cut
+        return True, "hidden_unranked"
+    x, y = _num(want.entry.standby_class), _num(hidden.entry.standby_class)
+    if want.rung == hidden.rung == Rung.PLANNER and x is not None and y is not None and x < y:
+        return True, "higher_class"   # value compares games inside a class; across classes the better class is the next cut
     a, b = _value(want, p), _value(hidden, p)
     if a is None or b is None:
         return False, "bad_value"
@@ -392,7 +398,8 @@ def _swap(hidden: Row | None, want: Row, stick, p: Params) -> tuple[bool, str]:
 def replace(hidden: Entry | None, want: Entry, stick: Stick, now, p: Params = QUEUE_PARAMS) -> bool:
     """Should the hidden stick drop what it holds for `want`? A strictly better-ranked occupant is never
     evicted. Lock, committed next and Pin need nothing else. Anyone else must be reachable and worth more
-    than the margin plus the prep thrown away; exactly equal is not enough."""
+    than the margin plus the prep thrown away; exactly equal is not enough. Two exceptions need no margin: an
+    occupant nothing ranks, and (planner rung only) an occupant of a worse planner class."""
     held = _row(hidden, stick, now, p) if type(hidden) is Entry else None
     return _swap(held, _row(want, stick, now, p), stick, p)[0]
 
@@ -424,12 +431,17 @@ def _order_key(row: Row) -> tuple:
     return (rung, _NEVER if rank is None else rank, e.game)
 
 
-def tick(entries, on_screen, hidden, stick: Stick, now, p: Params = QUEUE_PARAMS) -> Plan:
+def tick(entries, on_screen, hidden, stick: Stick, now, p: Params = QUEUE_PARAMS, final=()) -> Plan:
     """Rank every game and answer "what should the hidden stick hold, and should it change". Pure: the
-    caller acts on `swap`. A hidden game missing from `entries` is only displaced by an owner."""
+    caller acts on `swap`. `final` names the games that have ended: they can't be queued, and a stick that
+    holds one holds nothing. Any other hidden game missing from `entries` may be back next tick (a feed gap),
+    so it is only displaced by an owner."""
     rows, seen, screen, held = [], set(), None, None
+    done = frozenset(g for g in final if type(g) is str) if type(final) in (set, frozenset, tuple, list) else frozenset()
+    if type(hidden) is str and hidden in done:
+        hidden = None
     for e in entries if type(entries) in (tuple, list) else ():
-        if type(e) is Entry and type(e.game) is str and e.game:
+        if type(e) is Entry and type(e.game) is str and e.game and (e.game not in done or e.game == on_screen):
             rows.append(_row(e, stick, now, p))
     rows.sort(key=_order_key)
     kept = []
