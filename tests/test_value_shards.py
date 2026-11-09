@@ -570,17 +570,15 @@ def _nflverse(path, nights):
 def test_public_season_builds_drops_eval_nights_and_passes_the_leak_check(tmp_path, monkeypatch):
     src = tmp_path / "pbp.parquet"
     _nflverse(src, ["20231008", "20231015", "20250907"])     # the third is inside the eval window
-    import shutil
     import scripts.noggin_factory as NF
-
-    def fake_fetch(url, dest):
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(src, dest)
-        return True
-    monkeypatch.setattr(NF, "_fetch", fake_fetch)
+    from agent.kaggle import sports_common as sc
+    monkeypatch.setattr(NF, "_fetch", lambda *a, **k: pytest.fail("NFL is built from the attached fetch output, never downloaded"))
+    inp = tmp_path / "input" / "nb" / "sports_nflverse_pbp" / "shards"     # what fetch_sports_nfl.py wrote
+    inp.mkdir(parents=True)
+    pd.read_parquet(src).assign(season=2023, tag=sc.PERSONAL_TAG).to_parquet(inp / "sports_nflverse_pbp-00000-000.parquet", index=False)
     out = tmp_path / "o"
     rc = K.main(["--source", "public", "--leagues", "nfl", "--seasons", "2023", "--out", str(out), "--raw", str(tmp_path / "raw"),
-                 "--input", str(tmp_path / "none"), "--jobs", "1"])
+                 "--input", str(tmp_path / "input"), "--jobs", "1"])
     assert rc == 0
     side = json.loads(V.shard_paths(out, "nfl", "2023")[1].read_text())
     got = pd.read_parquet(V.shard_paths(out, "nfl", "2023")[0])
@@ -589,5 +587,5 @@ def test_public_season_builds_drops_eval_nights_and_passes_the_leak_check(tmp_pa
     assert set(got.game_key) == {"nfl:20231008:AAA@BBB", "nfl:20231015:AAA@BBB"}
     before = V.shard_paths(out, "nfl", "2023")[0].stat().st_mtime_ns
     assert K.main(["--source", "public", "--leagues", "nfl", "--seasons", "2023", "--out", str(out), "--raw", str(tmp_path / "raw"),
-                   "--input", str(tmp_path / "none"), "--jobs", "1"]) == 0
+                   "--input", str(tmp_path / "input"), "--jobs", "1"]) == 0
     assert V.shard_paths(out, "nfl", "2023")[0].stat().st_mtime_ns == before       # resumed, not rebuilt
