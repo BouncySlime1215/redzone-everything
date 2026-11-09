@@ -16,6 +16,9 @@ Why it's built this way (speed):
   runs alongside the checks instead of pausing them.
 Guardrail: right after the link, the app can still report the OLD channel as playing. A report
 only counts once it's provably the new stream (see NewStream).
+
+Why (flags): tuners.prime_fast_confirm takes OCR out of Prime's "playing yet?" loops and allows one guarded read per
+press; tuners.espn_link_form tries the link form reported to work, since ours has failed 19 of 19. Both ship OFF.
 """
 from __future__ import annotations
 
@@ -44,6 +47,8 @@ PROMPTS = {
     "watch live": ["KEYCODE_DPAD_CENTER"],
 }
 LOADING = ("buffering", "connecting")
+# A row on every Prime detail page, including games the account already has. OCR can split it across cells.
+_PRIME_ROW = re.compile(r"more purchase(?:\s*\|?\s*options)?")
 
 
 @functools.lru_cache(maxsize=1)
@@ -131,6 +136,7 @@ class TimedSteps(list):
         super().__init__()
         self.t0 = time.monotonic()
         self.marks: list[dict] = []
+        self.warm: bool | None = None
 
     def mark(self, step: str) -> None:
         """A timing note only: it doesn't join the steps that error messages and the tuner's own checks read."""
@@ -155,6 +161,7 @@ class TuneResult:
     error: str = ""
     screen_changed: bool | None = None  # False: no visible command sent; True: sent; None: legacy unknown
     path: str = ""                      # "tile": a Prime multiview tile switch, not a tune
+    warm: bool | None = None            # the app was already running before the link; None: can't tell
 
 
 @dataclass
@@ -223,6 +230,7 @@ class Tuner:
     wait_for_launch = False  # `am start -W`: only for apps whose next step needs the page fully drawn
     subtitle_is_channel = False  # the media session's subtitle names the channel (see NewStream)
     screenshot_prompts = False   # its prompts can be read and cleared from a screenshot (screen_prompts)
+    warm_probe = False           # ask the stick whether the app is running before the link (one more adb call)
 
     def url(self, ref: str) -> str:
         raise NotImplementedError
@@ -233,6 +241,7 @@ class Tuner:
         try:
             result = await self._tune(stick, ref, target, guard)
             result.screen_changed = guard.changed
+            result.warm = getattr(result.steps, "warm", None)
             return result
         except CutWindowClosed as exc:
             return TuneResult(False, target, time.monotonic() - started, exc.steps, str(exc), guard.changed)
@@ -256,6 +265,7 @@ class Tuner:
             else await stick.ensure_awake()
         if woke:
             steps.append("woke the stick")
+        steps.warm = await self._was_warm(stick, pkg, before)
         for attempt in (1, 2):
             # A retry starts a new observation window. A buffering report from the
             # first attempt must not confirm an unchanged stream after the second.
@@ -264,6 +274,10 @@ class Tuner:
             watch = NewStream(before, expect=channel_matcher(target), channel_change=self.subtitle_is_channel)
             require_cut(may_cut, steps, mutating=True)
             r = await stick.view(self.url(ref), pkg, wait=self.wait_for_launch)
+            if attempt == 1:
+                if steps.warm is None and "brought to the front" in r.out.lower():
+                    steps.warm = True
+                _note_warm(steps, target)
             if _cant_open(r.out):
                 why = r.out.strip().splitlines()[0][:120]
                 steps.append(f"deep link #{attempt}: {why}")
@@ -322,6 +336,18 @@ class Tuner:
             if screen is not None:
                 screen.cancel()
                 await asyncio.gather(screen, return_exceptions=True)
+
+    async def _was_warm(self, stick: Stick, pkg: str, before: dict) -> bool | None:
+        """Was the app running before the link? A session in the report we already have says yes for free; only
+        warm_probe spends a call to ask about an app with no session. None: can't tell."""
+        if before.get("state") not in (None, "none") and before.get("pkg") == pkg:
+            return True
+        if not self.warm_probe:
+            return None
+        r = await stick.shell(f"pidof {pkg}", timeout=3)
+        if r.ok or not r.out.strip():   # pidof exits non-zero, with no output, when the app isn't running
+            return bool(r.out.strip())
+        return None
 
     def _grace(self, pb: dict) -> float:
         return self.loading_grace_s if pb.get("state") in LOADING else self.prompt_grace_s
@@ -382,6 +408,26 @@ def _text_of(task: asyncio.Task) -> str:
     if task.cancelled() or task.exception() is not None:
         return ""
     return (task.result() or "").lower()
+
+
+def _note_warm(steps, target: str) -> None:
+    """One timing note per tune, in the row the switch log already keeps."""
+    warm = steps.warm
+    word = "unknown" if warm is None else "yes" if warm else "no"
+    _mark(steps, f"warm: {word}")
+    log.info("tune %s: warm=%s", target, word)
+
+
+def apply_flags(cfg, tuners: dict[str, "Tuner"] | None = None) -> None:
+    """Copy the tuners.* flags onto the tuner objects. Controller calls this; until it does they stay OFF."""
+    table = TUNERS if tuners is None else tuners
+    fast, link = bool(cfg.get("tuners.prime_fast_confirm", False)), bool(cfg.get("tuners.espn_link_form", False))
+    for tuner in table.values():
+        tuner.warm_probe = fast or link
+        if isinstance(tuner, PrimeTuner):
+            tuner.fast_confirm = fast
+        if isinstance(tuner, EspnTuner):
+            tuner.link_form = link
 
 
 def _cant_open(out: str) -> bool:
@@ -465,6 +511,7 @@ class PrimeTuner(Tuner):
     # The press-through reads the detail page, so it must be fully drawn first: keep `-W` here.
     # (The video can't start before the page is up anyway, so `-W` costs Prime nothing.)
     wait_for_launch = True
+    fast_confirm = False     # tuners.prime_fast_confirm
 
     def __init__(self) -> None:
         # Per stick (host): what the confirm loop saw since the deep link (tuners.prime_tune: linked -> page ->
@@ -472,6 +519,8 @@ class PrimeTuner(Tuner):
         self.tune_m = MachineMap(PRIME_TUNE, clock=time.monotonic)
         self._before_player: dict[str, str | None] = {}
         self._link_at: dict[str, float] = {}
+        self._page_ocr: dict[str, str] = {}      # what _on_detail_page's OCR last read, for the purchase guard
+        self._gap_after_press: dict[str, bool] = {}   # fast confirm: the player stopped or loaded after our press
 
     def _saw_page(self, host: str) -> bool:
         return self.tune_m.state(host) in ("page", "pressed")
@@ -485,6 +534,8 @@ class PrimeTuner(Tuner):
     async def _confirm(self, stick: Stick, pkg: str, steps: list[str], watch: NewStream | None = None,
                        may_cut=None) -> bool:
         watch = watch or NewStream({"state": "none"})
+        if self.fast_confirm:
+            return await self._confirm_fast(stick, pkg, steps, watch, may_cut)
         # Prime opens a detail page; press through profile picker and "Watch Live".
         for _ in range(3):
             if await self._watch_for(stick, pkg, watch, self.page_wait_s):
@@ -512,16 +563,109 @@ class PrimeTuner(Tuner):
                 # Watch Live focused (Nov 2): two presses. uiautomator often can't read either screen,
                 # so the second press only happens while the detail page (not the player) is in front;
                 # in the player a CENTER would pause it.
+                self._page_ocr.pop(stick.host, None)
                 on_page = await self._on_detail_page(stick)
                 if on_page and not self._saw_page(stick.host):
                     self.tune_m[stick.host].to("page", why="detail page in front")
-                if len(done) < 2 and not (live_pressed and not done) and on_page:
+                # Real money: the press below is the only one in this loop with no guard of its own. Every word
+                # this round already read counts; no new read is made here.
+                buying = self._buying(f"{text} {self._page_ocr.get(stick.host, '')}")
+                if buying:
+                    _mark(steps, "purchase screen: no press")
+                if len(done) < 2 and not (live_pressed and not done) and on_page and not buying:
                     if may_cut is not None and not may_cut():
                         break
                     await stick.key("KEYCODE_DPAD_CENTER")
                     self.tune_m[stick.host].to("pressed", why="pressed watch" if not done else "pressed watch live")
                     steps.append("pressed: watch (focused button)" if not done else "pressed: watch live (panel)")
         return await super()._confirm(stick, pkg, steps, watch, may_cut)
+
+    @staticmethod
+    def _buying(text: str) -> bool:
+        """Could OK on this screen spend money? Prime's "More purchase options" row alone is not a yes."""
+        from redzone.discovery.providers import classify_screen, is_purchase_screen, normalize_text
+        clean = _PRIME_ROW.sub(" ", normalize_text(text))
+        verdict = classify_screen(clean)
+        return is_purchase_screen(clean) or bool(verdict and verdict.kind == "upsell")
+
+    async def _confirm_fast(self, stick: Stick, pkg: str, steps: list[str], watch: NewStream, may_cut=None) -> bool:
+        """tuners.prime_fast_confirm. OCR only in the one read that decides a press, never while polling. A read
+        that leads to no press is the last read for this link. A press needs the word "watch" on a screen that
+        passed the purchase guard, so an unreadable screen is never pressed."""
+        from redzone.discovery.providers import classify_screen, normalize_text
+        host, reads, presses = stick.host, 0, 0
+        self._gap_after_press[host] = False
+        for _ in range(3):
+            if await self._watch_for(stick, pkg, watch, self.page_wait_s):
+                steps.append("playing")
+                return True
+            link = max((i for i, s in enumerate(steps) if s.startswith("deep link #")), default=-1)
+            done = [s for s in steps[link + 1:] if s.startswith("pressed: watch")]
+            live_pressed = any(s.endswith(": watch live") for s in steps[link + 1:])
+            if len(done) >= 2 or live_pressed or reads > presses:
+                break
+            if (await stick.playback(pkg)).get("state") in LOADING:
+                _mark(steps, "loading: screen read skipped")
+                break
+            text = (await stick.ocr_text()).lower()
+            reads += 1
+            _mark(steps, "screen read (ocr, one per press)")
+            if "regional restriction" in text or "not available in your location" in text or "blackout" in text:
+                steps.append("blackout: this game isn't available in your area on Prime")
+                return False
+            pb = await stick.playback(pkg)
+            if pb.get("state") in LOADING:
+                break
+            clean = _PRIME_ROW.sub(" ", normalize_text(text))
+            verdict = classify_screen(clean)
+            if self._buying(text) or (verdict and verdict.stops):
+                steps.append("stopped at an account, payment, or unavailable-content screen")
+                return False
+            if await self._press_prompt(stick, clean, steps, "pressed through", may_cut):
+                presses += 1
+                self._gap_after_press[host] = False
+                continue
+            on_page = await self._on_detail_page(stick, text)
+            if on_page:
+                if not self._saw_page(host):
+                    self.tune_m[host].to("page", why="detail page in front")
+                if "watch" not in text:
+                    continue
+                if may_cut is not None and not may_cut():
+                    break
+                await stick.key("KEYCODE_DPAD_CENTER")
+                presses += 1
+                self._gap_after_press[host] = False
+                self.tune_m[host].to("pressed", why="pressed watch" if not done else "pressed watch live")
+                steps.append("pressed: watch (focused button)" if not done else "pressed: watch live (panel)")
+            elif await self._read_shows_game(stick, pb, text, watch):
+                steps.append("playing")
+                return True
+        return await self._poll_until_playing(stick, pkg, steps, watch)
+
+    async def _read_shows_game(self, stick: Stick, pb: dict, text: str, watch: NewStream) -> bool:
+        """The round's read found no page. It takes the place of the OCR _watch_for runs with the flag off: our press
+        led to a screen without the page, or Prime ignored a link to the game it was already showing. A blank or
+        half-read screen ("watch" still in it) proves nothing, so it never confirms."""
+        if not text.strip() or "watch" in text or not playback_ready(pb):
+            return False
+        host, token = stick.host, await self._player_token(stick)
+        waited = time.monotonic() - self._link_at.get(host, time.monotonic())
+        ignored = token == self._before_player.get(host) and waited >= 6.0 and not self._saw_page(host)
+        if token and (self._pressed(host) or ignored):
+            watch.report = pb
+            return True
+        return False
+
+    async def _poll_until_playing(self, stick: Stick, pkg: str, steps: list[str], watch: NewStream) -> bool:
+        """The last wait with the flag on: the same "playing yet?" check as Tuner._confirm, with no screen reads."""
+        start = time.monotonic()
+        while time.monotonic() - start < self.confirm_timeout:
+            if watch.check(await stick.playback(pkg)):
+                steps.append(f"playing (confirmed by stick) after {time.monotonic() - start:.1f}s")
+                return True
+            await asyncio.sleep(self.poll_s)
+        return False
 
     _PLAYERS = ("IgnitionActivity", "PlaybackActivity")
 
@@ -550,7 +694,10 @@ class PrimeTuner(Tuner):
         before = self._before_player.get(stick.host)
         while True:
             pb = await stick.playback(pkg)
-            if playback_ready(pb):
+            if self.fast_confirm:
+                if await self._fast_player_check(stick, pb, before, watch):
+                    return True
+            elif playback_ready(pb):
                 token = await self._player_token(stick)
                 pressed = self._pressed(stick.host)
                 # A new player screen, or (when the page opened inside the old player) our press
@@ -570,18 +717,35 @@ class PrimeTuner(Tuner):
                 return False
             await asyncio.sleep(self.poll_s)
 
+    async def _fast_player_check(self, stick: Stick, pb: dict, before: str | None, watch: NewStream) -> bool:
+        """_watch_for with the flag on: no OCR. A new player screen confirms; after our press, so does the same
+        player coming back from a stop or a load. Anything else waits for the round's one read."""
+        host = stick.host
+        if not playback_ready(pb):
+            if self._pressed(host) and pb.get("state") in ("buffering", "connecting", "stopped"):
+                self._gap_after_press[host] = True
+            return False
+        token = await self._player_token(stick)
+        if token and (token != before or (self._pressed(host) and self._gap_after_press.get(host))):
+            watch.report = pb
+            return True
+        return False
+
     _DETAIL_WORDS = ("watchlist", "watch live", "more purchase options", "included with", "resume")
 
-    async def _on_detail_page(self, stick: Stick) -> bool:
+    async def _on_detail_page(self, stick: Stick, text: str | None = None) -> bool:
         """Prime's detail page or its Watch Live / Resume panel is in front, not a playing game.
         The page can live inside the player activity (a League Pass page opened over the last game,
-        Nov 2) and uiautomator reads it as blank, so a player activity is checked with a screenshot."""
+        Nov 2) and uiautomator reads it as blank, so a player activity is checked with a screenshot.
+        `text`: a screen already read this round (no second OCR)."""
         r = await stick.shell("dumpsys activity activities | grep -m1 mResumedActivity", timeout=5)
         if not r.ok or "com.amazon.firebat" not in r.out:
             return False
         if not any(p in r.out for p in self._PLAYERS):
             return True
-        text = (await stick.ocr_text()).lower()
+        if text is None:
+            text = (await stick.ocr_text()).lower()
+            self._page_ocr[stick.host] = text
         return any(w in text for w in self._DETAIL_WORDS)
 
     # OCR splits rows ("More purchase | options") and the 4K Plus page shows Watchlist as a bare "+".
@@ -599,6 +763,9 @@ class PrimeTuner(Tuner):
         if not await self._idle(stick, pkg):
             return False
         text = (await stick.ocr_text()).lower()
+        if self._buying(text):
+            steps.append("stopped at an account, payment, or unavailable-content screen")
+            return False
         if "watch live" in text:
             if not await self._idle(stick, pkg):
                 return False
@@ -786,8 +953,11 @@ class EspnTuner(Tuner):
     app = "espn"
     role = "espn"
     confirm_timeout = 20.0
+    link_form = False        # tuners.espn_link_form: the form reported to work on ESPN+ (unverified here)
 
     def url(self, ref: str) -> str:
+        if self.link_form:
+            return f"sportscenter://x-callback-url/showWatchStream?playID={ref}"
         return f"https://www.espn.com/watch/player/_/id/{ref}"
 
 
