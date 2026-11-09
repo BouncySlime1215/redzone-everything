@@ -68,7 +68,7 @@ class AdversarialBrain:
         if a == "future":
             return dc.replace(good, made_at=inp.now + 60)
         if a == "bad_schema":
-            return dc.replace(good, schema=brain.SCHEMA + 1)
+            return dc.replace(good, schema=brain.BRAIN_SCHEMA + 1)
         if a == "out_of_range":
             return dc.replace(good, scores={**good.scores, "x": 1e9} if not inp.options
                               else {**good.scores, inp.options[0].id: 1e9})

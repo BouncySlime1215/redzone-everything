@@ -19,7 +19,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-SCHEMA = 1
+BRAIN_SCHEMA = 1
 OPTION_VERBS = ("stay", "cut", "rewind", "reel", "fill")
 SCORE_MIN, SCORE_MAX = -100.0, 100.0   # scores are relative; values are 0..100
 
@@ -82,7 +82,7 @@ class Preferences:
 class BrainInput:
     tick: int
     now: float                # passed in, so replay is exact
-    schema: int = SCHEMA
+    schema: int = BRAIN_SCHEMA
     lookahead_s: Mapping[str, float] = field(default_factory=dict)   # L per game id
     games: tuple[GameFacts, ...] = ()
     moments: tuple[Moment, ...] = ()
@@ -108,7 +108,7 @@ class BrainOutput:
     model_id: str = ""
     made_at: float = 0.0
     ttl_s: float = 5.0        # Reflex 5 s, Mind 90 s
-    schema: int = SCHEMA
+    schema: int = BRAIN_SCHEMA
     scores: Mapping[str, float] = field(default_factory=dict)   # option id -> score
     values: tuple[GameValue, ...] = ()
     preload: tuple[str, ...] = ()    # game ids, best first (gamequeue reads this)
@@ -131,7 +131,7 @@ def _num(x: object, lo: float, hi: float) -> bool:
 
 def problem(out: BrainOutput, inp: BrainInput) -> str | None:
     """Why `out` is unusable for `inp`, or None. Reasons: schema, tick, stale, nan, range, unknown_id."""
-    if not isinstance(out, BrainOutput) or out.schema != SCHEMA or inp.schema != SCHEMA:
+    if not isinstance(out, BrainOutput) or out.schema != BRAIN_SCHEMA or inp.schema != BRAIN_SCHEMA:
         return "schema"
     if out.tick != inp.tick:
         return "tick"
