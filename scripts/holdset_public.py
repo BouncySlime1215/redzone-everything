@@ -199,6 +199,80 @@ def hoops_summary(g):
 
 BASKETBALL_EXTRA = ["shooting_play"]
 
+# --- college football (ESPN, sportsdataverse espn_cfb_pbp / cfbfastR-data): column names differ by file (dotted, camelCase,
+# snake_case), so each wanted column is found by its letters-and-digits-only form. Idempotent: canonical names map to themselves.
+CFB_MAP = {"game_id": ("gameid",), "id": ("id", "playid"), "sequence_number": ("sequencenumber",),
+           "type_text": ("typetext",), "text": ("text",), "period_number": ("periodnumber", "period"),
+           "clock_display_value": ("clockdisplayvalue",), "wallclock": ("wallclock",), "scoring_play": ("scoringplay",),
+           "home_score": ("homescore",), "away_score": ("awayscore",), "drive_id": ("driveid",),
+           "start_down": ("startdown",), "start_distance": ("startdistance",),
+           "start_yards_to_endzone": ("startyardstoendzone",), "end_yards_to_endzone": ("endyardstoendzone",),
+           "stat_yardage": ("statyardage",), "season_type": ("seasontype",),
+           "home_team_abbrev": ("hometeamabbrev", "hometeam"), "away_team_abbrev": ("awayteamabbrev", "awayteam")}
+CFB_REQUIRED = ("game_id", "type_text", "period_number", "clock_display_value", "wallclock", "home_score", "away_score", "drive_id")
+
+
+def cfb_columns(names) -> tuple[dict[str, str], list[str]]:
+    """({canonical: raw column name}, required canonical columns the file lacks)."""
+    import re
+    by_key: dict[str, str] = {}
+    for n in names:
+        by_key.setdefault(re.sub(r"[^a-z0-9]", "", str(n).lower()), n)
+    got = {c: by_key[k] for c, keys in CFB_MAP.items() for k in keys if k in by_key}
+    got = {c: got[c] for c in CFB_MAP if c in got}
+    return got, [c for c in CFB_REQUIRED if c not in got]
+
+
+def cfb_read(path, extra=()):
+    """(frame with every canonical column, missing required columns). Only the wanted columns are read (the file has ~500)."""
+    import pandas as pd
+    import pyarrow.parquet as pq
+    names = pq.read_schema(path).names
+    got, missing = cfb_columns(names)
+    if missing:
+        return pd.DataFrame(), missing
+    keep = list(dict.fromkeys(list(got.values()) + [c for c in extra if c in names]))
+    df = pd.read_parquet(path, columns=keep).rename(columns={v: k for k, v in got.items()})
+    for c in CFB_MAP:
+        if c not in df:
+            df[c] = None
+    return df, []
+
+
+def cfb_frame(df):
+    """One season's canonical rows, plays that have a period and a wall clock, in feed order (game id, sequence number)."""
+    import pandas as pd
+    if not len(df):
+        return df
+    df = df[df.period_number.notna() & df.wallclock.notna()].copy()
+    df["sq"] = pd.to_numeric(df.sequence_number, errors="coerce")
+    return df.sort_values(["game_id", "sq"], kind="stable")
+
+
+def cfb_summary(g):
+    """One ESPN college football game (canonical columns, feed order) -> {'drives': {'previous': [...]}} as football() reads it.
+    ESPN's own play types and scores are used as they are; the published win probability is not carried."""
+    by_drive = collections.OrderedDict()
+    for r in g.itertuples(index=False):
+        wall = r.wallclock if isinstance(r.wallclock, str) else None
+        if wall is None:
+            continue
+        dn, yl = _num(r.start_down), _num(r.start_yards_to_endzone)
+        p = {"id": f"{r.game_id}:{r.id}", "type": {"text": r.type_text if isinstance(r.type_text, str) else ""},
+             "text": r.text if isinstance(r.text, str) else "",
+             "period": {"number": int(r.period_number)}, "clock": {"displayValue": r.clock_display_value if isinstance(r.clock_display_value, str) else ""},
+             "wallclock": wall, "scoringPlay": bool(r.scoring_play) if r.scoring_play == r.scoring_play and r.scoring_play is not None else False,
+             "homeScore": _num(r.home_score) or 0, "awayScore": _num(r.away_score) or 0, "statYardage": _num(r.stat_yardage) or 0,
+             "start": {"down": int(dn) if dn else 0, "yardsToEndzone": yl, "distance": _num(r.start_distance) or 0},
+             "end": {"yardsToEndzone": _num(r.end_yards_to_endzone)}}
+        by_drive.setdefault(str(r.drive_id), []).append(p)
+    return {"drives": {"previous": [{"plays": ps} for ps in by_drive.values()]}}
+
+
+def cfb_team(g, col):
+    v = g[col].iloc[0]
+    return v if isinstance(v, str) else ""
+
 
 def read_public(l, files):
     """One league's public play-by-play files, concatenated, with the columns the adapters read. A file with no wall clock is skipped."""
@@ -207,6 +281,11 @@ def read_public(l, files):
     from redzone.noggin import factory
     frames = []
     for f in files:
+        if l == "cfb":
+            frame, missing = cfb_read(f, extra=("season", "tag"))
+            if not missing and len(frame):
+                frames.append(frame)
+            continue
         have = set(pq.read_schema(f).names)
         want = (factory.NFL_COLS + NFL_EXTRA) if l == "nfl" else (
             ["id", "sequence_number", "type_text", "text", "period_number", "clock_display_value", "wallclock", "scoring_play",
@@ -234,6 +313,9 @@ def public_rows(l, df, keep_games=None):
     if l == "nfl":
         df = df[df.qtr.notna()].sort_values(["game_id", "play_id"], kind="stable")
         make = nfl_summary
+    elif l == "cfb":
+        df = cfb_frame(df)
+        make = cfb_summary
     else:
         df = df[df.type_text.fillna("").ne("Substitution") & df.period_number.notna() & df.wallclock.notna()].copy()
         df["sq"] = pd.to_numeric(df.sequence_number, errors="coerce")
@@ -337,7 +419,7 @@ def run_public(args):
     files = sorted(args.public_dir.glob("play_by_play_*.parquet"))
     if not files:
         sys.exit(f"{args.public_dir}: no play_by_play_<year>.parquet files")
-    rows = public_rows(l, read_public(l, [f for f in files if int(f.stem.split("_")[-1]) >= factory.SOURCES[l]["first"]]))
+    rows = public_rows(l, read_public(l, [f for f in files if int(f.stem.split("_")[-1]) >= factory.SOURCES.get(l, {}).get("first", 0)]))
     res = public_report(l, rows, args.folds)
     res["planner_stands_in_for"] = "not run on public seasons: it needs a live GameState (scorer history, drive heat)"
     args.out.write_text(json.dumps({l: res}, indent=1))
@@ -356,7 +438,7 @@ def main(argv=None):
     a.add_argument("--poll-s", type=float, default=30.0)
     p = sub.add_parser("public", help="free public seasons, forward-chaining folds")
     p.add_argument("--public-dir", required=True, type=Path)
-    p.add_argument("--league", choices=("nfl", "nba"), required=True)
+    p.add_argument("--league", choices=("nfl", "nba", "cfb", "wnba"), required=True)
     p.add_argument("--out", required=True, type=Path)
     p.add_argument("--folds", type=int, default=4)
     args = ap.parse_args(argv)

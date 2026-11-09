@@ -9,10 +9,12 @@ the 12 h session limit: one shard per league and season, finished shards are nev
 previous output attached as an input carries them over (build plan WP-25). Nick launches it; nothing here trains.
 
 Public: only licence-cleared sources (value_shards.public_status). Nothing is downloaded here (github.com's robots rule
-stopped that route). NFL, NBA and CBB (men's college basketball, two halves) are built from the files
-agent/kaggle/fetch_sports_nfl.py / fetch_sports_nba.py / fetch_sports_ncaam.py wrote, attached as a notebook input
-(--input, default /kaggle/input). Missing files stop the run. NBA and CBB also need --personal-nba (alias
---personal-hoopr), off by default. CFB has no shard code (no CFB summary adapter, label or leak-check source): not built.
+stopped that route). NFL (1999-2024), NBA, CBB (men's college basketball, two halves), CFB and WNBA are built from the files
+agent/kaggle/fetch_sports_nfl.py / _nba.py / _ncaam.py / _cfb.py / _wnba.py wrote, attached as a notebook input
+(--input, default /kaggle/input). Missing files stop the run. NBA, CBB, CFB and WNBA also need --personal-nba (alias
+--personal-hoopr), off by default. A season whose files carry no wall clock (NFL before ~2011, early WNBA) or lack a column the
+adapter needs (CFB) builds an empty shard whose sidecar says why (no_wall_games, missing_columns): nothing is invented.
+MLB is not built: Retrosheet and Statcast have no wall clock (value_shards._NO_WALLCLOCK says what it would need).
     python scripts/kaggle_value_shards.py --source public --leagues cbb --personal-hoopr --out /kaggle/working/value_shards Nights on
 or after the scorecard window are dropped before any feature is built. Archive: DevOnly gives the dev game ids, so a
 locked or fresh game's summary is never opened. The leak check runs at the end and sets the exit code.
@@ -69,6 +71,7 @@ def _nfl_games(path, season, max_games, stats):
     import pyarrow.parquet as pq
     have = set(pq.read_schema(path).names)
     if "time_of_day" not in have:
+        stats["missing_columns"] = "time_of_day"
         return
     cols = list(dict.fromkeys(F.NFL_COLS + NFL_EXTRA + ["home_team", "away_team"]))
     df = pd.read_parquet(path, columns=[c for c in cols if c in have])
@@ -78,14 +81,45 @@ def _nfl_games(path, season, max_games, stats):
                              lambda g: (str(g.away_team.iloc[0]), str(g.home_team.iloc[0])) if "home_team" in g else ("", ""))
 
 
+def _cfb_games(path, season, max_games, stats):
+    """ESPN college football from the staged canonical file (holdset_public.CFB_MAP). A file without the wall clock, the drive id
+    or the other required columns yields nothing and says which in stats['missing_columns']."""
+    from scripts.holdset_public import cfb_frame, cfb_read, cfb_summary, cfb_team
+    df, missing = cfb_read(path)
+    if missing:
+        stats["missing_columns"] = ",".join(missing)
+        return
+    games = int(df.game_id.nunique())
+    df = cfb_frame(df)
+    if not len(df):
+        stats["no_wall_games"] = games         # the columns exist but no play has a period and a wall-clock stamp
+        return
+    yield from _public_games(df, "cfb", season, max_games, stats, cfb_summary,
+                             lambda g: int(_num_or(g.season_type.iloc[0]) == 3),
+                             lambda g: (cfb_team(g, "away_team_abbrev"), cfb_team(g, "home_team_abbrev")))
+
+
+def _num_or(x, default=0.0):
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return default
+    return default if v != v else v
+
+
 def _hoops_games(path, season, max_games, stats, league="nba"):
     from scripts.holdset_public import hoops_summary
     import pyarrow.parquet as pq
     have = set(pq.read_schema(path).names)
     if "wallclock" not in have:
+        stats["missing_columns"] = "wallclock"
         return
     df = pd.read_parquet(path, columns=[c for c in NBA_COLS if c in have])
+    games = int(df.game_id.nunique())
     df = df[df.type_text.fillna("").ne("Substitution") & df.period_number.notna() & df.wallclock.notna()].copy()
+    if not len(df):
+        stats["no_wall_games"] = games
+        return
     df["sq"] = pd.to_numeric(df.sequence_number, errors="coerce")
     df = df.sort_values(["game_id", "sq"], kind="stable")
     yield from _public_games(df, league, season, max_games, stats, hoops_summary,
@@ -116,13 +150,28 @@ def _public_games(df, league, season, max_games, stats, make, playoff, teams):
 
 
 HOOPR_FETCH = {"nba": "agent/kaggle/fetch_sports_nba.py", "cbb": "agent/kaggle/fetch_sports_ncaam.py"}
-ATTACHED_FETCH = {"nfl": "agent/kaggle/fetch_sports_nfl.py", **HOOPR_FETCH}   # leagues built only from an attached fetch output
+ATTACHED_FETCH = {"nfl": "agent/kaggle/fetch_sports_nfl.py", **HOOPR_FETCH, "cfb": "agent/kaggle/fetch_sports_cfb.py",
+                  "wnba": "agent/kaggle/fetch_sports_wnba.py"}   # leagues built only from an attached fetch output
 
 
 def hoopr_input_files(inputs, league="nba") -> list[Path]:
     """The shard parquet files the league's fetch script wrote, wherever the attached notebook output put them."""
     name = f"sports_{V.public_source(league, True)[0]}"
     return sorted(Path(p) for p in glob.glob(f"{inputs}/**/{name}/shards/*.parquet", recursive=True))
+
+
+def _read_season(f, season, league):
+    """One fetched file's rows of one season. CFB files have ~500 columns under file-dependent spellings: only the columns the
+    adapter reads are kept, under the canonical names (holdset_public.CFB_MAP)."""
+    filt = [("season", "==", season)]
+    if league != "cfb":
+        return pd.read_parquet(f, filters=filt)
+    import pyarrow.parquet as pq
+    from scripts.holdset_public import cfb_columns
+    names = pq.read_schema(f).names
+    got, _ = cfb_columns(names)       # a file lacking a required column is staged with what it has; the season then names what is missing
+    keep = list(dict.fromkeys(list(got.values()) + ["season", "tag"]))
+    return pd.read_parquet(f, columns=keep, filters=filt).rename(columns={v: k for k, v in got.items()})
 
 
 def stage_hoopr_raw(files, raw: Path, seasons, league="nba") -> dict:
@@ -144,7 +193,7 @@ def stage_hoopr_raw(files, raw: Path, seasons, league="nba") -> dict:
     (raw / league).mkdir(parents=True, exist_ok=True)
     got = {}
     for y in sorted(set(seasons) & set(where)):
-        t = pd.concat([pd.read_parquet(f, filters=[("season", "==", y)]) for f in where[y]], ignore_index=True)
+        t = pd.concat([_read_season(f, y, league) for f in where[y]], ignore_index=True)
         t.to_parquet(raw / league / f"pbp_{y}.parquet", index=False)
         got[y] = len(t)
     return got
@@ -169,9 +218,13 @@ def public_season(args):
                                                                   "note": "no file for this season", "prefix_checked": 0})
         return {"league": league, "season": season, "rows": meta["rows"], "status": "no file"}
     info = {"source": source, "license": licence, "plan": plan, "season": season}
-    games = _nfl_games(dest, season, max_games, info) if league == "nfl" else _hoops_games(dest, season, max_games, info, league)
+    games = (_nfl_games(dest, season, max_games, info) if league == "nfl" else _cfb_games(dest, season, max_games, info)
+             if league == "cfb" else _hoops_games(dest, season, max_games, info, league))
     meta = _shard_from_games(league, shard, out, games, info)
-    return {"league": league, "season": season, "rows": meta["rows"], "games": meta["games"], "status": "built"}
+    rep = {"league": league, "season": season, "rows": meta["rows"], "games": meta["games"], "status": "built"}
+    if not meta["games"]:      # say why: this is how a season without the needed columns or wall clock shows up in the run report
+        rep["why_empty"] = {k: meta[k] for k in ("missing_columns", "no_wall_games", "thin_games", "dropped_eval_games") if meta.get(k)} or "no games in the file"
+    return rep
 
 
 def archive_league(league, split, archive, out, max_games):

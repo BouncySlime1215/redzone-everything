@@ -43,7 +43,7 @@ from redzone.context.tokens import PERSONAL_USE
 from redzone.models_rt.forest import MODEL_DIRS, Nodes, read_meta
 
 GV_SCHEMA = 1
-GV_LEAGUES = ("nfl", "nba", "cbb")
+GV_LEAGUES = ("nfl", "nba", "cbb", "cfb", "wnba")
 _BASE_FEATURES = ("period", "clock_left", "game_left", "is_ot", "late", "abs_margin", "total_points", "pts_5m", "swing_5m",
                   "lead_changes", "plays_5m", "since_head_s", "since_score_s", "since_start_s", "t1_5m", "t2_5m", "t3_5m",
                   "t1_game", "value_10m", "down", "distance", "yards_to_goal", "playoff")
@@ -67,7 +67,7 @@ GV_MAX_BYTES = 20_000_000
 GV_SCALE_POINTS = 5.0                # raw points that read 63 on the 0-100 scale: one Tier 1
 GV_TABLE_SHAPE = (6, 4, 4, 4)        # period, clock band, margin band, field-position band (scripts/holdset.py key)
 GV_STATUS = "shadow_only"
-GV_PERSONAL_SOURCES = ("hoopr_espn_nba", "hoopr_espn_cbb", "archive")
+GV_PERSONAL_SOURCES = ("hoopr_espn_nba", "hoopr_espn_cbb", "espn_cfb", "wehoop_espn_wnba", "archive")
 GV_SHADOW_NIGHTS = 7
 GV_DIR = MODEL_DIRS["noggin"]
 
@@ -233,7 +233,7 @@ def table_key(X: np.ndarray, league: str) -> np.ndarray:
     key[:, 0] = np.clip(X[:, _COL["period"]], 0, 5)
     key[:, 1] = np.select([clock < 0, clock <= 120, clock <= 300], [3, 0, 1], 2)
     key[:, 2] = np.select([margin <= 3, margin <= 8, margin <= 16], [0, 1, 2], 3)
-    if league == "nfl":
+    if league in ("nfl", "cfb"):
         y = X[:, _COL["yards_to_goal"]]
         key[:, 3] = np.select([y < 0, y <= 20, y <= 40], [3, 0, 1], 2)
     return key

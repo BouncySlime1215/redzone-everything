@@ -56,7 +56,8 @@ TIER_WEIGHTS = {1: 5.0, 2: 2.0, 3: 0.5}      # scripts/holdset.py WEIGHTS: same 
 FEATURE_UNSAFE_KINDS = frozenset({"pp_start"})
 PREFIX_ROWS = 5                              # rows per game re-derived from a cut-off feed
 
-REGULATION_LEN = {"nfl": (4, 900.0), "cfb": (4, 900.0), "nba": (4, 720.0), "cbb": (2, 1200.0), "nhl": (3, 1200.0)}
+REGULATION_LEN = {"nfl": (4, 900.0), "cfb": (4, 900.0), "nba": (4, 720.0), "wnba": (4, 600.0), "cbb": (2, 1200.0),
+                  "nhl": (3, 1200.0)}
 LAG_PROFILE = Path(__file__).resolve().parents[1] / "lab" / "feed_lag_profile.json"
 
 VALUE_LABELS = ("value_next_3m", "p_tier1_60s")
@@ -76,17 +77,28 @@ select_features(G.GV_FEATURES_VERSION)
 
 # league -> (source id, licence line, plan, url, seasons newest first). From the gaps report: Licence OK = Yes.
 _CLEARED = {"nfl": ("nflverse_pbp", "CC-BY 4.0 (nflverse data); credit nflverse", "A", factory.SOURCES["nfl"]["url"],
-                    tuple(range(2024, 2010, -1)))}
+                    tuple(range(2024, 1998, -1)))}   # 1999-2010: nflverse has no time_of_day for most of them;
+# a game with no snap clock is skipped (stats no_wall_games), so a season without one is an empty shard, not an error
 # Personal-use hoopR leagues, one row each: nothing else in the build knows which leagues these are (WP-25 CBB).
 # CBB has two 20 min halves (REGULATION_LEN), so period 3+ is overtime; ESPN's feed carries no shot clock, so none is read.
 _PERSONAL = {
     "nba": ("hoopr_espn_nba", f"{PERSONAL_USE}; hoopR ESPN NBA", "B", factory.SOURCES["nba"]["url"], tuple(range(2026, 2013, -1))),
     "cbb": ("hoopr_espn_cbb", f"{PERSONAL_USE}; hoopR ESPN men's college basketball", "B", factory.SOURCES["cbb"]["url"],
             tuple(range(2026, 2005, -1))),
+    # CFB: ESPN-derived (sportsdataverse espn_cfb_pbp / cfbfastR-data), fetched by agent/kaggle/fetch_sports_cfb.py. Football rules
+    # (nfl detectors and drives); the fetch has 2002-2024, a season whose columns lack the wall clock builds an empty shard.
+    "cfb": ("espn_cfb", f"{PERSONAL_USE}; ESPN college football via sportsdataverse", "B",
+            "https://github.com/sportsdataverse/sportsdataverse-data", tuple(range(2024, 2001, -1))),
+    # WNBA: wehoop ESPN pbp (agent/kaggle/fetch_sports_wnba.py). Four 10 min quarters, NBA detectors; seasons before the
+    # wall clock was kept build empty shards.
+    "wnba": ("wehoop_espn_wnba", f"{PERSONAL_USE}; wehoop ESPN WNBA", "B",
+             "https://github.com/sportsdataverse/wehoop-wnba-data", tuple(range(2025, 2001, -1))),
 }
 PERSONAL_LEAGUES = tuple(_PERSONAL)
-_NO_WALLCLOCK = {"mlb": "Retrosheet is cleared but has plate appearances with no wall clock, so no timed label exists; "
-                        "Statcast and the MLB API are not cleared for bulk use"}
+_NO_WALLCLOCK = {"mlb": "no wall clock: Retrosheet (16.76 M plays, cleared) and Statcast pitches (game_date, inning, pitch number) "
+                        "carry no timestamp, so no timed label exists. The only source with one is the MLB Stats API live feed "
+                        "(playEvents startTime, 2008-24, scripts/pbp/mlb_statsapi.py, personal-use under Nick's Nov 5 ruling): "
+                        "it needs a fetch notebook and a plate-appearance adapter before MLB can be built"}
 
 
 class SourceNotCleared(ValueError):
@@ -123,7 +135,8 @@ def _lag_profile() -> dict:
 def sample_lags(league: str, game_id: str, n: int) -> np.ndarray:
     """n feed lags from the league's measured quantiles (capped at 180 s), the same for the same game every run."""
     prof = _lag_profile()
-    q = (prof["leagues"].get(league) or prof["leagues"]["nfl"])["q"]
+    near = {"cfb": "nfl", "wnba": "nba"}.get(league, "nfl")   # no measured profile of its own: the nearest league's
+    q = (prof["leagues"].get(league) or prof["leagues"][near])["q"]
     seed = int(hashlib.sha256(f"{league}|{game_id}".encode()).hexdigest()[:16], 16)
     u = np.random.default_rng(seed).uniform(0.0, 100.0, n)
     return np.minimum(np.interp(u, prof["quantiles"], q), LAG_CAP_S)

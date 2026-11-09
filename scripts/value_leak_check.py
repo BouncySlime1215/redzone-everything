@@ -54,7 +54,7 @@ def allowed_for(version: str) -> frozenset:
 
 
 PUBLIC_SOURCES = {"nflverse_pbp": "nfl"}
-PERSONAL_SOURCES = {"hoopr_espn_nba": "nba", "hoopr_espn_cbb": "cbb"}
+PERSONAL_SOURCES = {"hoopr_espn_nba": "nba", "hoopr_espn_cbb": "cbb", "espn_cfb": "cfb", "wehoop_espn_wnba": "wnba"}
 PERSONAL_TAG = "personal-use, not for commercial release"
 COPY_R = 0.995          # a feature this correlated with a label is the label
 MIN_ROWS_COPY = 200
@@ -173,7 +173,12 @@ def _raw_plays(league: str, g: pd.DataFrame) -> dict[float, list[dict]]:
         wall = holdset.ts(r.time_of_day if league == "nfl" else r.wallclock)
         if not wall:
             continue
-        if league == "nfl":
+        if league == "cfb":      # ESPN college football, canonical columns (holdset_public.CFB_MAP)
+            home, away = _n(r.home_score), _n(r.away_score)
+            play = {"period": _n(r.period_number, -1.0), "clock_left": _raw_clock(r.clock_display_value),
+                    "clock_text": r.clock_display_value, "down": _n(r.start_down), "distance": _n(r.start_distance),
+                    "yards_to_goal": _n(r.end_yards_to_endzone, -1.0)}
+        elif league == "nfl":
             home, away = _n(r.total_home_score), _n(r.total_away_score)
             yl = _n(r.yardline_100, None)
             play = {"period": _n(r.qtr, -1.0), "clock_left": _raw_clock(r.time), "clock_text": r.time, "down": _n(r.down), "distance": _n(r.ydstogo),
@@ -192,7 +197,7 @@ def _raw_kind(league: str, type_text: str, text: str) -> str:
     t = type_text.lower()
     if "timeout" in t:
         return "timeout"
-    if league == "nfl":
+    if league in ("nfl", "cfb"):
         return "turnover" if ("interception" in t or "fumble recovery (opponent)" in t or "fumble return" in t) else "foul" if "penalty" in t else ""
     low = (text or "").lower()
     if "turnover" in t or "turnover" in low or any(v in t for v in ("traveling", "shot clock", "backcourt", "palming", "double dribble", "kicked ball", "8 second")):
@@ -213,6 +218,10 @@ def _raw_history(league: str, g: pd.DataFrame) -> dict[float, list[dict]]:
             if not kind_text or not wall:
                 continue
             plays.append((wall, _n(r.total_home_score), _n(r.total_away_score), _raw_kind(league, kind_text, ""), r.qtr))
+        elif league == "cfb":
+            wall = holdset.ts(r.wallclock)
+            if wall:
+                plays.append((wall, _n(r.home_score), _n(r.away_score), _raw_kind(league, r.type_text if isinstance(r.type_text, str) else "", ""), r.period_number))
         else:
             wall = holdset.ts(r.wallclock)
             if wall:
@@ -263,7 +272,7 @@ def _same(a, b) -> bool:
 
 def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name: str, rep: Report, version: str = FEATURES_VERSION):
     """A sample of one game's rows against the raw source: the head play's fields, then the label."""
-    make = holdset_public.nfl_summary if league == "nfl" else holdset_public.hoops_summary
+    make = {"nfl": holdset_public.nfl_summary, "cfb": holdset_public.cfb_summary}.get(league, holdset_public.hoops_summary)
     built = holdset.game_row(league, gid, make(g))
     if built is None:
         rep.fail("raw_audit", f"{name}: game {gid} has shard rows but is not a whole game in the raw source")
@@ -302,6 +311,8 @@ def audit_raw(df: pd.DataFrame, league: str, shard: str, name: str, raw: Path, r
     frame = holdset_public.read_public(league, [path])
     if league == "nfl":
         frame = frame[frame.qtr.notna()].sort_values(["game_id", "play_id"], kind="stable") if len(frame) else frame
+    elif league == "cfb":
+        frame = holdset_public.cfb_frame(frame)
     elif len(frame):
         frame = frame[frame.type_text.fillna("").ne("Substitution") & frame.period_number.notna() & frame.wallclock.notna()].copy()
         frame["sq"] = pd.to_numeric(frame.sequence_number, errors="coerce")
