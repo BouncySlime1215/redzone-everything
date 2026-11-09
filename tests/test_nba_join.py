@@ -66,6 +66,14 @@ def test_a_defensive_rebound_gives_less_time_than_a_make():
     assert _veto(fine, d) == ""
 
 
+def test_college_men_are_judged_like_the_nba_and_women_have_no_walk_to_judge():
+    """after_shot lists nba and cbb only (N2: women's college basketball is off): a league with no walk is never held here."""
+    for league, want in ((League.CBB, "landing"), (League.WCBB, "")):
+        h, d = _join_after(_rows(MADE, 10.0, 16.0))
+        h.merger.games["b"].league = league
+        assert _veto(h, d) == want, league
+
+
 def test_the_flag_off_changes_nothing():
     h, d = _join_after(_rows(MADE, 10.0, 16.0), slate_on=False)
     assert _veto(h, d) == ""

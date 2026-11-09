@@ -172,6 +172,67 @@ def test_ending_game_holds_every_kind(monkeypatch):
         assert gate.commit_gate(h, _d(kind=kind), "a", T, cands, None, now=AT) == "ending_airing"
 
 
+def test_an_ended_game_with_nothing_airing_does_not_hold():
+    """_ending_still_airing says 0.0 when the last play has aired: a finished game must not wait on that forever."""
+    h = _host()
+    h.merger.games["a"].phase = Phase.POST
+    assert gate.commit_gate(h, _d(kind="jump"), "a", T, {}, None, now=AT) == ""
+
+
+@pytest.mark.parametrize("what,before,action,rx", [
+    ("a pseudo channel on screen", REDZONE, "switch", None),
+    ("a replay exit already reached", "a", "switch", AT - 1.0),
+    ("a decision that is not a switch", "a", "replay", None),
+])
+def test_ending_airing_only_holds_a_plain_switch_off_the_ended_game(what, before, action, rx):
+    h = _host()
+    _airing(h)
+    kw = {"action": action, "replay": NS(replayed=False)} if action == "replay" else {}
+    assert gate.commit_gate(h, _d(kind="jump", **kw), before, T, {}, rx, now=AT) == "", what
+    assert gate.commit_gate(h, _d(kind="jump"), "a", T, {}, None, now=AT) == "ending_airing"   # the same host does hold
+
+
+def test_a_replay_exit_is_over_at_its_own_second():
+    h = _host()
+    assert gate.commit_gate(h, _d(), "a", T, {}, AT, now=AT) == ""
+    assert gate.commit_gate(h, _d(), "a", T, {}, AT + 0.1, now=AT) == "replay_exit"
+
+
+def test_a_pseudo_channel_is_judged_as_one_not_as_a_game(monkeypatch, tmp_path):
+    """RedZone and the reel have no game, timeline or entry plan; with their own condition met nothing else vetoes."""
+    monkeypatch.setattr(gate, "redzone_on", lambda games: True)
+    assert gate.commit_gate(_host(), _d(target=REDZONE), "a", "x:rz", {}, None, now=AT) == ""
+    (tmp_path / "reel.mp4").write_bytes(b"x")
+    monkeypatch.setattr(gate, "REEL_DIR", tmp_path)
+    assert gate.commit_gate(_host(), _d(target=REEL), "a", "reel:night", {}, None, now=AT) == ""
+
+
+def test_the_reel_needs_both_its_link_and_its_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(gate, "REEL_DIR", tmp_path)
+    assert gate.commit_gate(_host(), _d(target=REEL), "a", "reel:night", {}, None, now=AT) == "reel_missing"   # no file
+    (tmp_path / "reel.mp4").write_bytes(b"x")
+    assert gate.commit_gate(_host(), _d(target=REEL), "a", "youtubetv:night", {}, None, now=AT) == "reel_missing"   # no link
+
+
+def test_a_jump_is_not_judged_by_the_entry_commercial_bar(monkeypatch):
+    """A jump's own bar (jump_lands_dead) judges its picture; arrival_break is the entry path's."""
+    monkeypatch.setattr(gate, "break_on_arrival", lambda *a: True)
+    assert gate.commit_gate(_host(), _d(kind="jump"), "a", T, {}, None, now=AT) == ""
+    assert gate.commit_gate(_host(), _d(kind="better"), "a", T, {}, None, now=AT) == "arrival_break"
+
+
+def test_a_possession_start_needs_an_entry_only_cut_to_count(monkeypatch):
+    """Only an entry-only cut may claim the possession start or the urgent thin margin; a timed cut may not."""
+    h = _host()
+    seen = []
+    h.decider._cut_timed = lambda *a: True
+    h.decider._possession_start = lambda *a: True
+    h.decider._entry_urgent = lambda *a: True
+    h.decider.entry_plan = lambda *a, **k: (seen.append(k), _plan(True))[1]
+    h.scored = {"b": NS(crunch=False, crunch_now=False)}
+    assert gate.commit_gate(h, _d(), "a", T, {}, None, now=AT) == "" and seen == [{"urgent": False, "possession": False}]
+
+
 def test_a_live_game_is_not_held_for_its_last_event_airing():
     """safe_to_leave's 'still airing' is true of nearly every live game: only a game that ended may wait on it."""
     h = _host()

@@ -154,8 +154,10 @@ def test_failures_are_drawn_the_same_for_both_arms_and_the_queue_answers_by_the_
             if "step" in f:
                 seen.add((f["kind"], f["step"]))
     assert ("never_started", "retry") in seen
-    assert all(step == gq.on_failure(gq.Entry("b", (gq.Route("youtubetv", "b"),)), kind).step.value
-               or kind == "never_started" for kind, step in seen)
+    entry = gq.Entry("b", (gq.Route("youtubetv", "b"),))
+    # a kind may answer differently on a first try and on a second; the table gives both, and nothing else is allowed
+    assert seen and all(step in {gq.on_failure(entry, kind, tries).step.value for tries in (0, 1)} for kind, step in seen)
+    assert {k for k, _ in seen} - {"never_started"}, "only never_started was drawn: the table check proved nothing"
 
 
 def test_a_walled_route_is_not_pressed_again_by_the_queue(cfg, monkeypatch):

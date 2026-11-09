@@ -39,6 +39,15 @@ def test_nicks_football_must_show_list_is_all_on_the_floor():
     assert A.trigger_rank("xfl", "td") == A.NOT_FLOOR     # a league we don't show is never owed
 
 
+def test_a_must_carries_the_moment_tier_and_only_an_unlisted_kind_gets_the_highlight_tier():
+    """Must.tier orders the floor: a touchdown is tier 1 and a field goal tier 2, not everything at the highlight tier."""
+    from redzone.moments import tiers
+    assert [A.must_of("nfl", k, "g", NOW).tier for k in ("td", "fg", "gain10")] == [1, 2, 3]
+    assert A.must_of("nfl", "td", "g", NOW).tier == tiers.tier_of("nfl", "td")
+    assert tiers.tier_of("nba", "rz_trip") is None
+    assert A.must_of("nba", "rz_trip", "g", NOW).tier == tiers.TIER_HIGHLIGHT
+
+
 def test_trigger_order_is_score_then_red_zone_then_turnover_then_late():
     r = [A.trigger_rank("nfl", k) for k in ("td", "fg", "rz_trip", "turnover", "wp5")]
     assert r == sorted(r) and len(set(r)) == 5
