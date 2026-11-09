@@ -414,6 +414,7 @@ class Engine:
         self.queue_pins: list[str] = []   # [queue] Nick's pins, first = strongest (action pin / move)
         self._queue_off: dict[str, float] = {}   # [queue] target -> until: walled, refused or blacked out (_on_queue_move)
         self._queue_cands: dict | None = None    # [queue] the last tick's candidates, for a re-plan after a failure
+        self._queue_loaded: dict[str, str] = {}  # [queue] game -> the route the queue last put on the hidden stick for it
         self._game_queue: dict | None = None   # [queue] snapshot['game_queue'], from the last tick
         self.clock_tape = views.ClockTape()    # [views.screen_clock] each game's clock, to read it back at the screen's delay
         from redzone.recorded import RecordedPlayback
@@ -1758,6 +1759,8 @@ class Engine:
                 continue
             self.scored[gid] = sc
             w = self.supervisor.route(gid, self.discovery.choose(g, self.channels.where(g, sunday_ticket=st)))
+            if self.cfg.get("queue.enabled", False):
+                w = self._queue_failover(gid, w)
             self.where[gid] = w
             if g.phase != Phase.LIVE:
                 continue
@@ -2485,6 +2488,34 @@ class Engine:
         except Exception:
             log.exception("queue move failed for %s", target)
 
+    def _queue_failover(self, gid: str, w):
+        """Which route this game resolves to this tick, when the queue loaded it a backup. The backup replaces the primary
+        in `where` only while it can really be used: still a live, unblocked way to watch this game, and either the primary
+        is down and the hidden stick is ready on the backup, or the game is on screen on it (every leave reads that route's
+        delay). Only `where` changes, so every switch, tap and commit gate rule runs as it always did: no new way to flip.
+        Any doubt keeps the primary.
+
+        Why: the queue could fill the hidden stick with a backup, but the decider still wanted the failed primary, so the
+        ready stick was never flipped to (WP-12C)."""
+        try:
+            ctl, t, primary = self.control, self._queue_loaded.get(gid), getattr(w, "target", None)
+            if not t or t == primary or t in self._queue_off or t in self._fail_cool:
+                return w
+            alt = next((a for a in getattr(w, "alternates", None) or ()
+                        if a.target == t and a.tunable and not a.blackout), None)   # a blackout or a lost link stays off
+            if alt is None:
+                return w
+            on_screen = ctl.on_target == t and gid in (self.decider.current, getattr(self._pending_decision, "target", None))
+            primary_down = not primary or not w.tunable or primary in self._queue_off or primary in self._fail_cool \
+                or not ctl.can_tune(primary)
+            if not on_screen and not (primary_down and ctl.standby_ready(t) and ctl.can_tune(t)):
+                return w
+            return _replace(w, target=t, label=alt.label, confidence=alt.confidence, tunable=True, provider=alt.provider,
+                            reasons=[f"{primary or 'its main route'} is down; using {alt.label}"])
+        except Exception:
+            log.exception("queue failover failed for %s", gid)
+            return w
+
     def _queue_replan(self) -> None:
         """One extra hidden-stick pass on the last tick's candidates; a switch in flight keeps the stick."""
         if self._queue_cands is not None and self._pending_decision is None:
@@ -2495,6 +2526,7 @@ class Engine:
         scrubbed standby goes. A Lock or a Pin is Nick's own word, so it goes the way a game opened on the phone does."""
         ctl, want = self.control, plan.want
         target = f"{want.route.app}:{want.route.ref}"   # the route it picked: a failover, or a game not live yet
+        self._queue_loaded[want.entry.game] = target   # the queue's own word for which game this route is for
         started = ctl.standby != (target, None) and ctl.preload(
             target, user=want.rung in (gq.Rung.LOCK, gq.Rung.PIN), urgent=urgent, rotate=True)
         self._jump_standby_note = {"standby_plan": "queue", "want": want.entry.game,
