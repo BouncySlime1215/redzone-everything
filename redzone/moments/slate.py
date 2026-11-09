@@ -52,6 +52,13 @@ class Params:
     leave_after_shot: bool = True    # basketball may leave in the walk after a shot, low leverage only
     walk_safe_made_s: float = 6.0    # a join after a make is up 4 s after it with 2 s of doubt: the frozen grader's 4 s dead ball, inside the measured 7 s (5th percentile of the next live action, fit nights, n=4,403)
     walk_safe_rebound_s: float = 5.0  # the same after a defensive rebound (n=3,633); a transition has no walk at all
+    # [NBA-BUCKET, basketball.join_after_bucket] a join may land in the window after a made basket: from the make to the
+    # measured moment the next possession can produce a shot (scripts/bucket_join_measure.py, fit nights).
+    bucket_after_s: float = 1.0       # the make is stamped ~1 s before the ball is through the net (cuts walk_after_s)
+    bucket_guard_s: float = 2.0       # the next action's stamp can lead its start (cuts walk_guard_s)
+    bucket_sigmas: float = 1.0        # doubt on the landing, in stick delay sigmas: inside it = "may be before the make or after the next shot"
+    bucket_floor_nba_s: float = 8.0   # 5th percentile, make to the next shot attempt, wall clock (n=4,455; fast break 8, last 2 min 10)
+    bucket_floor_cbb_s: float = 9.0   # the same in men's college (n=1,395: wall 10, fast break 9; clock-only 8)
 
     @classmethod
     def from_config(cls, get: Callable[..., object]) -> Params:
@@ -205,6 +212,11 @@ def returns_too_soon(left_at: Mapping[str, float], gid: str, now: float, in_play
         return False
     t = left_at.get(gid)
     return t is not None and now - t < p.return_gap_s
+
+
+def bucket_floor_s(league: str, p: Params) -> float:
+    """[NBA-BUCKET] The latest a join after a make can be up and still be ahead of the next shot, by league."""
+    return p.bucket_floor_cbb_s if league == "cbb" else p.bucket_floor_nba_s
 
 
 def walk_safe_s(shot: str, p: Params) -> float:
