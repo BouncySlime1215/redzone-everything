@@ -30,3 +30,20 @@ async def test_cache_is_bounded_and_keeps_the_newest():
     assert f.last_good(f"https://example.com/g/{n - 1}") is not None
     assert f.last_good("https://example.com/g/0") is None
     assert len(f._locks) <= H.MAX_CACHE_ENTRIES + 1
+
+
+async def test_get_bytes_success_resets_backoff():
+    clk = Clk()
+    state = {"fail": True}
+
+    def handler(r):
+        return httpx.Response(500) if state["fail"] else httpx.Response(200, content=b"x", headers={"content-type": "image/png"})
+    f = _fetcher(handler, clk)
+    url = "https://img.example.com/a.png"
+    assert await f.get_bytes(url) is None
+    assert f.backing_off(url)
+    state["fail"] = False
+    clk.t += 10_000
+    assert await f.get_bytes(url) is not None
+    assert not f.backing_off(url)
+    assert "img.example.com" not in f._backoff

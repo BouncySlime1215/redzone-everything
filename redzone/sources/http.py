@@ -175,6 +175,7 @@ class Fetcher:
             return None
         if r.status_code != 200 or len(r.content) > max_bytes:
             return None
+        self._reset(urlparse(url).netloc, url)   # a good answer ends the host's backoff, as in get_json
         return r.content, r.headers.get("content-type", "application/octet-stream")
 
     def _bump(self, key: str, retry_after: str | None = None, limited: bool = False,
