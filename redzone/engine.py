@@ -25,14 +25,16 @@ from redzone.reel import REEL_DIR
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on, route_class
 from redzone.config import Config, ConfigError, for_league
 from redzone.governor import keep_awake_wanted
-from redzone.control import NO_STICK, STANDBY_NOT_READY, Controller, Outcome
+from redzone.control import NO_STICK, ROUTE_OFF_S, STANDBY_NOT_READY, Controller, Outcome
 from redzone.decider import buffered as bj
 from redzone.decider import gate
 from redzone.decider import whistle
 from redzone.decider.decider import ENTRY_EXEMPT, REDZONE, REEL, Candidate, Decider, Decision, FocusMode, Missed, State
-from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
+from redzone.decider.screen import (MIN_BREAK_S, PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
                                    leave_gate, leave_window, screen_evidence)
 from redzone.models import GameState, League, Phase
+from redzone.moments import tier_of
+from redzone.moments.detect import _PEN_EXCLUDED
 from redzone.plan import Tonight, day_of, path_for
 from redzone.scoring import breaks
 from redzone.scoring.drive import DriveScorer
@@ -47,6 +49,7 @@ from redzone.store import Store
 from redzone.fsm import MachineMap
 from redzone.machines import decider as M
 from redzone.noggin import gamequeue as gq
+from redzone.noggin.lookahead import ahead
 
 log = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")
@@ -61,6 +64,28 @@ NOT_THE_TARGETS_FAULT = ("no safe moment", "safe exit window closed", "switch ca
 PEEK_HOLD_S = 90.0    # a game opened on the phone keeps the hidden stick this long (two_stick.pretune_on_open)
 SKIP_S = 300.0        # a skipped game stays off the TV this long after the TV leaves it
 _QUEUE_KLASS = {"prime": gq.LONG_LEAD, "espn": gq.LIVE_EDGE, "other": gq.LONG_LEAD}   # channels.route_class -> gamequeue
+
+
+def _moment_word(league: League, e) -> str:
+    """The redzone/moments word for one timeline play, "" when it has none. The Timeline keeps only the play's kind
+    and `big`, so the setups that need field position, down or a run (rz_trip, 4th_try, run8, big_pa) have no word."""
+    k, base = e.play_kind or "", league.base
+    if not k:
+        return ""
+    if base == League.NFL:
+        return "turnover" if k == "safety" else k if k in ("td", "turnover", "fg") else ""
+    if base == League.NBA:
+        return "clutch_fg" if e.big else ""   # Timeline._nba_clutch is the only way a basket is big here
+    if base == League.NHL:
+        words = k.replace("_", " ")
+        if k == "goal" or "penalty_shot" in k:
+            return "goal" if k == "goal" else "penalty_shot"
+        return "pp_start" if espn._nhl_penalty(words) and not any(x.lower() in words for x in _PEN_EXCLUDED) else ""
+    if base == League.MLB:
+        return "hr" if k == "hr" else "run_scored" if e.big else ""
+    return ""
+
+
 SUPERSEDED = "switch cancelled: superseded"   # an in-flight switch replaced by a newer one (_act): resolved, recorded
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
@@ -385,6 +410,8 @@ class Engine:
         self._house_device_task = None
         self._st_scan_task = None
         self.queue_pins: list[str] = []   # [queue] Nick's pins, first = strongest (action pin / move)
+        self._queue_off: dict[str, float] = {}   # [queue] target -> until: walled, refused or blacked out (_on_queue_move)
+        self._queue_cands: dict | None = None    # [queue] the last tick's candidates, for a re-plan after a failure
         self._game_queue: dict | None = None   # [queue] snapshot['game_queue'], from the last tick
         from redzone.recorded import RecordedPlayback
         self.recorded = RecordedPlayback(self)
@@ -2294,11 +2321,62 @@ class Engine:
             return "pregame_warmup"
         return ""
 
+    def _queue_targets(self, gid: str, primary: str | None) -> tuple[str, ...]:
+        """Every way to watch this game, best first: the chosen target, then discovery's tunable alternates."""
+        alts = (a.target for a in getattr(self.where.get(gid), "alternates", None) or () if a.tunable and not a.blackout)
+        return tuple(dict.fromkeys(t for t in (primary, *alts) if t))
+
+    def _queue_moment(self, gid: str, target: str, now: float, max_sigma: float) -> tuple[int, float, float] | None:
+        """(tier, join_in_s, lookahead_s) of the best known moment still to air in this game, or None. The join point is
+        the last clean landing before it: the end of the last dead window that closes before the moment, less the
+        delay's doubt. No clean dead ball before it means no rung, and the catch-up replay has it. These are feed times, ahead of the picture: they stay out of snapshot["game_queue"]."""
+        tl = self.decider.timelines.get(gid)
+        if tl is None:
+            return None
+        dl = self.delays.get(target)
+        try:   # the stick will hold this far behind live once it has the game, so that is how far ahead the feed will be
+            extra = max(0.0, float(self._behind_of(target) or 0.0) - float(self.delays.held.get(target, 0.0)))
+        except (TypeError, ValueError):
+            extra = 0.0
+        book = _replace(dl, mu=dl.mu + extra) if extra else dl
+        seen = ahead(tl, book, now, max_sigma)
+        if seen is None:
+            return None
+        best = None
+        for e in seen.plays:
+            word = _moment_word(tl.league, e)
+            tier = tier_of(tl.league.base.value, word) if word else None
+            if tier not in (1, 2) or (best is not None and tier >= best[0]):
+                continue
+            w = seen.last_dead_before(e.lo, seen.screen_t)
+            if w is not None:
+                best = (tier, max(w.start, w.end - 2.0 * book.current_sigma(now)) - now, book.mu)
+        return best
+
+    def _queue_lead(self, g: GameState | None, target: str, now: float, within: float) -> float | None:
+        """Seconds of known lead on a long-lead route: to the scheduled start, or to the end of a break that always runs
+        long enough (MIN_BREAK_S, as the picture will show it). None outside `within`, so a game hours away can't hold
+        the hidden stick."""
+        if g is None or _QUEUE_KLASS.get(route_class(target), gq.FAST) != gq.LONG_LEAD:
+            return None
+        lead = None
+        if g.phase == Phase.PRE and g.start_time:
+            lead = g.start_time - now
+        elif g.phase == Phase.LIVE:
+            tl = self.decider.timelines.get(g.game_id)
+            start = tl.last("stop_start") if tl is not None else None
+            if start is not None and start.label == tl.stoppage.value:
+                floor = max(MIN_BREAK_S.get(tl.league, {}).get(tl.stoppage, 0.0),
+                            float(tl.extra_floors.get(tl.stoppage, 0.0)))
+                lead = start.lo + floor + self.delays.get(target).mu - now if floor > 0 else None
+        return lead if lead is not None and 0.0 <= lead <= within else None
+
     def _queue_plan(self, cands: dict, redzone: str | None = None) -> gq.Plan | None:
         """One gamequeue.tick on this tick's facts, kept for the phone. Reads only. None if anything fails, so the
         fallback plans run: a queue bug must never cost the hidden stick."""
         try:
             dec, u, ctl, now = self.decider, self.decider.user, self.control, time.time()
+            ctl.on_queue_move, self._queue_cands = self._on_queue_move, cands
             params = gq.Params.from_config(self.cfg.get)
             hidden_t = ctl.standby[0]
             hidden = self._game_on_target(hidden_t) if hidden_t else None
@@ -2308,37 +2386,61 @@ class Engine:
                     rank.setdefault(o.game_id, i)
             checks = ((e.get("check") or {}) for e in (getattr(self.tonight, "plan", None) or {}).get("games") or ())
             verified = {c.get("target") for c in checks if c.get("state") == "verified"}
+            for t in [t for t, until in self._queue_off.items() if now >= until]:
+                del self._queue_off[t]
+            max_sigma = float(self.cfg.get("noggin.lookahead.max_sigma_s", 10))
+            within = float(self.cfg.get("queue.warn_within_s", 180.0))
 
             def can_reach(target: str | None) -> bool:
-                return bool(target) and (target == hidden_t or bool(ctl.can_tune(target)))
+                return bool(target) and target not in self._queue_off and (target == hidden_t or bool(ctl.can_tune(target)))
+
+            def best_target(gid: str, primary: str | None) -> str | None:
+                return next((t for t in self._queue_targets(gid, primary) if can_reach(t)), primary)
 
             self.queue_pins[:] = [g for g in self.queue_pins
                                   if getattr(self.merger.games.get(g), "phase", None) != Phase.POST]
             # Only the strongest pin that can be reached takes the Pin rung; the rest wait behind it, in your order.
             top_pin = next((g for g in self.queue_pins
-                            if g != dec.current and g in cands and can_reach(cands[g].target)), None)
-            entries = []
-            for gid, x in cands.items():
-                if gid in u.muted:   # Drop is the existing mute
-                    continue
-                t, ok = x.target, can_reach(x.target)
-                routes = ()
-                if t:
-                    app, _, ref = t.partition(":")
-                    routes = (gq.Route(app, ref, _QUEUE_KLASS.get(route_class(t), gq.FAST),
-                                       bool(ctl.slow_tune(t)), not ok),)
+                            if g != dec.current and g in cands and can_reach(best_target(g, cands[g].target))), None)
+            entries, games = [], self.merger.games
+
+            def add(gid: str, primary: str | None, score: float, stale: bool) -> None:
+                t = best_target(gid, primary)
+                ok = can_reach(t)
+                routes = []
+                for r in self._queue_targets(gid, primary):   # failover: a route that is off stays listed but flagged
+                    app, _, ref = r.partition(":")
+                    routes.append(gq.Route(app, ref, _QUEUE_KLASS.get(route_class(r), gq.FAST),
+                                           bool(ctl.slow_tune(r)), not can_reach(r)))
+                routes.sort(key=lambda r: r.flagged)   # the route `t` is first, so the level below is the route's
                 state, on = (ctl.standby_m.state, ctl.hidden) if t and t == hidden_t else \
                     ("ready", ctl.main) if gid == dec.current else (None, None)
                 buffered = on is not None and on.scrubbed(t) is not None
                 pin_i = self.queue_pins.index(gid) if gid in self.queue_pins else None
                 planner_rank = rank.get(gid) if pin_i is None or gid == top_pin else pin_i - len(self.queue_pins)
+                known = self._queue_moment(gid, t, now, max_sigma) if t and ok and not stale and gid != dec.current else None
+                tier, join_in, ahead_s = known or (None, None, None)
                 entries.append(gq.Entry(
-                    game=gid, routes=routes, level=gq.level_of(ok, t in verified, state, buffered),
+                    game=gid, routes=tuple(routes), level=gq.level_of(ok, t in verified, state, buffered),
                     user="lock" if gid == u.locked_game else "pin" if gid == top_pin else "",
-                    committed=gid == getattr(self.last_decision, "want", None), planner_rank=planner_rank,
-                    value=min(100.0, max(0.0, float(x.scored.score)))))
+                    committed=gid == getattr(self.last_decision, "want", None), tier=tier, join_in_s=join_in,
+                    lookahead_s=ahead_s, lead_s=self._queue_lead(games.get(gid), t, now, within) if t and ok else None,
+                    planner_rank=planner_rank, value=min(100.0, max(0.0, float(score)))))
+
+            for gid, x in cands.items():
+                if gid not in u.muted:   # Drop is the existing mute
+                    add(gid, x.target, x.scored.score, x.stale)
+            for gid, g in games.items():   # not live yet, so not a candidate: only a long-lead route close to its start
+                w = self.where.get(gid)
+                if g.phase == Phase.PRE and gid not in cands and gid not in u.muted and w is not None and w.tunable \
+                        and g.league in self._leagues() and self._queue_lead(g, w.target, now, within) is not None:
+                    add(gid, w.target, getattr(self.scored.get(gid), "score", 0.0), False)
             job = ctl.stick_job()
             measured = {app: m for app in params.tune_s if ":" not in app and (m := ctl.latency.median(app)) is not None}
+            if hidden_t in self._queue_off:   # still parked on a route that just went off: it holds nothing the queue can use
+                hidden = None
+            elif hidden_t and hidden is None:   # the stick may hold a failover route, which `where` doesn't name
+                hidden = next((e.game for e in entries if any(f"{r.app}:{r.ref}" == hidden_t for r in e.routes)), None)
             stick = gq.Stick(busy_until=now + ctl.tune_estimate(hidden_t or "other") if job else 0.0,
                              job_game=hidden if job == "preload" else None,
                              job_to=gq.Level.R3 if job == "preload" else None, tune_s=measured)
@@ -2350,11 +2452,35 @@ class Engine:
             self._game_queue = None
             return None
 
+    def _on_queue_move(self, target: str, move: gq.Move, host: str | None = None) -> None:
+        """The Controller's typed answer to a failed hidden tune (it has already backed this target off). A walled,
+        refused or blacked-out route is off for the night, a wall also for this game's other routes on that app; the
+        queue picks again at once when the Move says nothing waits on this attempt. Runs inside the preload task, so
+        the re-plan waits for the loop's next pass, when the stick is free."""
+        try:
+            if move.route_off:
+                until, app = time.time() + ROUTE_OFF_S, target.partition(":")[0]
+                self._queue_off[target] = until
+                if gq.FAILURE_RULES[move.failure].app_off:
+                    gid = self._game_on_target(target)
+                    for t in self._queue_targets(gid or "", None):
+                        if t.partition(":")[0] == app:
+                            self._queue_off[t] = until
+            if move.advance:
+                asyncio.get_running_loop().call_soon(self._queue_replan)
+        except Exception:
+            log.exception("queue move failed for %s", target)
+
+    def _queue_replan(self) -> None:
+        """One extra hidden-stick pass on the last tick's candidates; a switch in flight keeps the stick."""
+        if self._queue_cands is not None and self._pending_decision is None:
+            self._preload_standby(self._queue_cands)
+
     def _queue_preload(self, cands: dict, plan: gq.Plan, urgent: bool = False) -> None:
         """Act on a tick that wants a swap. rotate=True: the queue's eviction rule, not the scrub guard, decides when a
         scrubbed standby goes. A Lock or a Pin is Nick's own word, so it goes the way a game opened on the phone does."""
         ctl, want = self.control, plan.want
-        target = cands[want.entry.game].target
+        target = f"{want.route.app}:{want.route.ref}"   # the route it picked: a failover, or a game not live yet
         started = ctl.standby != (target, None) and ctl.preload(
             target, user=want.rung in (gq.Rung.LOCK, gq.Rung.PIN), urgent=urgent, rotate=True)
         self._jump_standby_note = {"standby_plan": "queue", "want": want.entry.game,
@@ -2370,7 +2496,8 @@ class Engine:
             return True
         if plan is None or plan.want is None or plan.want.rung >= gq.Rung.PLANNER:
             return False
-        self._plan_owner("queue", f"queue {plan.want.rung.name.lower()}: {plan.why}")
+        word = "moment" if plan.want.rung in (gq.Rung.TIER1, gq.Rung.TIER2) else plan.want.rung.name.lower()   # one word: no tier
+        self._plan_owner("queue", f"queue {word}: {plan.why}")
         self._plan_prime_multiview(cands)
         if plan.swap:
             self._queue_preload(cands, plan)
