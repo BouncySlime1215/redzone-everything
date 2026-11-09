@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -142,11 +143,15 @@ def check_nights(df: pd.DataFrame, league: str, name: str, archive: Path | None,
 
 
 def _raw_clock(v) -> float:
-    """MM:SS or seconds -> seconds, -1 when there is no clock (value_shards' missing value)."""
+    """The same representation the feature uses (redzone.moments.detect.clock_s), -1 when there is no clock: M:SS[.d] is
+    whole seconds, a bare number keeps its tenths. Written out here so this file still does not import the builder. The
+    comparison stays exact, so a clock one second off fails."""
     text = v if isinstance(v, str) else ""
-    head = text.split(":")
+    m = re.match(r"^(\d+):(\d+)", text)
+    if m:
+        return int(m[1]) * 60.0 + int(m[2])
     try:
-        return float(head[0]) * 60 + float(head[1]) if len(head) >= 2 else float(text)
+        return float(text)
     except ValueError:
         return -1.0
 

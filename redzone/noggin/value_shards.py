@@ -128,6 +128,17 @@ def flat_plays(league: str, summary: dict) -> list[tuple[float, dict]]:
     return sorted([(t, p) for t, p in timed if t], key=lambda x: x[0])
 
 
+def wall_ordered(league: str, summary: dict) -> dict:
+    """The summary with its plays in wall-clock order (stable, so feed order breaks ties). The detectors are stateful and
+    walk the list: when a play's stamp is later than the next plays' (hoopR has these), a cut feed lacks it while the full
+    game has already counted it, so runs and lead changes fire differently. In wall order a cut feed is a true prefix.
+    Football keeps feed order: its only state is per drive and flat_plays does not regroup drives."""
+    if _football(league):
+        return summary
+    plays = sorted(summary.get("plays") or [], key=lambda p: parse_ts(p.get("wallclock")) or float("inf"))
+    return {**summary, "plays": plays}
+
+
 def truncate(league: str, summary: dict, cut: float) -> dict:
     """The summary as a feed cut off at wall time `cut` would have shown it."""
     keep = lambda p: (parse_ts(p.get("wallclock")) or float("inf")) <= cut  # noqa: E731
@@ -256,7 +267,7 @@ FeatureFn = Callable[[GameView, np.ndarray, np.ndarray], dict]
 def build_rows(league: str, game_id: str, summary: dict, *, night: str, season: int, source: str, license_line: str,
                plan: str, playoff: int = 0, game_key: str = "", feature_fn: FeatureFn = features) -> pd.DataFrame:
     """All decision rows of one game; empty when the feed is not a whole game (30+ timed plays, 1.2-7 h)."""
-    clean = strip_published_wp(summary)
+    clean = wall_ordered(league, strip_published_wp(summary))
     det = detect(league, clean, game_id)
     if game_span(det.times) is None:
         return pd.DataFrame()
@@ -291,7 +302,7 @@ def prefix_check(league: str, game_id: str, summary: dict, rows: pd.DataFrame, n
     Returns (rows checked, descriptions of every mismatch)."""
     if rows.empty:
         return 0, []
-    clean = strip_published_wp(summary)
+    clean = wall_ordered(league, strip_published_wp(summary))
     bad, picks = [], np.unique(np.linspace(0, len(rows) - 1, min(n, len(rows))).astype(int))
     for i in picks:
         r = rows.iloc[int(i)]
