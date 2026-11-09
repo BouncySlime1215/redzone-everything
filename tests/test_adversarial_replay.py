@@ -20,7 +20,6 @@ from test_commit_gate import AT, T, _d, _host
 from redzone.contracts import brain as contract
 from redzone.decider import gate
 from tests.adversarial.harness import Truth, WorstBrain, cap_from_env, score
-from tests.eval_data_gate import needs_eval_data
 from tests.brains import ATTACKS, AdversarialBrain, RandomBrain
 
 ROOT = Path(__file__).resolve().parent.parent
