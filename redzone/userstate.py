@@ -70,6 +70,8 @@ def load(path: Path, now: float | None = None) -> dict | None:
         for k in ("locked_game", "focus_game"):
             if isinstance(d.get(k), str):
                 out[k] = d[k]
+        if isinstance(d.get("queue_pins"), list):   # [queue] your pins, in order; they go stale with the rest of tonight
+            out["queue_pins"] = [g for g in dict.fromkeys(d["queue_pins"]) if isinstance(g, str) and g]
         if isinstance(d.get("focus_mode"), str):
             out["focus_mode"] = d["focus_mode"]
         sf = d.get("suspended_focus")
@@ -104,28 +106,3 @@ def apply(state: dict, user, focus_mode_type) -> dict | None:
     user.paused = False               # ...and replaces a pause
     return {"game_id": h["game_id"], "since": h["since"], "auto_resume": h["auto_resume"],
             "resume_at": None, "why": "", "force": False}
-
-
-PINS_FILE = "queue_pins.json"
-
-
-def save_pins(path: Path, pins: list[str], now: float | None = None) -> None:
-    """Write the phone's pinned games, in pin order (atomic, like `save`)."""
-    clean = [g for g in dict.fromkeys(pins) if isinstance(g, str) and g]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"pins": clean, "saved": now if now is not None else time.time()}))
-    tmp.replace(path)
-
-
-def load_pins(path: Path, now: float | None = None) -> list[str]:
-    """The saved pins; a missing, broken or stale (older than STALE_S) file gives []."""
-    try:
-        d = json.loads(path.read_text())
-        saved = float(d.get("saved") or 0.0)
-        pins = d.get("pins")
-    except (OSError, ValueError, TypeError, AttributeError):
-        return []
-    if (now if now is not None else time.time()) - saved > STALE_S or not isinstance(pins, list):
-        return []
-    return [g for g in dict.fromkeys(pins) if isinstance(g, str) and g]

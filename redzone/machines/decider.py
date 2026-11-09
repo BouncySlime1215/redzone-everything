@@ -156,8 +156,9 @@ STANDBY_PLAN = Spec(
         "rotation": "jump mode's rotation picks the hidden stick's next game",
         "buffered": "buffered jump: the rotation picks the game, the park step scrubs / parks it",
         "planner": "the standby planner (redzone/standby.py): break returns, replays, the likely next switch",
+        "queue": "the game queue (redzone/noggin/gamequeue.py, queue.enabled) chose it",
     },
-    edges={s: (ANY,) for s in ("idle", "peek", "rotation", "buffered", "planner")},
+    edges={s: (ANY,) for s in ("idle", "peek", "rotation", "buffered", "planner", "queue")},
     initial="idle")
 
 HOLD = Spec(

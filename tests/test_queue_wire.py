@@ -148,7 +148,7 @@ def test_replay_exactly_one_owner_per_tick_in_standby_m(rig):
     assert all(owners == 1 for owners, _ in moves)
     assert all(preloads <= 1 for _, preloads in moves)
     assert sum(p for _, p in moves) > 5
-    assert e.standby_m.state in {"idle", "peek", "rotation", "buffered", "planner"}
+    assert e.standby_m.state in {"idle", "peek", "rotation", "buffered", "planner", "queue"}
 
 
 def test_replay_flag_off_matches_flag_on_with_nothing_above_the_planner(rig):
@@ -176,7 +176,7 @@ def test_pin_takes_the_stick_as_your_own_word(rig):
     assert e.action("pin", "b")[0]
     tick(e)
     assert e.control.calls == [(target("b"), None, True, False, True)]
-    assert e.owners[-1][0] == "planner" and e.owners[-1][1].startswith("queue pin")
+    assert e.owners[-1][0] == "queue" and e.owners[-1][1].startswith("queue pin")
     assert e._game_queue["hidden"] is None and e._game_queue["want"] == "b"
 
 

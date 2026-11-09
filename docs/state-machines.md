@@ -37,7 +37,7 @@ Only `Machine.to()` moves a state; an undeclared move fails tests and logs a war
 | [engine.hold](#engine.hold) | `engine.Engine.hold_m` | 'Watch this' / lock from the phone: one fact (engine.hold mirrors decider.user.locked_game) | 3 |
 | [engine.pending](#engine.pending) | `engine.Engine.pending_m` | The one switch in flight: submitted to the controller until its done() resolves it (or it's superseded) | 2 |
 | [engine.skip](#engine.skip) | `engine.Engine.skip_m` | A skipped game: muted for SKIP_S from when the TV leaves it, then unmuted | 3 |
-| [engine.standby_plan](#engine.standby_plan) | `engine.Engine.standby_m` | Who decided what the hidden stick holds this tick (one owner per tick) | 5 |
+| [engine.standby_plan](#engine.standby_plan) | `engine.Engine.standby_m` | Who decided what the hidden stick holds this tick (one owner per tick) | 6 |
 | [governor.level](#governor.level) | `governor.Governor.m` | How much optional work the Mac can take (reels, lab, archive, OCR, local model). Up at once, down only after calm_s. | 3 |
 | [recorded.session](#recorded.session) | `recorded.RecordedPlayback.session` | A recorded-game session on one stick. While it is anything but idle, live switching, the supervisor and background device work stay off. | 5 |
 | [deploy.lifecycle](#deploy.lifecycle) | `scripts.deploy.Deployer.m` | The safe-deploy lifecycle, persisted in data/deploy/state.json ('machine'). The deploy gate, the watchdog marker and `deploy.py status` all read this one state. | 11 |
@@ -843,6 +843,7 @@ Owner: `engine.Engine.standby_m`. Who decided what the hidden stick holds this t
 | `rotation` | jump mode's rotation picks the hidden stick's next game | any |
 | `buffered` | buffered jump: the rotation picks the game, the park step scrubs / parks it | any |
 | `planner` | the standby planner (redzone/standby.py): break returns, replays, the likely next switch | any |
+| `queue` | the game queue (redzone/noggin/gamequeue.py, queue.enabled) chose it | any |
 
 ```mermaid
 stateDiagram-v2
@@ -852,6 +853,7 @@ stateDiagram-v2
     rotation --> any
     buffered --> any
     planner --> any
+    queue --> any
 ```
 
 ## governor.level

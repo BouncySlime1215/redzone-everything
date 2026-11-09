@@ -1,12 +1,11 @@
 {
-  "card": "WP-12",
+  "card": "WP-12B",
   "session": "coordinator",
   "branch": "claude/state-machines-coordination",
   "files": [
     "redzone/engine.py",
-    "redzone/standby.py",
-    "tests/test_queue_wire.py"
+    "tests/test_queue_feed*.py"
   ],
-  "started": 1794200702,
-  "expires": 1794373502
+  "started": 1794201565,
+  "expires": 1794374365
 }

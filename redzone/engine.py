@@ -2370,8 +2370,7 @@ class Engine:
             return True
         if plan is None or plan.want is None or plan.want.rung >= gq.Rung.PLANNER:
             return False
-        # engine.standby_plan has no 'queue' state yet (machines/decider.py is outside this package): the why names it.
-        self._plan_owner("planner", f"queue {plan.want.rung.name.lower()}: {plan.why}")
+        self._plan_owner("queue", f"queue {plan.want.rung.name.lower()}: {plan.why}")
         self._plan_prime_multiview(cands)
         if plan.swap:
             self._queue_preload(cands, plan)

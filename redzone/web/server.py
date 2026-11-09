@@ -134,27 +134,14 @@ def queue_card(gq, pins=()) -> dict:
 
 def build_app(engine: Engine) -> FastAPI:
     app = FastAPI(title="RedZone Everything", docs_url=None, redoc_url=None)
-    state_path = getattr(engine, "_user_state_path", None)
-    pins_path = state_path.with_name(userstate.PINS_FILE) if state_path else None
-    pins: list[str] = userstate.load_pins(pins_path) if pins_path else []
-    restored = {"done": False}
-
-    def _restore_pins() -> None:
-        """After a restart, hand the saved pins back to the queue once it is on."""
-        if restored["done"] or not _queue_on(engine):
-            return
-        restored["done"] = True
-        for g in list(pins):
-            try:
-                engine.action("pin", g, True)
-            except Exception:
-                pass
+    def _pins() -> list[str]:
+        """Nick's pins, in order. The engine owns and saves them (user_state.json); the phone only shows them."""
+        return list(getattr(engine, "queue_pins", None) or [])
 
     def _snap() -> dict:
         snap = engine.snapshot()
         if _queue_on(engine) and "game_queue" in snap:
-            _restore_pins()
-            snap = {**snap, "game_queue_card": queue_card(snap["game_queue"], pins)}
+            snap = {**snap, "game_queue_card": queue_card(snap["game_queue"], _pins())}
         return snap
 
     @app.middleware("http")
@@ -258,8 +245,7 @@ def build_app(engine: Engine) -> FastAPI:
     async def queue_api():
         if not _queue_on(engine):
             return JSONResponse({"ok": False, "message": "queue is off"}, status_code=404)
-        _restore_pins()
-        return {"ok": True, **queue_card(engine.snapshot().get("game_queue"), pins)}
+        return {"ok": True, **queue_card(engine.snapshot().get("game_queue"), _pins())}
 
     async def _queue_tap(kind: str, body: dict):
         if not _queue_on(engine):
@@ -273,16 +259,6 @@ def build_app(engine: Engine) -> FastAPI:
         elif value not in ("up", "down"):
             return {"ok": False, "message": "move up or down"}
         ok, message = engine.action(kind, gid, value)
-        if ok and kind == "pin":
-            if value and gid not in pins:
-                pins.append(gid)
-            elif not value and gid in pins:
-                pins.remove(gid)
-            if pins_path:
-                try:
-                    userstate.save_pins(pins_path, pins)
-                except OSError:
-                    pass
         if ok:
             for fn in ("decide", "broadcast"):
                 getattr(engine, fn, lambda: None)()

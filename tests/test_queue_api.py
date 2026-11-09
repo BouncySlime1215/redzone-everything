@@ -2,6 +2,8 @@
 hidden when queue.enabled is off. Uses a fake engine: no TV, no adb. Why: the card must be safe to show."""
 import json
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -93,20 +95,19 @@ def test_pin_and_move_call_engine_action(eng):
 
 
 def test_pins_survive_a_restart(tmp_path):
-    first = FakeEngine(tmp_path)
-    c = client(first)
-    c.post("/api/queue/pin", json={"game_id": "g1"})
-    c.post("/api/queue/pin", json={"game_id": "g2"})
-    c.post("/api/queue/pin", json={"game_id": "g1", "value": False})
-    second = FakeEngine(tmp_path)           # the service restarted: new engine, same data dir
-    c2 = client(second)
-    assert c2.get("/api/queue").json()["pins"] == ["g2"]
-    assert second.calls == [("pin", "g2", True)]   # handed back to the queue once
+    """Why: one store. The engine saves its pins in user_state.json, so load must keep them (WP-12 + WP-14 merge)."""
+    p = tmp_path / "user_state.json"
+    userstate.save(p, {"paused": False, "queue_pins": ["g2", "g1", "g2", 7]})
+    assert userstate.load(p)["queue_pins"] == ["g2", "g1"]
 
 
-def test_stale_or_broken_pins_file_is_ignored(tmp_path):
-    p = tmp_path / userstate.PINS_FILE
-    userstate.save_pins(p, ["g1"], now=0.0)
-    assert userstate.load_pins(p, now=userstate.STALE_S + 1) == []
-    p.write_text("{nope")
-    assert userstate.load_pins(p) == []
+def test_card_shows_the_engines_pins(eng):
+    eng.queue_pins = ["g2"]
+    body = client(eng).get("/api/queue").json()
+    assert body["pins"] == ["g2"] and [r["game"] for r in body["rows"] if r["pinned"]] == ["g2"]
+
+
+def test_stale_pins_are_dropped(tmp_path):
+    p = tmp_path / "user_state.json"
+    userstate.save(p, {"paused": False, "queue_pins": ["g1"]})
+    assert "queue_pins" not in (userstate.load(p, now=time.time() + userstate.STALE_S + 60) or {})
