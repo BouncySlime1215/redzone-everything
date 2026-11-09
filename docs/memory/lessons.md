@@ -423,3 +423,5 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
 - 2026-11-09 (WP-04 full suite): `isinstance(tuner, PrimeTuner)` never matched in the running app, because `providers.DiagnosingTuner` wraps each built-in tuner. Passing only in import order that skips the wrap is a false pass: test the wrapped object too.
 
 - 2026-11-09 (data research): the license check treated NBA terms and Statcast as blocked, and the coordinator asked Nick again, though his Nov 5 ruling ("data = B", personal use) already allowed public sports APIs with restrictive terms. Lesson: read decisions.md for a standing ruling before asking or blocking.
+
+- 2026-11-09 (AUDIT-OLD): with `sources.nba_primary` on, every NBA game read HALFTIME from the end of Q2 to the final. `enrich_nba` starts from a copy of the merged game, so a guard meant for "the board just said halftime" also caught the old one, and the merger's stoppage owner then forced it onto ESPN's copy too. Lesson: a value copied in from the previous state is not evidence; only what this payload says may keep a state alive. Test: tests/test_audit_old_feeds.py.

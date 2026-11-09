@@ -233,6 +233,10 @@ def enrich_nba(g: GameState, gm: dict, pbp: dict | None = None,
         out.stoppage = Stoppage.HALFTIME
     elif text.startswith("end"):
         out.stoppage = Stoppage.END_PERIOD
+    elif out.stoppage == Stoppage.HALFTIME and (out.period or 0) > 2:
+        # [AUDIT-OLD] `out` starts as a copy of the merged game, so this halftime is an old one: the board says
+        # the second half is on. Left alone it sailed past the guard below on every poll until the final.
+        out.stoppage = Stoppage.UNKNOWN
     if seen is not None and isinstance(pbp, dict):
         # [NBA primary] the live play-by-play: real event times, its stoppage, its clock.
         acts = _get(pbp, "game", "actions") or []
