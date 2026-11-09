@@ -6,6 +6,12 @@
     RZ_GV_FEATURES=v3 python scripts/kaggle_gamevalue.py --shards <v3 dir> ... --challenger tabpfn --challenger-rows 20000
     RZ_GV_FEATURES=v4 python scripts/kaggle_gamevalue.py --shards <v4 dir> ... --leagues nfl,nba,cbb --personal-nba --trials base,deep,rank,rank_deep --budget-hours 10
     RZ_GV_FEATURES=v4 python scripts/kaggle_gamevalue.py --shards <v4 dir> ... --leagues nfl,nba,cbb --personal-nba --pooled-only --trials base,rank --budget-hours 10
+    RZ_GV_FEATURES=v4 python scripts/kaggle_gamevalue_select.py --shards <v4 dir> --raw <raw dir> --out /kaggle/working/v5_kept.json --leagues nfl,nba,cbb --personal-nba --budget-hours 10
+    RZ_GV_FEATURES=v5 RZ_GV_V5_KEPT=/kaggle/working/v5_kept.json python scripts/kaggle_value_shards.py --source public --leagues nfl,nba,cbb --personal-nba --out <v5 dir>
+    RZ_GV_FEATURES=v5 RZ_GV_V5_KEPT=/kaggle/working/v5_kept.json python scripts/kaggle_gamevalue.py --shards <v5 dir> --out <dir> --raw <raw dir> --leagues nfl,nba,cbb --personal-nba --trials base,deep,rank,rank_deep --budget-hours 10
+
+v5 is off by default and opt-in: the first line above generates 100,000+ candidates per league on training nights and writes the few it keeps. A v5 model reads only those kept
+columns; quote their count as what it uses, never the candidates. v5 uses the same forward folds, test nights and capture as v4, and promotion stays the same: beat the real Planner on the same nights, then 7 of 7 shadow nights.
 
 The raw seasons are never downloaded here (github.com release paths are disallowed by its robots file): the NFL ones come
 from the staged output of agent/kaggle/fetch_sports_nfl.py (api.github.com), the NBA/CBB ones from fetch_sports_nba.py /
@@ -381,6 +387,27 @@ def shared_clock(league: str, raw: Path, seasons: list[str], nights: set[str]) -
         raise Refused(f"{league}: no raw seasons in {raw}")
     rows, games = HP.public_rows(league, HP.read_public(league, files), keep_games=nights)
     return SharedClock(league, rows, games)
+
+
+def check_kept_list(shards: Path, leagues: list[str]) -> None:
+    """v5 only: the kept columns must have been picked on training nights alone. A selection that saw a calibration or test night would flatter the score it is graded on."""
+    from redzone.noggin import wide_features as W
+    try:
+        kept = W.read_kept()
+    except ValueError as e:
+        raise Refused(str(e)) from e
+    splits = json.loads((shards / "splits.json").read_text())
+    for league in leagues:
+        info = (kept.get("leagues") or {}).get(league)
+        if info is None:
+            raise Refused(f"{league}: the kept-column list has no entry for this league; run scripts/kaggle_gamevalue_select.py for it")
+        held = set((splits.get(league) or {}).get("calib") or []) | set((splits.get(league) or {}).get("test") or [])
+        seen = set(info.get("selection_nights") or [])
+        if not seen:
+            raise Refused(f"{league}: the kept-column list does not say which nights picked it")
+        overlap = sorted(seen & held)
+        if overlap:
+            raise Refused(f"{league}: the kept columns were picked on calibration or test nights, e.g. {overlap[:3]}")
 
 
 def fetch_raw(shards: Path, raw: Path, leagues: list[str], personal_nba: bool, log=print) -> None:
@@ -831,8 +858,8 @@ def main(argv=None, trainer=None) -> int:
         print(f"REFUSED: --trials {a.trials}: known trials are {sorted(TRIALS)}", flush=True)
         return EXIT_REFUSED
     trials = tuple(TRIALS[n] for n in names)
-    if (trials != (BASE_TRIAL,) or a.pooled or a.pooled_only) and G.GV_FEATURES_VERSION != "v4":
-        print(f"REFUSED: --trials, --objective and --pooled need {G.GV_FEATURES_ENV}=v4", flush=True)
+    if (trials != (BASE_TRIAL,) or a.pooled or a.pooled_only) and G.GV_FEATURES_VERSION not in ("v4", "v5"):
+        print(f"REFUSED: --trials, --objective and --pooled need {G.GV_FEATURES_ENV}=v4 or v5", flush=True)
         return EXIT_REFUSED
     if trainer is None and sys.platform == "darwin":
         print("REFUSED: training never runs on the Mac. Run this on Kaggle CPU.", flush=True)
@@ -846,6 +873,12 @@ def main(argv=None, trainer=None) -> int:
         status, why = V.public_status(lg, a.personal_nba)
         if status != "ok":
             print(f"REFUSED: {lg}: {why}", flush=True)
+            return EXIT_REFUSED
+    if G.GV_FEATURES_VERSION == "v5":
+        try:
+            check_kept_list(a.shards, leagues)
+        except Refused as e:
+            print(f"REFUSED: {e}", flush=True)
             return EXIT_REFUSED
     try:
         fetch_raw(a.shards, a.raw, leagues, a.personal_nba)
