@@ -683,6 +683,7 @@ demo:                      # replay simulator timing (redzone/demo/engine.py); v
 
 plan:                      # tonight's plan (data/plan_YYYYMMDD.json, the phone's "Tonight's plan" card)
   sweep: false             # [build plan WP-01] start the hidden-stick route check earlier and cover every planned route
+  sweep_lead_min: 30       # [build plan WP-01] ...starting this long before the first window
   verify: true             # before each start window, play each planned source on the HIDDEN stick (never the one on screen)
   verify_lead_min: 20      # ...starting this many minutes before the window, while autopilot is idle
 
