@@ -81,6 +81,8 @@ class Params:
     plan_clip_s: float = 30.0         # how long one aired clip holds the screen, for the plan (the sim's clips run about this)
     save_leave: bool = False          # a must-show about to die may leave a low-leverage, not-owed play mid-way. OFF until
                                       # Nick decides: in the sim it took low-leverage mid-play leaves from 16 to 284
+    catchup_route: bool = False       # [CATCHUP-ROUTE] noggin/catchup.py: a missed must-see airs in the screen's dead time, in pieces if it must, by the hidden stick
+    catchup_route_reach_s: float = 95.0   # how far back the stick may seek (measured 95-150 s; never reaches the 180 s hard cap in catchup.py)
     class_bonus: bool = False         # [P1] brain's pick: L1 class adds points instead of filtering. The floor keeps its filter
     class_bonus_pts: float = 20.0     # per class: your team +40, crunch +20, open 0 (scores run 0..100). A judgment, not fitted
     class_tie_pts: float = 2.0        # within this many points it's a tie: class first, then league order

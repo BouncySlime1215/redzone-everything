@@ -20,6 +20,7 @@ Only `Machine.to()` moves a state; an undeclared move fails tests and logs a war
 | [control.standby](#control.standby) | `control.Controller.standby_m` | What the hidden stick holds for the next flip: one state replaces hidden_target/hidden_ready/parked/_snap_park/_holding/_left/_stuck_since, so 'ready while holding' or 'left hold and parked' can't happen. | 9 |
 | [control.two_stick](#control.two_stick) | `control.Controller.two_stick_m` | Two-stick (hot standby) mode health: a failed flip degrades to single-stick (hidden is None) until TWO_STICK_RETRY_S has passed and the input is known again. Config/stick-count reasons are in view. | 2 |
 | [control.visible](#control.visible) | `control.Controller.visible_m` | The stick on screen should be playing what we put there: replaces _visible_bad_since/_visible_state as loose fields (the 'how' resets when healthy). | 4 |
+| [decider.catchup_route](#decider.catchup_route) | `decider.Decider.catchup_m` | [arbiter.catchup_route] one missed must-see airing in pieces on the hidden stick, in the screen's dead time | 3 |
 | [decider.delay_label](#decider.delay_label) | `decider.screen.DelayBook.label_m` | [edge model] per target: is YouTube TV's overlay time label this tune's behind-live figure? | 3 |
 | [decider.entry_wait](#decider.entry_wait) | `decider.Decider.entry_m` | [cut timing] a switch waiting for a dead ball to land on (bounded by decider.entry.max_wait_s.<league>) | 2 |
 | [decider.home](#decider.home) | `decider.Decider.home_m` | A break visit: the game we left only for its break (home_break_visit) and when to head back | 3 |
@@ -487,6 +488,26 @@ stateDiagram-v2
     restoring --> ok
     restoring --> bad
     restoring --> repairing
+```
+
+## decider.catchup_route
+
+Owner: `decider.Decider.catchup_m`. [arbiter.catchup_route] one missed must-see airing in pieces on the hidden stick, in the screen's dead time
+
+| State | Meaning | Can move to |
+|---|---|---|
+| `idle` (initial) | no clip in pieces | airing |
+| `airing` | a piece of the clip is on screen | between, idle |
+| `between` | the live game is back on screen; the next piece waits for dead time, within the 180 s cap | airing, idle |
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> airing
+    airing --> between
+    airing --> idle
+    between --> airing
+    between --> idle
 ```
 
 ## decider.delay_label

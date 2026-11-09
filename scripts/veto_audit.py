@@ -58,22 +58,23 @@ if ROOT.as_posix() not in sys.path:
 from redzone import engine as engine_mod  # noqa: E402
 from redzone.contracts import brain as contract  # noqa: E402
 from redzone.decider import gate  # noqa: E402
-from redzone.decider.decider import Decider, Decision, _holds_replays  # noqa: E402
+from redzone.decider.decider import Decider, Decision, LeaveHold, _holds_replays  # noqa: E402
 from redzone.engine import Engine  # noqa: E402
 from redzone.grading import dead_at, lag_of  # noqa: E402
 from redzone.lab import backtest, leverage, splits, sportsgrade  # noqa: E402
 from redzone.models import Phase  # noqa: E402
 from redzone.moments.detect import detect as detect_moments  # noqa: E402
-from redzone.noggin import arbiter, legal  # noqa: E402
+from redzone.noggin import arbiter, catchup, legal  # noqa: E402
 
 SCRIPTS = {"nfl": ("scripts/eval.py", []), "nba": ("scripts/eval_sports.py", ["nba"]),
            "nhl": ("scripts/eval_sports.py", ["nhl"]), "mlb": ("scripts/eval_sports.py", ["mlb"])}
 PLAY_LEN_S = 7.0    # backtest.run's play_len: the picture must be up this long before the play's end to have seen it
 RUN_UP_S = 75.0     # how far ahead the hindsight brain looks, and how far back a refusal is charged to a moment
 SCALE = 10.0        # one value point is this many brain points, so a single must-see clears the arbiter's margin
-REACHES = (95, 180)  # catch-up rewind reach, s: the measured floor (YouTube TV) and Nick's never-3-minutes-late cap
+REACHES = (95, 150, 180)  # catch-up rewind reach, s: the measured floor (YouTube TV), the measured ceiling, and Nick's never-3-minutes-late cap
 CLIP_S = arbiter.DEFAULT_PARAMS.plan_clip_s   # one catch-up clip holds the screen this long
 PREP_S = 15.0        # buffered_jump_sim.MR.prep_s: a free stick takes this long to set a clip up
+FLIP_S = 3.2         # buffered.py flip_s: an input flip between the sticks (the slowest usual)
 
 RULE1, USER, POLICY, CAUTION, STICK, DATA = "rule1", "user", "policy", "caution", "stick_prep", "missing_data"
 CLASSES: dict[str, str] = {
@@ -94,6 +95,7 @@ CLASSES: dict[str, str] = {
 
 
 # Rules about leaving the game on screen; every other rule's harm is the landing on the game it would go to.
+FLIP_LEAVE = {n for n, _ in gate.LEAVE_RULES}   # the flip's leave rules by bare name: what a held pick waits on
 LEAVE_RULES = frozenset({"legal:leave_gate", "legal:moment_lock", "gate:leave", "gate:hold", "gate:ending_airing", "gate:replay_exit"})
 
 
@@ -234,6 +236,13 @@ class Tally:
     log: dict = field(default_factory=lambda: defaultdict(list))    # game -> [(t, first, alone?)]
     screen: list = field(default_factory=list)            # (picture up at, game)
     route: list = field(default_factory=list)             # (t, game on screen) when the catch-up route was open on a stay tick
+    route_on: bool = False                                # arbiter.catchup_route: the new route (route2), not the old one
+    route_clip_s: float = 0.0                             # audit.route_clip_s, what-if: a shorter clip (0 = the plan's CLIP_S)
+    route2: list = field(default_factory=list)            # [catchup_route] (t, game on screen, a plain dead ball is open too) on a stay tick
+    held: int = 0            # [legal.leave_at_flip] picks remembered to leave later
+    released: int = 0        # ...that went
+    held_ticks: int = 0      # ticks a remembered pick waited
+    over: Counter = field(default_factory=Counter)        # why a remembered pick was let go
 
 
 def judge(host: Decider, pick: str, cands: dict, now: float) -> tuple[list[str], arbiter.Choice | None, list[str], Decision | None]:
@@ -271,6 +280,95 @@ class AuditDecider(Decider):
     def __init__(self, cfg, delays, clock=None):
         super().__init__(Overlay(cfg, self.sets), delays, clock=clock)
 
+    # ----- [legal.leave_at_flip] the wait the product runs in Decider._leave_held, driven from the audit's own tick. A wait tick
+    # is charged to what still refuses the pick, so each rule's lost value stays comparable with the flag on and off.
+
+    def _arbiter(self, d, cands, now, home):
+        return d if self._leave_at_flip() else super()._arbiter(d, cands, now, home)
+
+    def _arbiter_think(self, inp):
+        if not self._leave_at_flip():
+            return super()._arbiter_think(inp)
+        ids = {o.id for o in inp.options}
+        return contract.BrainOutput(tick=inp.tick, model_id=self.brain.name, made_at=inp.now, ttl_s=5.0,
+                                    scores={k: v for k, v in self.pick_scores.items() if k in ids})
+
+    def _leave_settle(self, d, now) -> None:
+        """The audit ends its own holds (_held_tick): nothing goes through the product's settle."""
+
+    def _landable(self, gid: str, cands: dict, now: float) -> bool:
+        row = next((g for g in self.legal_facts(cands, now).games if g.game_id == gid), None)
+        return row is not None and row.landable
+
+    def _flip_vetoes(self, d: Decision, target: str | None, cands: dict, now: float) -> list[str]:
+        f = gate.Flip(ReplayHost(self, cands), d, self.current, target, cands, None, now)
+        timed, plan = f.replan
+        if timed and plan is not None and plan.ok:
+            d.rewind_s = plan.rewind_s
+        return [n for n, rule in gate.GATE_RULES if rule(f)]
+
+    def _go(self, d: Decision, now: float) -> Decision:
+        self.tally.went += 1
+        self._commit(d.target, kind=d.kind)
+        self._land_behind(d.target, d.rewind_s)
+        self.tally.screen.append((now + self.truth.tune_s, d.target))
+        return d
+
+    def _held_tick(self, cands: dict, now: float, stay: Decision) -> Decision | None:
+        """A pick is waiting: stay and charge what still refuses it, or go. None: it is over, the tick goes on."""
+        h, t = self._leave_pick, self.tally
+        status, veto = self._leave_status(cands, now)
+        if status == "over":
+            t.over[veto.split(":")[0]] += 1
+            return None
+        t.wanted += 1
+        t.held_ticks += 1
+        d = Decision(now, "switch", h.target, f"brain {self.brain.name}: held", self.base_state, kind=h.kind, owner=self.base_owner, leave_held=True)
+        vetoes = self._flip_vetoes(d, cands[h.target].target, cands, now)
+        blockers = ([f"legal:{veto}"] if veto == "no_landing" else [f"gate:{veto}"] if veto else []) + [f"gate:{v}" for v in vetoes if f"gate:{v}" != f"gate:{veto}"]
+        if status == "wait" or vetoes:
+            self._charge(h.target, blockers, now)
+            self._note_route(cands, now)
+            return stay
+        self._leave_end("released", now)
+        t.released += 1
+        return self._go(d, now)
+
+    def _decide_held(self, base: Decision, cands: dict, now: float) -> Decision:
+        t = self.tally
+        stay = Decision(now, "stay", self.current, f"brain {self.brain.name}: stay", base.state, owner=base.owner)
+        if self._leave_pick is not None and (r := self._held_tick(cands, now, stay)) is not None:
+            return r
+        top = max(self.pick_scores, key=lambda o: (self.pick_scores[o], o))
+        if top == "stay" or self.pick_scores[top] <= self.pick_scores.get("stay", 0.0):
+            self._note_route(cands, now)
+            return stay
+        pick = top.removeprefix("cut:")
+        t.wanted += 1
+        named, ch, vetoes, d = judge(self, pick, cands, now)
+        blockers = named + vetoes
+        if not self._landable(pick, cands, now):
+            blockers = ["legal:no_landing"] + blockers
+        chosen = ch.option if ch is not None else None
+        if blockers:
+            self._charge(pick, blockers, now)
+        if chosen is None or chosen.verb == "stay":
+            self._note_route(cands, now)
+            return stay
+        d = Decision(now, "switch", chosen.game_id, f"arbiter over {self.brain.name}", base.state, kind="better", owner=base.owner, leave_held=True)
+        names = self._flip_vetoes(d, cands[chosen.game_id].target, cands, now)
+        land = self._landable(chosen.game_id, cands, now)
+        if not land or set(names) & FLIP_LEAVE and set(names) <= FLIP_LEAVE:
+            first = "no_landing" if not land else names[0]
+            self._leave_begin(LeaveHold(chosen.id, chosen.game_id, legal.kind_of(chosen.verb), ch.why, self.current, now), first, now)
+            t.held += 1
+            self._note_route(cands, now)
+            return stay
+        if names:
+            self._note_route(cands, now)
+            return stay
+        return self._go(d, now)
+
     def decide(self, cands, redzone=None, *, commit=True, reel=None):
         base = super().decide(cands, redzone, commit=False, reel=reel)
         now, t = self._clock(), self.tally
@@ -279,6 +377,8 @@ class AuditDecider(Decider):
             self.reject(base, backoff=False)
         self.base_state, self.base_owner = base.state, base.owner
         self.pick_scores = self.brain.scores(cands, self.current, now)
+        if self._leave_at_flip():
+            return self._decide_held(base, cands, now)
         top = max(self.pick_scores, key=lambda o: (self.pick_scores[o], o))
         stay = Decision(now, "stay", self.current, f"brain {self.brain.name}: stay", base.state, owner=base.owner)
         if top == "stay" or self.pick_scores[top] <= self.pick_scores.get("stay", 0.0):
@@ -313,6 +413,13 @@ class AuditDecider(Decider):
     def _note_route(self, cands: dict, now: float) -> None:
         """Would the live catch-up route be open on this stay tick? The same checks as Decider._arbiter_catchup, then catchup_pick."""
         cur = cands.get(self.current or "")
+        if self.cfg.get("arbiter.catchup_route", False):
+            self.tally.route_on = True
+            self.tally.route_clip_s = float(self.cfg.get("audit.route_clip_s", 0.0) or 0.0)
+            ok, plain = self.catchup_gates(cur, cands, now)
+            if ok:
+                self.tally.route2.append((now, self.current, plain))
+            return
         if cur is None or not self.cfg.get("replay.enabled", True) or _holds_replays(cur.scored) or cur.scored.crunch_now \
                 or cur.scored.high_leverage or self._crunch_on(cands):
             return
@@ -371,10 +478,93 @@ def catchup_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> se
     return shown
 
 
+def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> tuple[dict[Air, bool], Counter]:
+    """SIMULATED arbiter.catchup_route (redzone/noggin/catchup.py) on the replay's own screen, at this rewind reach: which unseen moments
+    air before the hard cap, each piece inside dead time on the game on screen (truth, with a margin) on a tick the route was open.
+    Causal: a clip starts without knowing the next dead ball is coming. {moment: airs marked as a replay}, and what became of the rest.
+    Clips can't move the replay's own cuts; a cut on the way ends the dead time and takes the hidden stick for its prep."""
+    r = catchup.Route(reach_s=min(reach, catchup.HARD_CAP_S), clip_s=t.route_clip_s or CLIP_S, flip_s=FLIP_S, prep_s=PREP_S, lead_s=3.0, margin_s=2.0)
+    moments = {f"{m.game_id}:{m.at}:{m.kind}:{i}": m for i, m in enumerate(unseen)}
+    pool = [catchup.Moment(k, m.game_id, float(m.value), m.at, PLAY_LEN_S) for k, m in moments.items()]
+    tune, cuts, ups = truth.tune_s, sorted(s[0] - truth.tune_s for s in t.screen), [s[0] for s in t.screen]
+    shown: dict[Air, bool] = {}
+    marked_ids: set[str] = set()
+    stats: Counter = Counter()
+    doing, stick_end, busy_to, aired_of_game, aired_late = None, float("-inf"), float("-inf"), defaultdict(list), {}
+    open_ticks, closed_ticks = defaultdict(int), defaultdict(int)     # per moment: a dead tick in its window, route open / closed by a held game
+
+    def known(x: catchup.Moment, now: float) -> bool:
+        i = bisect.bisect_right(ups, x.aired) - 1
+        for k in range(max(i, 0), len(t.screen)):
+            at, g = t.screen[k]
+            if at > now:
+                break
+            if g == x.game_id and (k > i or at <= x.aired):
+                return True
+        return any(a > x.aired for a in aired_of_game[x.game_id])
+
+    def account(x: catchup.Moment, now: float, gid: str, ok: bool) -> None:
+        if x.game_id != gid and x.aired + PREP_S <= now and catchup.on_time(x, now + r.flip_s, 0.0, r):
+            (open_ticks if ok else closed_ticks)[x.id] += 1
+
+    for now, gid, plain in t.route2:
+        rep = truth.replays.get(gid)
+        if rep is None or now < busy_to:
+            continue
+        dead, brk, left = dead_at(rep.league, rep.wall, rep.plays, now - lag_of(truth.lag, gid))
+        i = bisect.bisect_left(cuts, now)
+        end = min(now + left, cuts[i] if i < len(cuts) else float("inf"))
+        if dead:
+            for x in pool:
+                if catchup.room(now, end, r) >= catchup.first_piece_s(x, r):
+                    account(x, now, gid, brk or plain)
+        if doing is not None and catchup.overdue(doing[0], doing[1], now, r):
+            stats["abandoned"] += 1
+            doing = None
+        if not dead or not (brk or plain):
+            continue
+        ready = max(stick_end + PREP_S, (cuts[i - 1] if i > 0 else float("-inf")) + PREP_S)
+        rest = [x for x in pool if moments[x.id] not in shown and x.game_id != gid]
+        p = catchup.next_piece(rest if doing is None else (), now, end, doing=doing, ready_at=ready, known=lambda x: known(x, now), r=r)
+        if p is None:
+            continue
+        stick_end = busy_to = p.until
+        stats["pieces"] += 1
+        aired_of_game[p.moment.game_id].append(p.moment.aired)
+        aired_late[p.moment.id] = catchup.lateness(p.moment, now + r.flip_s, p.offset_s, r)
+        if p.marked:
+            marked_ids.add(p.moment.id)
+        if p.last:
+            marked = p.moment.id in marked_ids or p.marked
+            shown[moments[p.moment.id]] = marked
+            stats["clips"] += 1
+            stats["value"] += moments[p.moment.id].value
+            stats["marked_value"] += moments[p.moment.id].value if marked else 0.0
+            stats["pieced_clips"] += int(p.offset_s > 0.0)
+            doing = None
+        else:
+            doing = (p.moment, p.offset_s + p.seconds)
+    stats["max_late_s"] = round(max(aired_late.values(), default=0.0), 1)
+    if doing is not None:
+        stats["unfinished"] += 1
+    for x in pool:
+        if moments[x.id] not in shown:
+            stats["left_" + ("no_dead_time" if not open_ticks[x.id] and not closed_ticks[x.id] else "route_closed" if not open_ticks[x.id] else "one_stick_queue")] += moments[x.id].value
+    return shown, stats
+
+
 def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
     """Charge every unseen must-see moment to the last refusal of its game in the run-up. Seen and uncharged are counted."""
     unseen = [m for ms in truth.moments.values() for m in ms if not seen(m, t.screen)]
-    shown = {r: catchup_shown(unseen, t, truth, r) for r in REACHES}
+    if t.route_on:
+        results = {r: route_shown(unseen, t, truth, r) for r in REACHES}
+        shown = {r: set(results[r][0]) for r in REACHES}
+        for r in REACHES:
+            late = max(league_row["route"][str(r)].get("max_late_s", 0.0), results[r][1].pop("max_late_s", 0.0))
+            league_row["route"][str(r)].update(results[r][1])
+            league_row["route"][str(r)]["max_late_s"] = late
+    else:
+        shown = {r: catchup_shown(unseen, t, truth, r) for r in REACHES}
     for gid, ms in truth.moments.items():
         log = t.log.get(gid, [])
         times = [e[0] for e in log]
@@ -400,8 +590,8 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
 
 def new_row() -> dict:
     return {"must_total": 0.0, "must_seen": 0.0, "not_asked": 0.0, "lost": Counter(), "lost_alone": Counter(), "moments": Counter(),
-            "ticks": 0, "wanted": 0, "went": 0, "refused": Counter(), "alone": Counter(), "any_rule": Counter(), "protected": Counter(), "high": Counter(),
-            "lost_after_catchup": {str(r): Counter() for r in REACHES}, "avoidable_lost": {str(r): 0.0 for r in REACHES}}
+            "ticks": 0, "wanted": 0, "went": 0, "held": 0, "released": 0, "held_ticks": 0, "over": Counter(), "refused": Counter(), "alone": Counter(), "any_rule": Counter(), "protected": Counter(), "high": Counter(),
+            "lost_after_catchup": {str(r): Counter() for r in REACHES}, "route": {str(r): Counter() for r in REACHES}, "avoidable_lost": {str(r): 0.0 for r in REACHES}}
 
 
 def card(script: str, *args: str) -> dict:
@@ -441,8 +631,9 @@ def replay(brain_name: str, sets: dict, row: dict, cap: int | None):
         current.append(t)
         rep = real_run(replays, cfg, my_teams, **kw)
         charge_night(t, truth, row)
-        for k in ("ticks", "wanted", "went"):
+        for k in ("ticks", "wanted", "went", "held", "released", "held_ticks"):
             row[k] += getattr(t, k)
+        row["over"].update(t.over)
         for k in ("refused", "alone", "any_rule", "protected", "high"):
             row[k].update(getattr(t, k))
         return rep
@@ -483,7 +674,8 @@ def run_one(job: tuple) -> dict:
     row["card"] = {"nights": len(nights), "entries": sum(n["entries"] for n in nights),
                    "entries_mid_play": sum(n["entries_mid_play"] for n in nights),
                    "cuts_high": len(high), "mid_play_leaves": sum(n.get("cuts", 0) for n in nights), "dead_air_pct": c.get("dead_air_pct"),
-                   "plays_missed_entry": c.get("plays_missed_entry", sum(n.get("plays_missed_entry", 0) for n in nights))}
+                   "plays_missed_entry": c.get("plays_missed_entry", sum(n.get("plays_missed_entry", 0) for n in nights)),
+                   "switches_per_hour": c.get("switches_per_hour"), "hours": c.get("hours", sum(n.get("hours", 0.0) for n in nights))}
     row["league"], row["brain"] = league, brain_name
     return json.loads(json.dumps(row))
 
@@ -534,6 +726,14 @@ def catchup_lines(rows: list[dict]) -> list[str]:
                  + "".join(f"{sum(v[f'after_{r}'] for v in merged.values()):>13.1f}" for r in REACHES))
     for r in REACHES:
         lines.append(f"avoidable lost, simulated reach {r} s: {avoidable(rows, r):.1f}  (no catch-up route, refusal not protected)")
+    for reach in REACHES:
+        r = Counter()
+        for row in rows:
+            r.update(row["route"][str(reach)])
+        if r["pieces"]:
+            lines.append(f"route at reach {reach} s (SIMULATED): clips {r['clips']} of value {r['value']:.0f} (marked as replays {r['marked_value']:.0f}), "
+                         f"pieces {r['pieces']}, clips in 2+ pieces {r['pieced_clips']}, started but not finished {r['abandoned'] + r['unfinished']}, "
+                         f"left: no dead time {r['left_no_dead_time']:.0f}, route closed {r['left_route_closed']:.0f}, one stick queue {r['left_one_stick_queue']:.0f}, latest {r['max_late_s']:.0f} s")
     return lines
 
 
