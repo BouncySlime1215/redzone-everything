@@ -162,6 +162,7 @@ class TuneResult:
     screen_changed: bool | None = None  # False: no visible command sent; True: sent; None: legacy unknown
     path: str = ""                      # "tile": a Prime multiview tile switch, not a tune
     warm: bool | None = None            # the app was already running before the link; None: can't tell
+    kept: bool = False                  # no link sent: it was still playing, uninterrupted, so its position is unchanged
 
 
 @dataclass
@@ -257,7 +258,7 @@ class Tuner:
         before = await stick.playback(pkg)
         if stick.still_on(target, before):
             steps.append("already on it (the stick is still playing it, uninterrupted)")
-            return TuneResult(True, target, time.monotonic() - t0, steps)
+            return TuneResult(True, target, time.monotonic() - t0, steps, kept=True)
         if playback_ready(before):
             stick.mark_awake()   # playing video, so it's awake: skip asking
         require_cut(may_cut, steps)
@@ -467,7 +468,7 @@ class YouTubeTVTuner(Tuner):
         before = await stick.playback(pkg)
         if stick.still_on(target, before):
             steps.append("already on it (the stick is still playing it, uninterrupted)")
-            return TuneResult(True, target, time.monotonic() - t0, steps)
+            return TuneResult(True, target, time.monotonic() - t0, steps, kept=True)
         try:
             require_cut(may_cut, steps, mutating=True)
         except CutWindowClosed as exc:

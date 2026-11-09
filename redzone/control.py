@@ -2293,7 +2293,8 @@ class Controller:
             res.error = f"{STICK_HUNG}: {res.error}"
         if res.ok:
             self._played_at[stick.host] = time.time()   # [scrub entry] the post-tune banner clock starts here
-            self._set_held(target, 0.0)   # a fresh tune plays from the live edge
+            if not res.kept:   # no link went out ("already on it"): a held stream is exactly as far behind as it was
+                self._set_held(target, 0.0)   # a fresh tune plays from the live edge
             # A Prime multiview tile switch is ~1 s, not a ~32 s tune: never let it into Prime's median.
             self.latency.record("prime_tile" if res.path == "tile" else app, res.took)
             if res.path != "tile" and getattr(stick, "model", None):
@@ -4035,7 +4036,9 @@ class Controller:
                     # flip asks for: a "go now" right after this preload flips after one more read.
                     self._note_steady(hid, target, (hid.tuned or {}).get("report") or {})
                     await self._maybe_build_multiview(hid, target, res)
-                    hold = 0.0 if replay_id is not None else self._buffer_for(hid, target, res)
+                    # a kept stream that is held already has its buffer: holding again would add to it unbooked
+                    hold = 0.0 if replay_id is not None or (res.kept and self.held.get(target)) \
+                        else self._buffer_for(hid, target, res)
                     if hold and self._scrub_wanted(target):
                         # [scrub entry] the overlay scrub, off screen, before anything can flip to it; a pause
                         # doesn't hold on YouTube TV (Nick, Nov 6). Fails closed at the live edge or not ready.
@@ -5131,7 +5134,7 @@ class Controller:
                     if not res.ok:
                         self._set_hidden(None, False)
                         return
-                hold = self._buffer_for(hid, target, res)
+                hold = 0.0 if res.kept else self._buffer_for(hid, target, res)   # kept: no reload, so no second hold on top
                 ok = bool(hold) and await self._hold(hid, target, max(0.5, hold + cal))
             if self.hidden is hid and self.hidden_target == target:
                 self._set_hidden(target, True)
