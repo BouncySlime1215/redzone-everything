@@ -26,12 +26,13 @@ from zoneinfo import ZoneInfo
 
 from redzone.channels import REDZONE_TARGET, redzone_on
 from redzone.config import Config
-from redzone.decider.decider import REDZONE, Candidate, Decider, FocusMode
+from redzone.decider.decider import REDZONE, Candidate, FocusMode
 from redzone.decider.screen import DelayBook
 from redzone.decider.whistle import clock_stopped as whistle_stopped
 from redzone.grading import Lags, SwitchLog, idx as _bisect, lag_of  # noqa: F401  [one brain] moved, step 3
 from redzone.grading import restart_before
 from redzone.models import REAL_BREAKS, League, Phase
+from redzone.noggin.show import ShowDecider as Decider   # [threads] the decider plus the thread ledger, flags off: the plain Decider
 from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal
 from redzone.lab import leverage
@@ -755,6 +756,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         before = dec.current
         if on_tick is not None:
             on_tick(clock.t, dec)
+        dec.show_states = states
         decision = dec.decide(cands, REDZONE_TARGET if rz_ok and redzone_on(states.values()) else None)
         decisions.append(decision)
         n_sw = len(switches)

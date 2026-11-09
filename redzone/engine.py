@@ -30,7 +30,8 @@ from redzone.control import NO_STICK, ROUTE_OFF_S, STANDBY_NOT_READY, Controller
 from redzone.decider import buffered as bj
 from redzone.decider import gate
 from redzone.decider import whistle
-from redzone.decider.decider import ENTRY_EXEMPT, REDZONE, REEL, Candidate, Decider, Decision, FocusMode, Missed, State
+from redzone.decider.decider import ENTRY_EXEMPT, REDZONE, REEL, Candidate, Decision, FocusMode, Missed, State
+from redzone.noggin.show import ShowDecider
 from redzone.decider.screen import (MIN_BREAK_S, PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
                                    leave_gate, screen_evidence)
 from redzone.models import GameState, League, Phase
@@ -247,7 +248,7 @@ class Engine:
         self.delays.edge_prior_cfg = lambda key: self.cfg.get(f"delay.edge_prior.{key}")
         for t in list(self.delays.book):   # entries reloaded above were priced before the live config was attached
             self.delays._refresh(t)
-        self.decider = Decider(self.cfg, self.delays)
+        self.decider = ShowDecider(self.cfg, self.delays)   # [threads] flags off: the plain Decider
         data_dir = getattr(self.cfg, "user_path", None)
         # [auto sync] every channel's delay tracked by a Kalman filter from the automatic signals
         # (redzone/decider/sync.py); every signal is logged to data/sync.jsonl for scripts/eval_sync.py.
@@ -1793,6 +1794,7 @@ class Engine:
             return False
         before = self.decider.current
         redzone = self._redzone_target(st, dry)
+        self.decider.show_states = self.merger.games
         d = self.decider.decide(cands, redzone, commit=dry, reel=self._reel_target())
         self.last_decision = d
         # [autopsy Nov 5] the gate is logged when it changes too: a halftime that never opened the gate
