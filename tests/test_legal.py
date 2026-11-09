@@ -36,3 +36,13 @@ def test_tunable():
     assert not legal.tunable("a", X(None), set())
     assert not legal.tunable("a", X("yt:a", stale=True), set())
     assert not legal.tunable("a", X("yt:a"), {"a"})
+
+
+def test_feed_dark():
+    assert legal.feed_dark(False, None, None, 100.0, 30.0)
+    assert legal.feed_dark(True, {}, 99.0, 100.0, 30.0)
+    assert legal.feed_dark(True, {1: 1}, None, 100.0, 30.0)
+    assert legal.feed_dark(True, {1: 1}, 69.0, 100.0, 30.0)
+    assert not legal.feed_dark(True, {1: 1}, 70.0, 100.0, 30.0)
+    assert legal.no_dead_ball_data(False, None) and legal.no_dead_ball_data(True, {})
+    assert not legal.no_dead_ball_data(True, {1: 1})

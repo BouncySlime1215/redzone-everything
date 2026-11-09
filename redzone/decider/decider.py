@@ -1311,14 +1311,15 @@ class Decider:
         if gid in PSEUDO or x is None or not x.target or not self.cfg.get("decider.entry.enabled", True):
             return False
         tl = self.timelines.get(gid)
-        return tl is None or not tl.dead.marks
+        return legal.no_dead_ball_data(tl is not None, tl.dead.marks if tl else None)
 
     def _entry_dark(self, gid: str, x: Candidate | None, now: float) -> bool:
         """[P1-REVIEW-05] This game's feed can't prove a dead ball: no marks at all, or the data has gone quiet."""
         if gid in PSEUDO or x is None or not x.target or not self.cfg.get("decider.entry.enabled", True):
             return False
         tl = self.timelines.get(gid)
-        return tl is None or not tl.dead.marks or tl.fresh_at is None or now - tl.fresh_at > STALE_DATA_S
+        return legal.feed_dark(tl is not None, tl.dead.marks if tl else None, tl.fresh_at if tl else None, now,
+                               STALE_DATA_S)
 
     def _without_dark_targets(self, cands: dict[str, Candidate], now: float) -> dict[str, Candidate]:
         """[P1-REVIEW-05] An entry waits on a dark feed (Rule #1 forbids going in blind) only for

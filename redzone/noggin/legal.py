@@ -48,6 +48,16 @@ def tunable(gid: str, x, muted) -> bool:
     return bool(x.target) and not x.stale and gid not in muted
 
 
+def no_dead_ball_data(has_timeline: bool, marks) -> bool:
+    """Rule #1: nothing in the data can prove a dead ball on this game yet."""
+    return not has_timeline or not marks
+
+
+def feed_dark(has_timeline: bool, marks, fresh_at: float | None, now: float, stale_s: float) -> bool:
+    """Rule #1: this game's feed can't prove a dead ball: no marks at all, or the data has gone quiet."""
+    return no_dead_ball_data(has_timeline, marks) or fresh_at is None or now - fresh_at > stale_s
+
+
 @dataclass(frozen=True)
 class Facts:
     """What the rules read for one tick. Built by `Decider.legal_facts`; epoch s."""
