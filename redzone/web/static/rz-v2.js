@@ -9,12 +9,16 @@ import { toast, openSheet, closeSheet, sheetById } from "./rz-sheet.js?v=40";
 
 const v2 = { on: false, commit: false, checked: false, rows: new Map(), head: "", loading: false, prio: null, missed: null };
 
+const STATUS_RETRY_MS = 5000;
 let checking = null;
 function check() {
   if (!checking) {
     v2.checked = true;
     checking = (async () => {
-      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; v2.worth = !!st.worth; v2.orient = !!st.orient; v2.follow = !!st.follow; v2.lastNight = !!st.last_night; } catch { v2.on = false; }
+      let failed = false;
+      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; v2.worth = !!st.worth; v2.orient = !!st.orient; v2.follow = !!st.follow; v2.lastNight = !!st.last_night; } catch { v2.on = false; failed = true; }
+      // a failed ask (the Mac was starting, the phone's Wi-Fi blinked at page load) is not "v2 is off": ask again
+      if (failed) { checking = null; setTimeout(check, STATUS_RETRY_MS); return; }
       if (v2.on) { hooks.render(); pollAlert(); pollStrip(); pollHeld(); }
       if (v2.on && v2.follow) pollFollow();
       if (v2.on && v2.lastNight) pollLastNight();
