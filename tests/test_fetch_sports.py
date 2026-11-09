@@ -269,3 +269,27 @@ def test_403_is_a_block_not_retried():
     with pytest.raises(sc.Blocked):
         f.get_json("https://x.test/a")
     assert len(f.opened) == 1
+
+
+def test_nba_ncaam_use_raw_githubusercontent_in_repo_parquet(tmp_path):
+    from agent.kaggle import fetch_sports_nba, fetch_sports_ncaam
+    for mod, repo, league, first_night in ((fetch_sports_nba, "hoopR-nba-data", "nba", "20261020"),
+                                           (fetch_sports_ncaam, "hoopR-mbb-data", "cbb", "20261020")):
+        base = f"https://raw.githubusercontent.com/sportsdataverse/{repo}/main/{league if league == 'nba' else 'mbb'}/pbp/parquet/play_by_play_{{y}}.parquet"
+        t = pa.table({"game_id": ["a", "b"], "game_date": ["2024-01-10", "2026-11-01"], "season": [2024, 2024]})
+        f = BlobFetcher({base.format(y=2024): parquet_bytes(t)})
+        row = run(mod.SPEC, f, tmp_path, "--first-season", "2024", "--last-season", "2024")
+        assert f.calls == [base.format(y=2024)]              # only the new host
+        assert row["tag"] == sc.PERSONAL_TAG and row["rows"] == 1   # the locked-night row is dropped
+        assert rows_of(tmp_path, mod.SPEC.name).column("source_night_id").to_pylist() == [f"{league}:20240110"]
+
+
+def test_disallow_on_the_new_host_still_stops_the_run(tmp_path):
+    from agent.kaggle import fetch_sports_nba, fetch_sports_ncaam
+    for mod, repo in ((fetch_sports_nba, "hoopR-nba-data"), (fetch_sports_ncaam, "hoopR-mbb-data")):
+        f = RobotsFetcher("User-agent: *\nDisallow: /sportsdataverse/\n", min_interval=0)
+        args = df.parser(mod.SPEC).parse_args(["--out-dir", str(tmp_path / repo), "--first-season", "2024", "--last-season", "2024"])
+        with pytest.raises(sc.Blocked):
+            df.Run(mod.SPEC, args, f).run()
+        assert f.opened == []
+        assert sc.main(mod.SPEC, lambda a: f, ["--out-dir", str(tmp_path / repo), "--first-season", "2024", "--last-season", "2024"]) == 2
