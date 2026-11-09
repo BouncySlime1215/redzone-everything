@@ -476,3 +476,5 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
 - 2026-11-09 (AUDIT-6): `_lg()` folds college into the pro league for the tables, which also gave college the NBA's 24 s shot clock and baseball football's after-a-score break. Lesson: when a rule is keyed "not X", list who else falls in. Tests: tests/test_audit6_shotclock.py, tests/test_audit6_quiet.py.
 
 - 2026-11-09 (AUDIT-6): a count over plays is only a count of the plays we were given: ESPN hands over the last 8, so a mid-quarter join called the third timeout the first. A foul as the next quarter's first entry also kept the break open across the tip. Tests: tests/test_audit6_timeouts.py, tests/test_audit6_windows.py.
+
+- 2026-11-09 (data reports): `.gitignore`'s `data/` matched `docs/agents/data/` too, so every data report looked committed but wasn't; `git add` skipped them silently and CI's index check caught it. Lesson: after adding reports, check them in a clean checkout.
