@@ -124,7 +124,7 @@ def test_delaybook_behind_is_part_of_mu_until_a_fresh_tune():
     book = DelayBook({"youtubetv": 40.0}, 3.0, clock=lambda: 0.0)
     book.set_behind("youtubetv:espn", 20.0)
     assert book.get("youtubetv:espn").mu == 60.0
-    book.calibrate("youtubetv:espn", 41.0)       # a new measurement keeps the rewind on top
+    book.calibrate("youtubetv:espn", 61.0)       # a tap on this picture reads its whole delay, rewind included (AUDIT-6)
     assert book.get("youtubetv:espn").mu == 61.0
     book.set_behind("youtubetv:espn", 0.0)
     assert book.get("youtubetv:espn").mu == 41.0

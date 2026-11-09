@@ -675,7 +675,7 @@ class DelayBook:
     def boundary(self, target: str, sample_s: float, ts: float | None = None) -> Delay:
         """One delay sample measured from a show change on the quarter hour (no tap)."""
         d = self.get(target)
-        if not self._add(target, self._clock() if ts is None else ts, sample_s, self.bounds):
+        if not self._add(target, self._clock() if ts is None else ts, sample_s - d.behind, self.bounds):
             return d
         self._refresh_app(self.app(target))
         return d
@@ -683,7 +683,7 @@ class DelayBook:
     def screen(self, target: str, sample_s: float, ts: float | None = None) -> Delay:
         """One delay sample from the score bug: a new score's first frame minus its play's wallclock."""
         d = self.get(target)
-        if not self._add(target, self._clock() if ts is None else ts, sample_s, self.screens):
+        if not self._add(target, self._clock() if ts is None else ts, sample_s - d.behind, self.screens):
             return d
         self._refresh_app(self.app(target))
         return d
@@ -694,7 +694,8 @@ class DelayBook:
             if self.live.pop(target, None) is None:
                 return
         else:
-            self.live[target] = delay_s
+            # read off this picture, so any rewind is in it; the book adds `behind` back when it builds mu
+            self.live[target] = delay_s - (self.book[target].behind if target in self.book else 0.0)
         if target in self.book:
             self._refresh(target)
 
@@ -755,7 +756,7 @@ class DelayBook:
     def calibrate(self, target: str, sample_s: float) -> Delay:
         """One "I just saw it" measurement. Outliers are clipped, not trusted blindly."""
         d = self.get(target)
-        if not self._add(target, self._clock(), sample_s):
+        if not self._add(target, self._clock(), sample_s - d.behind):   # read off the picture: the rewind is in it
             return d
         self._refresh_app(self.app(target))   # every channel of this app without its own taps learns too
         return d
