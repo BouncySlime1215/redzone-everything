@@ -538,11 +538,24 @@ def k_flip_live_scores(m):
     assert m.Flip(h, _d(), "a", T, {"d": cs["d"]}, None, AT).live["d"] is cs["d"]
 
 
+def k_a_held_pick_leaves_only_by_its_low_leverage_exit(m):
+    """[legal.leave_low_leverage] Only a held pick gets the exit, only when the plain leave says no."""
+    _ready(m)
+    def host(safe, exit_ok):
+        return h_with(lambda h: (_set(h, safe_to_leave=lambda gid, required_s=0.0: safe),
+                                 _set(h.decider, held_low_leverage_exit=lambda *a: exit_ok)))
+    assert V(m, host(False, True), leave_held=True) == ""
+    assert V(m, host(False, True)) == "leave"
+    assert V(m, host(True, False), leave_held=True) == ""
+    assert V(m, host(False, False), leave_held=True) == "leave"
+
+
 CHECKS = [v for k, v in sorted(globals().items()) if k.startswith("k_") and callable(v)]
 
 # Equivalent mutants: no flip can tell them apart. id -> why.
 REPLAN = "replan returns a plan only when timed is true, so `plan is not None` already implies it"
 EQUIVALENT = {
+    "_leave:flip_bool:False:2": "Decision always has leave_held (default False), so the getattr default is never read",
     "Flip.game:drop_operand_1:self.d.target or ''": "merger.games.get(None) and .get('') are both None: no game has either id",
     "Flip.game:change_str:''": "merger.games.get('_mutated') is None like .get(''): only reached with a falsy target",
     "_landing:drop_operand_0:timed and plan is not None and (not plan.ok)": REPLAN,
