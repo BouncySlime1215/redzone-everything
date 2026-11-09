@@ -3514,7 +3514,7 @@ class Decider:
         if not (s.is_break or self.current in self._screen_break or catch_up) or self._jump_hold(cur) or s.mine or s.high_leverage:
             return d
         moments = self._fill_moments(cands, now) if reel_ready else []
-        pick = fill_ladder.plan(self.cfg.get, self._fill_games(cands, now, catch_up), moments, now=now, seen=self._fill_seen(moments),
+        pick = fill_ladder.plan(self.cfg.get, self._fill_games(cands, now, catch_up), moments, now=now, seen=self._fill_seen(moments, cands),
                                 clips_ready=reel_ready)
         if pick is None:
             return d
@@ -3549,9 +3549,11 @@ class Decider:
         cap = self._arbiter_params().ceiling_per_min
         return cap > 0 and sum(1 for t, _, _ in self.history if now - t < 60.0) >= cap
 
-    def _fill_seen(self, moments: list) -> set:
-        """Moments already seen on the screen, by the ladder's key."""
-        return {fill_ladder.moment_key(m) for m in moments if self._saw(m.game_id, m.t - 5.0, m.t + 5.0)}
+    def _fill_seen(self, moments: list, cands: dict[str, Candidate]) -> set:
+        """Moments already seen on the screen, by the ladder's key. A moment's t is feed time: judged when it aired."""
+        def mu(m) -> float:
+            return self.delays.get(cands[m.game_id].target or "unknown").mu
+        return {fill_ladder.moment_key(m) for m in moments if self._saw(m.game_id, m.t + mu(m) - 5.0, m.t + mu(m) + 5.0)}
 
     def _count_hold(self, why: str) -> None:
         """[overseer Nov 8 01:50Z: "no jump rows, decision text is the normal decider"] every way the rotation stands

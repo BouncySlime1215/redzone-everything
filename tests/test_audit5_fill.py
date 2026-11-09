@@ -40,7 +40,7 @@ def make(**cfg):
     d._jump_gate = lambda x, n: Gate(True, "dead ball")
     d._fill_games = lambda c, n, no: [F.GameInfo("b", "nfl", "live", joinable=True)]
     d._fill_moments = lambda c, n: []
-    d._fill_seen = lambda m: set()
+    d._fill_seen = lambda m, c: set()
     d._bj_pic = lambda *a: None
     d._bj_flip_cost = lambda t: 3.0
     d._lc = lambda k, x, dflt: d.cfg.get(k, dflt)
@@ -97,3 +97,27 @@ def test_the_ladder_answer_still_reaches_the_phone():
     d._arrival_until = NOW + 5.0
     run(d)
     assert d.fill_choice is not None and d.fill_choice.step == F.STEP_JOIN
+
+
+# ----- seen is judged at air time, not feed time
+
+def seen_decider():
+    d = make()
+    d.delays = type("B", (), {"get": staticmethod(lambda t: type("D", (), {"mu": 60.0})())})()
+    d._screen_log = deque([(NOW - 200.0, "other"), (NOW + 30.0, "b"), (NOW + 90.0, "other")])
+    del d._fill_seen   # the real one
+    return d
+
+
+def test_a_play_that_aired_while_on_screen_counts_as_seen():
+    """Repro: feed time NOW, on air NOW+60 with the game on screen NOW+30..NOW+90, read at feed time: 'unseen', and the
+    reel replayed a play Nick had just watched."""
+    m = F.Moment(NOW, "b", 1, "td", "p1")
+    assert seen_decider()._fill_seen([m], CANDS) == {("b", "p1")}
+
+
+def test_a_play_that_aired_after_the_screen_left_is_unseen():
+    """The other half: on screen at feed time, gone by the time it aired."""
+    d = seen_decider()
+    d._screen_log = deque([(NOW - 200.0, "b"), (NOW + 10.0, "other")])
+    assert d._fill_seen([F.Moment(NOW, "b", 1, "td", "p1")], CANDS) == set()
