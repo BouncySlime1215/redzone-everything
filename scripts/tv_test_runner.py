@@ -141,6 +141,20 @@ SPECS: tuple[Spec, ...] = (
     Spec("T1-L12", "L12 DIAL read-only",
          "Ask the stick's DIAL service what app is running; read only, nothing is launched.", 3,
          (Bar("dial_reads", "==", True),)),
+    Spec("T2-cap", "Prime capture offset",
+         "30 alternating raw-band and PNG captures of a running game clock on the hidden Prime stick; the offset between "
+         "the two conventions is the capture offset. Replaces the 1.0 s margin in delay.timing.app_sigma.", 3,
+         (Bar("capture_offset_s", "info"), Bar("capture_offset_sd_s", "<=", 0.5, " s"))),
+    Spec("T2-k", "Prime K per game",
+         "20 bug reads per game across 3 games and both sticks: K = delay - E, per game and per stick.", 12,
+         (Bar("k_sd_within_game_s", "<=", 0.5, " s"), Bar("k_spread_across_games_s", "info"),
+          Bar("k_spread_across_sticks_s", "<=", 0.5, " s"))),
+    Spec("T2-pos", "Prime position form",
+         "Which content reports the wall-clock position and which a counter; pause and seek in each and check the meter.",
+         5, (Bar("epoch_content_share", "info"), Bar("meter_survives_seek", "==", True))),
+    Spec("T2-edge", "YouTube TV live edge",
+         "The label probe (3b) on 5 channels, 3 rounds an hour apart, both sticks. Is the live edge one number, and how "
+         "stable.", 15, (Bar("edge_mean_s", "info"), Bar("edge_sd_s", "<=", 1.0, " s"))),
 )
 SPEC_BY_ID = {s.id: s for s in SPECS}
 T1_IDS = tuple(s.id for s in SPECS if s.id.startswith("T1-"))

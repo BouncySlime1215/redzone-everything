@@ -200,4 +200,4 @@ def test_a_pooled_file_of_the_wrong_kind_or_leagues_does_not_load():
     with pytest.raises(G.ModelRejected, match="pooled"):
         G._check_meta(meta, None)
     with pytest.raises(G.ModelRejected, match="pooled"):
-        G._check_meta({**meta, "kind": "trees", "leagues": ["nfl", "wnba"]}, None)
+        G._check_meta({**meta, "kind": "trees", "leagues": ["nfl", "xfl"]}, None)
