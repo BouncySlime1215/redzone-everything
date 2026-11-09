@@ -548,6 +548,8 @@ providers:
     dazn: ""
 
 autonomy:
+  st_scan_early: false     # [build plan WP-06] Sunday Ticket scan starts at T-75, resumes after a stop, done by T-20
+  app_version_alerts: false # [build plan WP-06] a toast when a stick app version changes
   enabled: true
   discover_devices: false # first select your own TV/sticks with scripts/doctor.py
   busy_score: 75          # postpone maintenance during an important game
