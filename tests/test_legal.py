@@ -69,3 +69,9 @@ def test_may_leave():
     assert not legal.may_leave(False, "") and not legal.may_leave(True, "red zone drive")
     assert legal.legal_options(legal.Facts(now=1.0, current="a", gate_ok=False)) == (legal.STAY,)
     assert legal.legal_options(legal.Facts(now=1.0, current="a", moment_lock="crunch time")) == (legal.STAY,)
+
+
+def test_must_see():
+    assert legal.must_see(92.0, 72.0, 92.0, 20.0)
+    assert not legal.must_see(91.9, 50.0, 92.0, 20.0)
+    assert not legal.must_see(92.0, 72.1, 92.0, 20.0)

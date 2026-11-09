@@ -2050,7 +2050,7 @@ class Decider:
                 best = self._best(watchable, exclude=focus)
                 if best:
                     b = cands[best].scored
-                    if b.score >= c.get("decider.must_see_score") and b.score >= s_cur.score + c.get("decider.must_see_lead"):
+                    if legal.must_see(b.score, s_cur.score, c.get("decider.must_see_score"), c.get("decider.must_see_lead")):
                         return Decision(now, "switch", best, self._why(cands[best], "must-see"),
                                         state, gate_txt, kind="must_see")
             return Decision(now, "stay", self.current, "focused: " + s_cur.reason, state, gate_txt)

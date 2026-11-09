@@ -75,6 +75,11 @@ def may_leave(gate_ok: bool, lock) -> bool:
     return bool(gate_ok) and not lock
 
 
+def must_see(best_score: float, cur_score: float, min_score: float, lead: float) -> bool:
+    """Something huge elsewhere: the only thing that may pull the TV off a must-see focus game."""
+    return best_score >= min_score and best_score >= cur_score + lead
+
+
 @dataclass(frozen=True)
 class Facts:
     """What the rules read for one tick. Built by `Decider.legal_facts`; epoch s."""
