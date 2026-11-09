@@ -20,6 +20,7 @@ from typing import Any, Callable
 
 from redzone.channels import redzone_on
 from redzone.decider import cuts
+from redzone.decider.cuts import EntryPlan, Landing, Window
 from redzone.decider.decider import ENTRY_FASTEST_S, ENTRY_URGENT_S, PSEUDO, REDZONE, REEL, Candidate
 from redzone.decider.screen import break_on_arrival, catchable
 from redzone.decider.whistle import WHISTLE_LEAGUES
@@ -144,6 +145,8 @@ def _chase_gone(f: Flip) -> bool:
 def _landing(f: Flip) -> bool:
     """Rule #1: the picture must still come up on a dead ball."""
     if f.game is None:
+        return False
+    if _lands_after_bucket(f):
         return False
     if f.jump:
         if not f.host.decider.jump_lands_dead(f.d.target, f.live.get(f.d.target), f.now, f.cost):
@@ -290,6 +293,76 @@ def _crunch_earned(x: Any) -> bool:
         return True
     s = x.scored
     return bool(s.crunch or s.crunch_now or getattr(s, "lock", None) == "empty net")
+
+
+def bucket_on(cfg: Any) -> bool:
+    """[NBA-BUCKET] The flag, basketball.join_after_bucket; off unless config says True."""
+    return bool(cfg.get("basketball.join_after_bucket", False))
+
+
+def _post_make_windows(dead: Any, floor_s: float, p: slate_mod.Params) -> list[Window]:
+    """Basketball: each made basket's window, in real time. Starts when the ball is through (bucket_after_s), ends at the
+    measured moment the next possession can produce a shot (floor_s after the make) or the next logged action less the
+    stamp's guard, whichever is sooner. A window needs no next row in the data: with a late feed the floor is all there is."""
+    out, ms = [], dead._order()
+    for i, m in enumerate(ms):
+        if m.shot != "made" or m.hi <= dead.frozen_until:
+            continue
+        nxt = dead._next_action(ms, i)
+        end = m.hi + floor_s if nxt is None else min(m.hi + floor_s, nxt.lo - p.bucket_guard_s)
+        start = m.hi + p.bucket_after_s
+        if end > start:
+            out.append(Window(start, end, "bucket", exact=True))
+    return out
+
+
+def bucket_landing(cfg: Any, tl: Any, scored: Any, sigma: float, x0: float, x1: float) -> Landing | None:
+    """[NBA-BUCKET] Nick's rule: basketball may land right after a made basket, including the transition after it. The whole
+    arrival [x0, x1], widened by the doubt (bucket_sigmas times the stick delay's sigma), must sit inside one made-basket
+    window: a landing that may be before the make, or after the next shot, is None (it waits or skips). Never high-leverage
+    close-and-late or overtime (the leave rule's bar), never a game outside NBA and men's college.
+    x0 and x1 are real time. Made baskets only: _post_make_windows opens on shot == "made"."""
+    league = tl.dead.league.value
+    if not bucket_on(cfg) or league not in ("nba", "cbb"):
+        return None
+    if getattr(scored, "high_leverage", False) or scored.crunch or scored.crunch_now:
+        return None
+    p = slate_mod.Params.from_config(cfg.get)
+    doubt = p.bucket_sigmas * sigma
+    for w in reversed(_post_make_windows(tl.dead, slate_mod.bucket_floor_s(league, p), p)):
+        if w.start > x1:
+            continue
+        if x0 - doubt >= w.start and x1 + doubt <= w.end:
+            return Landing("dead", "bucket", w.end, "right after a made basket")
+        if x0 - doubt > w.end:
+            return None
+    return None
+
+
+def bucket_plan(cfg: Any, tl: Any, scored: Any, delay: Any, now: float, cost: float, fastest: float) -> EntryPlan | None:
+    """[NBA-BUCKET] The entry plan for a live-edge landing in a made-basket window, or None. The decider's entry_plan takes
+    this over a rewind plan or a wait (docs/agents/patches/nba-bucket.patch): Nick's rule replaces the old divert."""
+    mu = delay.mu - getattr(delay, "behind", 0.0)
+    land = bucket_landing(cfg, tl, scored, delay.current_sigma(now),
+                          now + min(cost, fastest) - mu, now + cost - mu)
+    return None if land is None else EntryPlan(True, 0.0, land, land.why)
+
+
+def _lands_after_bucket(f: Flip) -> bool:
+    """[NBA-BUCKET] This live-edge join lands in a made-basket window, so the clock-running and walk bars (which forbid
+    exactly that) don't apply. A rewind or a buffered picture is not a live-edge landing."""
+    g, tl = f.game, f.timeline
+    if g is None or tl is None or _own_frame(f) or float(getattr(f.d, "rewind_s", 0.0) or 0.0) > 0:
+        return False
+    if not bucket_on(f.host.cfg) or f.host.decider._bj_pic(f.d.target, f.live.get(f.d.target), f.now) is not None:
+        return False
+    x = f.live.get(f.d.target)
+    fastest = min(f.cost, float(f.host.cfg.get("decider.entry.fastest_s", ENTRY_FASTEST_S)))
+    d, mu = f.delay, f.delay.mu - getattr(f.delay, "behind", 0.0)
+    x0, x1 = f.now + fastest - mu, f.now + f.cost - mu
+    if f.jump:
+        x1 += float(f.host.cfg.get("jump_mode.land_dead_s", 2.0))
+    return x is not None and bucket_landing(f.host.cfg, tl, x.scored, d.current_sigma(f.now), x0, x1) is not None
 
 
 def _clock_ran(events: Any, x0: float, x1: float) -> bool:
