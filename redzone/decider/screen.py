@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from redzone.decider.cuts import DeadTracker
 from redzone.fsm import MachineMap
 from redzone.machines import decider as _M
-from redzone.decider.delaymodel import Centre, app_prior, combine, replay_allows_floor
+from redzone.decider.delaymodel import Centre, app_prior, combine, replay_allows_floor, timing_replay_allows
 from redzone.models import REAL_BREAKS, ByLeague, GameState, League, Phase, Stoppage, pro_period
 
 log = logging.getLogger(__name__)
@@ -104,6 +104,14 @@ SCREEN_SIGMA_S = 4.0
 # is read off YouTube TV's own overlay time label. media_session's position is wrong after a seek and the old
 # pause "hold" never held (Nov 6 stick tests), so neither may set behind_live on a seeked tune. Every number
 # (edge default 25 s +-3, label sd, edge_max_sd_s) lives in delay.edge_model in default_config.yaml.
+
+
+@dataclass(frozen=True)
+class TimingSigma:
+    """[timing, delay.timing.app_sigma, OFF] What one app's position is really known to, under a hold-out replay's numbers."""
+    sigma_s: float                         # the worst night's error, plus the capture offset no log can measure
+    min_anchors: int = 2                   # absolute samples on this stream first (one bad read mustn't do it alone)
+    meter_s: float = 15.0                  # a position read this recent means the meter is holding the delay
 
 
 @dataclass
@@ -218,6 +226,9 @@ class DelayBook:
         # [edge prior, Nick Nov 7] one shared live-edge delay per app (delay.edge_prior, OFF), refreshed by the probe
         self.edge_prior_cfg = None                                # key -> delay.edge_prior.<key> (engine), else defaults
         self.edge_reads: dict[str, list[tuple[float, float]]] = {}  # app -> [(ts, delay_s)] from the edge probe
+        # [timing, delay.timing.app_sigma, OFF] app -> the doubt its replay earned; empty = exactly today's floors
+        self.timing: dict[str, TimingSigma] = {}
+        self._timed: dict[str, bool] = {}                         # target -> was it on the timing floor at its last refresh
 
     @staticmethod
     def app(target: str) -> str:
@@ -242,6 +253,8 @@ class DelayBook:
             if self.cal is not None:
                 self.book[target].cal_sigma = self.cal.sigma(self.app(target))
             self._refresh(target)
+        if self.timing:
+            self._timing_refresh(target)
         return self.book[target]
 
     # ------------------------------------------------------------------ [auto sync]
@@ -263,10 +276,49 @@ class DelayBook:
         base = float(self.sync_floor_for(target) if self.sync_floor_for is not None else self._sync_floor)
         app = self.app(target)
         lowered = self.app_floor.get(app)
+        timed = self._timing_floor(target)
         if lowered is None or lowered >= base:
-            return base
+            return base if timed is None else min(base, timed)
         learned = self.cal.sigma(app) if self.cal is not None else None
-        return min(base, max(lowered, learned or 0.0))
+        floor = min(base, max(lowered, learned or 0.0))
+        return floor if timed is None else min(floor, timed)
+
+    # ------------------------------------------------------------------ [timing] the doubt a replay earned
+    def _timing_floor(self, target: str) -> float | None:
+        """[timing] This target's earned doubt, or None: only with the replay's evidence on file, an absolute anchor on this
+        stream and the position meter live. Prime's meter is flat to 0.01-0.5 s inside a tune, but the arena-to-frame offset
+        differs by game (9.3 vs 23.2 s on two nights), so a stream with no anchor yet earns nothing, whatever the app."""
+        spec = self.timing.get(self.app(target))
+        if spec is None or self.sync is None:
+            return None
+        f = self.sync.filters.get(target)
+        if f is None or not f.meter_anchored(self._clock(), spec.min_anchors, spec.meter_s):
+            return None
+        return spec.sigma_s
+
+    def _timing_refresh(self, target: str) -> None:
+        """A dead meter must take the earned doubt away even if nothing else on this channel changes."""
+        on = self._timing_floor(target) is not None
+        if on != self._timed.get(target, False):
+            self._timed[target] = on
+            self._refresh(target)
+
+    def set_timing_sigma(self, app: str, sigma_s: float, evidence: dict | None, min_anchors: int = 2,
+                         meter_s: float = 15.0) -> bool:
+        """[timing] State an app's real doubt: only with a whole-night hold-out showing the worst night within it."""
+        if not timing_replay_allows(evidence, float(sigma_s), app):
+            log.warning("%s: doubt %.2f s refused, no whole-night hold-out backs it", app, float(sigma_s))
+            return False
+        self.timing[app] = TimingSigma(float(sigma_s), int(min_anchors), float(meter_s))
+        for t in [t for t in self.book if self.app(t) == app]:
+            self._refresh(t)
+        return True
+
+    def apply_timing_config(self, spec: dict | None) -> None:
+        """delay.timing.app_sigma: {app: {sigma_s, min_anchors, meter_s, replay: <timing_replay's verdict>}}. Absent = today."""
+        for app, cfg in (spec or {}).items():
+            self.set_timing_sigma(app, cfg.get("sigma_s", 0.0), cfg.get("replay"), int(cfg.get("min_anchors", 2)),
+                                  float(cfg.get("meter_s", 15.0)))
 
     def set_app_floor(self, app: str, floor_s: float, replay: dict | None) -> bool:
         """[per-app floor] Lower one app's floor: only with a forward-chaining replay showing no fold's mid-play cuts

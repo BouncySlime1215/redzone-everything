@@ -109,6 +109,7 @@ class ChannelSync:
     changepoints: int = 0                      # [change point] level changes of the meter booked
     _cp: tuple | None = None                   # [change point] (t, z) of a meter read waiting for a second one
     params: RobustParams = field(default_factory=RobustParams)
+    anchors: int = 0                           # [timing] absolute delay samples accepted since this stream's tune
 
     # ------------------------------------------------------------------ model
     def reset(self, t: float, mu: float, sd: float, new_stream: bool = False) -> None:
@@ -120,6 +121,7 @@ class ChannelSync:
         if new_stream:
             self.has_origin, self.o_ref = False, None
             self.x[2] = 0.0
+            self.anchors = 0
         self.x[0], self.x[1] = mu, 0.0
         for i in range(3):
             self.P[0][i] = self.P[i][0] = 0.0
@@ -247,7 +249,10 @@ class ChannelSync:
     # ------------------------------------------------------------------ measurements
     def delay(self, t: float, z: float, kind: str, sd: float | None = None) -> bool:
         """A direct measurement of the screen delay at t (flip, score, clock, tap, mic)."""
-        return self._update([1.0, 0.0, 0.0], z, sd if sd is not None else SIGMA.get(kind, 4.0), t, kind)
+        ok = self._update([1.0, 0.0, 0.0], z, sd if sd is not None else SIGMA.get(kind, 4.0), t, kind)
+        if ok:
+            self.anchors += 1
+        return ok
 
     def position(self, t: float, position_s: float, sd: float = POSITION_SIGMA_S) -> bool:
         """A stick playback read: the frame at stream position `position_s` was on screen at t."""
@@ -259,7 +264,7 @@ class ChannelSync:
         if self.o_ref is None:                   # the change point was a different clock altogether
             self.o_ref = y - self.x[0]
         ok = self._update([1.0, 0.0, 1.0], y - self.o_ref, sd, t, "position")
-        if ok and self.robust:
+        if ok:                                  # only robust filters act on it (_meter_live); meter_anchored reads it too
             self.meter_at = t
         return ok
 
@@ -288,6 +293,12 @@ class ChannelSync:
         self.x[0] += innov
         self.P[0][0] += sd * sd
         return True
+
+    def meter_anchored(self, t: float, min_anchors: int, meter_s: float) -> bool:
+        """[timing] Absolute anchors on this stream (a stream's arena-to-frame offset K is per game, not per app) AND a
+        position read so recent that the meter is holding the delay right now."""
+        return (self.anchors >= int(min_anchors) and self.meter_at is not None and t - self.meter_at <= float(meter_s)
+                and not self.uncertain(t))
 
     # ------------------------------------------------------------------ outputs
     def mu(self, t: float) -> float:
