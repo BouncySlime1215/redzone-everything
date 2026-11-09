@@ -5,8 +5,9 @@
     python scripts/kaggle_gamevalue.py --shards <dir> --out <dir> --leagues nba,cbb --personal-nba   # --personal-hoopr is the same flag
     RZ_GV_FEATURES=v3 python scripts/kaggle_gamevalue.py --shards <v3 dir> ... --challenger tabpfn --challenger-rows 20000
 
-The raw seasons are never downloaded here (github.com release paths are disallowed by its robots file): attach them
-as input and pass --raw; a missing file stops the run and is named.
+The raw seasons are never downloaded here (github.com release paths are disallowed by its robots file): the NFL ones come
+from the staged output of agent/kaggle/fetch_sports_nfl.py (api.github.com), the NBA/CBB ones from fetch_sports_nba.py /
+fetch_sports_ncaam.py (scripts/kaggle_value_shards.py stages them into --raw); a missing file stops the run and is named.
 
 Why: the brain's value estimate needs more games than the 8 GB Mac should train on, and every step that could quietly
 make the later gates a lie has to refuse instead: leaked rows, a numpy export that differs from the booster, a model

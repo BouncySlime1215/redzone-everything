@@ -166,11 +166,19 @@ class PoliteFetcher(df.HttpFetcher):
                 return None          # no robots file: everything is allowed (RFC 9309)
             raise Blocked(f"robots.txt of {host_url} answered {e.code}; not fetching") from e
 
+    def _interval(self, url: str | None) -> float:
+        """Seconds to keep between requests; a subclass can ask more of a host with a tighter published limit."""
+        return self.min_interval
+
+    def _rate_limited(self, e: urllib.error.HTTPError) -> bool:
+        """True when a 403 is a published rate limit that was waited out (the request is then retried); False = a block."""
+        return False
+
     def check(self, url: str) -> None:
         p = urllib.parse.urlsplit(url)
         host = f"{p.scheme}://{p.netloc}"
         if host not in self._robots:
-            self._wait()
+            self._wait(host)
             self._robots[host] = self._read_robots(host)
         text = self._robots[host]
         if text is None:
@@ -181,8 +189,8 @@ class PoliteFetcher(df.HttpFetcher):
         if not allowed:
             raise Blocked(f"{host} robots.txt disallows {p.path}")
 
-    def _wait(self) -> None:
-        gap = self.min_interval - (self._clock() - self._last)
+    def _wait(self, url: str | None = None) -> None:
+        gap = self._interval(url) - (self._clock() - self._last)
         if gap > 0:
             self._sleep(gap)
         self._last = self._clock()
@@ -190,18 +198,81 @@ class PoliteFetcher(df.HttpFetcher):
     def _open(self, url: str, start: int = 0, method: str = "GET"):
         self.check(url)
         for attempt in range(5):
-            self._wait()
+            self._wait(url)
             self.requests += 1
             try:
                 return self._raw_open(url, start, method)
             except urllib.error.HTTPError as e:
                 if e.code == 403:
+                    if self._rate_limited(e) and attempt < 4:
+                        continue
                     raise Blocked(f"403 from {url}: a block, not retried or worked around") from e
                 if e.code not in (429, 500, 502, 503, 504) or attempt == 4:
                     raise
                 ra = e.headers.get("Retry-After") if e.headers else None
                 self._sleep(min(float(ra), 600) if ra and ra.replace(".", "", 1).isdigit() else min(2 ** (attempt + 2), 120))
         raise RuntimeError("unreachable")
+
+
+API_HOST = "api.github.com"
+API_MIN_INTERVAL = 62.0         # 60 unauthenticated API requests per hour per IP: one request per 62 s stays under it
+API_WAIT_CAP_S = 3700.0
+ASSET_FRAGMENT = "#asset.parquet"   # the asset URL has no file extension; the engine reads the type from this (never sent on the wire)
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None             # the 302 surfaces as an HTTPError, so the redirect target can be robots-checked first
+
+
+class ApiAssetFetcher(PoliteFetcher):
+    """PoliteFetcher for GitHub release assets through the REST API (api.github.com/repos/<o>/<r>/releases/assets/<id>), no token.
+
+    Why: data job 18 + Nick's approval 2026-11-09: github.com's robots file closes /releases/download/, the documented API
+    asset endpoint is open (api.github.com has no robots rules). Limits: one API request per `api_interval` s (default 62,
+    never under 60: the 60/hour limit); a 403 that says the quota is used up waits for X-RateLimit-Reset and is retried, any
+    other 403 is a block and stops. The asset call answers 302 to a *.githubusercontent.com host: that target gets the
+    robots check before a byte is read. Other hosts (raw.githubusercontent.com) use the plain `min_interval`."""
+
+    def __init__(self, min_interval: float = 1.0, api_interval: float = API_MIN_INTERVAL,
+                 wall: Callable[[], float] = time.time, **kw):
+        super().__init__(min_interval, **kw)
+        self.api_interval, self._wall = max(api_interval, 60.0), wall
+
+    def _interval(self, url: str | None) -> float:
+        return self.api_interval if url and urllib.parse.urlsplit(url).netloc.endswith(API_HOST) else self.min_interval
+
+    def _rate_limited(self, e: urllib.error.HTTPError) -> bool:
+        h = e.headers
+        if not h or str(h.get("X-RateLimit-Remaining", "")).strip() != "0":
+            return False
+        reset = h.get("X-RateLimit-Reset")
+        wait = float(reset) - self._wall() + 1 if reset and str(reset).replace(".", "", 1).isdigit() else 3600.0
+        self._sleep(min(max(wait, 1.0), API_WAIT_CAP_S))
+        return True
+
+    def _raw_open(self, url: str, start: int = 0, method: str = "GET"):
+        p = urllib.parse.urlsplit(url)
+        if p.netloc != API_HOST or "/releases/assets/" not in p.path:
+            return super()._raw_open(url, start, method)
+        hdr = {"User-Agent": UA}
+        if start:
+            hdr["Range"] = f"bytes={start}-"
+        try:
+            return urllib.request.build_opener(_NoRedirect).open(
+                urllib.request.Request(url, method=method, headers={**hdr, "Accept": "application/octet-stream"}), timeout=60)
+        except urllib.error.HTTPError as e:
+            loc = e.headers.get("Location") if e.code in (301, 302, 303, 307, 308) and e.headers else None
+            if not loc:
+                raise
+        self.check(loc)         # robots (and Content-Signal) of the redirect host, before reading from it
+        return urllib.request.urlopen(urllib.request.Request(loc, method=method, headers=hdr), timeout=60)
+
+
+def asset_index(fetcher, repo: str, tag: str) -> dict[str, tuple[int, int | None]]:
+    """{asset name: (id, size)} from one tag listing: GET /repos/<repo>/releases/tags/<tag> (one API request)."""
+    rel = fetcher.get_json(f"https://{API_HOST}/repos/{repo}/releases/tags/{tag}")
+    return {a["name"]: (int(a["id"]), a.get("size")) for a in rel.get("assets", [])}
 
 
 class JsonCsvFetcher(PoliteFetcher):
@@ -287,3 +358,38 @@ def release_spec(league: str, source: str, url: str, first: int, last: int, lice
         add_args=lambda ap: season_args(ap, first, last),
         manifest_extra={"tag": PERSONAL_TAG, "plan": "B", "first_locked_night": EVAL_FIRST_NIGHT[league]})
     return spec, lambda a: PoliteFetcher(a.min_interval)
+
+
+def api_release_spec(league: str, source: str, repo: str, tag: str, first: int, last: int, license_text: str, license_url: str,
+                     date_cols: tuple[str, ...], season_night: str = "0901", raw_url: str | None = None,
+                     raw_last: int = 0) -> tuple[df.SourceSpec, Callable]:
+    """Like release_spec, but each season's file is a release asset fetched through ApiAssetFetcher (see there), one season
+    per item, newest first, so a rate-limit wait or a stop resumes at the next unfinished season. Seasons up to `raw_last`
+    come from the in-repo parquet `raw_url.format(y=season)` (raw.githubusercontent.com) when raw_url is given."""
+    name = "play_by_play_{y}.parquet"
+
+    def items(f, a) -> list[df.Item]:
+        lo, hi = max(a.first_season, first), min(a.last_season, last)
+        years = list(range(hi, lo - 1, -1))
+        index = asset_index(f, repo, tag) if any(not (raw_url and y <= raw_last) for y in years) else {}
+        out = []
+        for y in years:
+            if raw_url and y <= raw_last:
+                out.append(df.Item(f"{league}-{y}", [raw_url.format(y=y)]))
+            elif name.format(y=y) in index:
+                aid, size = index[name.format(y=y)]
+                out.append(df.Item(f"{league}-{y}", [f"https://{API_HOST}/repos/{repo}/releases/assets/{aid}{ASSET_FRAGMENT}"],
+                                   [size] if size else []))
+        return out
+
+    def add_args(ap) -> None:
+        season_args(ap, first, last)
+        ap.add_argument("--api-interval", type=float, default=API_MIN_INTERVAL,
+                        help="seconds between api.github.com requests (never below 60: 60 requests/hour)")
+
+    spec = df.SourceSpec(
+        name=f"sports_{source}", license_text=license_text, license_url=license_url,
+        sampling_rule=f"none (all rows of seasons {first}-{last}); rows on or after {EVAL_FIRST_NIGHT[league]} dropped (locked/fresh nights)",
+        list_items=items, row_filter=lock_filter(league, source, license_text, date_cols, season_night), add_args=add_args,
+        manifest_extra={"tag": PERSONAL_TAG, "plan": "B", "first_locked_night": EVAL_FIRST_NIGHT[league]})
+    return spec, lambda a: ApiAssetFetcher(a.min_interval, getattr(a, "api_interval", API_MIN_INTERVAL))

@@ -8,10 +8,11 @@ Why: labels for the brain need more games than an 8 GB Mac should touch, so this
 the 12 h session limit: one shard per league and season, finished shards are never rebuilt, and a rerun with the
 previous output attached as an input carries them over (build plan WP-25). Nick launches it; nothing here trains.
 
-Public: only licence-cleared sources (value_shards.public_status). NBA and CBB (men's college basketball, two halves) need
---personal-nba (alias --personal-hoopr), off by default, and are never downloaded here (github.com's robots rule stopped that
-route): they are built from the files agent/kaggle/fetch_sports_nba.py / fetch_sports_ncaam.py wrote, which must be attached
-as a notebook input (--input, default /kaggle/input). Missing files stop the run.
+Public: only licence-cleared sources (value_shards.public_status). Nothing is downloaded here (github.com's robots rule
+stopped that route). NFL, NBA and CBB (men's college basketball, two halves) are built from the files
+agent/kaggle/fetch_sports_nfl.py / fetch_sports_nba.py / fetch_sports_ncaam.py wrote, attached as a notebook input
+(--input, default /kaggle/input). Missing files stop the run. NBA and CBB also need --personal-nba (alias
+--personal-hoopr), off by default. CFB has no shard code (no CFB summary adapter, label or leak-check source): not built.
     python scripts/kaggle_value_shards.py --source public --leagues cbb --personal-hoopr --out /kaggle/working/value_shards Nights on
 or after the scorecard window are dropped before any feature is built. Archive: DevOnly gives the dev game ids, so a
 locked or fresh game's summary is never opened. The leak check runs at the end and sets the exit code.
@@ -115,6 +116,7 @@ def _public_games(df, league, season, max_games, stats, make, playoff, teams):
 
 
 HOOPR_FETCH = {"nba": "agent/kaggle/fetch_sports_nba.py", "cbb": "agent/kaggle/fetch_sports_ncaam.py"}
+ATTACHED_FETCH = {"nfl": "agent/kaggle/fetch_sports_nfl.py", **HOOPR_FETCH}   # leagues built only from an attached fetch output
 
 
 def hoopr_input_files(inputs, league="nba") -> list[Path]:
@@ -125,14 +127,15 @@ def hoopr_input_files(inputs, league="nba") -> list[Path]:
 
 def stage_hoopr_raw(files, raw: Path, seasons, league="nba") -> dict:
     """Write <raw>/<league>/pbp_<season>.parquet from the fetched files (one season per file, all of its rows) and return
-    {season: rows}. Seasons the files do not hold are left out. Refuses a file whose rows lack the personal-use tag."""
+    {season: rows}. Seasons the files do not hold are left out. Refuses a file whose rows lack the personal-use tag.
+    Also stages NFL (fetch_sports_nfl.py output): the fetch tags every row, whatever the source licence."""
     import pyarrow.parquet as pq
     from scripts import value_leak_check as LC
     where: dict[int, list[Path]] = {}
     for f in files:
         have = set(pq.read_schema(f).names)
         if "season" not in have or "tag" not in have:
-            raise ValueError(f"{f} has no season/tag column: not a {HOOPR_FETCH[league]} output")
+            raise ValueError(f"{f} has no season/tag column: not a {ATTACHED_FETCH[league]} output")
         t = pq.read_table(f, columns=["season", "tag"])
         if set(t.column("tag").unique().to_pylist()) != {LC.PERSONAL_TAG}:
             raise ValueError(f"{f} rows are not all tagged {LC.PERSONAL_TAG!r}")
@@ -149,7 +152,8 @@ def stage_hoopr_raw(files, raw: Path, seasons, league="nba") -> dict:
 
 def public_season(args):
     """One league-season, start to finish. Returns a report dict; a network failure is left unfinished for the next run.
-    NBA and CBB are never fetched: their raw season files were staged from the attached fetch output before the jobs started."""
+    NFL, NBA and CBB are never fetched: their raw season files were staged from the attached fetch output before the jobs
+    started. A season without a staged file is reported "no file"; no URL is ever requested from here."""
     league, season, out, raw, personal, max_games, deadline = args
     out, raw = Path(out), Path(raw)
     shard = str(season)
@@ -157,13 +161,9 @@ def public_season(args):
         return {"league": league, "season": season, "status": "already built"}
     if time.time() > deadline:
         return {"league": league, "season": season, "status": "session deadline"}
-    source, licence, plan, url, _ = V.public_source(league, personal)
+    source, licence, plan, _, _ = V.public_source(league, personal)
     dest = raw / league / f"pbp_{season}.parquet"
-    if league in V.PERSONAL_LEAGUES:
-        have = dest.exists()
-    else:
-        from scripts.noggin_factory import _fetch
-        have = _fetch(url.format(y=season), dest)
+    have = dest.exists()
     if not have:
         meta = V.write_shard(out, league, shard, pd.DataFrame(), {"source": source, "license": licence, "plan": plan,
                                                                   "note": "no file for this season", "prefix_checked": 0})
@@ -171,8 +171,6 @@ def public_season(args):
     info = {"source": source, "license": licence, "plan": plan, "season": season}
     games = _nfl_games(dest, season, max_games, info) if league == "nfl" else _hoops_games(dest, season, max_games, info, league)
     meta = _shard_from_games(league, shard, out, games, info)
-    if league not in V.PERSONAL_LEAGUES:
-        dest.unlink(missing_ok=True)   # hoopR leagues keep their staged file: the raw audit reads it after the run
     return {"league": league, "season": season, "rows": meta["rows"], "games": meta["games"], "status": "built"}
 
 
@@ -259,7 +257,7 @@ def main(argv=None) -> int:
                 print(json.dumps(r), flush=True)
                 continue
             seasons = F.seasons(a.seasons) if a.seasons else V.public_source(lg, a.personal_nba)[4]
-            if lg in V.PERSONAL_LEAGUES:
+            if lg in ATTACHED_FETCH:
                 files = hoopr_input_files(a.input, lg)
                 try:
                     staged = stage_hoopr_raw(files, a.raw, seasons, lg) if files else {}
@@ -267,9 +265,9 @@ def main(argv=None) -> int:
                     print(f"STOPPED: {lg.upper()} input refused: {e}", flush=True)
                     return 2
                 if not staged:
-                    print(f"STOPPED: {lg.upper()} needs the output of {HOOPR_FETCH[lg]} attached as a notebook input; found no "
+                    print(f"STOPPED: {lg.upper()} needs the output of {ATTACHED_FETCH[lg]} attached as a notebook input; found no "
                           f"{a.input}/**/sports_{V.public_source(lg, True)[0]}/shards/*.parquet for seasons "
-                          f"{min(seasons)}-{max(seasons)}. Attach it (the fetch notebook, e.g. redzone-fetch-nba-ncaam) and rerun. "
+                          f"{min(seasons)}-{max(seasons)}. Attach it (the fetch notebook, e.g. redzone-fetch-nba-ncaam, or the NFL one) and rerun. "
                           f"Not downloading {lg.upper()} from github.com.", flush=True)
                     return 2
             jobs += [(lg, y, str(a.out), str(a.raw), a.personal_nba, a.max_games, deadline) for y in sorted(seasons, reverse=True)]
@@ -281,8 +279,8 @@ def main(argv=None) -> int:
     man = V.finalize(a.out)
     from scripts import value_leak_check as LC
     argv2 = [str(a.out)] + (["--archive", str(a.archive)] if a.archive else []) + (["--allow-personal-nba"] if a.personal_nba else [])
-    if a.source == "public" and {p.name for p in a.out.iterdir() if p.is_dir()} <= set(V.PERSONAL_LEAGUES):
-        argv2 += ["--raw", str(a.raw)]   # only the hoopR leagues keep raw files; NFL's are deleted after each season
+    if a.source == "public" and {p.name for p in a.out.iterdir() if p.is_dir()} <= set(ATTACHED_FETCH):
+        argv2 += ["--raw", str(a.raw)]   # every public league keeps its staged raw files for the audit
     rc = LC.main(argv2)
     (a.out / "run_report.json").write_text(json.dumps({"report": report, "leak_check_exit": rc}, indent=1))
     print("ROWS PER LEAGUE:", json.dumps({k: {"rows": v["rows"], "games": v["games"], "nights": v["nights"]}

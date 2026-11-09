@@ -1,7 +1,8 @@
-"""NBA value shards are built from the files fetch_sports_nba.py wrote (a Kaggle notebook input), never downloaded.
+"""NBA and NFL value shards are built from the files the fetch scripts wrote (a Kaggle notebook input), never downloaded.
 
-Why: github.com's robots rule stopped the release-file route; the fetch notebook's output is the only NBA source. The
-personal-use tag and the raw audit must keep working on those files, and a missing input must stop the run, not fall back.
+Why: github.com's robots rule stopped the release-file route; the fetch notebook's output is the only NBA and NFL source
+(NFL: fetch_sports_nfl.py through api.github.com, so the NFL model can be retrained with the fixed labels). The personal-use
+tag and the raw audit must keep working on those files, and a missing input must stop the run, not fall back.
 """
 import datetime as dt
 import json
@@ -189,3 +190,77 @@ def test_a_clock_one_second_ahead_still_fails_the_raw_audit(tmp_path, capsys, pa
     df.to_parquet(raw, index=False)
     fails = [f for f in _raw_fails(tmp_path, capsys).fails if "raw_audit" in f and "clock_left" in f]
     assert fails and "raw clock text" in fails[0]
+
+
+# --- NFL: the same attached-fetch route, no github.com release fallback -------------------------------------------------
+
+KICK = dt.datetime(2023, 10, 8, 17, 0, tzinfo=dt.timezone.utc)      # night 20231008, before the NFL eval cut
+
+
+def _nfl_game(gid="2023_05_A_B", n=170, tag=sc.PERSONAL_TAG, season=2023):
+    """An nflfastR-shaped game: a play every 70 s, a touchdown every 40th play, one drive per ten plays."""
+    rows, home, away = [], 0, 0
+    for i in range(n):
+        td = i % 40 == 39
+        home += 7 if td and i % 80 == 39 else 0
+        away += 7 if td and i % 80 == 79 else 0
+        rows.append({"game_id": gid, "play_id": 10 * i + 1, "time_of_day": (KICK + dt.timedelta(seconds=70 * i)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                     "time": f"{14 - i % 15}:00", "qtr": float(1 + i * 4 // n), "play_type": "pass" if i % 2 else "run",
+                     "desc": "touchdown" if td else "(15:00) A. Back pass short", "timeout": 0.0, "touchdown": float(td),
+                     "field_goal_result": None, "extra_point_result": None, "interception": 0.0, "fumble_lost": 0.0, "sack": 0.0,
+                     "complete_pass": float(i % 2), "safety": 0.0, "sp": float(td), "total_home_score": float(home),
+                     "total_away_score": float(away), "season_type": "REG", "two_point_attempt": 0.0, "drive": float(i // 10),
+                     "down": float(1 + i % 4), "ydstogo": 10.0, "yardline_100": float(80 - i % 70), "yards_gained": 5.0,
+                     "home_team": "BBB", "away_team": "AAA", "season": season, "night": "20231008", "tag": tag})
+    return pd.DataFrame(rows)
+
+
+def _attach_nfl(tmp_path, frames, notebook="redzone-fetch-nfl"):
+    shards = tmp_path / "input" / notebook / "data" / "sports_nflverse_pbp" / "shards"
+    shards.mkdir(parents=True)
+    for i, f in enumerate(frames):
+        f.to_parquet(shards / f"sports_nflverse_pbp-{i:05d}-000.parquet", index=False)
+    return tmp_path / "input"
+
+
+def _run_nfl(tmp_path, inp, *extra):
+    return K.main(["--source", "public", "--leagues", "nfl", "--seasons", "2023", "--jobs", "1",
+                   "--out", str(tmp_path / "o"), "--raw", str(tmp_path / "r"), "--input", str(inp), *extra])
+
+
+def test_nfl_shards_build_from_attached_fetch_files_without_any_download(tmp_path, capsys, monkeypatch):
+    import scripts.noggin_factory as NF
+    monkeypatch.setattr(NF, "_fetch", lambda *a, **k: pytest.fail("NFL must not be downloaded"))
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: pytest.fail("no network"))
+    inp = _attach_nfl(tmp_path, [pd.concat([_nfl_game("g1"), _nfl_game("g2")], ignore_index=True)])
+    rc = _run_nfl(tmp_path, inp)
+    text = capsys.readouterr().out
+    side = json.loads((tmp_path / "o" / "nfl" / "2023.json").read_text())
+    assert rc == 0 and "raw_audit" not in text and side["games"] == 2 and side["rows"] > 0
+    assert side["license"].startswith("CC-BY 4.0") and side["source"] == "nflverse_pbp"      # the shard's own licence line is unchanged
+    assert (tmp_path / "r" / "nfl" / "pbp_2023.parquet").exists()                            # kept: the raw audit reads it
+    assert "raw_rows" in text and '"raw_rows": 0' not in text
+
+
+def test_nfl_without_the_attached_files_stops_and_never_downloads(tmp_path, capsys, monkeypatch):
+    import scripts.noggin_factory as NF
+    monkeypatch.setattr(NF, "_fetch", lambda *a, **k: pytest.fail("NFL must not be downloaded"))
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: pytest.fail("no network"))
+    rc = _run_nfl(tmp_path, tmp_path / "nothing")
+    text = capsys.readouterr().out
+    assert rc == 2 and "fetch_sports_nfl.py" in text and "github.com" in text and "STOPPED" in text
+    assert not list((tmp_path / "o").glob("*/*.parquet"))
+
+
+def test_nfl_files_without_the_personal_use_tag_are_refused(tmp_path, capsys):
+    rc = _run_nfl(tmp_path, _attach_nfl(tmp_path, [_nfl_game("g1", tag="")]))
+    assert rc == 2 and "tagged" in capsys.readouterr().out
+
+
+def test_no_github_release_download_url_is_requested_or_configured_for_nfl(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, *a, **k: seen.append(getattr(req, "full_url", req)) or pytest.fail("no network"))
+    assert _run_nfl(tmp_path, _attach_nfl(tmp_path, [_nfl_game("g1")])) == 0
+    assert seen == []
+    src = Path(K.__file__).read_text()
+    assert "releases/download" not in src.split('"""', 2)[2] and "_fetch(" not in src
