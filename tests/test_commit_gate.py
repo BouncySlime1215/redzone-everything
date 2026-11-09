@@ -18,7 +18,7 @@ from types import SimpleNamespace as NS
 import pytest
 from test_app import engine  # noqa: F401  (fixture)
 from test_p1_rootcause import _engine
-from test_rule1_review import _plan, test_01_resume_and_skip_land_where_they_planned as _resume_check
+from test_rule1_review import _plan
 from test_rule1_review import test_01_the_flip_rechecks_on_the_bar_the_decision_used as _bar_check
 from test_rule1_review import test_01_whistle_timed_league_is_replanned_at_the_flip as _replan_check
 from test_rule1_review import test_02_one_prime_tap_mid_play_waits as _tap_check
@@ -218,6 +218,161 @@ def test_a_jump_logs_the_veto_and_its_cost():
     assert d.jump == {"veto": "feed_stale", "veto_cost_s": 3.0}
 
 
+# ----- [WP-15B] what the gate reads itself, when the planners have nothing to say ------------------------------------------
+
+def _entry_only(h, plan=None):
+    h.decider._entry_only = lambda *a: True
+    h.decider.entry_plan = lambda *a, **k: plan or _plan(False)
+
+
+def test_a_real_resume_lands_on_its_own_frame():
+    """The replay paused this game and the rewind reaches back to it: no entry plan judges that landing."""
+    h = _host()
+    _entry_only(h)
+    h.decider.resume_log = [(AT - 90.0, "replay", "b", 2.0)]
+    asked = []
+    h.decider.entry_plan = lambda *a, **k: asked.append(k) or _plan(False)
+    assert gate.commit_gate(h, _d(kind="resume", rewind_s=95.0), "c", T, {}, AT - 1.0, now=AT) == ""
+    assert asked == []
+
+
+@pytest.mark.parametrize("log,rewind", [([], 95.0), ([(AT - 90.0, "replay", "c", 2.0)], 95.0),
+                                        ([(AT - 90.0, "resume", "b", 2.0)], 95.0), ([(AT - 90.0, "replay", "b", 2.0)], 0.0)])
+def test_a_resume_that_is_not_a_replays_return_gets_a_landing_check(log, rewind):
+    h = _host()
+    _entry_only(h)
+    h.decider.resume_log = log
+    assert gate.commit_gate(h, _d(kind="resume", rewind_s=rewind), "a", T, {}, None, now=AT) == "landing"
+
+
+def test_a_real_skip_stays_on_screen_and_is_not_replanned():
+    h = _host()
+    _entry_only(h)
+    h.decider.current = "b"
+    asked = []
+    h.decider.entry_plan = lambda *a, **k: asked.append(k) or _plan(False)
+    assert gate.commit_gate(h, _d(kind="skip", rewind_s=0.0), "b", T, {}, None, now=AT) == "" and asked == []
+
+
+def test_a_skip_to_another_game_is_a_cut_and_gets_the_landing_check():
+    h = _host()
+    _entry_only(h)
+    h.decider.current = "a"
+    assert gate.commit_gate(h, _d(kind="skip", rewind_s=30.0), "a", T, {}, None, now=AT) == "landing"
+
+
+def test_a_resume_flips_only_in_its_real_shape_through_the_entry_check_too():
+    h = _host()
+    _entry_only(h)
+    h.scored = {"b": NS(g="b")}
+    assert gate.entry_veto(h, _d(kind="resume", rewind_s=0.0), T, now=AT) == "landing"     # the hole
+    h.decider.resume_log = [(AT - 60.0, "replay", "b", 0.0)]
+    assert gate.entry_veto(h, _d(kind="resume", rewind_s=60.0), T, now=AT) == ""           # the real one
+
+
+@pytest.mark.parametrize("crunch,now_,lock,urgent", [(True, False, None, True), (False, True, None, True),
+                                                     (False, False, "empty net", True), (False, False, None, False),
+                                                     (False, False, "other", False)])
+def test_a_crunch_cut_is_urgent_only_if_the_scores_say_so(crunch, now_, lock, urgent):
+    """NHL, 1 mid-play entry per random brain: the kind alone earned the thin margin on a first-period game."""
+    h = _host()
+    h.scored = {"b": NS(crunch=crunch, crunch_now=now_, lock=lock)}
+    h.decider._cut_timed = lambda *a: True
+    args = {}
+    h.decider.entry_plan = lambda gid, one, now, cost, urgent=False, possession=False: args.update(urgent=urgent) or _plan(True)
+    assert gate.commit_gate(h, _d(kind="crunch"), "a", T, {}, None, now=AT) == "" and args["urgent"] is urgent
+
+
+CLOCKED = [(895.0, 2, 720.0, "substitution"), (915.0, 2, 702.0, "offensive foul")]     # 18 s of clock in 20 s of wall
+
+
+def _clocked(events, mu=100.0, behind=0.0, sigma=9.0, league=League.NBA, cost=5.0):
+    h = _host()
+    h.decider.timelines["b"] = NS(clock_events=list(events))
+    h.merger.games["b"].league = league
+    h.delays = NS(get=lambda t: NS(mu=mu, behind=behind, current_sigma=lambda at: sigma))
+    h.control.deadline_cost = lambda t: cost
+    return h
+
+
+@pytest.mark.parametrize("events,x0,x1,expect", [
+    (CLOCKED, 897.0, 899.0, True),                 # the clock's run covers the landing
+    (CLOCKED, 890.0, 896.0, False),                # before it can have started
+    (CLOCKED, 915.5, 920.0, False),                # after the later row: no next row, no proof
+    ([(895.0, 1, 0.0, "end"), (915.0, 2, 720.0, "sub")], 900.0, 905.0, False),      # a period change is no proof
+    ([(895.0, 2, 702.0, "foul"), (915.0, 2, 702.0, "ft")], 900.0, 905.0, False),    # no clock fell: dead
+    ([(895.0, 2, 720.0, "foul"), (910.0, 2, 720.0, "sub"), (920.0, 2, 712.0, "shot")], 905.0, 909.0, False),  # the run starts later
+    (list(reversed(CLOCKED)), 897.0, 899.0, True),  # out-of-order rows are sorted (feeds log a foul after its subs)
+])
+def test_clock_ran_is_a_proof_and_not_a_guess(events, x0, x1, expect):
+    assert gate._clock_ran(events, x0, x1) is expect
+
+
+@pytest.mark.parametrize("kind,rewind,mu,expect", [
+    ("jump", 0.0, 100.0, "landing"),      # arrival 900-905: the 12:00 subs then the clock runs
+    ("better", 0.0, 100.0, "landing"),
+    ("better", 0.0, 110.0, ""),           # arrival 890-895: before the clock started
+    ("better", 10.0, 100.0, ""),          # a rewind moves the picture before it
+])
+def test_nba_landing_waits_while_the_clock_is_proven_running(kind, rewind, mu, expect):
+    h = _clocked(CLOCKED, mu=mu)
+    h.decider.jump_lands_dead = lambda *a: True     # the dead window says fine: that is the hole
+    h.decider._bj_pic = lambda *a: None
+    assert gate.commit_gate(h, _d(kind=kind, rewind_s=rewind), "a", T, {}, None, now=AT) == expect
+
+
+def test_the_clock_check_is_basketball_only_and_leaves_a_buffered_jump_to_its_own_bar():
+    h = _clocked(CLOCKED, league=League.NHL)
+    assert gate.commit_gate(h, _d(), "a", T, {}, None, now=AT) == ""
+    h = _clocked(CLOCKED)
+    h.decider.jump_lands_dead = lambda *a: True
+    h.decider._bj_pic = lambda *a: object()
+    assert gate.commit_gate(h, _d(kind="jump"), "a", T, {}, None, now=AT) == ""
+
+
+def test_a_real_resume_is_never_judged_by_the_clock():
+    """Its frame was picked by the replay, and its rewind is the time away: the live-edge arrival is the wrong place to read."""
+    h = _clocked(CLOCKED, mu=20.0)     # arrival would sit in the running clock with no rewind
+    h.decider.resume_log = [(AT - 90.0, "replay", "b", 2.0)]
+    assert gate.commit_gate(h, _d(kind="resume", rewind_s=95.0), "a", T, {}, AT - 1.0, now=AT) == ""
+
+
+LATE = NS(high_leverage=True, crunch=False, crunch_now=False)
+EARLY = NS(high_leverage=False, crunch=False, crunch_now=False)
+
+
+def _leaving(events, scored, league=League.NBA):
+    """Game a on screen, clock events the leave reads (mu 100, so the picture is at real time 900 at AT)."""
+    h = _host()
+    h.decider.timelines["a"] = NS(clock_events=list(events))
+    h.merger.games["a"].league = league
+    h.scored = {"a": scored}
+    h.delays = NS(get=lambda t: NS(mu=100.0, behind=0.0, current_sigma=lambda at: 2.0))
+    return h, {"a": _Cand(scored, "youtubetv:a"), "b": _Cand(NS(g="b"), T)}
+
+
+def test_a_leave_is_vetoed_when_a_high_leverage_game_has_its_clock_running():
+    """NBA 3:14 left, 1 s before a shooting foul: safe_to_leave read the old out-of-bounds as still open."""
+    h, cands = _leaving(CLOCKED, LATE)
+    assert gate.commit_gate(h, _d(), "a", T, cands, None, now=AT + 0.0) == "leave"
+    assert gate.commit_gate(h, _d(kind="jump"), "a", T, cands, None, now=AT) == "leave"
+
+
+def test_a_leave_at_low_leverage_is_allowed_with_the_clock_running():
+    h, cands = _leaving(CLOCKED, EARLY)
+    assert gate.commit_gate(h, _d(), "a", T, cands, None, now=AT) == ""
+
+
+def test_a_leave_with_the_clock_proven_stopped_is_allowed_at_high_leverage():
+    h, cands = _leaving([(895.0, 4, 200.0, "foul"), (915.0, 4, 200.0, "free throw")], LATE)
+    assert gate.commit_gate(h, _d(), "a", T, cands, None, now=AT) == ""
+
+
+def test_the_leave_clock_check_is_basketball_only():
+    h, cands = _leaving(CLOCKED, LATE, league=League.NFL)
+    assert gate.commit_gate(h, _d(), "a", T, cands, None, now=AT) == ""
+
+
 # ----- the real Engine, behind the flag --------------------------------------------------------------------------------
 
 def _on(e):
@@ -273,7 +428,7 @@ def test_a_tap_keeps_todays_path_with_the_flag_on(tmp_path, monkeypatch):
     assert may_cut() is True
 
 
-@pytest.mark.parametrize("check,args", [(_bar_check, ()), (_resume_check, ()), (_tap_check, ()), (_tap_blind_check, ()),
+@pytest.mark.parametrize("check,args", [(_bar_check, ()), (_tap_check, ()), (_tap_blind_check, ()),
                                         (_tap_second_check, ()),
                                         *[(_replan_check, (lg,)) for lg in (League.NBA, League.NHL, League.MLB)]])
 def test_p1_review_behaviours_hold_through_the_gate(engine, monkeypatch, check, args):  # noqa: F811
@@ -466,6 +621,6 @@ def test_replay_on_dev_nights_the_gate_keeps_rule_1(league):
         off = card(script, *args)
     with gated():
         on = card(script, *args)
-    assert on["entries_mid_play"] == 0 and on.get("mid_play_cuts_high", 0) == 0
+    assert on["per_night"] and on["entries_mid_play"] == 0 and sum(n["cuts_high"] for n in on["per_night"]) == 0
     assert on["plays_missed_entry"] <= off["plays_missed_entry"]
     assert on["dead_air_pct"] <= off["dead_air_pct"] + DEAD_AIR_NOISE_PTS
