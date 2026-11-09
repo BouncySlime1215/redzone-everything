@@ -188,7 +188,7 @@ def test_nba_flag_is_tagged_personal_use():
 
 
 def test_uncleared_leagues_are_refused():
-    for lg in ("cfb", "cbb", "nhl", "wcbb"):
+    for lg in ("cfb", "nhl", "wcbb"):   # cbb joined the personal-use hoopR leagues (tests/test_value_shards_cbb.py)
         assert V.public_status(lg, personal_nba=True)[0] == "not_cleared"
     assert V.public_status("mlb")[0] == "no_wallclock"
 

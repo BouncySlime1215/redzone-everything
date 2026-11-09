@@ -25,7 +25,7 @@ Published win-probability columns never enter (nflfastR's were fit across season
 before detection and wp5 / wp10 fire on no row: public and archive rows mean the same thing.
 
 Sources: only what docs/agents/data/2026-11-09-sports-data-gaps.md lists as licence-cleared, see `public_status`.
-NBA stays off in code unless `personal_nba=True`, because Nick has not ruled on that report's conditional row.
+NBA and CBB (hoopR) stay off in code unless `personal_nba=True`, because Nick has not ruled on that report's conditional row.
 """
 from __future__ import annotations
 
@@ -65,8 +65,14 @@ VALUE_COLUMNS = VALUE_META + VALUE_FEATURES + VALUE_LABELS
 # league -> (source id, licence line, plan, url, seasons newest first). From the gaps report: Licence OK = Yes.
 _CLEARED = {"nfl": ("nflverse_pbp", "CC-BY 4.0 (nflverse data); credit nflverse", "A", factory.SOURCES["nfl"]["url"],
                     tuple(range(2024, 2010, -1)))}
-_PERSONAL_NBA = ("hoopr_espn_nba", f"{PERSONAL_USE}; hoopR ESPN NBA", "B", factory.SOURCES["nba"]["url"],
-                 tuple(range(2026, 2013, -1)))
+# Personal-use hoopR leagues, one row each: nothing else in the build knows which leagues these are (WP-25 CBB).
+# CBB has two 20 min halves (REGULATION_LEN), so period 3+ is overtime; ESPN's feed carries no shot clock, so none is read.
+_PERSONAL = {
+    "nba": ("hoopr_espn_nba", f"{PERSONAL_USE}; hoopR ESPN NBA", "B", factory.SOURCES["nba"]["url"], tuple(range(2026, 2013, -1))),
+    "cbb": ("hoopr_espn_cbb", f"{PERSONAL_USE}; hoopR ESPN men's college basketball", "B", factory.SOURCES["cbb"]["url"],
+            tuple(range(2026, 2005, -1))),
+}
+PERSONAL_LEAGUES = tuple(_PERSONAL)
 _NO_WALLCLOCK = {"mlb": "Retrosheet is cleared but has plate appearances with no wall clock, so no timed label exists; "
                         "Statcast and the MLB API are not cleared for bulk use"}
 
@@ -79,10 +85,11 @@ def public_status(league: str, personal_nba: bool = False) -> tuple[str, str]:
     """('ok', why) when a public source may be built for this league, else ('no_wallclock' | 'not_cleared', why)."""
     if league in _CLEARED:
         return "ok", _CLEARED[league][1]
-    if league == "nba":
+    if league in _PERSONAL:
         if personal_nba:
-            return "ok", _PERSONAL_NBA[1]
-        return "not_cleared", "NBA is conditional (private, non-commercial only): pass personal_nba after Nick rules"
+            return "ok", _PERSONAL[league][1]
+        return "not_cleared", (f"{league.upper()} is conditional (private, non-commercial only): "
+                               "pass personal_nba (--personal-nba / --personal-hoopr) after Nick rules")
     if league in _NO_WALLCLOCK:
         return "no_wallclock", _NO_WALLCLOCK[league]
     return "not_cleared", "the licence report lists no cleared source for this league"
@@ -93,7 +100,7 @@ def public_source(league: str, personal_nba: bool = False) -> tuple:
     status, why = public_status(league, personal_nba)
     if status != "ok":
         raise SourceNotCleared(f"{league}: {why}")
-    return _CLEARED[league] if league in _CLEARED else _PERSONAL_NBA
+    return _CLEARED[league] if league in _CLEARED else _PERSONAL[league]
 
 
 @lru_cache(maxsize=1)

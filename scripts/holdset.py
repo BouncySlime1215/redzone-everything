@@ -152,7 +152,7 @@ def hockey(l,gid,d,E,J):
             if per==3 and left is not None and left<=120 and m<=1: ev(E,gid,t,2,'late_1goal'); fired.add(per)
             if per>=4: ev(E,gid,t,2,'ot_start'); fired.add(per)
     return ts_all
-FN = {'nfl': football, 'nba': hoops, 'nhl': hockey}
+FN = {'nfl': football, 'nba': hoops, 'cbb': hoops, 'nhl': hockey}   # hoops() reads the two college halves when l == 'cbb'
 
 def games(l, only=None):
     """(night, game id, summary) for dev-night games only; locked and fresh files are never opened.
