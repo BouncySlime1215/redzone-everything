@@ -2,13 +2,16 @@
 """Train GameValue v0 (state table) and v1 (LightGBM) on Kaggle CPU and export both for the numpy runtime.
 
     python scripts/kaggle_gamevalue.py --shards <value_shards dir> --out /kaggle/working/gamevalue --raw /kaggle/working/raw --leagues nfl
-    python scripts/kaggle_gamevalue.py --shards <dir> --out <dir> --leagues nfl,nba --personal-nba
+    python scripts/kaggle_gamevalue.py --shards <dir> --out <dir> --leagues nba,cbb --personal-nba   # --personal-hoopr is the same flag
+
+The raw seasons are never downloaded here (github.com release paths are disallowed by its robots file): attach them
+as input and pass --raw; a missing file stops the run and is named.
 
 Why: the brain's value estimate needs more games than the 8 GB Mac should train on, and every step that could quietly
 make the later gates a lie has to refuse instead: leaked rows, a numpy export that differs from the booster, a model
 without its licence tag (the-mind steps 3-4, build plan WP-26). Nick launches it; it never runs on the Mac.
 
-Order: fetch the raw seasons, leak check with the raw audit (scripts/value_leak_check.py; any failure exits 2 before a row is read), then per league
+Order: find the staged raw seasons, leak check with the raw audit (scripts/value_leak_check.py; any failure exits 2 before a row is read), then per league
 forward-chaining folds on the train + calib nights (whole nights, oldest fit; mean and worst fold), then the final fit on
 train with isotonic on calib, one score on the test nights, export, reload, and a check that the file gives the same
 numbers. Public rows only, with a full 180 s label window: archive rows are Ring 2 and go through scripts/holdset.py.
@@ -204,17 +207,22 @@ def shared_clock(league: str, raw: Path, seasons: list[str], nights: set[str]) -
 
 
 def fetch_raw(shards: Path, raw: Path, leagues: list[str], personal_nba: bool, log=print) -> None:
-    """Download each built season's raw file to where the raw audit reads it. The shard builder deletes its copies.
-    Shards and raw files already present (attach the earlier run's output as input and point --shards/--raw at it) are reused."""
-    from scripts.noggin_factory import _fetch
+    """Check that every built season's raw file is staged where the raw audit reads it. It never downloads.
+
+    Why: every raw source here (nflverse, sportsdataverse hoopR) is a github.com release path, github.com's robots file
+    disallows those paths, and Nick ruled to respect robots. Attach the raw seasons as a Kaggle input (or the earlier run's
+    output) and point --raw at them; whatever is missing is named and the run stops. `personal_nba` is kept for callers."""
+    missing = []
     for league in leagues:
-        url = V.public_source(league, personal_nba)[3]
+        V.public_source(league, personal_nba)            # raises if the league has no cleared source
         for season in sorted(p.stem for p in (shards / league).glob("*.parquet")):
             have = raw / league / f"pbp_{season}.parquet"
-            if have.exists() and have.stat().st_size > 0:   # attached from an earlier run: reuse, no download
-                continue
-            if season.isdigit() and not _fetch(url.format(y=season), have):
-                log(f"{league} {season}: no raw file", flush=True)
+            if not (have.exists() and have.stat().st_size > 0):
+                missing.append(str(have))
+    if missing:
+        shown = ", ".join(missing[:5]) + (f" and {len(missing) - 5} more" if len(missing) > 5 else "")
+        raise Refused(f"raw files are not attached and this script does not download them (github.com release paths are "
+                      f"disallowed by its robots file); missing {len(missing)}: {shown}")
 
 
 def grade(model: G.GameValueModel, df: pd.DataFrame, clock: SharedClock, fit_nights: list[str], test_nights: list[str]) -> dict:
@@ -318,7 +326,8 @@ def main(argv=None, trainer=None) -> int:
     ap.add_argument("--shards", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--leagues", default="nfl")
-    ap.add_argument("--personal-nba", action="store_true", help="accept hoopR NBA rows, tagged personal-use (off by default)")
+    ap.add_argument("--personal-nba", "--personal-hoopr", dest="personal_nba", action="store_true",
+                    help="accept hoopR NBA and men's college basketball (cbb) rows, tagged personal-use (off by default)")
     ap.add_argument("--archive", type=Path, default=None, help="data/archive, needed only if the shards hold archive rows")
     ap.add_argument("--raw", type=Path, default=Path(os.environ.get("RZ_RAW", "/kaggle/working/raw")),
                     help="where <league>/pbp_<season>.parquet are fetched to; the raw audit and the shared-clock capture read them")
@@ -340,7 +349,7 @@ def main(argv=None, trainer=None) -> int:
     try:
         fetch_raw(a.shards, a.raw, leagues, a.personal_nba)
     except Exception as e:  # noqa: BLE001 - no raw source means no audit, so nothing may train
-        print(f"REFUSED: the raw seasons could not be fetched ({type(e).__name__}: {e}).", flush=True)
+        print(f"REFUSED: the raw seasons are not available ({type(e).__name__}: {e}).", flush=True)
         return EXIT_REFUSED
     rep = LC.check_dir(a.shards, a.archive, a.personal_nba, a.raw)
     if not rep.fails and not rep.checked["raw_rows"]:

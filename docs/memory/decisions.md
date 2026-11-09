@@ -121,6 +121,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-03: **No PR may raise mid-play entries, plays missed on entry or dead air** without a
   measured reason at the top of the PR. Why: he rejected #2/#3 drafts that traded these for headlines.
 - 2026-11-03: **Self-review before each PR and list known risks in it.**
+- 2026-11-09: **GameValue trains men's college basketball (`cbb`) as a personal-use model, and `scripts/kaggle_gamevalue.py` never downloads raw files.** `GV_LEAGUES` gains `cbb`, `GV_PERSONAL_SOURCES` gains `hoopr_espn_cbb`; `--personal-nba` (alias `--personal-hoopr`) covers NBA and CBB, and the model and manifest carry the personal-use tag. `fetch_raw` only checks that raw seasons are staged and names what is missing; every raw source is a github.com release path and github.com's robots file disallows those, so Nick's respect-robots ruling means no download. NFL training also refuses until its raw files are attached or another route is decided. Why: Nick's robots ruling; CBB is a shadow-only model like NBA.
 
 ## Product
 
