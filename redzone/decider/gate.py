@@ -13,16 +13,18 @@ veto closes that class and makes every held switch explainable (build plan WP-05
 """
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import replace as _replace
 from functools import cached_property
+from types import SimpleNamespace as _NS
 from typing import Any, Callable
 
 from redzone.channels import redzone_on
 from redzone.decider import cuts
 from redzone.decider.cuts import EntryPlan, Landing, Window
 from redzone.decider.decider import ENTRY_FASTEST_S, ENTRY_URGENT_S, PSEUDO, REDZONE, REEL, Candidate
-from redzone.decider.screen import break_on_arrival, catchable
+from redzone.decider.screen import break_on_arrival, catchable, leave_window
 from redzone.decider.whistle import WHISTLE_LEAGUES
 from redzone.models import Phase
 from redzone.moments import slate as slate_mod
@@ -242,14 +244,19 @@ ENTRY_RULES: tuple[Rule, ...] = (
     ("arrival_break", _arrival_break),
 )
 
-GATE_RULES: tuple[Rule, ...] = (
-    ("paused_or_dry_run", _paused_or_dry_run),
-    ("deferred", _deferred),
-    *ENTRY_RULES,
+# May the game on screen be left: the same rule functions at the flip and for a cut waiting on the leave (leave_veto).
+LEAVE_RULES: tuple[Rule, ...] = (
     ("hold", _hold),
     ("ending_airing", _ending_airing),
     ("replay_exit", _replay_exit),
     ("leave", _leave),
+)
+
+GATE_RULES: tuple[Rule, ...] = (
+    ("paused_or_dry_run", _paused_or_dry_run),
+    ("deferred", _deferred),
+    *ENTRY_RULES,
+    *LEAVE_RULES,
     ("landing_whistle", _landing_whistle),
 )
 
@@ -269,6 +276,52 @@ def entry_veto(host: Any, d: Any, target: str | None, now: float | None = None) 
     one = {d.target: Candidate(host.scored[d.target], target)} if d.target in host.scored else {}
     f = Flip(host, d, None, target, one, None, now)
     return next((name for name, rule in ENTRY_RULES if rule(f)), "")
+
+
+def leave_open(dec: Any, gid: str | None, target: str | None, phase: Any, now: float, uncalibrated_sigma: float,
+               required_s: float = 0.0) -> bool:
+    """Is the screen's game safe to leave for the next required_s? The body of Engine.safe_to_leave, clock passed in, so a
+    decider waiting on the leave and the flip read one rule."""
+    if not gid or gid in PSEUDO:   # [S-5] a pseudo game has no timeline and no play to cut
+        return True
+    if dec.replaying or dec.after_replay:
+        return now >= max(dec.replay_until, dec.replay_exit_after)
+    if gid not in dec.timelines:
+        return False  # no screen timing evidence is not an open cutting window
+    if dec._ending_still_airing(gid, now) > 0:
+        return False
+    if phase == Phase.POST:
+        return True   # its last play has aired (checked above): there's nothing left to cut
+    return leave_window(dec.timelines[gid], dec.delays.get(target or "unknown"), now, uncalibrated_sigma, required_s).safe
+
+
+class DeciderHost:
+    """What the leave rules read of the Engine, from a Decider on its own (no phase for a game outside this tick's list, so
+    its leave needs a window). For a cut waiting on the leave only: the switch still faces the real gate at the flip."""
+
+    def __init__(self, dec: Any, cands: dict, now: float):
+        self.decider, self.delays, self.cfg, self._now = dec, dec.delays, dec.cfg, now
+        self.scored = {g: x.scored for g, x in cands.items()}
+        self.where = {g: _NS(target=x.target) for g, x in dec._known.items()}
+        self.merger = _NS(games={g: _NS(game_id=g, phase=Phase.LIVE, league=x.scored.league) for g, x in cands.items() if g not in PSEUDO})
+
+    def safe_to_leave(self, gid: str | None, required_s: float = 0.0) -> bool:
+        g = self.merger.games.get(gid or "")
+        return leave_open(self.decider, gid, getattr(self.where.get(gid or ""), "target", None), g.phase if g is not None else None,
+                          self._now, self.cfg.get("decider.uncalibrated_sigma_s"), required_s)
+
+    def _leave_margin(self) -> float:
+        flip = float(self.cfg.get("jump_mode.flip_s", 3.2))
+        cost = self.decider.entry_cost(None) if self.decider.entry_cost is not None else flip
+        return max(flip, cost if math.isfinite(cost) else flip)
+
+
+def leave_veto(dec: Any, d: Any, cands: dict, now: float) -> str:
+    """[LEAVE-AT-FLIP] Why this cut may not leave the game on screen yet ("" = it may): the leave rules of the commit gate,
+    run from the decider. A cut the arbiter listed with the leave gate shut goes only when this is "", and the flip asks again."""
+    x = cands.get(d.target or "")
+    f = Flip(DeciderHost(dec, cands, now), d, dec.current, x.target if x is not None else None, cands, None, now)
+    return next((name for name, rule in LEAVE_RULES if rule(f)), "")
 
 
 # ----- facts a rule reads that aren't one poll's measurements (kept out of Flip so a rule stays a one-liner) -----------

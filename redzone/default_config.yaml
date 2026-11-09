@@ -1195,6 +1195,10 @@ arbiter:                   # [build plan WP-17] picks among legal options, with 
   save_leave: false        # [MUST-LIVE] may leave a low-leverage play to save a dying must-show; Nick decides
   last_game_to_live: false # [VETO-AUDIT] a finished game on screen may cut to the one game still live
 
+legal:                     # [LEAVE-AT-FLIP] noggin/legal.py. Needs arbiter.enabled: nothing else reads this list
+  leave_at_flip: false     # a cut stays listed with the leave gate shut or no landing yet; it waits (decider.leave_wait) and goes only when the flip's leave rules and a dead-ball landing both allow it
+  leave_wait_s: 45         # the longest a cut waits; it also ends when the target stops being worth it or can't be entered at all
+
 slate:                     # [build plan WP-18] blocks of a few games, then catch-up, late narrowing; NBA misses its exit bar
   enabled: false
 
