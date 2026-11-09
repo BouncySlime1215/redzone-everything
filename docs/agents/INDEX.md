@@ -34,6 +34,7 @@ Standard: [docs/STANDARD.md](../STANDARD.md). Plan and process gate: [docs/PLAN.
 
 | id | date | title | status | sources (verified) | gate items |
 |---|---|---|---|---|---|
+| D-FIELDS-A | 2026-11-09 | [Sports data pools by subcategory - largest open sources, licences, Kaggle fetch, and paid vendors (scope changed from 13 academic fields)](data/2026-11-09-sports-data-pools.md) | draft | 70 (52) | - |
 | D-FIELDS-B | 2026-11-09 | [Math and machine learning data pools by subcategory, with pretrained models and a paid-source table (replaces the first 13-field scope; old findings kept as an appendix)](data/2026-11-09-math-ml-data-pools.md) | draft | 113 (99) | - |
 
 ## harness
