@@ -75,6 +75,7 @@ def test_prep_prime_buffer_is_a_pause_so_it_costs_at_least_b():
     (Stick(busy_until=NOW + 3, job_game="A", job_to=Level.R3), 59.0),       # its own tune: not paid twice
     (Stick(busy_until=NOW + 3, job_game="A", job_to=Level.R4), 3.0),
     (Stick(busy_until=NOW + 3, job_game="B", job_to=Level.R4), 63.0),
+    (Stick(busy_until=NOW + 3, job_game="A", job_to=Level.R5), 3.0),       # a job already at its buffer top is not paid twice
     (Stick(busy_until=NOW + 3, job_game="A", job_to=99), 63.0),
     (Stick(busy_until=math.nan), math.inf),
     (Stick(busy_until=math.inf), math.inf),
@@ -308,6 +309,16 @@ def test_replace_owner_ignores_reach():
 def test_replace_never_takes_a_game_with_no_usable_route(want):
     assert gq.replace(game("h", **R4), want, FREE, NOW) is False
     assert gq.replace(None, want, FREE, NOW) is False
+
+
+@pytest.mark.parametrize("want", [
+    game("w", lvl=Level.R0, user="lock"),                                         # a route, but no level
+    gq.Row(game("w", user="lock"), Rung.LOCK, Level.R4, 0.0, True, None),         # a level, but no route
+], ids=["level_zero", "route_none"])
+def test_swap_names_a_want_without_level_or_route_before_anything_else(want):
+    """Either alone is enough. Without the name a lock with only one of them would go on to 'stick_free' or 'unreachable'."""
+    row = want if isinstance(want, gq.Row) else gq._row(want, FREE, NOW, P)
+    assert gq._swap(None, row, FREE, P) == (False, "want_has_no_route")
 
 
 def test_replace_same_game_is_not_a_swap():
