@@ -2403,6 +2403,11 @@ class Controller:
             pb = await stick.playback(pkg) if sent and sent.ok else {}
             if pb.get("state") != "paused":
                 await stick.key("KEYCODE_MEDIA_PLAY")
+                # Both keys dropped its anchor (Stick.shell): it's still the stream we tuned, so anchor it again or no
+                # flip can ever confirm this "ready" standby
+                now_pb = await stick.playback(pkg)
+                if playback_ready(now_pb):
+                    stick.remember(target, now_pb)
                 log.info("buffer: %s on %s didn't pause (%s); left at the live edge", target, stick.host,
                          pb.get("state"))
                 out["end"] = "refused"
@@ -3096,6 +3101,10 @@ class Controller:
             path = "preloaded"
         elif getattr(self, "_preloaded_only", False):
             # [jump mode] the ready standby stopped playing: no re-tune on a jump (it would miss the dead ball)
+            if self._live_on_hidden(target) and (hid.tuned or {}).get("target") != target:
+                # No anchor (a key went out and nothing re-anchored it): no flip can ever confirm this stream, and a
+                # "ready" standby is never replaced, so every jump would be refused here until something else re-tuned it.
+                self._set_hidden(None, False, why="ready, but no anchor to confirm it with")
             return Outcome(False, target, time.time() - t0, STANDBY_NOT_READY + " (stopped playing)", False,
                            path="refused", screen_unchanged=True)
         else:
