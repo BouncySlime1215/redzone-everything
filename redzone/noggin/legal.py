@@ -65,6 +65,11 @@ def dwell_left(since: float, min_s: float, kind: str, kinds, now: float) -> floa
     return since + min_s - now
 
 
+def too_soon(last_switch_at: float | None, gap_s: float, now: float) -> bool:
+    """The switch-rate cap: no flip again within gap_s of the last switch (anti ping-pong)."""
+    return last_switch_at is not None and now - last_switch_at < gap_s
+
+
 @dataclass(frozen=True)
 class Facts:
     """What the rules read for one tick. Built by `Decider.legal_facts`; epoch s."""
@@ -78,7 +83,8 @@ class Facts:
     since: float = 0.0
     dwell_min_s: float = 0.0
     dwell_kinds: tuple[str, ...] = ()
-    #F
+    last_switch_at: float | None = None
+    min_gap_s: float = 0.0
     #F
 
 
@@ -93,6 +99,7 @@ def legal_options(f: Facts) -> tuple[brain.Option, ...]:
         return (STAY,)
     if f.current and dwell_left(f.since, f.dwell_min_s, kind_of("cut") or "", f.dwell_kinds, f.now) > 0:
         return (STAY,)
-    #B
+    if too_soon(f.last_switch_at, f.min_gap_s, f.now):
+        return (STAY,)
     #B
     return (STAY,)

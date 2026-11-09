@@ -1838,7 +1838,8 @@ class Decider:
         if target and target != self.current:
             # [switch-rate cap] PICK alone never flips again within min_gap_s of the last switch
             gap = float(self.cfg.get("noggin.pick.min_gap_s", 0.0))
-            if self.history and now - self.history[-1][0] < gap and not (d.action == "switch" and d.target == target):
+            if legal.too_soon(self.history[-1][0] if self.history else None, gap, now) \
+                    and not (d.action == "switch" and d.target == target):
                 return d if d.action == "stay" else Decision(now, "stay", self.current, "pick: too soon after a switch",
                                                              d.state, d.gate)
             # Rule #1: the app's own leave gate decides when, for whatever is on screen (also a game PICK

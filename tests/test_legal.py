@@ -56,3 +56,9 @@ def test_dwell():
     assert legal.dwell_left(100.0, 30.0, "better", None, 110.0) == 0.0
     f = legal.Facts(now=110.0, current="a", since=100.0, dwell_min_s=30.0, dwell_kinds=("better",))
     assert legal.legal_options(f) == (legal.STAY,)
+
+
+def test_too_soon():
+    assert legal.too_soon(90.0, 60.0, 100.0) and not legal.too_soon(40.0, 60.0, 100.0)
+    assert not legal.too_soon(None, 60.0, 100.0) and not legal.too_soon(99.0, 0.0, 100.0)
+    assert legal.legal_options(legal.Facts(now=100.0, last_switch_at=90.0, min_gap_s=60.0)) == (legal.STAY,)
