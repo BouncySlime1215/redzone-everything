@@ -422,7 +422,8 @@ def apply_flags(cfg, tuners: dict[str, "Tuner"] | None = None) -> None:
     """Copy the tuners.* flags onto the tuner objects. Controller calls this; until it does they stay OFF."""
     table = TUNERS if tuners is None else tuners
     fast, link = bool(cfg.get("tuners.prime_fast_confirm", False)), bool(cfg.get("tuners.espn_link_form", False))
-    for tuner in table.values():
+    for wrapped in table.values():
+        tuner = getattr(wrapped, "inner", wrapped)   # providers.DiagnosingTuner wraps the real one in the running app
         tuner.warm_probe = fast or link
         if isinstance(tuner, PrimeTuner):
             tuner.fast_confirm = fast

@@ -318,3 +318,15 @@ def test_controller_start_copies_the_flags_onto_the_tuners():
     assert not prime.fast_confirm and not espn.link_form
     src = open(tn.__file__.replace("tuners/tuners.py", "control.py")).read()
     assert "apply_flags(cfg)" in src
+
+
+def test_apply_flags_reaches_a_wrapped_tuner():
+    """Why: the full suite caught it: DiagnosingTuner wraps PrimeTuner in the running app, so isinstance() missed it."""
+    import redzone.tuners.tuners as tn
+    from redzone.tuners.providers import DiagnosingTuner
+
+    inner = tn.PrimeTuner()
+    tn.apply_flags(type("C", (), {"get": staticmethod(lambda k, d=None: k == "tuners.prime_fast_confirm" or d)}),
+                   {"prime": DiagnosingTuner(inner)})
+    assert inner.fast_confirm is True
+

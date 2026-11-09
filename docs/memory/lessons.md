@@ -419,3 +419,5 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
 - 2026-11-09 (WP-04): Prime's tune loop stopped at a rent or buy prompt, and then the "focused button" path pressed OK anyway. A second press path needs the same purchase guard as the first; "More purchase options" alone is on every Prime page and is not a purchase screen.
 
 - 2026-11-09 (WP-05 review, W2-LOCKED-07): the documented scorecard command had no `--split`, and the default `all` grades the locked nights. Any builder following CLAUDE.md would have spent the locked set. The command now says `--split fit`.
+
+- 2026-11-09 (WP-04 full suite): `isinstance(tuner, PrimeTuner)` never matched in the running app, because `providers.DiagnosingTuner` wraps each built-in tuner. Passing only in import order that skips the wrap is a false pass: test the wrapped object too.
