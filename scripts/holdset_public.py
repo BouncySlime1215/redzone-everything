@@ -197,12 +197,36 @@ def hoops_summary(g):
 BASKETBALL_EXTRA = ["shooting_play"]
 
 
-def public_rows(l, df):
+def read_public(l, files):
+    """One league's public play-by-play files, concatenated, with the columns the adapters read. A file with no wall clock is skipped."""
+    import pandas as pd
+    import pyarrow.parquet as pq
+    from redzone.noggin import factory
+    frames = []
+    for f in files:
+        have = set(pq.read_schema(f).names)
+        want = (factory.NFL_COLS + NFL_EXTRA) if l == "nfl" else (
+            ["id", "sequence_number", "type_text", "text", "period_number", "clock_display_value", "wallclock", "scoring_play",
+             "score_value", "home_score", "away_score", "game_id", "season", "season_type"] + BASKETBALL_EXTRA)
+        if ("time_of_day" if l == "nfl" else "wallclock") in have:
+            frames.append(pd.read_parquet(f, columns=[c for c in want if c in have]))
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def _season_type(l, g):
+    """ESPN's header season type (3 = playoffs) for a public game, so a model reads `playoff` as it does on archive rows."""
+    if "season_type" not in g:
+        return 2
+    return 3 if (g.season_type.iloc[0] == "POST" if l == "nfl" else g.season_type.iloc[0] == 3) else 2
+
+
+def public_rows(l, df, keep_games=None):
     """{night: [game_row]} from one league's public play-by-play (all the seasons concatenated), minus the factory's eval nights.
-    The night is the factory's (ET, 5 AM boundary) so public and factory splits agree."""
+    The night is the factory's (ET, 5 AM boundary) so public and factory splits agree.
+    keep_games: a set of nights; returns (rows, {night: [(night, gid, summary)]}), the shape holdset.games yields, for a ranker."""
     import pandas as pd
     from redzone.noggin import factory
-    rows = collections.defaultdict(list)
+    rows, games = collections.defaultdict(list), collections.defaultdict(list)
     cut = factory.EVAL_FIRST_NIGHT.get(l)
     if l == "nfl":
         df = df[df.qtr.notna()].sort_values(["game_id", "play_id"], kind="stable")
@@ -221,7 +245,9 @@ def public_rows(l, df):
         if cut and n >= cut:
             continue
         rows[n].append(r)
-    return rows
+        if keep_games is not None and n in keep_games:
+            games[n].append((n, str(gid), {**d, "header": {"season": {"type": _season_type(l, g)}}}))
+    return rows if keep_games is None else (rows, games)
 
 
 def forward_folds(nights, folds=4):
@@ -231,28 +257,40 @@ def forward_folds(nights, folds=4):
     return [(nights[:edges[i + 1]], nights[edges[i + 1]:edges[i + 2]]) for i in range(folds)]
 
 
+def fold_report(l, rows, tr, te, ranker=None):
+    """holdset.report's capture on chosen nights: the same shared 180 s clock, table, closest score, random and hindsight.
+    ranker(l, night, night_rows) fills planner_pct (the slot, whatever the ranker is). None when there is nothing to score."""
+    Dtr = [dd for n in tr for dd in decisions(l, rows[n])]
+    ranks = {n: ranker(l, n, rows[n]) for n in te} if ranker else {}
+    Dte = [dd for n in te for dd in decisions(l, rows[n], ranks.get(n))]
+    if not Dtr or not Dte:
+        return None
+    pred, _ = fit(Dtr)
+    fo = {"nights_fit": len(tr), "nights_test": len(te), "decisions": len(Dte)}
+    for K in KS:
+        g_h, t_h, _, n = capture(Dte, lambda x: -x[2], K, random.Random(0))
+        if not t_h:
+            continue
+        g_t, t_t, b_t, _ = capture(Dte, lambda x: pred(x[1]), K, random.Random(0))
+        rs = [capture(Dte, lambda x: 0.0, K, random.Random(s)) for s in range(30)]
+        planner = capture(Dte, lambda x: x[5], K, random.Random(0))[0] / t_h if ranker else None
+        fo[f"K{K}"] = {"decisions": n, "state_table_pct": round(g_t / t_t * 100, 1), "closest_score_pct": round(g_h / t_h * 100, 1),
+                       "random_pct": round(float(np.mean([a / b for a, b, _, _ in rs])) * 100, 1),
+                       "planner_pct": None if planner is None else round(planner * 100, 1), "hindsight_pct": round(b_t / t_t * 100, 1)}
+    return fo
+
+
 def public_report(l, rows, folds=4):
     """Per fold and per K: capture of table, closest score, random, hindsight; then the mean and the worst fold."""
     res = {"league": l, "nights": len(rows), "games": sum(len(v) for v in rows.values()), "folds": []}
     per = {K: [] for K in KS}
     for tr, te in forward_folds(rows, folds):
-        Dtr = [dd for n in tr for dd in decisions(l, rows[n])]
-        Dte = [dd for n in te for dd in decisions(l, rows[n])]
-        if not Dtr or not Dte:
+        fo = fold_report(l, rows, tr, te)
+        if fo is None:
             continue
-        pred, _ = fit(Dtr)
-        fo = {"nights_fit": len(tr), "nights_test": len(te), "decisions": len(Dte)}
         for K in KS:
-            g_h, t_h, _, n = capture(Dte, lambda x: -x[2], K, random.Random(0))
-            if not t_h:
-                continue
-            g_t, t_t, b_t, _ = capture(Dte, lambda x: pred(x[1]), K, random.Random(0))
-            rs = [capture(Dte, lambda x: 0.0, K, random.Random(s)) for s in range(30)]
-            c = {"decisions": n, "state_table_pct": round(g_t / t_t * 100, 1), "closest_score_pct": round(g_h / t_h * 100, 1),
-                 "random_pct": round(float(np.mean([a / b for a, b, _, _ in rs])) * 100, 1),
-                 "planner_pct": None, "hindsight_pct": round(b_t / t_t * 100, 1)}
-            fo[f"K{K}"] = c
-            per[K].append(c)
+            if f"K{K}" in fo:
+                per[K].append(fo[f"K{K}"])
         res["folds"].append(fo)
     for K in KS:
         cs = per[K]
@@ -291,26 +329,12 @@ def run_archive(args):
 
 
 def run_public(args):
-    import pandas as pd
     from redzone.noggin import factory
     l = args.league
     files = sorted(args.public_dir.glob("play_by_play_*.parquet"))
     if not files:
         sys.exit(f"{args.public_dir}: no play_by_play_<year>.parquet files")
-    frames = []
-    for f in files:
-        y = int(f.stem.split("_")[-1])
-        if y < factory.SOURCES[l]["first"]:
-            continue
-        import pyarrow.parquet as pq
-        have = set(pq.read_schema(f).names)
-        want = (factory.NFL_COLS + NFL_EXTRA) if l == "nfl" else (
-            ["id", "sequence_number", "type_text", "text", "period_number", "clock_display_value", "wallclock", "scoring_play",
-             "score_value", "home_score", "away_score", "game_id", "season", "season_type"] + BASKETBALL_EXTRA)
-        if ("time_of_day" if l == "nfl" else "wallclock") not in have:
-            continue
-        frames.append(pd.read_parquet(f, columns=[c for c in want if c in have]))
-    rows = public_rows(l, pd.concat(frames, ignore_index=True))
+    rows = public_rows(l, read_public(l, [f for f in files if int(f.stem.split("_")[-1]) >= factory.SOURCES[l]["first"]]))
     res = public_report(l, rows, args.folds)
     res["planner_stands_in_for"] = "not run on public seasons: it needs a live GameState (scorer history, drive heat)"
     args.out.write_text(json.dumps({l: res}, indent=1))
