@@ -7,7 +7,7 @@
 
 import { ACTIONS, attr, esc, arr, gameById } from "./rz-core.js?v=41";
 import { icon, sec } from "./rz-ui.js?v=40";
-import { api } from "./rz-api.js?v=43";
+import { api } from "./rz-api.js?v=44";
 import { toast } from "./rz-sheet.js?v=40";
 
 const name = (gid) => { const g = gameById(gid); return g ? g.matchup : "A game"; };
@@ -38,15 +38,23 @@ export function queueCard(S) {
     <div class="card rows" data-key="queue-card-rows">${rows.map(row).join("")}${cr}</div></div>`;
 }
 
+const tapId = () => { try { if (crypto.randomUUID) return crypto.randomUUID(); } catch { /* older Safari */ } return `q${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`; };
+const inFlight = new Set();   // one request per button at a time: a second tap while one is out is the same tap
+
 async function tap(path, body, el) {
-  if (el) el.disabled = true;
+  const k = `${path}|${body.game_id}`;
+  if (inFlight.has(k)) return;
+  inFlight.add(k);
+  if (el) { el.disabled = true; el.setAttribute("aria-busy", "true"); }
   try {
-    const r = await api(path, { body });
-    if (!r.ok) toast(r.message || "That didn't work", "error");
+    // the id lets the server answer a retry from its log instead of moving the game twice
+    const r = await api(path, { body: { ...body, id: tapId() } });
+    if (!r || !r.ok) toast((r && r.message) || "That didn't work", "error");
   } catch (e) {
     toast(e.message || "That didn't work", "error");
   } finally {
-    if (el) el.disabled = false;
+    inFlight.delete(k);
+    if (el) { el.disabled = false; el.removeAttribute("aria-busy"); }
   }
 }
 ACTIONS["queue-pin"] = (el, e) => { e && e.stopPropagation(); return tap("/api/queue/pin", { game_id: el.dataset.gid, value: !!el.dataset.on }, el); };

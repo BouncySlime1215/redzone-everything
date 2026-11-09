@@ -260,11 +260,12 @@ def build_app(engine: Engine) -> FastAPI:
             value = bool(value)
         elif value not in ("up", "down"):
             return {"ok": False, "message": "move up or down"}
-        ok, message = engine.action(kind, gid, value)
-        if ok:
+        # a tap id makes a retry or a double tap land once ("Move up" twice moved a game two places)
+        rec = engine.commands.run(body.get("id"), kind, gid, value, lambda: engine.action(kind, gid, value))
+        if rec["ok"] and not rec["duplicate"]:
             for fn in ("decide", "broadcast"):
                 getattr(engine, fn, lambda: None)()
-        return {"ok": ok, "message": message}
+        return {"ok": rec["ok"], "message": rec["message"], "duplicate": rec["duplicate"]}
 
     @app.post("/api/queue/pin")
     async def queue_pin(body: dict):

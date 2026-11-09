@@ -4,7 +4,7 @@ import { app, ACTIONS, store, attr, esc, num, games, LEAGUES, LEAGUE_NAME, raw, 
 import { patch } from "./rz-dom.js?v=40";
 import { icon, logo, leagueImg, empty, skel, seg, screenHead } from "./rz-ui.js?v=40";
 import { gameCard } from "./rz-cards.js?v=40";
-import { loadTeams, teamList } from "./rz-detail.js?v=42";
+import { loadTeams, teamList } from "./rz-detail.js?v=43";
 
 const ui = app.ui;
 ui.gview = store.get("gview", "scores");
