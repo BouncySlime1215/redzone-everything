@@ -4,7 +4,7 @@
 
 import { app, ACTIONS, CHANGES, INPUTS, hooks, attr, esc, num, arr, fmtTime, fmtDur } from "./rz-core.js?v=41";
 import { icon, sec } from "./rz-ui.js?v=40";
-import { api, act } from "./rz-api.js?v=43";
+import { api, act } from "./rz-api.js?v=44";
 import { toast, openSheet, closeSheet, sheetById } from "./rz-sheet.js?v=40";
 
 const v2 = { on: false, commit: false, checked: false, rows: new Map(), head: "", loading: false, prio: null, missed: null };

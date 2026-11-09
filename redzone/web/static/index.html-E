@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07080b" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f2f3f6" media="(prefers-color-scheme: light)">
+  <meta name="color-scheme" content="dark light">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="RedZone">
+  <title>RedZone Everything</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ff4d5a'/%3E%3Cstop offset='1' stop-color='%23d9142a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='15' fill='url(%23g)'/%3E%3Cpath d='M17 44 30 20h8L25 44zM31 44l13-24h6L37 44z' fill='%23fff'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="/static/app.css?v=71">
+</head>
+<body>
+  <!-- Icon sprite: one stroke family (24px grid, 2px stroke, round joins). Paths adapted from Feather (MIT) / Lucide (ISC). -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-now" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="14" rx="3"/><path d="M8 21h8"/><path d="M10 8.2v5.6l4.6-2.8z"/></symbol>
+      <symbol id="i-scores" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M12 4v16"/><path d="M6 10h2.5v4H6zM15.5 10H18v4h-2.5z"/></symbol>
+      <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 0 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="M14 5v2M14 11v2M14 17v2"/></symbol>
+      <symbol id="i-flask" viewBox="0 0 24 24"><path d="M10 2v7.5a2 2 0 0 1-.2.9L4.7 20.5a1 1 0 0 0 .9 1.5h12.8a1 1 0 0 0 .9-1.5l-5.1-10.1a2 2 0 0 1-.2-.9V2"/><path d="M8.5 2h7M7 16h10"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+      <symbol id="i-tv" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2.5"/><path d="M17 2l-5 5-5-5"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.4-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></symbol>
+      <symbol id="i-skip" viewBox="0 0 24 24"><path d="M5 4.8v14.4a.8.8 0 0 0 1.25.66L16 13a1.2 1.2 0 0 0 0-2L6.25 4.14A.8.8 0 0 0 5 4.8z"/><path d="M19.5 5v14"/></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="11" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+      <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="11" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 7.75-1.4"/></symbol>
+      <symbol id="i-mute" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></symbol>
+      <symbol id="i-sound" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></symbol>
+      <symbol id="i-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4.1 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></symbol>
+      <symbol id="i-thumb-up" viewBox="0 0 24 24"><path d="M7 10v12"/><path d="M15 5.9 14 10h5.8a2 2 0 0 1 1.9 2.6l-2.3 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.8a2 2 0 0 0 1.8-1.1L12 2a3.1 3.1 0 0 1 3 3.9z"/></symbol>
+      <symbol id="i-thumb-down" viewBox="0 0 24 24"><path d="M17 14V2"/><path d="M9 18.1 10 14H4.2a2 2 0 0 1-1.9-2.6l2.3-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.8a2 2 0 0 0-1.8 1.1L12 22a3.1 3.1 0 0 1-3-3.9z"/></symbol>
+      <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></symbol>
+      <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="1.6"/></symbol>
+      <symbol id="i-autopilot" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M22 2 12 12"/><path d="M15 2h7v7"/><circle cx="12" cy="12" r="4"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 2.5 2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z"/></symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+      <symbol id="i-replay" viewBox="0 0 24 24"><path d="M3 3v6h6"/><path d="M3.5 13a9 9 0 1 0 2.2-7.3L3 9"/><path d="M10 9.5v5l4-2.5z"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.5 2"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 16v-4.5M12 8h.01"/></symbol>
+      <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4M12 16h.01"/></symbol>
+      <symbol id="i-snow" viewBox="0 0 24 24"><path d="M12 2v20M4.9 4.9l14.2 14.2M2 12h20M4.9 19.1 19.1 4.9"/><path d="m9 4 3 2 3-2M9 20l3-2 3 2M4 9l2 3-2 3M20 9l-2 3 2 3"/></symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></symbol>
+      <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="m3 11 18-6v14L3 13z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></symbol>
+      <symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M5 22h14M5 2h14"/><path d="M17 22v-4.2a2 2 0 0 0-.6-1.4L12 12l-4.4 4.4a2 2 0 0 0-.6 1.4V22M7 2v4.2a2 2 0 0 0 .6 1.4L12 12l4.4-4.4a2 2 0 0 0 .6-1.4V2"/></symbol>
+      <symbol id="i-octagon" viewBox="0 0 24 24"><path d="M7.9 2h8.2L22 7.9v8.2L16.1 22H7.9L2 16.1V7.9z"/><path d="M12 8v4M12 16h.01"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2.5"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+      <symbol id="i-trend" viewBox="0 0 24 24"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-signal" viewBox="0 0 24 24"><path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 4v16"/></symbol>
+      <symbol id="i-power" viewBox="0 0 24 24"><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/><path d="M12 2v10"/></symbol>
+      <symbol id="i-wand" viewBox="0 0 24 24"><path d="m21.6 2.4-1.2-1.2a1.2 1.2 0 0 0-1.7 0L2.2 17.7a1.2 1.2 0 0 0 0 1.7l1.2 1.2a1.2 1.2 0 0 0 1.7 0L21.6 4.1a1.2 1.2 0 0 0 0-1.7z"/><path d="m14 7 3 3M5 6v4M19 14v4M10 2v2M7 8H3M21 16h-4M11 3H9"/></symbol>
+      <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
+      <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M2 8.8a15 15 0 0 1 20 0M12 20h.01"/></symbol>
+      <symbol id="i-football" viewBox="0 0 24 24"><path d="M3.6 20.4c-1.9-5.2.2-11.5 4.8-14.6 3.4-2.3 8-2.9 12-1.8 1.9 5.2-.2 11.5-4.8 14.6-3.4 2.3-8 2.9-12 1.8z"/><path d="m8.5 15.5 7-7M10 11l3 3M12.2 8.8l3 3"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+      <symbol id="i-basketball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19M12 2.5v19M5.4 5.4c2.9 2.7 2.9 10.5 0 13.2M18.6 5.4c-2.9 2.7-2.9 10.5 0 13.2"/></symbol>
+      <symbol id="i-baseball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M6.2 4.5C8.5 6.6 9.5 9.2 9.5 12s-1 5.4-3.3 7.5M17.8 4.5c-2.3 2.1-3.3 4.7-3.3 7.5s1 5.4 3.3 7.5"/></symbol>
+      <symbol id="i-swap" viewBox="0 0 24 24"><path d="M16 3l4 4-4 4"/><path d="M20 7H4"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h16"/></symbol>
+    </defs>
+  </svg>
+
+  <header class="appbar" id="appbar">
+    <div class="appbar-in">
+      <a class="brand" href="#now" data-go="now" aria-label="RedZone Everything — Now">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M14 46 29 18h9L23 46zM31 46l15-28h7L38 46z"/></svg></span>
+        <span class="brand-word"><b>RedZone</b><i>Everything</i></span>
+      </a>
+      <div class="appbar-right">
+        <button class="pill pill--dry" id="dry-pill" data-act="go-tv" hidden><svg class="ico"><use href="#i-power"/></svg><span>Dry run</span></button>
+        <span class="pill pill--conn" id="conn" data-state="wait" role="status" aria-live="polite"><i></i><span>Connecting</span></span>
+      </div>
+    </div>
+  </header>
+
+  <div id="banners" class="banners"></div>
+
+  <main id="main">
+    <section class="screen" id="scr-now" data-screen="now" aria-label="Now"></section>
+    <section class="screen" id="scr-games" data-screen="games" aria-label="Games" hidden></section>
+    <section class="screen" id="scr-bets" data-screen="bets" aria-label="Bets" hidden></section>
+    <section class="screen" id="scr-lab" data-screen="lab" aria-label="Lab" hidden></section>
+    <section class="screen" id="scr-settings" data-screen="settings" aria-label="Settings" hidden></section>
+  </main>
+
+  <nav class="tabbar" id="tabbar" role="tablist" aria-label="Sections" style="--i:0">
+    <span class="tab-ind" aria-hidden="true"></span>
+    <button class="tab" role="tab" data-go="now" aria-selected="true"><span class="tab-ic"><svg class="ico"><use href="#i-now"/></svg><i class="tab-live" hidden></i></span><span>Now</span></button>
+    <button class="tab" role="tab" data-go="games" aria-selected="false"><span class="tab-ic"><svg class="ico"><use href="#i-scores"/></svg></span><span>Games</span></button>
+    <button class="tab" role="tab" data-go="bets" aria-selected="false"><span class="tab-ic"><svg class="ico"><use href="#i-ticket"/></svg><b class="tab-pip" hidden></b></span><span>Bets</span></button>
+    <button class="tab" role="tab" data-go="lab" aria-selected="false"><span class="tab-ic"><svg class="ico"><use href="#i-flask"/></svg></span><span>Lab</span></button>
+    <button class="tab" role="tab" data-go="settings" aria-selected="false"><span class="tab-ic"><svg class="ico"><use href="#i-sliders"/></svg></span><span>Settings</span></button>
+  </nav>
+
+  <div id="sheets" class="sheets"></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script type="module" src="/static/app.js?v=73"></script>
+</body>
+</html>

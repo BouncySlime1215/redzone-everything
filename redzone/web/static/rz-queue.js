@@ -7,7 +7,7 @@
 
 import { ACTIONS, attr, esc, arr, gameById } from "./rz-core.js?v=41";
 import { icon, sec } from "./rz-ui.js?v=40";
-import { api } from "./rz-api.js?v=43";
+import { api } from "./rz-api.js?v=44";
 import { toast } from "./rz-sheet.js?v=40";
 
 const name = (gid) => { const g = gameById(gid); return g ? g.matchup : "A game"; };
