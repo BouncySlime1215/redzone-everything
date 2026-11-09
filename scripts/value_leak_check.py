@@ -45,7 +45,7 @@ META = ("league", "season", "game_id", "game_key", "night", "source_night_id", "
         "decision_t", "feed_cut_t", "feed_head_t", "feature_t_max", "lag_s", "label_full_window", "label_first_t")
 ALLOWED = frozenset(META + FEATURES + LABELS)
 PUBLIC_SOURCES = {"nflverse_pbp": "nfl"}
-PERSONAL_SOURCES = {"hoopr_espn_nba": "nba"}
+PERSONAL_SOURCES = {"hoopr_espn_nba": "nba", "hoopr_espn_cbb": "cbb"}
 PERSONAL_TAG = "personal-use, not for commercial release"
 COPY_R = 0.995          # a feature this correlated with a label is the label
 MIN_ROWS_COPY = 200
