@@ -873,6 +873,10 @@ async def _adb(*args: str, timeout: float = 8.0) -> RunResult:
         if proc is not None:
             _close_proc(proc)
         return RunResult(False, str(e), time.monotonic() - t0)
+    except BaseException:
+        if proc is not None:
+            _close_proc(proc)         # cancelled: don't leave an adb process running behind us (as Stick.run)
+        raise
 
 
 async def adb_available() -> bool:

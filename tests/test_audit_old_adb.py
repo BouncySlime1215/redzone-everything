@@ -34,3 +34,33 @@ async def test_screenshots_skip_a_hung_stick(no_adb):
     s = _hung()
     assert await s.screencap(timeout=15) == b""
     assert await s.screencap_band(0.7, timeout=15) == b""
+
+
+class _HungProc:
+    returncode = None
+
+    def __init__(self):
+        self.killed = False
+
+    async def communicate(self):
+        await asyncio.sleep(60)
+
+    def kill(self):
+        self.killed = True
+
+
+async def test_a_cancelled_adb_call_leaves_no_process_behind(monkeypatch):
+    """Repro: adb._adb cleaned up on timeout and OSError but not on cancel (Stick.run does), so a cancelled
+    `adb connect` kept running with nobody waiting for it."""
+    proc = _HungProc()
+
+    async def spawn(*a, **k):
+        return proc
+    monkeypatch.setattr(adb.asyncio, "create_subprocess_exec", spawn)
+    task = asyncio.ensure_future(adb._adb("connect", "10.0.0.9:5555", timeout=30))
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert proc.killed
