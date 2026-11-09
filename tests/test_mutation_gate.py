@@ -396,6 +396,18 @@ def k_clock_checks(m):
     assert V(m, lv, cands=cs) == "leave" and V(m, lv, cands=cs, kind="jump") == "leave"
 
 
+def k_walk_landing(m):
+    """[NBA-JOIN] _landing answers for the walk check too, whichever kind of entry it is. test_nba_join proves the check."""
+    _ready(m)
+    real, m._walk_landing_too_late = m._walk_landing_too_late, lambda f: True
+    try:
+        assert V(m) == "landing" and V(m, kind="jump") == "landing"
+        m._walk_landing_too_late = lambda f: False
+        assert V(m) == "" and V(m, kind="jump") == ""
+    finally:
+        m._walk_landing_too_late = real
+
+
 def k_landing_whistle(m):
     _ready(m)
     no = lambda h: _set(h, _flip_lands_whistle=lambda d, t: False)  # noqa: E731
@@ -509,14 +521,17 @@ CHECKS = [v for k, v in sorted(globals().items()) if k.startswith("k_") and call
 # Equivalent mutants: no flip can tell them apart. id -> why.
 REPLAN = "replan returns a plan only when timed is true, so `plan is not None` already implies it"
 EQUIVALENT = {
-    "Flip.game:51:drop_operand_1": "merger.games.get(None) and .get('') are both None: no game has either id",
-    "Flip.game:51:change_str": "merger.games.get('_mutated') is None like .get(''): only reached with a falsy target",
-    "_landing:151:drop_operand_0": REPLAN,
-    "_rewind_changed:165:drop_operand_0": REPLAN,
-    "_arrival_break:173:drop_operand_0": REPLAN,
-    "_arrival_break:170:drop_operand_0": "timeline is None whenever game is None (Flip.timeline), the same guard's other half",
-    "_hold:181:drop_operand_1": "None is never a key of f.live, so `before not in live` already covers it",
-    "_hold:186:drop_operand_1": "f.live is built from f.cands: a key of live is always a key of cands",
+    "Flip.game:drop_operand_1:self.d.target or ''": "merger.games.get(None) and .get('') are both None: no game has either id",
+    "Flip.game:change_str:''": "merger.games.get('_mutated') is None like .get(''): only reached with a falsy target",
+    "_landing:drop_operand_0:timed and plan is not None and (not plan.ok)": REPLAN,
+    "_rewind_changed:drop_operand_0:timed and plan is not None and plan.ok and (plan.rewind_s != getattr(f.d, 'rewind_s', 0.0))": REPLAN,
+    "_arrival_break:drop_operand_0:timed and plan is not None and plan.rewind_s": REPLAN,
+    "_arrival_break:drop_operand_0:f.game is None or f.jump or f.timeline is None":
+        "timeline is None whenever game is None (Flip.timeline), the same guard's other half",
+    "_hold:drop_operand_1:not f.is_switch or f.before is None or f.before not in f.live":
+        "None is never a key of f.live, so `before not in live` already covers it",
+    "_hold:drop_operand_1:f.jump or f.before not in f.cands or (not dec._jump_hold(f.cands[f.before]))":
+        "f.live is built from f.cands: a key of live is always a key of cands",
 }
 
 

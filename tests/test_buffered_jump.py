@@ -426,6 +426,8 @@ def test_a_prime_standby_is_pause_held_not_left_unbuffered(cfg, tmp_path, monkey
         ok = results.pop(0)
         if ok:
             c._set_held(target, base_s + behind_s)
+        else:
+            c._last_hold = {"host": stick.host, "target": target, "end": "refused"}   # as _hold does: it never paused, so it's still playing
         return ok
     monkeypatch.setattr(c, "_hold", hold)
 

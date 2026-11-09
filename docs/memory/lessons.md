@@ -464,3 +464,7 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
 - 2026-11-09 (AUDIT-5): the clock tape and the no-bug stretch both treated "not observed" as "unchanged", because their reads stop when nobody is looking. Lesson: an observation stream needs its own gap rule. Tests: tests/test_audit5_clock.py, tests/test_audit5_labels.py.
 
 - 2026-11-09 (AUDIT-5): `_fill_seen` compared feed time to the screen log. Lesson: a timestamp has one clock; check which when it meets another. Test: tests/test_audit5_fill.py.
+
+- 2026-11-09 (SUITE-FIX): `dumpsys | grep` exits 1 on no match, so "no media session" read as a failed read, and AUDIT-4's "an unread before is no proof" (56db03e1) cost a tune from nothing its fast path: 30 s, then "video never started". Lesson: a pipe's exit code is the last command's; check what a "failed" read really was before trusting the flag. Test: tests/test_audit4_tuners.py.
+
+- 2026-11-09 (SUITE-FIX): mutant ids carried line numbers, so a 2-line import shift (2505c35a) renamed every listed equivalent. Ids now name the code they change; editing that code is what needs a re-review. Test: tests/test_mutation_gate.py.

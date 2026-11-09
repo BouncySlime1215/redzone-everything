@@ -213,7 +213,8 @@ class NewStream:
         continuity = same_stream(self.before, pb)
         # A failed read before the link says nothing about what was playing: the old stream can still report "playing"
         # now. Only a read that came back and found no stream is the fast path.
-        nothing_before = not playback_ready(self.before) and self.before.get("read_ok") is not False
+        nothing_before = not playback_ready(self.before) and (self.before.get("read_ok") is not False
+                                                              or bool(self.before.get("no_sessions")))
         if (nothing_before or continuity is False
                 or (self.gap and continuity is None)):
             self.report = pb
