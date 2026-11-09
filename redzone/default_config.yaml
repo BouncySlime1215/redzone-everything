@@ -280,7 +280,8 @@ decider:
     whistle_band_s: 3        # [EXP-610] scrub path only: a basketball flip needs a clock-stopped dead ball for +- this many s
     rewind_only: []      # leagues whose entries land on a dead ball with a rewind when one fits, never wait
     landing_lag_s: 0     # [landing lag] a fresh tune comes up up to this much later than the live edge (one-sided)
-    cue: seek                # [seek model] seek: rewind on screen after the flip (whole 15 s presses + a 2-4 s stall) |
+    cue: hidden              # [seek model, P1-REVIEW-03] hidden: the rewind runs on the HIDDEN stick before the flip; nothing
+                             # ever rewinds on the visible screen, so with no hidden stick a rewinding entry waits
                              # pause: on the HIDDEN stick seek past the dead ball, play up to it, pause, flip, play
     possession_start: "off"  # [possession start] off | crunch | all: cue to the last dead ball before the possession, never wait while one is in reach
     confirmed_dead_only: false  # [data gap] a dead window opens only on a logged stoppage (a lone substitution means the stoppage is missing)
@@ -298,8 +299,10 @@ decider:
     user_rewind_after_s: 15  # [EXP-741 B] with user_timed: after this many seconds a tap also takes a landing that needs
                              # a rewind to the last dead ball (YTTV), armed at the cut; null = never (no-rewind taps waited
                              # > 180 s on 12/20 NBA taps, lane 3). Graded arm: 15
-    user_timed_targets: [youtubetv]  # [EXP-741 scope] targets (app prefixes) a timed tap applies to; [] = all. Prime
-                             # taps go as before: lane 3 graded YTTV+rewind 0 live, waits 0-63 s; Prime p50 199 s
+    user_timed_targets: []   # [EXP-741 scope, N4] targets (app prefixes) a timed tap applies to; [] = all: one tap waits for a
+                             # dead ball on every app (Prime too), a second tap forces. Lane 3: Prime waits p50 199 s
+    no_data_wait_s: 45       # [P1-REVIEW-05] an entry into a game whose feed can't prove a dead ball waits this long, then the
+                             # next game with a provable landing gets the pick (never in blind; alone, it waits and says so once)
     user_rewind_max_s: null  # [EXP-741 D] a tap never rewinds further than this (a longer one keeps waiting); null = no cap.
                              # Graded arm: 60 (arm B rewound one tap 123 s behind live)
     user_bug_gate: shadow    # [EXP-741 E] off | shadow | on: a tap onto Prime lands when the score bug's clock on the hidden

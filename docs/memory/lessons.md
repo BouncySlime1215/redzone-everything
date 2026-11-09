@@ -412,3 +412,4 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
   of its own**, and the wait after PLAY must be short: buffered.park_lead_s plans the picture rolling from PLAY to the flip.
 - 2026-11-08: A closure that polls for 25 s must not keep the tick's snapshot (jump may_cut read cands from decision time):
   rebuild from live state on each poll, as _entry_valid does.
+- 2026-11-08: A check at decision time isn't a check at the flip: the flip can come 25 s later, so `_entry_valid` re-plans every timed league, not only football (P1-REVIEW-01). And a wait with no end is a freeze: every "wait for data" needs a timer that hands the pick to the next choice, not a go-live cap (P1-REVIEW-05).

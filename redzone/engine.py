@@ -28,7 +28,7 @@ from redzone.governor import keep_awake_wanted
 from redzone.control import NO_STICK, STANDBY_NOT_READY, Controller, Outcome
 from redzone.decider import buffered as bj
 from redzone.decider import whistle
-from redzone.decider.decider import REDZONE, REEL, Candidate, Decider, Decision, FocusMode, Missed, State
+from redzone.decider.decider import ENTRY_EXEMPT, REDZONE, REEL, Candidate, Decider, Decision, FocusMode, Missed, State
 from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
                                    leave_gate, leave_window, screen_evidence)
 from redzone.models import GameState, League, Phase
@@ -1721,6 +1721,7 @@ class Engine:
         gate = str(getattr(d, "gate", "") or "")
         changed = d.reason != self._last_logged_reason or d.action != "stay" or gate != self._last_logged_gate
         self._lock_expired()
+        self._entry_stuck()
         if changed:
             self.store.decision(d)
             self._last_logged_reason = d.reason
@@ -1960,6 +1961,7 @@ class Engine:
                 veto = ("not_live" if not g or g.phase != Phase.LIVE else "feed_stale" if self.feeds.stale(g.game_id)
                         else "target_moved" if getattr(self.where.get(g.game_id), "target", None) != target
                         else "landing" if not self.decider.jump_lands_dead(d.target, live.get(d.target), now, cost)
+                        else "hold" if before in live and self.decider._jump_hold(live[before])   # [P1-REVIEW-06]
                         else "leave" if not self.decider.jump_may_leave(before, live, now, self._leave_margin()) else "")
                 if d.jump is not None:
                     d.jump["veto"], d.jump["veto_cost_s"] = veto, round(cost, 1)
@@ -2071,11 +2073,18 @@ class Engine:
         if d.kind == "chase" and catchable(tl, delay, now, remaining) is None:
             return False
         cands1 = {d.target: Candidate(self.scored[d.target], target)} if d.target in self.scored else {}
-        if d.action == "switch" and d.kind != "user" and self.decider._cut_timed(d.target, cands1):
+        timed = self.decider._cut_timed(d.target, cands1)
+        x1 = cands1.get(d.target)
+        # [P1-REVIEW-01] whistle-timed leagues too (hold_only): their flip can come 25 s after the decision. The scrub
+        # path isn't: its picture isn't the live edge the plan judges (_flip_lands_whistle gates it).
+        entry_only = not timed and d.kind not in ENTRY_EXEMPT and self.decider._entry_only(x1, d) \
+            and not self.control._scrub_wanted(target)
+        if d.action == "switch" and d.kind != "user" and (timed or entry_only):
             # [cut timing] the picture must still come up on a dead ball, with the planned rewind
-            # (only where cut timing is on: decider.entry.leagues)
-            plan = self.decider.entry_plan(d.target, cands1, now, remaining,
-                                           urgent=d.kind == "crunch")
+            # (only where cut timing is on: decider.entry.leagues). On the same bar the decision used.
+            pos = entry_only and self.decider._possession_start(x1, d)
+            urgent = d.kind == "crunch" or (entry_only and self.decider._entry_urgent(d, x1, cands1))
+            plan = self.decider.entry_plan(d.target, cands1, now, remaining, urgent=urgent or pos, possession=pos)
             if plan is not None and (not plan.ok or plan.rewind_s != getattr(d, "rewind_s", 0.0)):
                 return False
             if plan is not None and plan.rewind_s:
@@ -2685,9 +2694,11 @@ class Engine:
             return True
         scope = for_league(self.cfg, "decider.entry.user_timed_targets", lg, None) or []
         if scope and not any(str(target or "").startswith(f"{p}:") for p in scope):
-            return True   # [EXP-741 scope] e.g. [youtubetv]: Prime taps go as before until arm E grades
+            return True   # [EXP-741 scope] a target list set by hand (default []: every target waits, N4)
+        # [N4, P1-REVIEW-02] a live game with no proof of a dead ball waits for one; the second tap still goes now
+        unproven = bool(g is not None and g.phase == Phase.LIVE and target and self.cfg.get("decider.entry.enabled", True))
         if d.target not in self.scored:
-            return True
+            return not unproven
         cands1 = {d.target: Candidate(self.scored[d.target], target)}
         now = time.time()
         after = for_league(self.cfg, "decider.entry.user_rewind_after_s", lg, None)
@@ -2703,7 +2714,7 @@ class Engine:
                 return say == "stopped"
         plan = self.decider.entry_plan(d.target, cands1, now, self.control.deadline_cost(target))
         if plan is None:
-            return True
+            return not unproven
         if not plan.ok:
             return False
         if not plan.rewind_s and getattr(plan.landing, "state", "dead") != "dead":
@@ -2741,6 +2752,14 @@ class Engine:
         if second:
             return f"{said}: going now"
         return said if self.cfg.get("mode.dry_run", True) else f"{said} at the next dead ball (tap again to go now)"
+
+    def _entry_stuck(self) -> None:
+        """[P1-REVIEW-05] Say once that nothing can be proved dead: no other game to go to, so the screen waits."""
+        dec = self.decider
+        gid, dec.entry_stuck = dec.entry_stuck, None
+        if gid:
+            self.toast(f"Waiting on {self._name(gid)}: no play-by-play to find a dead ball (tap twice to go now)", "error")
+            log.warning("entry on %s waiting: no play-by-play, nothing else to go to", gid)
 
     def _lock_expired(self) -> None:
         """[lock wait] The decider gave up on a locked game it couldn't reach: drop the lock (and the
