@@ -1,0 +1,12 @@
+{
+  "card": "WP-15",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "tests/test_adversarial*.py",
+    "tests/test_mutation*.py",
+    "tests/adversarial/*"
+  ],
+  "started": 1794201150,
+  "expires": 1794373950
+}
