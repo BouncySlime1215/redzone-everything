@@ -8,7 +8,9 @@ Why: labels for the brain need more games than an 8 GB Mac should touch, so this
 the 12 h session limit: one shard per league and season, finished shards are never rebuilt, and a rerun with the
 previous output attached as an input carries them over (build plan WP-25). Nick launches it; nothing here trains.
 
-Public: only licence-cleared sources (value_shards.public_status). NBA needs --personal-nba, off by default. Nights on
+Public: only licence-cleared sources (value_shards.public_status). NBA needs --personal-nba, off by default, and is never
+downloaded here (github.com's robots rule stopped that route): it is built from the files agent/kaggle/fetch_sports_nba.py
+wrote, which must be attached as a notebook input (--input, default /kaggle/input). Missing files stop the run. Nights on
 or after the scorecard window are dropped before any feature is built. Archive: DevOnly gives the dev game ids, so a
 locked or fresh game's summary is never opened. The leak check runs at the end and sets the exit code.
 """
@@ -110,8 +112,39 @@ def _public_games(df, league, season, max_games, stats, make, playoff, teams):
             return
 
 
+def nba_input_files(inputs) -> list[Path]:
+    """The shard parquet files agent/kaggle/fetch_sports_nba.py wrote, wherever the attached notebook output put them."""
+    name = f"sports_{V.public_source('nba', True)[0]}"
+    return sorted(Path(p) for p in glob.glob(f"{inputs}/**/{name}/shards/*.parquet", recursive=True))
+
+
+def stage_nba_raw(files, raw: Path, seasons) -> dict:
+    """Write <raw>/nba/pbp_<season>.parquet from the fetched files (one season per file, all of its rows) and return
+    {season: rows}. Seasons the files do not hold are left out. Refuses a file whose rows lack the personal-use tag."""
+    import pyarrow.parquet as pq
+    from scripts import value_leak_check as LC
+    where: dict[int, list[Path]] = {}
+    for f in files:
+        have = set(pq.read_schema(f).names)
+        if "season" not in have or "tag" not in have:
+            raise ValueError(f"{f} has no season/tag column: not a fetch_sports_nba.py output")
+        t = pq.read_table(f, columns=["season", "tag"])
+        if set(t.column("tag").unique().to_pylist()) != {LC.PERSONAL_TAG}:
+            raise ValueError(f"{f} rows are not all tagged {LC.PERSONAL_TAG!r}")
+        for y in t.column("season").unique().to_pylist():
+            where.setdefault(int(y), []).append(f)
+    (raw / "nba").mkdir(parents=True, exist_ok=True)
+    got = {}
+    for y in sorted(set(seasons) & set(where)):
+        t = pd.concat([pd.read_parquet(f, filters=[("season", "==", y)]) for f in where[y]], ignore_index=True)
+        t.to_parquet(raw / "nba" / f"pbp_{y}.parquet", index=False)
+        got[y] = len(t)
+    return got
+
+
 def public_season(args):
-    """One league-season, start to finish. Returns a report dict; a network failure is left unfinished for the next run."""
+    """One league-season, start to finish. Returns a report dict; a network failure is left unfinished for the next run.
+    NBA is never fetched: its raw season file was staged from the attached fetch output before the jobs started."""
     league, season, out, raw, personal, max_games, deadline = args
     out, raw = Path(out), Path(raw)
     shard = str(season)
@@ -119,17 +152,22 @@ def public_season(args):
         return {"league": league, "season": season, "status": "already built"}
     if time.time() > deadline:
         return {"league": league, "season": season, "status": "session deadline"}
-    from scripts.noggin_factory import _fetch
     source, licence, plan, url, _ = V.public_source(league, personal)
     dest = raw / league / f"pbp_{season}.parquet"
-    if not _fetch(url.format(y=season), dest):
+    if league == "nba":
+        have = dest.exists()
+    else:
+        from scripts.noggin_factory import _fetch
+        have = _fetch(url.format(y=season), dest)
+    if not have:
         meta = V.write_shard(out, league, shard, pd.DataFrame(), {"source": source, "license": licence, "plan": plan,
                                                                   "note": "no file for this season", "prefix_checked": 0})
         return {"league": league, "season": season, "rows": meta["rows"], "status": "no file"}
     info = {"source": source, "license": licence, "plan": plan, "season": season}
     games = (_nfl_games if league == "nfl" else _nba_games)(dest, season, max_games, info)
     meta = _shard_from_games(league, shard, out, games, info)
-    dest.unlink(missing_ok=True)
+    if league != "nba":
+        dest.unlink(missing_ok=True)   # NBA keeps its staged file: the raw audit reads it after the run
     return {"league": league, "season": season, "rows": meta["rows"], "games": meta["games"], "status": "built"}
 
 
@@ -215,6 +253,19 @@ def main(argv=None) -> int:
                 print(json.dumps(r), flush=True)
                 continue
             seasons = F.seasons(a.seasons) if a.seasons else V.public_source(lg, a.personal_nba)[4]
+            if lg == "nba":
+                files = nba_input_files(a.input)
+                try:
+                    staged = stage_nba_raw(files, a.raw, seasons) if files else {}
+                except ValueError as e:
+                    print(f"STOPPED: NBA input refused: {e}", flush=True)
+                    return 2
+                if not staged:
+                    print(f"STOPPED: NBA needs the output of agent/kaggle/fetch_sports_nba.py attached as a notebook input; found no "
+                          f"{a.input}/**/sports_{V.public_source('nba', True)[0]}/shards/*.parquet for seasons "
+                          f"{min(seasons)}-{max(seasons)}. Attach it (the fetch notebook, e.g. redzone-fetch-nba-ncaam) and rerun. "
+                          f"Not downloading NBA from github.com.", flush=True)
+                    return 2
             jobs += [(lg, y, str(a.out), str(a.raw), a.personal_nba, a.max_games, deadline) for y in sorted(seasons, reverse=True)]
         if a.jobs <= 1:
             report += [_log(_safe_season(j)) for j in jobs]
@@ -224,6 +275,8 @@ def main(argv=None) -> int:
     man = V.finalize(a.out)
     from scripts import value_leak_check as LC
     argv2 = [str(a.out)] + (["--archive", str(a.archive)] if a.archive else []) + (["--allow-personal-nba"] if a.personal_nba else [])
+    if a.source == "public" and {p.name for p in a.out.iterdir() if p.is_dir()} == {"nba"}:
+        argv2 += ["--raw", str(a.raw)]   # only NBA keeps its raw files; NFL's are deleted after each season
     rc = LC.main(argv2)
     (a.out / "run_report.json").write_text(json.dumps({"report": report, "leak_check_exit": rc}, indent=1))
     print("ROWS PER LEAGUE:", json.dumps({k: {"rows": v["rows"], "games": v["games"], "nights": v["nights"]}
