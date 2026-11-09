@@ -66,8 +66,8 @@ _OTHER_FOOTBALL = ("plays", "turnover", "penalty", "timeout", "pass", "rush", "s
                    "third_down", "fourth_down", "redzone", "yards", "lead_change", "tie")
 FOOTBALL = ("nfl", "cfb")
 HOOPS = ("nba", "cbb", "wnba")
-LEAGUES = FOOTBALL + HOOPS
-REGULATION = {"nfl": (4, 900.0), "cfb": (4, 900.0), "nba": (4, 720.0), "wnba": (4, 600.0), "cbb": (2, 1200.0)}   # value_shards.REGULATION_LEN: a test keeps them equal
+WIDE_LEAGUES = FOOTBALL + HOOPS
+WIDE_PERIODS = {"nfl": (4, 900.0), "cfb": (4, 900.0), "nba": (4, 720.0), "wnba": (4, 600.0), "cbb": (2, 1200.0)}   # value_shards.REGULATION_LEN: a test keeps them equal
 # Hand-set from the sports' scoring and pace, fit on no rows: per-league plays and yards in 5 minutes, so one number means one thing across sports.
 _PLAYS_5M = {"nfl": 8.0, "cfb": 10.0, "nba": 60.0, "cbb": 50.0, "wnba": 55.0}
 _YARDS_5M = 50.0
@@ -103,8 +103,8 @@ GENERATOR = f"gv5-{logic_digest(Path(__file__).read_text(), Path(G.__file__).rea
 
 
 def _check_league(league: str) -> None:
-    if league not in LEAGUES:
-        raise ValueError(f"no wide features for league {league!r}: known {LEAGUES}")
+    if league not in WIDE_LEAGUES:
+        raise ValueError(f"no wide features for league {league!r}: known {WIDE_LEAGUES}")
 
 
 def stats_of(league: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -261,7 +261,7 @@ class Tracker:
         self.home = self.away = 0.0
         self.sign, self.period = 0, None
         self.unit, self.scale = _scale(league)[0], _scale(league)[3]
-        self.regs, self.length = REGULATION[league]
+        self.regs, self.length = WIDE_PERIODS[league]
 
     def push(self, wall: float, play: Mapping) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         """One play -> (per-play values, registers (5, d), crosses, sign of the margin). Reads only this play and earlier state."""

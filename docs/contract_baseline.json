@@ -312,6 +312,7 @@
   {"rule": "K2", "path": "redzone/noggin/factory.py", "key": "TWO_MIN_S"},
   {"rule": "K2", "path": "redzone/noggin/features.py", "key": "MAX_LEN_S"},
   {"rule": "K2", "path": "redzone/noggin/timing.py", "key": "BIN_S"},
+  {"rule": "K2", "path": "redzone/personal/profile.py", "key": "DEFAULT_DUR_S"},
   {"rule": "K2", "path": "redzone/plan.py", "key": "GAP_S"},
   {"rule": "K2", "path": "redzone/plan.py", "key": "REBUILD_S"},
   {"rule": "K2", "path": "redzone/platform/breaker.py", "key": "BACKOFF_S"},

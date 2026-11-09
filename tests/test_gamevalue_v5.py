@@ -100,7 +100,7 @@ def test_a_kept_list_from_another_grid_will_not_load(tmp_path, monkeypatch):
 # --- the generator ---------------------------------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("league", W.LEAGUES)
+@pytest.mark.parametrize("league", W.WIDE_LEAGUES)
 def test_at_least_100k_candidates_per_league_with_systematic_names(league):
     names = W.candidate_names(league)
     assert len(names) == W.candidate_count(league) >= 100_000 and len(set(names)) == len(names)
@@ -111,12 +111,12 @@ def test_at_least_100k_candidates_per_league_with_systematic_names(league):
 
 
 def test_the_named_columns_agree_with_the_leak_checks_grammar_and_tables():
-    assert LC.WIDE_RING == W.RING and W.REGULATION == {k: V.REGULATION_LEN[k] for k in W.REGULATION}
+    assert LC.WIDE_RING == W.RING and W.WIDE_PERIODS == {k: V.REGULATION_LEN[k] for k in W.WIDE_PERIODS}
     bad = ["gv5__pts__all__p10__sum__raw__none__x", "gv5__plays__home__p10__sum__raw__none", "x__pts__all__p10__sum__raw__none", "gv5__pts__all__p10__sum__log__late", "gv5__pts__all__p10__sum__lg__none"]
     for n in bad:
         with pytest.raises(ValueError):
             W.parse(n)
-    assert all(LC.WIDE_RE.match(n) for lg in W.LEAGUES for n in W.candidate_names(lg)[::2000])
+    assert all(LC.WIDE_RE.match(n) for lg in W.WIDE_LEAGUES for n in W.candidate_names(lg)[::2000])
 
 
 def test_block_values_line_up_with_block_names():

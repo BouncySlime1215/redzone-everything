@@ -162,3 +162,9 @@ def test_store_path_is_git_ignored():
 
 def test_config_flag_defaults_off(engine):
     assert engine.cfg.get("personal.enabled") is False
+
+
+def test_profile_command_reads_the_local_store(tmp_path, capsys):
+    from scripts import personal_import
+    assert personal_import.main(["--profile", "--data-dir", str(tmp_path)]) == 0
+    assert capsys.readouterr().out.strip().startswith("{")

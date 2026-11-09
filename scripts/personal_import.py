@@ -146,10 +146,17 @@ def run(path: Path, data_dir: Path, dry_run: bool = False) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("path", type=Path)
+    ap.add_argument("path", type=Path, nargs="?")
+    ap.add_argument("--profile", action="store_true", help="print what the local store adds up to, then stop")
     ap.add_argument("--data-dir", type=Path, default=ROOT / "data")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
+    if a.profile:
+        from redzone.personal.profile import profile
+        print(json.dumps(profile(a.data_dir), indent=1, sort_keys=True))
+        return 0
+    if a.path is None:
+        ap.error("path is required unless --profile")
     if not a.path.exists():
         print("path not found")
         return 2

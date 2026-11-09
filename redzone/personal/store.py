@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 FIELDS = ("ts", "service", "title", "tags", "duration_s", "source")
-SOURCES = ("shortcut", "apple", "youtube", "spotify")
+EVENT_SOURCES = ("shortcut", "apple", "youtube", "spotify")
 MAX_TEXT = 200
 MAX_TAGS = 5
 STORE_NAME = "events.jsonl"
@@ -62,7 +62,7 @@ def clean(rec) -> dict | None:
     tags = rec.get("tags") if isinstance(rec.get("tags"), (list, tuple)) else []
     dur = rec.get("duration_s")
     dur = round(float(dur), 1) if isinstance(dur, (int, float)) and not isinstance(dur, bool) and 0 <= dur < 86400 * 2 else None
-    source = rec.get("source") if rec.get("source") in SOURCES else "shortcut"
+    source = rec.get("source") if rec.get("source") in EVENT_SOURCES else "shortcut"
     return {"ts": ts, "service": service, "title": text(rec.get("title")),
             "tags": [t for t in (text(x, 80) for x in tags[:MAX_TAGS]) if t], "duration_s": dur, "source": source}
 
