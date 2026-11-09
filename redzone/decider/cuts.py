@@ -27,7 +27,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from redzone.models import League
+from redzone.models import PERIOD_S, REGULATION, League
+from redzone.sources.espn import OT_S
 
 # ----------------------------------------------------------------------------- dead windows
 
@@ -203,6 +204,11 @@ def _lg(league: League) -> League:
     if league.base == League.NFL:
         return League.NFL
     return league
+
+
+def _period_length(league: League, period: int) -> float:
+    """Seconds on the clock at the start of this basketball period."""
+    return float(OT_S[league] if period > REGULATION[league] else PERIOD_S[league])
 
 
 def join_cfg(cfg, key: str):
@@ -422,6 +428,9 @@ class DeadTracker:
                         cur.end, cur.exact = max(cur.start, m.lo), True
                     elif moved and lg == League.NBA:
                         cur.end, cur.exact = max(cur.start, m.lo - (c0 - m.clock) - CLOCK_RESUME_MARGIN_S), True
+                    elif lg == League.NBA and m.after is not None and (ran := self._ran_in_later_period(m, p0)) is not None:
+                        # The next period's first entry is itself a dead ball (a foul): it still dates the tip.
+                        cur.end, cur.exact = max(cur.start, m.lo - ran - CLOCK_RESUME_MARGIN_S), True
                     elif (lg == League.NBA and m.after is None and m.clock is not None and c0 is not None
                           and m.period == p0):
                         # The last free throw: a dead-ball moment itself (the clock hasn't run), but
@@ -444,6 +453,14 @@ class DeadTracker:
             out = [w if w.start > self.frozen_until else Window(w.start, w.start, w.kind) for w in out]
         self._windows = out
         return out
+
+    def _ran_in_later_period(self, m: Mark, p0: int | None) -> float | None:
+        """Basketball: the game clock already run when this entry of a LATER period than the window's was logged, or
+        None when it isn't one, or the clock hasn't moved yet (a substitution before the tip)."""
+        if m.clock is None or m.period is None or p0 is None or m.period <= p0:
+            return None
+        ran = _period_length(self.league, m.period) - m.clock
+        return ran if ran > 0.05 else None
 
     def _open_until(self, w: Window) -> float:
         """A window with no restart in the data: surely dead until this real time."""
