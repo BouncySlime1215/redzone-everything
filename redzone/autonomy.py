@@ -71,6 +71,7 @@ HEAL_TIMEOUT_S = 120.0                    # one device-healing pass can't take l
 SETUP_TIMEOUT_S = 180.0                   # one first-run discovery can't take longer than this
 SETUP_EVERY_S = 300.0                     # first run: look again every 5 min until a stick is saved
 TV_SETUP_EVERY_S = 1800.0                 # ...and for the TV every 30 min until one is saved
+ST_DEADLINE_S = 20 * 60                  # the scan should be done this long before kickoff (T-20)
 ST_BATCH = 4                              # Sunday Ticket channels per controller hold (~30-40 s)
 ARCHIVE_DAYS = 3                          # yesterday + 2 earlier days (catches up after a missed night)
 MIN_FREE_BYTES = 2 * 1024 ** 3            # the archive never fills the disk
@@ -1601,12 +1602,26 @@ class Autonomy:
     def for_engine(cls, engine: Any, **kw: Any) -> "Autonomy":
         return cls(EngineHooks(engine), **kw)
 
+    def _st_early(self) -> bool:
+        """Why (code default OFF, read as autonomy.st_scan_early; no new key in default_config.yaml):
+        today's scan starts at 12:45 / 15:55, which is already past T-20 for a 1:00 / 4:25 kickoff."""
+        return bool(self._opt("st_scan_early", False))
+
+    def _st_job(self, mins: float) -> Job:
+        """The Sunday Ticket scan job. Early mode starts at T-75 (11:45 / 15:10), keeps a 55-minute window
+        so a scan stopped by a big moment can resume inside it, and allows 4 tries."""
+        if self._st_early():
+            return Job("st_scan", "Sunday Ticket scan", self._st_scan, (At(11, 45, (SUN,)), At(15, 10, (SUN,))),
+                       window_s=55 * mins, timeout_s=15 * mins, retry_s=2 * mins, guard=self._st_guard,
+                       group="sticks", attempts=4)
+        return Job("st_scan", "Sunday Ticket scan", self._st_scan, (At(12, 45, (SUN,)), At(15, 55, (SUN,))),
+                   window_s=35 * mins, timeout_s=15 * mins, retry_s=2 * mins, guard=self._st_guard,
+                   group="sticks", attempts=2)
+
     def _jobs(self) -> list[Job]:
         hour, mins = 3600.0, 60.0
         return [
-            Job("st_scan", "Sunday Ticket scan", self._st_scan, (At(12, 45, (SUN,)), At(15, 55, (SUN,))),
-                window_s=35 * mins, timeout_s=15 * mins, retry_s=2 * mins, guard=self._st_guard, group="sticks",
-                attempts=2),
+            self._st_job(mins),
             Job("selftest", "Nightly app check", self._selftest, (At(4, 0),), window_s=2 * hour,
                 timeout_s=15 * mins, retry_s=15 * mins, guard=self._quiet_guard, group="sticks"),
             Job("yttv_codes", "YouTube TV channel check", self._yttv_codes, (At(4, 20),), window_s=2 * hour,
@@ -1894,20 +1909,51 @@ class Autonomy:
     async def _st_guard(self) -> str | None:
         return self._st_needed() or await self._st_safe()
 
+    def _st_progress(self, games: list) -> tuple[str, list[str]]:
+        """(window key, codes already read in this kickoff window). Early mode only. The key is the ET date plus
+        the hour of the earliest unmatched kickoff, so a 4 PM scan never inherits the 1 PM scan's list.
+        Progress older than 3 hours is dropped."""
+        now = self.clock()
+        starts = [g.start_time for g in games if g.start_time] or [now]
+        key = datetime.fromtimestamp(min(starts), ET).strftime("%Y-%m-%d-%H")
+        mem = self.memory.get("st_scan")
+        if not isinstance(mem, dict) or mem.get("key") != key or now - float(mem.get("at") or 0) > 3 * 3600:
+            mem = {"key": key, "done": [], "at": now}
+        self.memory["st_scan"] = mem
+        return key, [c for c in mem.get("done", []) if isinstance(c, str)]
+
+    def _st_deadline(self, games: list) -> float | None:
+        """T-20 of the earliest game that hasn't started: the scan should be finished by then."""
+        starts = [g.start_time for g in games if g.start_time and g.phase != Phase.LIVE]
+        return min(starts) - ST_DEADLINE_S if starts else None
+
     async def _st_scan(self) -> JobResult:
         """Read which game each Sunday Ticket channel shows, a few channels per controller hold.
         Between batches it re-checks: done early once every game is matched, and it stops if it
-        stops being safe (a game went live on a one-stick setup, or a big moment started)."""
+        stops being safe (a game went live on a one-stick setup, or a big moment started).
+        Early mode (autonomy.st_scan_early) also remembers which channels it already read, so a retry
+        after a stop carries on instead of starting over, and says whether it finished by T-20."""
         c, ch = self.hooks.controller, self.hooks.channels
         games = [g for g in self.hooks.games() if g.league == League.NFL and g.phase != Phase.POST]
         codes, found, stopped = self._st_candidates(), {}, ""
+        early = self._st_early()
+        done: list[str] = self._st_progress(self._st_games(self.clock()))[1] if early else []
+        todo = [x for x in codes if x not in done]
+        deadline = self._st_deadline(self._st_games(self.clock())) if early else None
         prev = None if self._two_stick() else c.on_target
-        for i in range(0, len(codes), ST_BATCH):
+        for i in range(0, len(todo), ST_BATCH):
             if i and not self._st_games(self.clock()):
                 break
             if i and (stopped := await self._st_safe() or ""):
                 break
-            found.update(await c.scan_sunday_ticket(codes[i:i + ST_BATCH], games, self._st_found))
+            batch = todo[i:i + ST_BATCH]
+            found.update(await c.scan_sunday_ticket(batch, games, self._st_found))
+            if early:   # saved per batch: a timeout or a crash keeps what was read
+                done.extend(batch)
+                self.memory["st_scan"]["done"] = done
+                self.memory["st_scan"]["found"] = sorted(set(self.memory["st_scan"].get("found", [])) | set(found))
+                self.memory["st_scan"]["at"] = self.clock()
+                self._save_state()
         if prev and not self._two_stick() and not stopped:
             c.submit(prev)   # one stick: put back what the app had on before the scan
         if found:
@@ -1915,6 +1961,22 @@ class Autonomy:
         msg = f"Matched {_plural(len(found), 'game')} to Sunday Ticket channels"
         if stopped:
             msg += f" — stopped early: {stopped}"
+        if early:
+            left = [x for x in codes if x not in done]
+            earlier = len(self.memory["st_scan"].get("found", []))   # matched before a stop, kept across the resume
+            if earlier > len(found):
+                found = dict.fromkeys(self.memory["st_scan"]["found"])
+                msg = f"Matched {_plural(len(found), 'game')} to Sunday Ticket channels" + (
+                    msg[msg.index(" — stopped"):] if stopped else "")
+            if not left:   # a finished pass starts fresh next time
+                self.memory["st_scan"]["done"], self.memory["st_scan"]["found"] = [], []
+                self._save_state()
+            if left and stopped:
+                msg += f" ({len(left)} channels left, it picks up from there)"
+            elif not left and deadline is not None:
+                msg += " (all channels read" + ("" if self.clock() <= deadline else ", after T-20") + ")"
+            if left and stopped:
+                return JobResult(False, msg)   # False = the scheduler retries inside the window
         return JobResult(True if found else (None if stopped else False),
                          msg if found or stopped else "Couldn't read any game titles off the Sunday Ticket channels")
 
@@ -2027,6 +2089,11 @@ class Autonomy:
         health = self.memory["health"]
         if not isinstance(health.get(app), dict):
             health[app] = {}
+        if self._opt("app_version_alerts", False):   # code default OFF
+            old = (health[app].get(self._stick_key(stick)) or {}).get("version")
+            if old and chk.version and old != chk.version:
+                self.hooks.toast(f"{APP_NAMES.get(app, app)} on the {_stick_name(stick)} stick updated "
+                                 f"{old} -> {chk.version}; it gets a play test when that's safe", "warn")
         health[app][self._stick_key(stick)] = {"ok": chk.ok, "message": chk.message, "level": plan,
                                                "at": self.clock(), "version": chk.version}
 
