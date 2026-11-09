@@ -369,6 +369,59 @@ def test_clock_ran_is_a_proof_and_not_a_guess(events, x0, x1, expect):
     assert gate._clock_ran(events, x0, x1) is expect
 
 
+@pytest.mark.parametrize("events,x0,x1,expect,why", [
+    ([(895.0, 2, 720.0, "sub"), (915.0, 2, 702.0, "foul")], 890.0, 897.0, True, "the clock can start at 897 s: a span ending then is proven"),
+    ([(895.0, 2, 720.0, "sub"), (915.0, 2, 702.0, "foul")], 890.0, 896.99, False, "a span that ends before the latest start proves nothing"),
+    ([(895.0, 2, 720.0, "sub"), (915.0, 2, 702.0, "foul")], 915.0, 920.0, False, "a span that starts at the later row is after the run"),
+    ([(895.0, 2, 720.0, "sub"), (915.0, 2, 702.0, "foul")], 914.99, 920.0, True, "a span that starts just before the later row is inside it"),
+    ([(895.0, 2, 0.05, "sub"), (915.0, 2, 0.0, "foul")], 914.96, 914.99, False, "a 0.05 s drop is the clock's resolution, not a run"),
+    ([(895.0, 2, 0.1, "sub"), (915.0, 2, 0.0, "foul")], 914.91, 914.99, True, "a 0.1 s drop is a run"),
+])
+def test_clock_ran_edges_are_exact(events, x0, x1, expect, why):
+    """Rule #1: the clock proof lets a veto stand; an off-by-one at its edges either vetoes a safe landing or waves a mid-play one."""
+    assert gate._clock_ran(events, x0, x1) is expect, why
+
+
+def _walk_flip(*, start_off=0.0, end_off=0.0, shots=("made", "made"), mark_off=0.0):
+    """A non-jump NBA join whose arrival is x0..x1 = now-29 .. now-27, `now` set so the walk's shot sits at t=0. The walk window
+    runs x0+start_off .. x1+end_off. Two marks: one `mark_off` after t=0, a decoy at t=50; each shot kind sets the safe time
+    (a make is not late, a rebound is: the arrival's late end plus the doubt falls between the two)."""
+    from redzone.decider import cuts
+    after = cuts.walk_params(_host().cfg, League.NBA)[2]
+    now = 29.0 + after
+    x0, x1 = now - 29.0, now - 27.0
+    late_end = x1 + gate.ENTRY_URGENT_S              # with the shot at t=0
+    h = _host(**{"slate.enabled": True, "decider.entry.fastest_s": 1.0,
+                 "slate.walk_safe_made_s": late_end + 0.5, "slate.walk_safe_rebound_s": late_end - 0.5})
+    marks = {i: NS(hi=hi, shot=sh) for i, (hi, sh) in enumerate(zip((mark_off, 50.0), shots))}
+    h.decider.timelines["b"] = NS(dead=NS(landing=lambda a, b: NS(state="live"), marks=marks,
+                                          walks=lambda w: [NS(start=x0 + start_off, end=x1 + end_off)]))
+    return h, now
+
+
+def _late(h, now):
+    return gate._walk_landing_too_late(gate.Flip(h, _d(), "a", T, {}, None, now))
+
+
+def test_a_walk_join_is_late_only_inside_a_walk_window_that_holds_the_whole_arrival():
+    h, now = _walk_flip(shots=("rebound", "made"), mark_off=0.0)
+    assert _late(h, now) is True                      # after a rebound the arrival's late end passes the safe time
+    for edge in ({"start_off": 0.001}, {"end_off": -0.001}):
+        h, now = _walk_flip(shots=("rebound", "made"), **edge)
+        assert _late(h, now) is False, edge          # the window no longer holds the whole arrival
+    h, now = _walk_flip(shots=("rebound", "made"), start_off=-5.0, end_off=5.0)
+    assert _late(h, now) is True                      # a wider window still holds it
+
+
+def test_the_walk_shot_is_the_mark_at_the_walk_start_and_no_other():
+    h, now = _walk_flip(shots=("made", "rebound"))   # the shot at t=0 is a make: not late
+    assert _late(h, now) is False
+    h, now = _walk_flip(shots=("rebound", "made"))   # the make is a decoy 50 s away: the rebound at t=0 is the shot
+    assert _late(h, now) is True
+    h, now = _walk_flip(shots=("made", "made"), mark_off=0.01)   # 0.01 s off is not that shot: no kind, the rebound's safe time
+    assert _late(h, now) is True
+
+
 @pytest.mark.parametrize("kind,rewind,mu,expect", [
     ("jump", 0.0, 100.0, "landing"),      # arrival 900-905: the 12:00 subs then the clock runs
     ("better", 0.0, 100.0, "landing"),
