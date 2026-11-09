@@ -483,6 +483,33 @@ def build_app(engine: Engine) -> FastAPI:
             ok, msg = False, f"crashed: {type(e).__name__}: {str(e)[:100]}"
         return {"ok": ok, "message": msg}
 
+    @app.post("/api/personal/app-open")
+    async def personal_app_open(request: Request):
+        """iOS Shortcuts 'app opened' event: {"app", "timestamp"} only (redzone/personal/store.py). Off unless
+        personal.enabled (then 404, nothing written). Same LAN-only middleware as every route; if the Mac's
+        environment sets REDZONE_PERSONAL_TOKEN, the X-RedZone-Token header must match it as well."""
+        if not engine.cfg.get("personal.enabled", False):
+            return JSONResponse({"ok": False, "message": "not found"}, status_code=404)
+        import hmac
+        import os
+        want = os.environ.get("REDZONE_PERSONAL_TOKEN", "")
+        if want and not hmac.compare_digest(want.encode(), request.headers.get("x-redzone-token", "").encode()):
+            return JSONResponse({"ok": False, "message": "bad token"}, status_code=401)
+        if not request.headers.get("content-length", "0").isdigit() or int(request.headers.get("content-length", "0")) > 2048:
+            return JSONResponse({"ok": False, "message": "payload too large"}, status_code=413)
+        from redzone.personal import store
+        try:
+            body = json.loads((await request.body())[:2048])
+        except ValueError:
+            body = None
+        ts = store.parse_ts(body.get("timestamp")) if isinstance(body, dict) else None
+        app_name = store.text(body.get("app"), 64) if isinstance(body, dict) else ""
+        if not isinstance(body, dict) or set(body) != {"app", "timestamp"} or not ts or not app_name:
+            return JSONResponse({"ok": False, "message": "send exactly {app, timestamp}"}, status_code=400)
+        data_dir = Path(engine.cfg.user_path).parent
+        store.append(store.store_path(data_dir), [{"ts": ts, "service": app_name, "source": "shortcut"}])
+        return {"ok": True}
+
     @app.get("/api/health")
     async def health():
         return engine.snapshot()["health"]

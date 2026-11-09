@@ -632,6 +632,9 @@ governor:                  # keeps the Mac cool and its disk free (redzone/gover
   service_hard_mb: 1200    # ...the watchdog restarts the app above this (never during crunch time)
   models_mb: 1500          # all local model processes together (watchdog + game reasoner)
 
+personal:                  # Nick's own phone metadata, local only (decisions 2026-11-09; docs/memory/runbooks/personal-intake.md)
+  enabled: false           # off: POST /api/personal/app-open is 404 and nothing is written. The show does not read it yet
+
 hardening:                 # error handling (PLATFORM). Each switch is off until a live night proves it.
   smartthings: false       # SmartThings breaker, 429 Retry-After, auth fault + phone push (redzone/tv.py)
   sticks: false            # a player "buffering" 20 s+ is stalled: resume the visible stick, reload the standby
