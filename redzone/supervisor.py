@@ -603,6 +603,7 @@ class Supervisor:
         limit = float(e.cfg.get("control.max_switch_s", 150)) + float(self.opt("stuck_grace_s"))
         p = getattr(e, "_pending_decision", None)
         if p is not None:
+            self._held("ctl_task", False, now)   # a command with a switch behind it isn't the orphan the clock below times
             age = (e.pending_age(now) if hasattr(e, "pending_age")
                    else now - float(getattr(e, "_pending_since", now) or now))
             if age < limit:
