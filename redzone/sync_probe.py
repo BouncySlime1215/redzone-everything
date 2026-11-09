@@ -215,6 +215,10 @@ class SyncProbe:
         self.on_force_live: Callable[[str, dict], bool] | None = None
         self._forced: dict[str, float] = {}   # target -> last re-link (one per force_gap_s)
         self.on_epoch: Callable[[str, float, float, float], None] | None = None   # (target, delay, t, sd)
+        # [meter] (target, wall, position s, sd): the relative meter into the filter (sync.edge.meter, off)
+        self.on_position: Callable[[str, float, float, float], None] | None = None
+        self._meter_fed: dict[str, float] = {}   # target -> last meter read fed
+        self._k_tuned: dict[str, object] = {}    # target -> the tune whose constant came from Prime's K
         self._epoch_fed: dict[str, float] = {}   # target -> last epoch sample fed (one per epoch_every_s)
         self._full_at = 0.0
 
@@ -429,8 +433,11 @@ class SyncProbe:
             if stick is None or not target:
                 continue
             name = str(hdmi.get(stick.host) or role).lower().replace(" ", "")   # never the stick's address
+            t_req = time.time()
             text = await self._sh(stick, EDGE_READ)
-            wall = time.time() if now is None else now
+            t_done = time.time()
+            # [honest frame times] the read happened somewhere in the round trip: its midpoint, not its end
+            wall = now if now is not None else (t_req + t_done) / 2.0 if self._meter_opt("midpoint", False) else t_done
             delay = None
             try:
                 delay = self.delay_of(target)
@@ -442,6 +449,7 @@ class SyncProbe:
             if row is None:
                 continue
             rows.append(row)
+            row["rtt_ms"] = int(round(max(0.0, t_done - t_req) * 1000))
             try:
                 lab = self.label_of(target)
             except Exception:
@@ -457,6 +465,7 @@ class SyncProbe:
             real = getattr(c, "behind_real", None)
             if isinstance(real, dict) and row.get("abs_behind_s") is not None:
                 real[stick.host] = row["abs_behind_s"]
+            self._meter(target, row, wall)
             if row.get("epoch_delay_s") is not None:
                 self._epoch(target, row, wall)
             if row.get("behind_live_s") is None or row.get("played_s", 0.0) < float(self._edge_cfg("settle_s")):
@@ -470,6 +479,29 @@ class SyncProbe:
             sync_edge.write_rows(rows, root)
             self.edge_rows += len(rows)
         return rows
+
+    def _meter_opt(self, key: str, default):
+        return self.cfg.get(f"sync.edge.{key}", default)
+
+    def _meter(self, target: str, row: dict, wall: float) -> None:
+        """[meter, sync.edge.meter, off] E = wall - position into the sync filter every meter_every_s while the stick
+        plays, settled on its tune: a relative meter, so the filter holds the delay flat between events and anchors only
+        set the per-tune constant. Never while paused (E rises 1 s/s there; the step is booked on resume) and never on a
+        labelled tune (the caller skips those: media_session's position is wrong after a seek)."""
+        if not self._meter_opt("meter", False) or self.on_position is None or row.get("pos_now_s") is None:
+            return
+        if (row.get("ms") or {}).get("state") != "playing" or row.get("played_s", 0.0) < float(self._edge_cfg("settle_s")):
+            return
+        if wall - self._meter_fed.get(target, float("-inf")) < float(self._meter_opt("meter_every_s", 2.0)):
+            return
+        base = float(self._meter_opt("meter_sd_s", 0.3))
+        sd = (base ** 2 + (row.get("rtt_ms", 0) / 1000.0) ** 2 / 12.0) ** 0.5
+        try:
+            self.on_position(target, wall, row["pos_now_s"], sd)
+            self._meter_fed[target] = wall
+            row["meter_fed"] = True
+        except Exception:
+            log.exception("edge: could not feed the meter for %s", target)
 
     def frame_k(self, target: str, delay_s: float, t: float, sd: float) -> None:
         """[SYNC, Nick 3:30 AM] A score-bug delay sample -> a K = arena - frame clock sample for a Prime target."""
@@ -488,7 +520,12 @@ class SyncProbe:
         row["epoch_ready"] = True
         if not self.cfg.get("sync.edge.epoch_signal") or self.on_epoch is None:
             return
-        if now - self._epoch_fed.get(target, float("-inf")) < float(self._edge_cfg("epoch_every_s")):
+        if self._meter_opt("meter", False):
+            # [meter] the position reads already carry E: K only sets this tune's constant, once
+            if self._k_tuned.get(target) == row.get("tune_t"):
+                return
+            self._k_tuned[target] = row.get("tune_t")
+        elif now - self._epoch_fed.get(target, float("-inf")) < float(self._edge_cfg("epoch_every_s")):
             return
         from redzone.decider.sync import SIGMA
         sd = (row["k_sd_s"] ** 2 + SIGMA["epoch"] ** 2) ** 0.5
