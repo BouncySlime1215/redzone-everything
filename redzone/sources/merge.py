@@ -163,6 +163,7 @@ class Merger:
                     if not feed.is_("benched"):
                         feed.to("benched", f"{len(hits)} backward jumps in {REGRESSION_WINDOW_S:.0f}s", now)
                         self._bench_end[bkey] = now + BENCH_S   # set once: a jump while benched must not extend it
+                        self._drop_benched_leader(source, g.game_id, now)
                     h.benched = True
                 elif not feed.is_("benched"):   # a benched feed stays benched until its bench ends
                     feed.to("regressing", f"{len(hits)} backward jump(s)", now)
@@ -202,6 +203,25 @@ class Merger:
         _fill_gaps(cur, g, moment=not _sees_strength(cur))
         cur.sources[source] = now
         return cur
+
+    def _drop_benched_leader(self, source: str, game_id: str, now: float) -> None:
+        """A source just benched for this game may be what put the merged game where it is (a glitched period
+        or clock that nothing could overtake). If the merged copy came from it, rebuild from the best copy
+        another unbenched source holds; with no one else the merged copy stays (nothing to check it against)."""
+        cur = self.games.get(game_id)
+        if cur is None or cur.sources.get(source) != cur.updated_at:
+            return
+        rivals = [(progress_key(c), s, c) for s, per in self._per_source.items()
+                  if s != source and (c := per.get(game_id)) is not None and not self._benched((s, game_id))]
+        if not rivals:
+            return
+        _, best_src, best = max(rivals, key=lambda r: r[0])
+        merged = copy.copy(best)
+        merged.sources = {s: t for s, t in cur.sources.items() if s != source}
+        merged.sources[best_src] = now
+        merged.updated_at = now
+        _fill_gaps(merged, cur, moment=not _sees_strength(merged))
+        self.games[game_id] = merged
 
     def _owned_stoppage(self, source: str, g: GameState, now: float) -> GameState:
         order = self.stoppage_owner.get(g.league)

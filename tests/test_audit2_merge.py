@@ -47,3 +47,18 @@ def test_clockless_payload_in_the_middle_is_not_a_backward_jump():
             clk.t += 1
             m.update("espn", _g(2, c))
     assert m.health["espn"].regressions == 0
+
+
+def test_glitched_period_is_replaced_once_the_glitching_source_is_benched():
+    clk = Clk()
+    m = Merger(clock=clk)
+    m.update("espn", _g(2, 600.0))
+    m.update("nfl", _g(2, 600.0))
+    clk.t += 1
+    m.update("espn", _g(4, 100.0))          # glitch: period 4 in a period-2 game
+    assert m.games["1"].period == 4
+    for i in range(3):                        # espn goes back to the truth, and nfl agrees
+        clk.t += 1
+        m.update("espn", _g(2, 590.0 - i))
+        m.update("nfl", _g(2, 590.0 - i))
+    assert m.games["1"].period == 2
