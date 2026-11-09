@@ -589,6 +589,8 @@ multiview:                 # YouTube TV multiview as a switch path (redzone/tune
   must_have: 2             # reopen only when one of the top this-many YTTV games isn't a tile
   costs: {mv_open: 15.0, mv_expand: 1.5, mv_collapse: 1.0, mv_step: 0.35}   # seconds, until measured
 tuners:                    # per-app switch paths
+  prime_fast_confirm: false # [build plan WP-04] confirm a Prime tune without running OCR inside the poll loops
+  espn_link_form: false     # [build plan WP-04] use the checked ESPN deep-link form
   unauthorized_retry_s: 300   # [DEV-15] an adb-unauthorized stick is not re-connected faster than this (re-raises the TV prompt)
   diagnose_timeout_s: 4       # [DEV-17] a failed tune's screen read (names "signed out" etc.) is cut after this
   launch_timeout_s: 30     # [DEV-11] `am start -W` (an app deep link) waits this long: a cold start can top 15 s
@@ -680,6 +682,7 @@ demo:                      # replay simulator timing (redzone/demo/engine.py); v
   calibrated_sigma_s: 3.0  # delay uncertainty of a calibrated game
 
 plan:                      # tonight's plan (data/plan_YYYYMMDD.json, the phone's "Tonight's plan" card)
+  sweep: false             # [build plan WP-01] start the hidden-stick route check earlier and cover every planned route
   verify: true             # before each start window, play each planned source on the HIDDEN stick (never the one on screen)
   verify_lead_min: 20      # ...starting this many minutes before the window, while autopilot is idle
 
@@ -724,6 +727,8 @@ yttv_seek:                 # [YTTV scrub buffer, item 1] enter the time-shift bu
                            # scrubbing the player overlay (CENTER, LEFT x N, CENTER; overseer Nov 6: 7/7 held, pause
                            # doesn't). OFF until the switch path (item 4) and a hidden-stick night prove it.
   enabled: false
+  skip_open_read: false    # [build plan WP-03] drop the first overlay read when a RIGHT probe follows; the knob read stays
+  overlay_band_from: null  # [build plan WP-03] screen fraction where the overlay band capture starts; null = full frame
   step_s: 15               # one LEFT on the focused bar moves the knob this far back (measured Nov 6)
   max_back_s: 150          # never scrub further (ACC Network stopped near 2.5 min behind)
   step_tol_s: 6            # the knob label must move N x step_s within this, or no commit (4 -> 6: 47/48 live, 1 fail at 40 vs 45)
@@ -1166,3 +1171,13 @@ league_overrides:          # [league overrides, Nick Nov 4 8:20/8:40 PM] per-lea
     two_stick.pretune_on_open: true
     replay.crunch_block: true
     decider.mine_late_max_lead_wp: 0.95   # [EXP-204] ATL up 12 with 9:09 left (WP ~0.99) is not close; 6 pts / 6 min (~0.91) is
+
+queue:                     # [build plan P-BUILD] one queue owns the hidden stick; ships OFF until its gate passes (WP-02, WP-12)
+  enabled: false
+  r3_flippable: false      # a route only found by a search hit may be flipped to; undecided until test T3
+
+commit_gate:               # [build plan WP-05] one named-veto gate at the flip for every non-tap switch (decider/gate.py)
+  enabled: false
+
+discovery:                 # [build plan WP-01]
+  st_wait: false           # an NFL Sunday game waits for its Sunday Ticket slot; local CBS and FOX games keep their local route

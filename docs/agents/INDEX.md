@@ -54,6 +54,7 @@ Standard: [docs/STANDARD.md](../STANDARD.md). Plan and process gate: [docs/PLAN.
 |---|---|---|---|---|---|
 | R-POLICY | 2026-11-08 | [How to learn a RedZone switching policy safely](../research/2026-11-08/policy-learning.md) | reviewed | 38 (36) | - |
 | P-BRAINCODE | 2026-11-09 | [The boundary: what is brain, what is code](planner/2026-11-09-brain-vs-code.md) | draft | 16 (12) | - |
+| P-BUILD | 2026-11-09 | [The build plan: how the code becomes what the five planners want](planner/2026-11-09-build-plan.md) | draft | 0 (0) | - |
 | P-MAJOR | 2026-11-09 | [Major considerations: what could sink RedZone for every league, every night](planner/2026-11-09-major-considerations.md) | draft | 27 (18) | - |
 | P-MIND | 2026-11-09 | [The mind: what the brain's models should actually be](planner/2026-11-09-the-mind.md) | draft | 11 (7) | - |
 | P-PRODUCT | 2026-11-09 | [The product: our own RedZone for every league, every night](planner/2026-11-09-product-per-league.md) | draft | 20 (17) | - |

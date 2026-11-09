@@ -1,0 +1,12 @@
+{
+  "card": "WP-03",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "redzone/tuners/yttv_seek.py",
+    "redzone/tuners/yttv_label.py",
+    "tests/test_yttv_seek.py"
+  ],
+  "started": 1794198067,
+  "expires": 1794370867
+}

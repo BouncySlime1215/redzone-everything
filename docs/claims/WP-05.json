@@ -1,0 +1,12 @@
+{
+  "card": "WP-05",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "redzone/decider/gate.py",
+    "redzone/engine.py",
+    "tests/test_commit_gate.py"
+  ],
+  "started": 1794198067,
+  "expires": 1794370867
+}

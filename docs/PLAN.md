@@ -21,8 +21,8 @@ Each section names who may write it. Started 2026-11-08 from Nick's brief (quote
 
 | # | Phase | Exit check | Status |
 |---|---|---|---|
-| P0 | Process rules: the AI-documentation rules, debugging/validation/merge rules, "why / routes / relied on by" for every piece of code, locked test results, harness | Wave-1 research read; gate items in section 2 done and back-filled; CI enforces them | **active** |
-| P1 | Switching accuracy (timing only, not game choice): find the bottlenecks, then join like NFL RedZone, ~60-90 s behind live, on both HDMIs, Prime and YouTube TV | Section 3 bars met on live tests listed in [test-queue.md](test-queue.md) | next |
+| P0 | Process rules: the AI-documentation rules, debugging/validation/merge rules, "why / routes / relied on by" for every piece of code, locked test results, harness | Wave-1 research read; gate items in section 2 done and back-filled; CI enforces them | done |
+| P1 | Queue games fast and switch accurately (build plan P-BUILD): route truth, queue core, scrub and tune speed, commit gate; then join like RedZone, 60-90 s behind live, both HDMIs, Prime and YouTube TV | Section 3 bars met on live tests listed in [test-queue.md](test-queue.md) | **active** |
 | P2 | The brain (Noggin): decides which game and when | Section 4 | later |
 | P3 | Audit + plan loops after P1 and after P2 | Section 5 | later |
 
@@ -40,40 +40,58 @@ Each section names who may write it. Started 2026-11-08 from Nick's brief (quote
 | G-08 | W1-ACCESS + W1-SEALED + W1-TAMPER: locked test data and results leak to agents and public CI | one combined design: deny rules + fail-closed hook (G8), strip locked scores from CI output, sealed private grader repo, hash-chained results log | eval data split moved; old CI summaries | free tier closed (W2-LOCKED): verdict-only CI, hash-chained ledger, G8; private grader repo, bot account and branch protection are Nick's clicks (~45 min, in the design) |
 | G-09 | W1-HARNESS: guard.py misses the terminal and computer-use tools, quoted `adb`, Grep and Glob; `git push` needs an `ask` rule | harden `.claude/hooks/guard.py` + deny/ask rules; `autoContinueAtUsageLimit: false`; hourly fresh coordinator tick instead of one immortal session | scheduled tasks re-pointed | closed; autoContinueAtUsageLimit and Auto mode are Nick's settings |
 
-## 3. P1 switching accuracy (coordinator)
+## 3. P1 queue and switching (coordinator)
 
-Bars (Nick, 2026-11-08):
+Goal: any reachable game parked on the hidden stick fast, cut only at dead balls. Build:
+[P-BUILD](agents/planner/2026-11-09-build-plan.md), waves 0-2 and T1-T3.
+
+Nick's bars (2026-11-08, unchanged):
+- Rule #1: never join mid-play. Leave mid-play only at low leverage; never a high-leverage moment.
 - NFL: join after a play, preferably after the replay, seconds before the snap. Never late into a play.
-- Basketball: may join mid-possession only right after a made or missed shot (the walk/transition up court). If the
-  moment is a transition play, divert to the prior safest point (previous possession's bucket, transition or dead
-  ball, whichever is soonest).
-- Pace (Nick, 2026-11-08): stay on a few games (2-4) for a few minutes at a time and match live what the simulator
-  achieves on those games (today's sim: 0.6-0.9 cuts/min, best 10-min window 12), 60-90 s behind live, 0 commercials on
-  screen, 0 late joins. Rotating and catching up across many games (every play of an 8-game slate is about 59 per
-  10 min, 4 games about 31) is brain-phase work (section 4). Reference: [redzone-numbers](research/2026-11-08/redzone-numbers.md).
-- Football must-show plays (Nick, 2026-11-08): every touchdown and every major play: turnover, 10+ yard gain, field goal,
-  big 3rd down, 4th down, large EPA. Measured on 19 Sundays (4+ games live): about 14 per 10 min across all live games
-  (median 14, p90 21, max 35): TDs 1.7, 10+ gains 5.9, large win-probability swings 2.4, big 3rd downs 1.4, FGs 1.3, 4th
-  downs 1.1, turnovers 0.6. ESPN has no EPA, so a 5-point win-probability swing stands in for it (nflverse EPA in the brain phase).
-  Fast-stick target from [the max-rate study](agents/audit/2026-11-09-max-rate.md): 13-15 jumps per 10 min on 2-4 games.
-  Plays from other games that the live rotation can't reach become catch-up clips (brain phase).
-- Works on both HDMI inputs and on both Prime Video and YouTube TV.
+- Basketball: join mid-possession only right after a made or missed shot. If that moment is a transition play, use the prior
+  safest point (previous bucket, transition or dead ball, whichever is soonest).
+- Pace: 2-4 games for a few minutes at a time, 60-90 s behind live, 0 commercials on screen, 0 late joins. Rotating across
+  many games and catching up on the rest is section 4 work.
+- Football must-show: every touchdown and major play: turnover, 10+ yard gain, field goal, big 3rd down, 4th down, large EPA
+  (5-point win-probability swing until nflverse EPA). Plays the live rotation can't reach become catch-up clips.
+- Both HDMI inputs, both Prime Video and YouTube TV.
 
-Steps: (1) instrument every stage of a switch (decision, tune, scrub/hold, flip, picture) and measure on recorded
-nights + live tests; (2) rank bottlenecks; (3) fix packages A-C of [the fix plan](plans/2026-11-08-fix-plan.md) that
-touch timing; (4) live tests from [test-queue.md](test-queue.md) until the bars hold.
+Queue bars (P-MAJOR section 12, all p90 unless noted):
+- YouTube TV ready: 45 s is the gate, 30 s the target, 20 s the stretch. Scrub failure under 10%. Flip 2.5 s p50.
+- Prime: tune 25 s, long lead only (about 90-105 s to ready) until a test shows it can seek. NBA plans around this.
+- A failed tune advances the queue inside its budget. Nothing waits 75 s or more.
+- No route flagged "may be blacked out" is ever ready. The phone lists what can't be reached tonight.
+- Model ceiling on 2-4 games: 13-15 jumps per 10 min. Must-see seen is the bar; cut rate is an output.
 
-## 4. P2 the brain (later; research streams start now)
+Phases, each exits on its check:
+1. Queue core, routing, scrub, Prime, commit gate (waves 0-1). Exit: tests pass, flags off, scorecards unchanged.
+2. Queue owns the hidden stick, phone card (wave 2). Exit: L4 meets the YouTube TV gate on a hidden stick.
+3. Full NFL Sunday, hidden stick, app alone on the Mac (T3). Exit: 7 h with no stuck stick; failures listed.
+4. Live on screen, flags on one league at a time. Exit: 95% gates on the locked set plus fresh nights.
 
-Nick's goal: a model that feeds every decision (which game, crunch time, all plays, switch management) and can
-help fix mistakes. Open question for Nick (see section 7): "billions of parameters on a basic Mac" vs the 8 GB Mac.
+## 4. P2 the show and the brain
 
-## 5. Audits and planners (P3)
+Show first, then brain. One Tier 1/2/3 list per league. Tier first, league order as tiebreak, your teams first, crunch first.
+Every Tier 1 airs live or rewound by its route's deadline: 2-3 min on YouTube TV, clip lag on routes that can't seek.
+A cut lands before one play, ends when the play ends, and needs a payoff. Stops and failed 4th downs count.
 
-After P1 and after P2: auditors review and report to planners; planners write only the "Planner section" below.
-At most 2 audit rounds when code and prod work; then 1-2 loops of safety measures, then move on.
+The brain outputs numbers and words, never an action. Code lists the legal options, the arbiter picks, the commit gate has
+the last word at the flip. Baseline runs when the brain is off, late or invalid. Models: small trees live under 100 MB, no
+LLM during games, large models offline on free Kaggle only, nothing learned from Nick's taps. First live surface: preload.
+Exit per model: beats the state table on the worst fold, 7 of 7 shadow nights, then locked once plus fresh nights.
+
+## 5. Standing order, audits and planners (P3)
+
+Order of work: Rule #1 and its facts (sync, delay), then stick speed, then the gate, then the brain. No model is graded
+before the sticks can act on it. Only the near-term list runs until a live Sunday holds.
+Always: one writer per file; new behaviour ships off; frozen graders stay frozen; locked set once per release; no TV test that
+disturbs Nick; hidden stick first; no training on the Mac; game nights the Mac runs RedZone only; all Claude work stops at 88%.
+After P1 and after P2: auditors report to planners; planners write only the section below. At most 2 audit rounds when code
+and prod work, then 1-2 loops of safety measures, then move on.
 
 ### Planner section (planners write here only)
+
+Also update the P1 row in section 1 to read "Queue and switching", with "Section 3 phases" as its exit.
 
 ## 6. Standing agent streams
 
@@ -91,6 +109,9 @@ At most 2 audit rounds when code and prod work; then 1-2 loops of safety measure
    (~1-2 GB), or keep the brain small and fast with a bigger model offline.
 
 ## 8. Log (coordinator, newest first)
+
+- 2026-11-09: five planners (docs/agents/planner/) and the build plan (P-BUILD) done; sections 3-5 replaced with the build plan.
+  Wave 1 launched: route truth, queue core, scrub speed, app tuners, commit gate, Sunday Ticket scan. TV off.
 
 - 2026-11-08 night: P0 process gate closed (G-01..G-09). P1 sprint packages A-H, R, M, S merged one at a time; full suite
   4359 passed, 0 failed. Not yet run on the real TV. Live tests are hidden-stick only until Nick says otherwise.
