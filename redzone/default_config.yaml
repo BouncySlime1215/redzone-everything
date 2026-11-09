@@ -1184,3 +1184,18 @@ commit_gate:               # [build plan WP-05] one named-veto gate at the flip 
 
 discovery:                 # [build plan WP-01]
   st_wait: false           # an NFL Sunday game waits for its Sunday Ticket slot; local CBS and FOX games keep their local route
+
+arbiter:                   # [build plan WP-17] picks among legal options, with a must-show floor; every cut still goes through the commit gate
+  enabled: false
+
+slate:                     # [build plan WP-18] blocks of a few games, then catch-up, late narrowing; NBA misses its exit bar
+  enabled: false
+
+fill:                      # [build plan WP-19] what the show does when nothing must be shown
+  enabled: false
+
+labels:                    # [own-data job 17] extra logging only, for data no public source has
+  enabled: false
+
+views:                     # [build plan WP-21] the phone's clock as of the screen, not the feed
+  screen_clock: false
