@@ -442,3 +442,15 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
 - 2026-11-09 (AUDIT-OLD): `adb._adb` killed its process on timeout but not on cancel, unlike `Stick.run`, so a cancelled `adb connect` or `disconnect` outlived its caller. Lesson: two copies of the same subprocess wrapper drift; when one gets a cleanup, grep for the other. Test: tests/test_audit_old_adb.py.
 
 - 2026-11-09 (AUDIT-OLD): `ensure_awake` marked a stick awake even when the WAKEUP key was refused (breaker open, shell failure), so for 60 s nothing tried to wake it again. Lesson: record the state you confirmed, not the one you asked for. Test: tests/test_audit_old_adb.py.
+
+- 2026-11-09 (AUDIT-4): a tune that found the stream still playing sent no link, yet `_tune` booked it at the live edge, so a stick held 75 s behind read as live. Lesson: "ok" and "something happened" are different answers; a result has to say which. Test: tests/test_audit4_flip.py.
+
+- 2026-11-09 (AUDIT-4): `behind_on` was set after a scrub returned, so a cancel (the usual end of a scrub in buffered mode) skipped it and the next same-channel tune claimed the live edge. Lesson: bookkeeping for something already done to a device belongs on the cancel path too. Test: tests/test_audit4_behind.py.
+
+- 2026-11-09 (AUDIT-4): a failed read before a deep link looked like "nothing was playing", so the old channel confirmed as the new one. Lesson: a missing answer is not a negative answer. Test: tests/test_audit4_tuners.py.
+
+- 2026-11-09 (AUDIT-4): a refused pause dropped the stick's anchor and the standby was still called ready, so every jump was refused and nothing replaced it. Lesson: "ready" has to mean what the consumer checks; a refusal that proves it isn't should clear it. Test: tests/test_audit4_hold.py.
+
+- 2026-11-09 (AUDIT-4): `on_target` was cleared before a tune that then sent no key, which left the watchdog blind with the old game still on screen. Lesson: clear a belief when the world may have changed, not when you intend to change it. Test: tests/test_audit4_screen.py.
+
+- 2026-11-09 (AUDIT-4): the age check in `restore_held` also threw away `behind_on`, a fact about the stick that doesn't age. Lesson: a staleness rule covers estimates, not facts that only an action can change. Test: tests/test_audit4_behind.py.

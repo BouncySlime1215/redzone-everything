@@ -162,6 +162,7 @@ class TuneResult:
     screen_changed: bool | None = None  # False: no visible command sent; True: sent; None: legacy unknown
     path: str = ""                      # "tile": a Prime multiview tile switch, not a tune
     warm: bool | None = None            # the app was already running before the link; None: can't tell
+    kept: bool = False                  # no link sent: it was still playing, uninterrupted, so its position is unchanged
 
 
 @dataclass
@@ -171,7 +172,7 @@ class NewStream:
     Without `am start -W` we check the instant the link is sent, so for a moment the app can still
     report the OLD channel as playing. Confirming on that would flip the TV to a stick that's still
     loading, or rewind the wrong stream for a replay. A "playing" report counts when:
-      - the app wasn't playing before the link (so it can't be the old stream), or
+      - the app wasn't playing before the link, by a read that worked (so it can't be the old stream), or
       - we've seen it stop / buffer since the link (the switch happened), or
       - its playback clock jumped (a different stream), or
       - (with `expect`) the app's metadata now names the channel we asked for and the old report
@@ -210,7 +211,10 @@ class NewStream:
             self.report, self.by_name = pb, True
             return True
         continuity = same_stream(self.before, pb)
-        if (not playback_ready(self.before) or continuity is False
+        # A failed read before the link says nothing about what was playing: the old stream can still report "playing"
+        # now. Only a read that came back and found no stream is the fast path.
+        nothing_before = not playback_ready(self.before) and self.before.get("read_ok") is not False
+        if (nothing_before or continuity is False
                 or (self.gap and continuity is None)):
             self.report = pb
             return True
@@ -257,7 +261,7 @@ class Tuner:
         before = await stick.playback(pkg)
         if stick.still_on(target, before):
             steps.append("already on it (the stick is still playing it, uninterrupted)")
-            return TuneResult(True, target, time.monotonic() - t0, steps)
+            return TuneResult(True, target, time.monotonic() - t0, steps, kept=True)
         if playback_ready(before):
             stick.mark_awake()   # playing video, so it's awake: skip asking
         require_cut(may_cut, steps)
@@ -467,7 +471,7 @@ class YouTubeTVTuner(Tuner):
         before = await stick.playback(pkg)
         if stick.still_on(target, before):
             steps.append("already on it (the stick is still playing it, uninterrupted)")
-            return TuneResult(True, target, time.monotonic() - t0, steps)
+            return TuneResult(True, target, time.monotonic() - t0, steps, kept=True)
         try:
             require_cut(may_cut, steps, mutating=True)
         except CutWindowClosed as exc:

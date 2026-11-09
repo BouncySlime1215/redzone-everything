@@ -2293,7 +2293,8 @@ class Controller:
             res.error = f"{STICK_HUNG}: {res.error}"
         if res.ok:
             self._played_at[stick.host] = time.time()   # [scrub entry] the post-tune banner clock starts here
-            self._set_held(target, 0.0)   # a fresh tune plays from the live edge
+            if not res.kept:   # no link went out ("already on it"): a held stream is exactly as far behind as it was
+                self._set_held(target, 0.0)   # a fresh tune plays from the live edge
             # A Prime multiview tile switch is ~1 s, not a ~32 s tune: never let it into Prime's median.
             self.latency.record("prime_tile" if res.path == "tile" else app, res.took)
             if res.path != "tile" and getattr(stick, "model", None):
@@ -2344,6 +2345,12 @@ class Controller:
         except OSError:
             log.debug("held offsets not saved", exc_info=True)
 
+    def _moved_behind(self, stick: Stick, target: str) -> None:
+        """A cancel skips the bookkeeping after the keys: without this mark the next tune books a stick still behind live
+        as the live edge (a same-channel link does not reset it, #391). Saved, so a restart keeps it too."""
+        stick.behind_on = target
+        self._save_held()
+
     def touch_held(self, every_s: float = 60.0) -> bool:
         """Heartbeat for data/held.json: restore_held trusts the file only if its `ts` is recent, but a steady
         hold never changes, so its `ts` was the time of the LAST CHANGE, and a restart an hour into a hold threw
@@ -2361,15 +2368,17 @@ class Controller:
             d = json.loads(p.read_text()) if p is not None and p.exists() else {}
         except (OSError, ValueError):
             return {}
+        behind = (d.get("behind_on") or {}) if isinstance(d, dict) else {}
+        for s in self.sticks:
+            if isinstance(behind.get(s.host), str):
+                # [S-6] the next tune of that target resets first. Before the age check: an offset ages out, but a stick
+                # stays behind live until it is re-tuned, however long the app was down
+                s.behind_on = behind[s.host]
         if not d or now - float(d.get("ts") or 0.0) > float(self.cfg.get("timing.behind_live_s.held_max_age_s", 600)):
             return {}
         got = {t: float(v) for t, v in (d.get("held") or {}).items() if v and float(v) > 0}
         for t, v in got.items():
             self._set_held(t, v, how="restored")
-        behind = d.get("behind_on") or {}
-        for s in self.sticks:
-            if isinstance(behind.get(s.host), str):
-                s.behind_on = behind[s.host]   # [S-6] the next tune of that target resets first
         if got:
             log.info("restored held offsets after a restart: %s", {t: round(v, 1) for t, v in got.items()})
         return got
@@ -2396,6 +2405,11 @@ class Controller:
             pb = await stick.playback(pkg) if sent and sent.ok else {}
             if pb.get("state") != "paused":
                 await stick.key("KEYCODE_MEDIA_PLAY")
+                # Both keys dropped its anchor (Stick.shell): it's still the stream we tuned, so anchor it again or no
+                # flip can ever confirm this "ready" standby
+                now_pb = await stick.playback(pkg)
+                if playback_ready(now_pb):
+                    stick.remember(target, now_pb)
                 log.info("buffer: %s on %s didn't pause (%s); left at the live edge", target, stick.host,
                          pb.get("state"))
                 out["end"] = "refused"
@@ -2403,7 +2417,12 @@ class Controller:
             paused_at = time.monotonic()
             token = object()
             self._holding = (stick, target, token)
-        await asyncio.sleep(behind_s)
+        try:
+            await asyncio.sleep(behind_s)
+        except asyncio.CancelledError:
+            if target.split(":", 1)[0] in SCRUB_APPS:
+                self._moved_behind(stick, target)
+            raise
 
         def ours() -> bool:
             h = self._holding
@@ -2441,6 +2460,8 @@ class Controller:
                 log.warning("buffer: %s on %s didn't resume (%s); reloading at the live edge", target,
                             stick.host, pb.get("state"))
                 self._set_hidden(target, False)
+                if target.split(":", 1)[0] in SCRUB_APPS:
+                    stick.behind_on = target   # paused behind live, and a same-channel link would not bring it back
                 res = await self._tune_fresh(stick, target)
                 out["relinked"] = res.ok
                 self._set_hidden(target if res.ok else None, res.ok)
@@ -2547,8 +2568,12 @@ class Controller:
                 from redzone.tuners.yttv_label import LabelProbe
                 self._replay_probe = LabelProbe(self.cfg)
             probe = self._replay_probe
-        r = await replay_park.park(stick, back_s, probe=probe, cfg=self.cfg,
-                                   pkg=self._package(stick, target), still_hidden=still_hidden)
+        try:
+            r = await replay_park.park(stick, back_s, probe=probe, cfg=self.cfg,
+                                       pkg=self._package(stick, target), still_hidden=still_hidden)
+        except asyncio.CancelledError:
+            self._moved_behind(stick, target)
+            raise
         if r.moved:
             stick.behind_on = target   # keys moved it: the next live tune of target resets first (#391)
             self._save_held()
@@ -3014,7 +3039,7 @@ class Controller:
                            False, path="prime_tile", screen_unchanged=True)
         if not self.live_control:
             return Outcome(False, target, 0.0, "TV control was disabled", True)
-        self.on_target = None
+        was_on, self.on_target = self.on_target, None
         self._mark("tune_start")
         res = await mv.switch(main, target, may_cut)
         self._mark("tune_done")
@@ -3025,6 +3050,7 @@ class Controller:
             return Outcome(True, target, res.took, "; ".join(res.steps[-2:]), False, time.time(), path="prime_tile",
                            waited=waited, stick=main.host)
         if res.screen_changed is False:
+            self.on_target = was_on   # nothing was pressed: the screen is what it was
             return None
         # Keys were pressed and the main tile isn't the one we wanted (or can't be read). The session is
         # forgotten, so the next decision takes a normal path; never chain a 30 s tune into this cut.
@@ -3035,11 +3061,14 @@ class Controller:
         if await self._still_on_visible(target):
             return Outcome(True, target, 0.0, "already on it", False, time.time(), path="already")
         main = self.main
+        was_on = self.on_target
         self.on_target = None   # unknown until this tune is confirmed (a cancelled tune leaves it unknown)
         self._mark("tune_start")
         res = await self._tune(main, target, self._exit_check)
         self._mark("tune_done")
         if not res.ok:
+            if res.screen_changed is False:
+                self.on_target = was_on   # no key went out (the cut window closed, a hung stick): it still shows that game
             self._blackout_check(target, res)
             return Outcome(False, target, time.time() - t0, res.error + " | " + "; ".join(res.steps[-3:]), False,
                            path="single", screen_unchanged=getattr(res, "screen_changed", None) is False)
@@ -3078,6 +3107,10 @@ class Controller:
             path = "preloaded"
         elif getattr(self, "_preloaded_only", False):
             # [jump mode] the ready standby stopped playing: no re-tune on a jump (it would miss the dead ball)
+            if self._live_on_hidden(target) and (hid.tuned or {}).get("target") != target:
+                # No anchor (a key went out and nothing re-anchored it): no flip can ever confirm this stream, and a
+                # "ready" standby is never replaced, so every jump would be refused here until something else re-tuned it.
+                self._set_hidden(None, False, why="ready, but no anchor to confirm it with")
             return Outcome(False, target, time.time() - t0, STANDBY_NOT_READY + " (stopped playing)", False,
                            path="refused", screen_unchanged=True)
         else:
@@ -4035,7 +4068,9 @@ class Controller:
                     # flip asks for: a "go now" right after this preload flips after one more read.
                     self._note_steady(hid, target, (hid.tuned or {}).get("report") or {})
                     await self._maybe_build_multiview(hid, target, res)
-                    hold = 0.0 if replay_id is not None else self._buffer_for(hid, target, res)
+                    # a kept stream that is held already has its buffer: holding again would add to it unbooked
+                    hold = 0.0 if replay_id is not None or (res.kept and self.held.get(target)) \
+                        else self._buffer_for(hid, target, res)
                     if hold and self._scrub_wanted(target):
                         # [scrub entry] the overlay scrub, off screen, before anything can flip to it; a pause
                         # doesn't hold on YouTube TV (Nick, Nov 6). Fails closed at the live edge or not ready.
@@ -4353,6 +4388,7 @@ class Controller:
                 else:
                     res = await entering
             except asyncio.CancelledError:
+                self._moved_behind(stick, target)   # keys may have gone out (any switch cancels a preload mid-scrub)
                 raise
             except ImportError:
                 why = "yttv_seek not installed"
@@ -5131,7 +5167,7 @@ class Controller:
                     if not res.ok:
                         self._set_hidden(None, False)
                         return
-                hold = self._buffer_for(hid, target, res)
+                hold = 0.0 if res.kept else self._buffer_for(hid, target, res)   # kept: no reload, so no second hold on top
                 ok = bool(hold) and await self._hold(hid, target, max(0.5, hold + cal))
             if self.hidden is hid and self.hidden_target == target:
                 self._set_hidden(target, True)
