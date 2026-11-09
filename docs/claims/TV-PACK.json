@@ -1,0 +1,11 @@
+{
+  "card": "TV-PACK",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "scripts/tv_test_runner.py",
+    "tests/test_tv_test_runner*.py"
+  ],
+  "started": 1794215222,
+  "expires": 1794388022
+}
