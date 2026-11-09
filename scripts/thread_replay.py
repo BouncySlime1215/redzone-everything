@@ -16,6 +16,7 @@ off must match the base commit's hash. Info only: not a gate, nothing frozen is 
 from __future__ import annotations
 
 import argparse
+import bisect
 import hashlib
 import json
 import sys
@@ -29,6 +30,7 @@ if ROOT.as_posix() not in sys.path:
 from redzone.grading import lag_of  # noqa: E402
 from redzone.lab import backtest, splits, sportsgrade  # noqa: E402
 from redzone.moments import threads as T  # noqa: E402
+from redzone.moments.arrival import PAYOFF  # noqa: E402
 from redzone.noggin.show import ShowDecider  # noqa: E402
 from scripts.veto_audit import SCRIPTS, Air, card, must_see, parse_sets, seen  # noqa: E402
 
@@ -62,11 +64,34 @@ def tally_threads(row: dict, threads: list[T.Thread], lag, screen: list, play_le
         answer = seen(Air(at, t.game_id, t.kind, 1.0), screen)
         asked = seen(Air(float(t.opened_at) + lag_of(lag, t.game_id) + play_len, t.game_id, t.kind, 1.0), screen)
         row["closed"] += 1
+        if t.closes_on in PAYOFF:
+            row["payoff"] += 1
+            row["payoff_seen"] += int(answer)
         row["seen"] += int(answer)
         row["asked"] += int(asked)
         row["asked_seen"] += int(asked and answer)
         row["by_kind"][t.kind][0] += 1
         row["by_kind"][t.kind][1] += int(answer)
+
+
+def tally_arrivals(row: dict, log: list, threads: list[T.Thread], lag, switches: list, tune_s: float) -> None:
+    """How much picture each arrival cut had before the next answer on its game. `late`: it landed just after one aired;
+    `far`: nothing closed there within 3 minutes of the picture coming up."""
+    by_game: dict[str, list[float]] = {}
+    for t in threads:
+        if t.kind in T.HOLDABLE:
+            by_game.setdefault(t.game_id, []).append(float(t.closed_at) + lag_of(lag, t.game_id))
+    for now, gid, _kind in log:
+        sw = next((s for s in switches if s.to == gid and now - 1.0 <= s.t <= now + 60.0), None)
+        up = (sw.t + tune_s + sw.arrive_dt) if sw is not None else now + tune_s
+        ats = sorted(by_game.get(gid, ()))
+        i = bisect.bisect_left(ats, up)
+        if i > 0 and up - ats[i - 1] <= 10.0:
+            row["arrival_late"] += 1
+        if i == len(ats) or ats[i] - up > 180.0:
+            row["arrival_far"] += 1
+        else:
+            row["arrival_lead"].append(round(ats[i] - up, 1))
 
 
 def tally_must(row: dict, replays, lag, screen: list) -> None:
@@ -82,7 +107,8 @@ def tally_must(row: dict, replays, lag, screen: list) -> None:
 def new_row(league: str) -> dict:
     return {"league": league, "nights": 0, "opened": Counter(), "closed": 0, "seen": 0, "asked": 0, "asked_seen": 0,
             "by_kind": {k: [0, 0] for k in sorted(T.HOLDABLE)}, "must_total": 0.0, "must_seen": 0.0, "must_n": 0, "must_seen_n": 0,
-            "cuts": 0, "hours": 0.0, "holds": Counter(), "decisions": 0, "hash": hashlib.sha256()}
+            "payoff": 0, "payoff_seen": 0, "cuts": 0, "hours": 0.0, "holds": Counter(), "arrival_cuts": Counter(), "arrival_lead": [], "arrival_late": 0, "arrival_far": 0, "decisions": 0,
+            "hash": hashlib.sha256()}
 
 
 def run_league(league: str, sets: dict, cap: int | None) -> dict:
@@ -103,10 +129,13 @@ def run_league(league: str, sets: dict, cap: int | None) -> dict:
         row["nights"] += 1
         tally_threads(row, night_threads(replays, params), rep.lag_true, screen, backtest.PLAY_LEN_S if hasattr(backtest, "PLAY_LEN_S") else 7.0)
         tally_must(row, replays, rep.lag_true, screen)
+        night_log = [x for dec in deciders[before:] for x in dec.arrival_log]
+        tally_arrivals(row, night_log, night_threads(replays, params), rep.lag_true, rep.switches, tune_s)
         row["cuts"] += sum(1 for s in rep.switches if s.kind != "replay")
         row["hours"] += rep.hours
         for dec in deciders[before:]:
             row["holds"].update(dec.thread_holds)
+            row["arrival_cuts"].update(dec.arrival_cuts)
         for d in rep.decisions:
             row["decisions"] += 1
             row["hash"].update(repr((round(d.at, 3), d.action, d.target, d.reason, d.state, d.gate, d.kind, d.want, round(d.rewind_s, 3), d.owner)).encode())
@@ -146,12 +175,16 @@ def run_league(league: str, sets: dict, cap: int | None) -> dict:
 def line(r: dict) -> str:
     n, c = max(r["nights"], 1), max(r["closed"], 1)
     opened = sum(r["opened"].values())
+    lead = sorted(r["arrival_lead"])
+    median = lead[len(lead) // 2] if lead else None
     return (f"{r['league']:<4} nights {r['nights']:<3} threads/night {opened / n:6.1f}  closures seen {100 * r['seen'] / c:5.1f}%  "
             f"asked-then-answered {100 * r['asked_seen'] / max(r['asked'], 1):5.1f}% (of {r['asked']})  "
             f"cuts/h {r['cuts'] / max(r['hours'], 1e-9):5.1f}  dead air {r['dead_air_pct']}  "
             f"mid-play {r['entries_mid_play']}/{r['entries']}  high-lev leaves {r['high_leverage_leaves']}  missed {r['plays_missed_entry']}  "
             f"must-show {100 * r['must_seen'] / max(r['must_total'], 1):5.1f}% ({r['must_seen_n']}/{r['must_n']})  "
-            f"holds {sum(r['holds'].values())}  hash {r['hash']} ({r['decisions']})")
+            f"holds {sum(r['holds'].values())}  arrival cuts {sum(r['arrival_cuts'].values())} "
+            f"(lead median {median}s, late {r['arrival_late']}, far {r['arrival_far']})  "
+            f"payoffs seen {100 * r['payoff_seen'] / max(r['payoff'], 1):5.1f}% (of {r['payoff']})  hash {r['hash']} ({r['decisions']})")
 
 
 def main() -> int:
