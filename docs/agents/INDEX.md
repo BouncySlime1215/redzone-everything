@@ -29,6 +29,7 @@ Standard: [docs/STANDARD.md](../STANDARD.md). Plan and process gate: [docs/PLAN.
 | R-PERCEPT | 2026-11-08 | [On-device perception for live sports (2026-11-08)](../research/2026-11-08/on-device-perception.md) | reviewed | 28 (23) | - |
 | R-VIEWER | 2026-11-08 | [Viewer experience of automated multi-game sports (research, 2026-11-08)](../research/2026-11-08/viewer-experience.md) | reviewed | 24 (19) | - |
 | W1-CONTEXT | 2026-11-08 | [Why / routes / relied-on context whenever an agent reads code](context/2026-11-08-code-context-on-read.md) | draft | 24 (20) | - |
+| D-ADDICT | 2026-11-09 | [The compelling show: what makes live viewing hard to leave, and how RedZone should engineer it](context/2026-11-09-addicting-show.md) | draft | 75 (56) | - |
 
 ## data
 
