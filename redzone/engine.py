@@ -23,7 +23,6 @@ from redzone import buffer_rc8
 from redzone import fsm, reel, standby, trace, userstate, views
 from redzone.reel import REEL_DIR
 from redzone.cheap_labels import CheapLabels
-from redzone import channels as channels_mod
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on, route_class
 from redzone.config import Config, ConfigError, for_league
 from redzone.governor import keep_awake_wanted
@@ -201,7 +200,7 @@ class Engine:
         self.cfg = cfg or Config()
         self.store = store or Store()
         self.channels = ChannelMap()
-        channels_mod.apply_config(self.cfg)   # [WP-22] discovery.espn_on_yttv (off)
+        self.channels.apply_config(self.cfg)   # [WP-22] discovery.espn_on_yttv (off)
         self.channels.local_search = bool(self.cfg.get("tuners.yttv_local_search", False))
         self.fetcher = Fetcher()
         # [NHL primary] api-web's live play-by-play owns NHL stoppages while it's fresh.
