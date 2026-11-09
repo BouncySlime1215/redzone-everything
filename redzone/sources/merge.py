@@ -34,7 +34,8 @@ def progress_key(g: GameState) -> tuple:
     phase_rank = {Phase.PRE: 0, Phase.UNKNOWN: 0, Phase.LIVE: 1, Phase.POST: 2}[g.phase]
     period = g.period or 0
     half = 1 if g.half == "bottom" else 0
-    clock = -(g.clock_s if g.clock_s is not None else 0.0)
+    # No clock is "don't know", never "end of period" (-0.0 outranked every real reading): it ranks last.
+    clock = -g.clock_s if g.clock_s is not None else float("-inf")
     total = (g.home.score or 0) + (g.away.score or 0)
     plays = len(g.recent_plays)
     return (phase_rank, period, half, clock, total, plays)
@@ -149,6 +150,9 @@ class Merger:
         correction = False
         if prev_same is not None:
             kg, kp = progress_key(g), progress_key(prev_same)
+            if g.clock_s is None or prev_same.clock_s is None:
+                # One side has no clock: it says nothing about direction, so it is neither a jump back nor ahead.
+                kg, kp = kg[:3] + (0.0,) + kg[4:], kp[:3] + (0.0,) + kp[4:]
             if _position(kg) < _position(kp):
                 h.regressions += 1
                 hits = [t for t in self._regress_at[bkey] if now - t < REGRESSION_WINDOW_S]
