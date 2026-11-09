@@ -154,10 +154,12 @@ def hockey(l,gid,d,E,J):
     return ts_all
 FN = {'nfl': football, 'nba': hoops, 'nhl': hockey}
 
-def games(l):
-    """(night, game id, summary) for dev-night games only; locked and fresh files are never opened."""
+def games(l, only=None):
+    """(night, game id, summary) for dev-night games only; locked and fresh files are never opened.
+    only: a set of nights to read (still dev nights only: the filter runs first)."""
     dev = DevOnly(A, l)
     for gid, n in sorted(dev.game_ids().items(), key=lambda x: (x[1], x[0])):
+        if only is not None and n not in only: continue
         f = Path(A) / l / f"summary_{gid}.json"
         if f.is_file():
             yield n, gid, json.loads(f.read_text())
@@ -197,21 +199,39 @@ def key(l, st, t0, t1, t):
     return (late, cb, mb, 0)
 
 
+def game_row(l, gid, d):
+    """(gid, first play, last play, per-play states, [(wall, tier)] events) for one summary-shaped game, or None if it is too thin."""
+    E = []; J = collections.defaultdict(list)
+    ta = sorted(FN[l](l, gid, d, E, J))
+    if len(ta) < 30 or not (1.2 * 3600 < ta[-1] - ta[0] < 7 * 3600): return None
+    return (gid, ta[0], ta[-1], states(l, d), sorted((e[0], e[2]) for e in E if e[0]))
+
+
 def build(l):
     rows = collections.defaultdict(list)
     for n, gid, d in games(l):
-        E = []; J = collections.defaultdict(list)
-        ta = sorted(FN[l](l, gid, d, E, J))
-        if len(ta) < 30 or not (1.2 * 3600 < ta[-1] - ta[0] < 7 * 3600): continue
-        rows[n].append((gid, ta[0], ta[-1], states(l, d), sorted((e[0], e[2]) for e in E if e[0])))
+        r = game_row(l, gid, d)
+        if r: rows[n].append(r)
     return rows
 
 
-def decisions(l, night):
+def decision_times(night):
+    """The 180 s decision clock of one night: from 300 s after the first game starts to the look-ahead before the last ends."""
     t0 = min(g[1] for g in night); t1 = max(g[2] for g in night)
     out = []
     t = t0 + 300
     while t < t1 - H:
+        out.append(t)
+        t += H
+    return out
+
+
+def decisions(l, night, ranks=None):
+    """One list per decision with 2+ live games: (gid, state key, |margin|, y, tier-1 in 60 s[, planner score]).
+    ranks: {decision time: {gid: score}} from a baseline that sees the live state (the real standby.Planner);
+    a game it lists no score for gets -inf (the hidden stick would not hold it). Without ranks the tuples have 5 fields."""
+    out = []
+    for t in decision_times(night):
         live = []
         for gid, s, e, st, ev in night:
             if not (s + 120 <= t <= e - H): continue
@@ -219,9 +239,10 @@ def decisions(l, night):
             if i < 0: continue
             y = sum(WEIGHTS[tier] for w, tier in ev if t < w <= t + H)
             t1c = sum(1 for w, tier in ev if t < w <= t + 60 and tier == 1)
-            live.append((gid, key(l, st[i], s, e, t), abs(st[i][3]), y, t1c))
+            row = (gid, key(l, st[i], s, e, t), abs(st[i][3]), y, t1c)
+            if ranks is not None: row += (ranks.get(t, {}).get(gid, float('-inf')),)
+            live.append(row)
         if len(live) >= 2: out.append(live)
-        t += H
     return out
 
 
@@ -256,7 +277,84 @@ def capture(tests, score, K, rnd=None):
     return got, tot, best, n
 
 
-def main(argv=None):
+KS = (2, 4, 8)
+
+
+def report(l, rows, ranker=None):
+    """The measurement for one league: 60/40 by whole night, oldest fit. ranker(l, night, night_rows) -> ranks for decisions(), or None."""
+    nights = sorted(rows)
+    cut = int(len(nights) * 0.6)
+    tr, te = nights[:cut], nights[cut:]
+    Dtr = [dd for n in tr for dd in decisions(l, rows[n])]
+    ranks = {n: ranker(l, n, rows[n]) for n in te} if ranker else {}
+    by_te = {n: decisions(l, rows[n], ranks.get(n)) for n in te}
+    Dte = [dd for n in te for dd in by_te[n]]
+    have_pl = bool(ranker) and any(len(x) > 5 for d in Dte for x in d)
+    res = {'nights_train': len(tr), 'nights_test': len(te), 'games': sum(len(rows[n]) for n in nights), 'decisions_test': len(Dte),
+           'rows_train': sum(len(d) for d in Dtr), 'slate_size_median': float(np.median([len(d) for d in Dte])) if Dte else None}
+    pred, glob = fit(Dtr)
+    ys = np.array([x[3] for d in Dte for x in d]); ps = np.array([pred(x[1]) for d in Dte for x in d])
+    res['r2_table'] = round(float(1 - ((ys - ps) ** 2).sum() / ((ys - ys.mean()) ** 2).sum()), 4)
+    res['y_mean'] = round(float(ys.mean()), 2); res['y_var'] = round(float(ys.var()), 2); res['pred_var'] = round(float(ps.var()), 3)
+    res['y_zero_pct'] = round(float((ys == 0).mean() * 100), 1)
+    # learning curve: fit on the newest fraction of train nights, test nights fixed
+    lc = {}
+    for fr in (0.25, 0.5, 1.0):
+        sub = tr[-max(1, int(len(tr) * fr)):]
+        D = [dd for n in sub for dd in decisions(l, rows[n])]
+        p2, _ = fit(D)
+        ps2 = np.array([p2(x[1]) for d in Dte for x in d])
+        lc[str(fr)] = {'nights': len(sub), 'r2': round(float(1 - ((ys - ps2) ** 2).sum() / ((ys - ys.mean()) ** 2).sum()), 4)}
+    res['learning_curve'] = lc
+    for K in KS:
+        rnd_shares = []
+        for seed in range(30):
+            g, t, b, n = capture(Dte, lambda x: 0.0, K, random.Random(seed))
+            rnd_shares.append(g / t if t else float('nan'))
+        g_h, t_h, b_h, n = capture(Dte, lambda x: -x[2], K, random.Random(0))
+        g_t, t_t, b_t, _ = capture(Dte, lambda x: pred(x[1]), K, random.Random(0))
+        cell_keys = {'hand': lambda x: -x[2], 'table': lambda x: pred(x[1])}
+        if have_pl:
+            g_p, t_p, _, _ = capture(Dte, lambda x: x[5], K, random.Random(0))
+            cell_keys['planner'] = lambda x: x[5]
+        # night-cluster bootstrap: table minus each baseline, in points of available value
+        nts = [n2 for n2 in te if any(len(dd) > K for dd in by_te[n2])]
+        cell = {n2: {k: capture(by_te[n2], f, K, random.Random(0)) for k, f in cell_keys.items()} for n2 in nts}
+
+        def ci(a_key, b_key):
+            diffs, rng = [], random.Random(1)
+            for _ in range(2000):
+                samp = [rng.choice(nts) for _ in nts]
+                a = sum(cell[s][a_key][0] for s in samp); b_ = sum(cell[s][b_key][0] for s in samp); t_ = sum(cell[s][a_key][1] for s in samp)
+                if t_: diffs.append((a - b_) / t_ * 100)
+            return [round(float(np.percentile(diffs, 2.5)), 1), round(float(np.percentile(diffs, 97.5)), 1)] if diffs else None
+        pct = lambda g, t: round(g / t * 100, 1) if t else None
+        res[f'K{K}'] = {'decisions': n, 'nights': len(nts), 'random_pct': round(float(np.nanmean(rnd_shares)) * 100, 1) if t_h else None,
+                        'closest_score_pct': pct(g_h, t_h), 'state_table_pct': pct(g_t, t_t),
+                        'planner_pct': pct(g_p, t_p) if have_pl else None,
+                        'hindsight_pct': pct(b_t, t_t),
+                        'table_minus_hand_ci95': ci('table', 'hand'),
+                        'table_minus_planner_ci95': ci('table', 'planner') if have_pl else None}
+    return res
+
+
+def table(R):
+    """Markdown: one table per league, a row per method, a column per K."""
+    names = [('state_table_pct', 'state table'), ('closest_score_pct', 'closest score'), ('random_pct', 'random'),
+             ('planner_pct', 'real Planner'), ('hindsight_pct', 'hindsight')]
+    out = []
+    for l, res in R.items():
+        ks = [k for k in (f'K{K}' for K in KS) if k in res]
+        out.append(f"### {l}: {res['nights_test']} test nights ({res['nights_train']} fit), {res['games']} games\n")
+        out.append('| method | ' + ' | '.join(f"{k} ({res[k]['decisions']} decisions, {res[k]['nights']} nights)" for k in ks) + ' |')
+        out.append('|---|' + '---|' * len(ks))
+        for key_, name in names:
+            out.append(f'| {name} | ' + ' | '.join(('n/a' if res[k].get(key_) is None else f"{res[k][key_]:.1f}") for k in ks) + ' |')
+        out.append('')
+    return '\n'.join(out)
+
+
+def main(argv=None, ranker_factory=None):
     global A
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--archive', required=True, type=Path)
@@ -271,51 +369,11 @@ def main(argv=None):
         except LockedNightError as e:
             print(l, 'REFUSED', e)
             continue
-        nights = sorted(rows)
-        cut = int(len(nights) * 0.6)
-        tr, te = nights[:cut], nights[cut:]
-        Dtr = [dd for n in tr for dd in decisions(l, rows[n])]
-        by_te = {n: decisions(l, rows[n]) for n in te}
-        Dte = [dd for n in te for dd in by_te[n]]
-        res = {'nights_train': len(tr), 'nights_test': len(te), 'games': sum(len(rows[n]) for n in nights), 'decisions_test': len(Dte),
-               'rows_train': sum(len(d) for d in Dtr), 'slate_size_median': float(np.median([len(d) for d in Dte])) if Dte else None}
-        pred, glob = fit(Dtr)
-        ys = np.array([x[3] for d in Dte for x in d]); ps = np.array([pred(x[1]) for d in Dte for x in d])
-        res['r2_table'] = round(float(1 - ((ys - ps) ** 2).sum() / ((ys - ys.mean()) ** 2).sum()), 4)
-        res['y_mean'] = round(float(ys.mean()), 2); res['y_var'] = round(float(ys.var()), 2); res['pred_var'] = round(float(ps.var()), 3)
-        res['y_zero_pct'] = round(float((ys == 0).mean() * 100), 1)
-        # learning curve: fit on the newest fraction of train nights, test nights fixed
-        lc = {}
-        for fr in (0.25, 0.5, 1.0):
-            sub = tr[-max(1, int(len(tr) * fr)):]
-            D = [dd for n in sub for dd in decisions(l, rows[n])]
-            p2, _ = fit(D)
-            ps2 = np.array([p2(x[1]) for d in Dte for x in d])
-            lc[str(fr)] = {'nights': len(sub), 'r2': round(float(1 - ((ys - ps2) ** 2).sum() / ((ys - ys.mean()) ** 2).sum()), 4)}
-        res['learning_curve'] = lc
-        for K in (2, 4):
-            rnd_shares = []
-            for seed in range(30):
-                g, t, b, n = capture(Dte, lambda x: 0.0, K, random.Random(seed))
-                rnd_shares.append(g / t if t else float('nan'))
-            g_h, t_h, b_h, n = capture(Dte, lambda x: -x[2], K, random.Random(0))
-            g_t, t_t, b_t, _ = capture(Dte, lambda x: pred(x[1]), K, random.Random(0))
-            # night-cluster bootstrap for table minus hand and table minus random
-            nts = [n2 for n2 in te if by_te[n2]]
-            diffs = []
-            rng = random.Random(1)
-            cell = {n2: (capture(by_te[n2], lambda x: pred(x[1]), K, random.Random(0)), capture(by_te[n2], lambda x: -x[2], K, random.Random(0))) for n2 in nts}
-            for _ in range(2000):
-                samp = [rng.choice(nts) for _ in nts]
-                a = sum(cell[s][0][0] for s in samp); b_ = sum(cell[s][1][0] for s in samp); t_ = sum(cell[s][0][1] for s in samp)
-                if t_: diffs.append((a - b_) / t_ * 100)
-            res[f'K{K}'] = {'decisions': n, 'random_pct': round(float(np.nanmean(rnd_shares)) * 100, 1) if t_h else None,
-                            'closest_score_pct': round(g_h / t_h * 100, 1) if t_h else None, 'state_table_pct': round(g_t / t_t * 100, 1) if t_t else None,
-                            'hindsight_pct': round(b_t / t_t * 100, 1) if t_t else None,
-                            'table_minus_hand_ci95': [round(float(np.percentile(diffs, 2.5)), 1), round(float(np.percentile(diffs, 97.5)), 1)] if diffs else None}
+        res = report(l, rows, ranker_factory(l) if ranker_factory else None)
         R[l] = res
         print(l, json.dumps(res)); sys.stdout.flush()
     args.out.write_text(json.dumps(R, indent=1))
+    return R
 
 
 if __name__ == '__main__':
