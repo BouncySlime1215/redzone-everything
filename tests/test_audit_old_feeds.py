@@ -82,3 +82,27 @@ def test_a_bench_ends_even_while_the_source_still_reads_behind_its_high_water_ma
         m.update("espn_summary", _nhl(400.0, period=2))
     assert not m.health["espn_summary"].benched
     assert not m._benched(("espn_summary", "9"))
+
+
+def test_a_power_play_that_ended_is_not_refilled_from_the_old_state():
+    """Repro: _fill_gaps treats None as "unknown", but for a feed that can see strength None means even strength,
+    so the first power play of a game stayed on the merged state until the final."""
+    m = Merger()
+    assert m.update("nhl", _nhl(600.0, pp="WSH", strength="5v4")).situation.power_play == "WSH"
+    g = m.update("nhl", _nhl(590.0, strength="5v5"))
+    assert g.situation.power_play is None and g.situation.strength == "5v5"
+
+
+def test_a_scoreboard_poll_that_cannot_see_strength_keeps_the_power_play():
+    m = Merger()
+    m.update("nhl", _nhl(600.0, pp="WSH", strength="5v4"))
+    g = m.update("espn_scoreboard", _nhl(590.0, plays=False))
+    assert g.situation.power_play == "WSH" and g.situation.strength == "5v4"
+
+
+def test_a_late_copy_does_not_bring_an_ended_power_play_back():
+    m = Merger()
+    m.update("espn_summary", _nhl(600.0, pp="WSH", strength="5v4"))
+    m.update("nhl", _nhl(590.0, strength="5v5"))
+    g = m.update("espn_summary", _nhl(595.0, pp="WSH", strength="5v4"))    # behind the leader
+    assert g.situation.power_play is None

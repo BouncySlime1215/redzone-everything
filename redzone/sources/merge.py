@@ -188,14 +188,14 @@ class Merger:
         if takes:
             merged = g
             if cur is not None:
-                merged = _fill_gaps(_carry_plays(g, cur), cur)
+                merged = _fill_gaps(_carry_plays(g, cur), cur, moment=not _sees_strength(g))
             merged.sources = dict(cur.sources) if cur else {}
             merged.sources[source] = now
             merged.updated_at = now
             self.games[g.game_id] = merged
             return merged
         # Behind the leader: only contribute fields the leader lacks.
-        _fill_gaps(cur, g)
+        _fill_gaps(cur, g, moment=not _sees_strength(cur))
         cur.sources[source] = now
         return cur
 
@@ -324,8 +324,19 @@ def _carry_plays(g: GameState, cur: GameState) -> GameState:
     return g
 
 
-def _fill_gaps(dst: GameState, src: GameState) -> GameState:
-    """Copy fields that dst doesn't know but src does. Never overwrites."""
+MOMENT_FIELDS = ("power_play", "strength", "empty_net")   # None here can mean "even strength", not "don't know"
+
+
+def _sees_strength(g: GameState) -> bool:
+    """Does this copy read on-ice strength for itself? The NHL feed's code always names one; a play-by-play source
+    derives it from its plays. A bare scoreboard does neither, so its None really is a gap. Ask before _carry_plays,
+    which lends a scoreboard the plays it never read."""
+    return g.situation.strength is not None or g.last_play is not None or bool(g.recent_plays)
+
+
+def _fill_gaps(dst: GameState, src: GameState, moment: bool = True) -> GameState:
+    """Copy fields that dst doesn't know but src does. Never overwrites.
+    moment=False: dst can see strength, so its empty power-play fields are an answer and stay empty."""
     for attr in ("home_win_prob", "spread", "period", "clock_s", "half"):
         if getattr(dst, attr) is None and getattr(src, attr) is not None:
             setattr(dst, attr, getattr(src, attr))
@@ -347,6 +358,8 @@ def _fill_gaps(dst: GameState, src: GameState) -> GameState:
                 setattr(t_dst, attr, getattr(t_src, attr))
     ds, ss = dst.situation, src.situation
     for attr in vars(ss):
+        if not moment and attr in MOMENT_FIELDS:
+            continue
         if getattr(ds, attr) is None and getattr(ss, attr) is not None:
             setattr(ds, attr, getattr(ss, attr))
     return dst
