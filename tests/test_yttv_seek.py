@@ -384,3 +384,260 @@ def test_the_program_start_guard_can_be_turned_off():
     cfg = Cfg({**CFG, "yttv_seek.program_start_guard": False, "yttv_seek.boundary_retries": 0})
     r = asyncio.run(ys.enter_buffer(s, 60, cfg=cfg, pkg=YT, read_overlay=reader(s), presses=3))
     assert not r.ok and r.reason.startswith("knob moved 5s, not 30s")
+
+
+# ------------------------------------------- [build plan WP-03] one read fewer, band capture, per-read timing
+SKIP = Cfg({**CFG, "yttv_seek.skip_open_read": True})
+CENTER, RIGHT, LEFT = "KEYCODE_DPAD_CENTER", "KEYCODE_DPAD_RIGHT", "KEYCODE_DPAD_LEFT"
+
+
+async def _label_75(_s):
+    return 75.0
+
+
+def _whats(r):
+    return [x["what"] for x in r.reads]
+
+
+def test_skip_open_read_is_three_reads_not_four_and_the_same_keys():
+    """Exit check: the open read goes; the probe read, the knob read and the label read after the commit stay."""
+    off, on = FakeYTTV(label0=3600.0), FakeYTTV(label0=3600.0)
+    r_off = run(off, 60.0, presses=3, read_behind=_label_75)
+    r_on = run(on, 60.0, presses=3, read_behind=_label_75, cfg=SKIP)
+    assert _whats(r_off) == ["open", "probe", "knob", "label"]
+    assert _whats(r_on) == ["probe", "knob", "label"]
+    assert r_on.ok and r_on.committed and on.keys == off.keys == [CENTER, RIGHT, LEFT, LEFT, CENTER]
+    assert on.committed_back == off.committed_back == 30.0
+
+
+def test_flag_off_is_the_default_and_keeps_every_read():
+    assert ys.SCRUB_DEFAULTS["skip_open_read"] is False and ys.SCRUB_DEFAULTS["overlay_band_from"] is None
+    s, seen = FakeYTTV(label0=3600.0), []
+    base = reader(s)
+
+    async def read(st):
+        seen.append(list(st.keys))                       # which keys were already sent at each read
+        return await base(st)
+    r = run(s, 60.0, presses=3, read_overlay=read)
+    assert r.ok and seen == [[CENTER], [CENTER, RIGHT], [CENTER, RIGHT, LEFT, LEFT]]
+
+
+@pytest.mark.parametrize("kw,cfg", [({"behind_before_s": 30.0}, SKIP),
+                                    ({}, Cfg({**SKIP, "yttv_seek.probe_key": "LEFT"}))])
+def test_skip_needs_a_right_probe_at_the_live_edge(kw, cfg):
+    """Behind live or with a LEFT probe, the LEFT comes first and only the open read guards it: the read stays."""
+    s = FakeYTTV(label0=3600.0)
+    r = run(s, 60.0, presses=3, cfg=cfg, **kw)
+    assert r.ok and _whats(r)[0] == "open" and RIGHT not in s.keys
+
+
+def test_skip_row_focus_fails_closed_at_the_probe_read():
+    s, log = FakeYTTV(focus="row"), []
+    r = run(s, relink=relinker(log), cfg=SKIP)
+    assert not r.ok and "row button" in r.reason and not r.committed
+    assert s.keys == [CENTER, RIGHT] and log == ["relink"] and s.committed_back == 0
+
+
+def test_skip_no_label_still_fails_closed():
+    s, log = FakeYTTV(focus="none"), []
+    r = run(s, relink=relinker(log), cfg=SKIP)
+    assert not r.ok and "no scrub label" in r.reason and not r.committed and s.committed_back == 0
+    assert log == ["relink"] and _whats(r).count("open") == 3     # later attempts read before any key
+
+
+def test_skip_unreadable_probe_read_presses_nothing_more():
+    """Without the open read, a failed read after the RIGHT means focus was never seen: no LEFT, no CENTER (#356)."""
+    s, log = FakeYTTV(), []
+
+    async def blind(_s):
+        return None
+    r = run(s, read_overlay=blind, relink=relinker(log), cfg=SKIP)
+    assert not r.ok and r.reason.startswith("focus guard") and s.keys == [CENTER, RIGHT] and log == ["relink"]
+
+
+def test_skip_no_overlay_at_the_probe_read_reopens_and_reads_first():
+    s = FakeYTTV(label0=3600.0)
+    base, seen = reader(s), []
+
+    async def read(st):
+        seen.append(1)
+        return ys.OverlayRead() if len(seen) == 1 else await base(st)   # the overlay had not come up yet
+    r = run(s, 60.0, presses=3, read_overlay=read, cfg=SKIP)
+    assert s.keys[:3] == [CENTER, RIGHT, CENTER]          # no LEFT on an overlay nobody has seen
+    assert r.ok and _whats(r)[:2] == ["probe", "open"] and s.committed_back == 30.0, r
+
+
+def test_skip_banner_takes_the_left_probe_like_flag_off():
+    """A read that shows the overlay without a label proves what the open read would have: LEFT probe as today."""
+    s = FakeYTTV(label0=3600.0)
+    base, seen = reader(s), []
+
+    async def read(st):
+        seen.append(1)
+        if len(seen) == 1:
+            return ys.parse_overlay([{"text": "cc", "x": .2, "y": .9}])
+        return await base(st)
+    r = run(s, 60.0, presses=3, read_overlay=read, cfg=SKIP)
+    assert s.keys[:3] == [CENTER, RIGHT, LEFT] and r.ok and r.committed, r
+
+
+def test_skip_checks_hidden_before_the_right():
+    s, log, calls = FakeYTTV(), [], []
+
+    def hidden():
+        calls.append(1)
+        return len(calls) < 2                             # visible right after the overlay opened
+    r = run(s, still_hidden=hidden, relink=relinker(log), cfg=SKIP)
+    assert not r.ok and "visible" in r.reason and s.keys == [CENTER] and log == []
+
+
+def test_skip_checks_hidden_before_a_fallback_left():
+    s, log, calls = FakeYTTV(), [], []
+
+    def hidden():
+        calls.append(1)
+        return len(calls) < 3                             # visible after the RIGHT, before a LEFT probe
+    base = reader(s)
+
+    async def banner(st):
+        return ys.parse_overlay([{"text": "cc", "x": .2, "y": .9}]) if RIGHT in st.keys else await base(st)
+    r = run(s, still_hidden=hidden, read_overlay=banner, relink=relinker(log), cfg=SKIP)
+    assert not r.ok and "visible" in r.reason and s.keys == [CENTER, RIGHT] and log == []
+
+
+@pytest.mark.parametrize("lost", [1, 2])
+def test_skip_keeps_the_knob_read_that_catches_a_lost_press(lost):
+    s = FakeYTTV(label0=3600.0)
+    s.lose = {lost}
+    r = run(s, 60.0, presses=3, cfg=SKIP)
+    assert r.ok and r.committed and s.committed_back == 30.0 and s.keys.count(LEFT) == 3, r
+    assert _whats(r) == ["probe", "knob", "topup"] and any("lost press" in x for x in r.steps)
+
+
+def test_skip_two_lost_presses_never_commit():
+    s, log = FakeYTTV(label0=3600.0), []
+    s.lose = {1, 2}
+    r = run(s, 60.0, presses=3, relink=relinker(log), cfg=Cfg({**SKIP, "yttv_seek.boundary_retries": 0}))
+    assert not r.ok and not r.committed and "knob moved 0s, not 30s" in r.reason and log == ["relink"]
+    assert s.committed_back == 0.0
+
+
+def test_each_read_is_timed_and_goes_in_the_row():
+    s = FakeYTTV(label0=3600.0)
+    base = reader(s)
+
+    async def slow(st):
+        await asyncio.sleep(0.02)
+        return await base(st)
+
+    async def label(_s):
+        await asyncio.sleep(0.03)
+        return 75.0
+    r = run(s, 60.0, presses=3, read_overlay=slow, read_behind=label)
+    assert [x["what"] for x in r.row()["reads"]] == ["open", "probe", "knob", "label"]
+    assert all(x["s"] >= 0.015 for x in r.reads) and r.reads[-1]["s"] >= 0.025
+
+
+@pytest.mark.parametrize("v,want", [(None, None), (0.3, 0.3), (0.25, 0.25), (0.31, None), (0.75, None), (0, None),
+                                    (-0.1, None), (True, None), ("x", None)])
+def test_a_band_that_could_cut_a_label_candidate_means_full_frame(v, want):
+    """parse_overlay's one-label rule needs every MM:SS at y > 0.3 in view: cut one off and the other looks unique."""
+    assert ys.overlay_band(Cfg({"yttv_seek.overlay_band_from": v})) == want
+    assert ys.overlay_band(None) is None
+
+
+class BandStick(FakeYTTV):
+    """FakeYTTV that also captures. `band` is what screencap_band returns, or an exception to raise."""
+
+    def __init__(self, band=b"BAND", **kw):
+        super().__init__(**kw)
+        self.band, self.grabs = band, []
+
+    async def screencap_band(self, from_frac, timeout=8.0):
+        self.grabs.append(("band", from_frac))
+        if isinstance(self.band, Exception):
+            raise self.band
+        return self.band
+
+    async def screencap(self, timeout=8.0):
+        self.grabs.append(("full", None))
+        return b"FULL"
+
+    async def screenshot(self, path):
+        self.grabs.append(("full", None))
+        with open(path, "wb") as f:
+            f.write(b"FULL")
+        return True
+
+
+def _ocr(stick, seen):
+    """A recognize() stand-in that OCRs the fake stick: records the file's bytes, and its path to check deletion."""
+    from types import SimpleNamespace as NS
+
+    def box(text, y):
+        return NS(text=text, confidence=1.0, x=.5, y=y, width=.05, height=.03)
+
+    def recognize(path, timeout=8.0):
+        with open(path, "rb") as f:
+            seen.append((path, f.read()))
+        focus = [] if stick.focus != "row" else [NS(text="Networks", x=.3, y=.9, width=.1, height=.05)]
+        rows = [box("Networks", .9)]
+        if stick.overlay and stick.focus == "bar":
+            rows.append(box(f"{int(stick.knob // 60)}:{int(stick.knob % 60):02d}", .76))
+        rows = rows if stick.overlay else []
+        return NS(read_ok=True, status="ok", observations=rows, focus_boxes=focus)
+    return recognize
+
+
+BAND = Cfg({**CFG, "yttv_seek.overlay_band_from": 0.3})
+
+
+def test_default_reader_uses_the_band_and_deletes_it(monkeypatch):
+    import os
+    s, seen = BandStick(label0=3600.0), []
+    monkeypatch.setattr("redzone.screen_ocr.recognize", _ocr(s, seen))
+    r = run(s, 60.0, presses=3, read_overlay=None, cfg=BAND)
+    assert r.ok and r.committed and s.grabs and set(s.grabs) == {("band", 0.3)}, r
+    assert {b for _, b in seen} == {b"BAND"} and not any(os.path.exists(p) for p, _ in seen)
+
+
+def test_flag_off_never_touches_the_band(monkeypatch):
+    s, seen = BandStick(label0=3600.0), []
+    monkeypatch.setattr("redzone.screen_ocr.recognize", _ocr(s, seen))
+    r = run(s, 60.0, presses=3, read_overlay=None)
+    assert r.ok and set(s.grabs) == {("full", None)} and {b for _, b in seen} == {b"FULL"}
+
+
+def test_an_empty_band_falls_back_to_the_full_frame(monkeypatch):
+    s, seen = BandStick(band=b"", label0=3600.0), []
+    monkeypatch.setattr("redzone.screen_ocr.recognize", _ocr(s, seen))
+    r = run(s, 60.0, presses=3, read_overlay=None, cfg=BAND)
+    assert r.ok and ("band", 0.3) in s.grabs and ("full", None) in s.grabs and {b for _, b in seen} == {b"FULL"}
+
+
+def test_a_band_timeout_is_a_failed_read_not_a_second_capture(monkeypatch):
+    """The picture stands still while the overlay is up: a second 8 s capture would add to the delay."""
+    s, seen = BandStick(band=asyncio.TimeoutError(), label0=3600.0), []
+    monkeypatch.setattr("redzone.screen_ocr.recognize", _ocr(s, seen))
+    assert asyncio.run(ys.ocr_overlay(s, band_from=0.3)) is None
+    assert s.grabs == [("band", 0.3)] and seen == []
+
+
+def test_skip_and_band_together_keep_the_row_guard(monkeypatch):
+    s, seen, log = BandStick(focus="row"), [], []
+    monkeypatch.setattr("redzone.screen_ocr.recognize", _ocr(s, seen))
+    cfg = Cfg({**SKIP, "yttv_seek.overlay_band_from": 0.3})
+    r = run(s, read_overlay=None, relink=relinker(log), cfg=cfg)
+    assert not r.ok and "row button" in r.reason and s.keys == [CENTER, RIGHT] and log == ["relink"]
+
+
+@pytest.mark.parametrize("band,cfg,want", [(b"BAND", BAND, [("band", 0.3)]),
+                                           (b"", BAND, [("band", 0.3), ("full", None)]),
+                                           (b"BAND", CFG, [("full", None)])])
+def test_label_probe_frames_follow_the_band_flag(band, cfg, want):
+    from redzone.tuners.yttv_label import LabelProbe
+    s, seen = BandStick(band=band, label0=3600.0), []
+    s.overlay = True
+    ov = asyncio.run(LabelProbe(cfg, recognize=_ocr(s, seen)).overlay_reader(s))
+    assert ov is not None and ov.bar_focused and s.grabs == want
+    assert {b for _, b in seen} == {b"BAND" if want[-1][0] == "band" else b"FULL"}

@@ -395,7 +395,10 @@ class LabelProbe:
         from redzone.tuners import yttv_seek
         w0 = time.time()
         try:
-            png = await stick.screencap()
+            png = await yttv_seek.band_png(stick, yttv_seek.overlay_band(self.cfg))
+            if not png:
+                w0 = time.time()      # cap_wall is the midpoint of the capture that worked
+                png = await stick.screencap()
         except (asyncio.TimeoutError, OSError):
             return None, None
         wall = (w0 + time.time()) / 2
