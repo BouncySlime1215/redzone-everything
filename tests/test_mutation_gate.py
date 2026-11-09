@@ -408,6 +408,28 @@ def k_walk_landing(m):
         m._walk_landing_too_late = real
 
 
+def k_bucket_landing_is_not_vetoed(m):
+    """[NBA-BUCKET] a live-edge join inside a made-basket window passes _landing even with the clock proven running; flag off it holds."""
+    from redzone.decider import cuts
+    from redzone.models import League
+    _ready(m)
+
+    def run(**cfg):
+        h = _host(**cfg)
+        make = AT + 3.0 - 30.0 - 3.0
+        dead = cuts.DeadTracker(League.NBA)
+        dead.add("1", make, make, "", "A makes 16-foot jumper", "Jump Shot", 500.0, 1)
+        dead.add("2", make + 12.0, make + 12.0, "", "C misses 20-foot jumper", "Jump Shot", 488.0, 1)
+        h.decider.timelines["b"] = NS(dead=dead, clock_events=[(make, 1, 500.0, "jump shot"), (make + 12.0, 1, 488.0, "jump shot")])
+        h.decider._bj_pic = lambda *a: None
+        h.delays = NS(get=lambda t: NS(mu=30.0, behind=0.0, current_sigma=lambda n: 2.0))
+        low = NS(high_leverage=False, crunch=False, crunch_now=False)
+        return m.commit_gate(h, _d(kind="better"), "a", T, {"b": _Cand(low, T)}, None, now=AT)
+
+    assert run(**{"basketball.join_after_bucket": True}) == ""
+    assert run() == "landing"
+
+
 def k_landing_whistle(m):
     _ready(m)
     no = lambda h: _set(h, _flip_lands_whistle=lambda d, t: False)  # noqa: E731
