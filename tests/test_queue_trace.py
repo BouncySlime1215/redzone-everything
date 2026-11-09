@@ -78,8 +78,9 @@ def test_with_redzone_adds_it_only_while_the_decider_uses_it():
     out = qt.with_redzone(night(RZ, ["b"]), "ranked")
     has = [any(o.game_id == "redzone" for o in tk["opts"]) for tk in out.ticks]
     assert has[25] and not has[2] and not has[12] and not has[65]   # on screen 10-19; not used before 10 or after 55
-    assert not has[10] and not has[20] or True
-    assert all("redzone" not in tk["cands"] for tk in out.ticks[:10])
+    assert not has[10] and has[20] and has[54]    # on the channel itself (10-19) it is no option; from the return (20) it is
+    assert all("redzone" not in tk["cands"] for tk in out.ticks[:10] + out.ticks[56:])
+    assert all("redzone" in tk["cands"] for tk in out.ticks[10:56])
 
 
 def test_a_real_game_the_queue_holds_is_not_called_redzone(cfg):
