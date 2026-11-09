@@ -21,3 +21,8 @@ def test_user_block_order():
     assert b(False, False, "g", 200.0, 100.0) == "locked_game"
     assert b(False, False, None, 200.0, 100.0) == "manual_pause"
     assert b(False, False, "", 100.0, 100.0) is None
+
+
+def test_arriving_holds_until_the_picture_is_up():
+    assert legal.arriving(99.9, 100.0) and not legal.arriving(100.0, 100.0)
+    assert legal.legal_options(legal.Facts(now=99.0, arrival_until=100.0)) == (legal.STAY,)

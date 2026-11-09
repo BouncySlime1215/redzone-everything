@@ -1950,7 +1950,7 @@ class Decider:
             return Decision(now, "stay", self.current, "locked here by you", State.PAUSED)
         if block == "manual_pause":
             return Decision(now, "stay", self.current, "you just picked this — hands off for a minute", State.PAUSED)
-        if now < self._arrival_until:
+        if legal.arriving(now, self._arrival_until):
             return Decision(now, "stay", self.current, "switch in progress", State.WATCHING)
         self._target_of.update({gid: x.target for gid, x in cands.items() if x.target})
         self._known_target.update(self._target_of)  # [mid-play guard] remembered after a game drops out
@@ -3038,7 +3038,7 @@ class Decider:
         cur = cands.get(self.current or "")
         rotation = cur is not None and self.current not in PSEUDO and self._jump_league(cur)
         rot = "buffered" if self.buffered_on() else "jump"
-        if now < self._arrival_until:
+        if legal.arriving(now, self._arrival_until):
             # the tune is still landing: the rotation waits; it still owns the optional switches of a rotation game
             return (rot if rotation else "normal"), "just_arrived"
         # [overseer Nov 7 22:40] also current None: after every restart the screen's game is unknown and jump mode held

@@ -38,6 +38,11 @@ def user_block(safe_mode: bool, paused: bool, locked_game: str | None, manual_un
     return None
 
 
+def arriving(now: float, until: float) -> bool:
+    """A switch is still landing: nothing else may start until the picture is up."""
+    return now < until
+
+
 @dataclass(frozen=True)
 class Facts:
     """What the rules read for one tick. Built by `Decider.legal_facts`; epoch s."""
@@ -47,6 +52,8 @@ class Facts:
     paused: bool = False
     locked_game: str | None = None
     manual_until: float = 0.0
+    arrival_until: float = 0.0
+    #F
 
 
 STAY = brain.Option(id="stay", verb="stay")
@@ -56,4 +63,7 @@ def legal_options(f: Facts) -> tuple[brain.Option, ...]:
     """Every legal choice now, stay first and always present. Empty of cuts means: hold."""
     if user_block(f.safe_mode, f.paused, f.locked_game, f.manual_until, f.now):
         return (STAY,)
+    if arriving(f.now, f.arrival_until):
+        return (STAY,)
+    #B
     return (STAY,)
