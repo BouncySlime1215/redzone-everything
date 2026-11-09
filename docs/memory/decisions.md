@@ -160,6 +160,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   against devices.json at start and on reconnect; a definite mismatch turns two-stick mode off with a phone alert.
 - 2026-11-08 (audit S-11): a replay is only ever seeked on the hidden stick, for every app: one-stick replays are
   refused (Nick, Nov 7: the viewer never sees a rewind).
+- 2026-11-08 (P1 root causes, card H; Nick's N2, N4): **`two_stick.max_safe_wait_s` 12 s for planned cuts and `two_stick.tap_safe_wait_s` 25 s for taps (was 25 s for all); `mode.leagues.wcbb: false`, `wcbb` out of `core.league_priority`; `two_stick.identity_check: true`, `buffered_jump.roll_wait_s` 1.5 and `buffered_jump.roll_poll_s` 0.15 written down at their code defaults.** Why: on the Nov 7 slate useful safe-moment waits peaked at 10.7 s and 0 of 23 full 25 s waits cut, while the wait held the control lock; a tap keeps the longer wait so N4 (taps wait for a dead ball) doesn't fail sooner. Women's college basketball is off everywhere (N2). No margin is lowered: Rule #1 is unchanged, and a planned cut decides with the same flip cost the flip checks. `HANDSHAKE_S` 3 s -> 8 s (adb, code constant): a Mac stall counted as a dead shell, equally on both sticks.
 
 ## AI
 
