@@ -1,0 +1,14 @@
+{
+  "card": "WP-09",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "scripts/coverage_audit.py",
+    "scripts/reach_grid.py",
+    "scripts/holdset.py",
+    "tests/test_coverage_audit*.py",
+    "tests/test_holdset*.py"
+  ],
+  "started": 1794200902,
+  "expires": 1794373702
+}
