@@ -81,6 +81,21 @@ def must_see(best_score: float, cur_score: float, min_score: float, lead: float)
 
 
 @dataclass(frozen=True)
+class GameRow:
+    """One game code could go to, with what code already worked out about it."""
+    game_id: str
+    app: str = ""
+    tunable: bool = True
+    dark: bool = False            # feed_dark: no proof of a dead ball
+    landable: bool = True         # the entry plan found a dead-ball landing
+    reel: bool = False
+    l1_class: int = 2             # 0 your team, 1 crunch, 2 open (code computes)
+    must_see: bool = False
+    latest_s: float = 0.0
+    needs_prep_s: float = 0.0
+
+
+@dataclass(frozen=True)
 class Facts:
     """What the rules read for one tick. Built by `Decider.legal_facts`; epoch s."""
     now: float
@@ -97,7 +112,10 @@ class Facts:
     min_gap_s: float = 0.0
     gate_ok: bool = True
     moment_lock: str = ""
-    #F
+    focus_game: str | None = None     # a focus mode is on: only this game (or a must-see, below)
+    focus_must_see: bool = False
+    banned_apps: frozenset[str] = frozenset({"peacock"})
+    games: tuple[GameRow, ...] = ()
 
 
 STAY = brain.Option(id="stay", verb="stay")
@@ -115,5 +133,13 @@ def legal_options(f: Facts) -> tuple[brain.Option, ...]:
         return (STAY,)
     if f.current and not may_leave(f.gate_ok, f.moment_lock):
         return (STAY,)
-    #B
-    return (STAY,)
+    opts = [STAY]
+    for g in f.games:
+        if g.game_id == f.current or not g.tunable or g.dark or not g.landable or g.app.lower() in f.banned_apps:
+            continue
+        if f.focus_game and g.game_id != f.focus_game and not (f.focus_must_see and g.must_see):
+            continue
+        verb = "reel" if g.reel else "cut"
+        opts.append(brain.Option(id=f"{verb}:{g.game_id}", verb=verb, game_id=g.game_id, l1_class=g.l1_class,
+                                 latest_s=g.latest_s, needs_prep_s=g.needs_prep_s))
+    return tuple(o for o in opts if o.verb == "stay" or kind_of(o.verb))   # fails closed on a verb with no safe kind

@@ -713,6 +713,45 @@ class Decider:
         self.log.append(d)
         return d
 
+    def legal_facts(self, cands: dict[str, Candidate], now: float | None = None) -> legal.Facts:
+        """[WP-16] The facts legal.legal_options reads, for WP-17's arbiter. Reads only; decide() doesn't call it, so the
+        decision can't depend on it. A game with no entry plan isn't landable, unless it's a pseudo channel."""
+        from redzone.noggin.priority import HardRules
+        now = self._clock() if now is None else now
+        u, c = self.user, self.cfg
+        cur = cands.get(self.current) if self.current else None
+        gate = self._gate(cur, now) if cur is not None else None
+        hold = c.get("decider.crunch.hold_personal", 5)
+        rows = []
+        for gid, x in cands.items():
+            s = x.scored
+            plan = None if gid in PSEUDO else self.entry_plan(gid, cands, now)
+            cost = (self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target)) if x.target else 0.0
+            resume = plan.landing.resume if plan is not None and plan.landing is not None else None
+            big = cur is not None and legal.must_see(s.score, cur.scored.score, c.get("decider.must_see_score"),
+                                                     c.get("decider.must_see_lead"))
+            rows.append(legal.GameRow(
+                game_id=gid, app=(x.target or "").split(":", 1)[0], tunable=legal.tunable(gid, x, u.muted),
+                dark=self._entry_dark(gid, x, now), landable=gid in PSEUDO or bool(plan and plan.ok), reel=gid == REEL,
+                l1_class=0 if (gid in self._yours or s.personal >= hold) else 1 if s.crunch else 2, must_see=big,
+                latest_s=max(0.0, resume - now) if resume is not None else 0.0, needs_prep_s=cost if math.isfinite(cost) else 0.0))
+        on_game = bool(self.current) and self.current not in PSEUDO
+        return legal.Facts(
+            now=now, current=self.current, safe_mode=self.safe_mode, paused=u.paused, locked_game=u.locked_game,
+            manual_until=u.manual_until, arrival_until=self._arrival_until, since=self.since,
+            dwell_min_s=float(self._lc("decider.dwell.min_s", cur, 0) or 0) if on_game else 0.0,
+            dwell_kinds=tuple(self._lc("decider.dwell.kinds", cur, None) or ()),
+            last_switch_at=self.history[-1][0] if self.history else None,
+            min_gap_s=float(c.get("noggin.pick.min_gap_s", 0.0)),
+            gate_ok=bool(gate and gate.safe), moment_lock=(cur.scored.lock or "") if cur is not None else "",
+            focus_game=u.focus_game if u.focus_mode != FocusMode.AUTOPILOT else None,
+            focus_must_see=u.focus_mode == FocusMode.FOCUS_MUST_SEE,
+            banned_apps=HardRules.from_config(c).banned_apps, games=tuple(rows))
+
+    def legal_options(self, cands: dict[str, Candidate], now: float | None = None) -> tuple:
+        """[WP-16] What the show may do right now (brain.Option), stay first."""
+        return legal.legal_options(self.legal_facts(cands, now))
+
     def forget_screen(self, why: str) -> None:
         """Nothing is known on screen any more (dry run turned off, a recorded session): current None, no replay
         footage, no tune landing. (recorded.py writes the same attributes one by one; they land here too.)"""
