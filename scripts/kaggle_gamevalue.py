@@ -120,6 +120,9 @@ def fit_v0(tr: pd.DataFrame, league: str, leak: dict) -> tuple[dict, dict]:
     return arrays, _meta(tr, league, "v0", "table", leak)
 
 
+KNOT_EPS = 1e-9
+
+
 def _flat(booster, X_check: np.ndarray, name: str, link) -> tuple[dict, int]:
     """LightGBM dump -> node arrays. Refuses when the numpy walk or the runtime's link differs from the booster on real rows."""
     arrays, info = flatten({"h": [dict(t, slot=0) for t in booster.dump_model()["tree_info"]]}, list(G.GV_FEATURES))
@@ -133,6 +136,22 @@ def _flat(booster, X_check: np.ndarray, name: str, link) -> tuple[dict, int]:
     return arrays, info["depth"]
 
 
+def clean_knots(kx: np.ndarray, ky: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Make isotonic knots a valid curve for the runtime: x and y non-decreasing, y inside 0-1.
+
+    Cause of WP-26D's 'not monotone' refusal: isotonic() takes np.mean of each merged block's bin means, so a block of
+    tied predictions (a tree head emits many identical scores) averages to a value 1 ulp off the next block's identical
+    mean, and x steps back by ~1e-16. Rule: round-off only. Clip y to [0, 1], then running-max x and y. Anything bigger than
+    1e-9 is a real fault, not round-off, and raises so the runtime check is never made to pass by this clean-up.
+    """
+    kx, ky = np.asarray(kx, float), np.asarray(ky, float)
+    fx, fy = np.maximum.accumulate(kx), np.maximum.accumulate(np.clip(ky, 0.0, 1.0))
+    if (not np.isfinite(kx).all() or not np.isfinite(ky).all() or np.abs(fx - kx).max(initial=0.0) > KNOT_EPS
+            or np.abs(fy - ky).max(initial=0.0) > KNOT_EPS):
+        raise Refused("calibration knots are off by more than round-off; not cleaning them up")
+    return fx, fy
+
+
 def fit_v1(tr: pd.DataFrame, ca: pd.DataFrame, league: str, trainer, leak: dict) -> tuple[dict, dict]:
     """Value head on tr. Tier 1 head on tr, isotonic on ca, which nothing was fit on."""
     X, Xc = _X(tr), _X(ca)
@@ -141,7 +160,7 @@ def fit_v1(tr: pd.DataFrame, ca: pd.DataFrame, league: str, trainer, leak: dict)
     p1 = trainer.fit(X, tr.p_tier1_60s.to_numpy(float), "binary")
     v_arrays, v_depth = _flat(value, check, "value", np.exp)
     p_arrays, p_depth = _flat(p1, check, "p_tier1_60s", lambda m: 1.0 / (1.0 + np.exp(-m)))
-    kx, ky = isotonic(p1.predict(Xc), ca.p_tier1_60s.to_numpy(float))
+    kx, ky = clean_knots(*isotonic(p1.predict(Xc), ca.p_tier1_60s.to_numpy(float)))
     arrays = {**{f"value_{k}": a for k, a in v_arrays.items()}, **{f"p1_{k}": a for k, a in p_arrays.items()},
               "p1_cal_x": kx, "p1_cal_y": ky}
     return arrays, {**_meta(tr, league, "v1", "trees", leak), "value_depth": v_depth, "p1_depth": p_depth, "calib_rows": int(len(ca)),
@@ -185,12 +204,16 @@ def shared_clock(league: str, raw: Path, seasons: list[str], nights: set[str]) -
 
 
 def fetch_raw(shards: Path, raw: Path, leagues: list[str], personal_nba: bool, log=print) -> None:
-    """Download each built season's raw file to where the raw audit reads it. The shard builder deletes its copies."""
+    """Download each built season's raw file to where the raw audit reads it. The shard builder deletes its copies.
+    Shards and raw files already present (attach the earlier run's output as input and point --shards/--raw at it) are reused."""
     from scripts.noggin_factory import _fetch
     for league in leagues:
         url = V.public_source(league, personal_nba)[3]
         for season in sorted(p.stem for p in (shards / league).glob("*.parquet")):
-            if season.isdigit() and not _fetch(url.format(y=season), raw / league / f"pbp_{season}.parquet"):
+            have = raw / league / f"pbp_{season}.parquet"
+            if have.exists() and have.stat().st_size > 0:   # attached from an earlier run: reuse, no download
+                continue
+            if season.isdigit() and not _fetch(url.format(y=season), have):
                 log(f"{league} {season}: no raw file", flush=True)
 
 

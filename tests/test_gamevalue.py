@@ -694,3 +694,56 @@ def test_latency_32_games_under_target():
     assert all(v is not None for v in got.values())
     print(f"\ngamevalue latency 32 games, 2 heads, 150 depth-6 trees: best {min(took):.2f} ms, median {np.median(took):.2f} ms")
     assert min(took) < 5.0      # the best of 40 measures the code, not whatever else the Mac is doing
+
+
+def _tied_scores_case():
+    """Tied tree scores (a tree head emits many identical values) in blocks of unequal size: the WP-26D trigger."""
+    for seed in range(60):
+        r = np.random.default_rng(seed)
+        p = 0.1 + (r.random(20000) < 0.5) * 0.1      # two tied score values
+        y = (r.random(20000) < p).astype(float)
+        kx, ky = K.isotonic(p, y)
+        if (np.diff(kx) < 0).any():
+            return kx, ky
+    raise AssertionError("no tied-score case produced decreasing knots")
+
+
+def test_isotonic_knots_from_tied_scores_step_back_and_clean_knots_fixes_them():
+    kx, ky = _tied_scores_case()
+    assert np.diff(kx).min() < 0 and abs(np.diff(kx).min()) < 1e-12     # round-off only
+    fx, fy = K.clean_knots(kx, ky)
+    assert (np.diff(fx) >= 0).all() and (np.diff(fy) >= 0).all() and fy.min() >= 0 and fy.max() <= 1
+    arrays, meta = big_model()
+    arrays.update(p1_cal_x=fx, p1_cal_y=fy)
+    G.GameValueModel(arrays, meta, "nfl")                                # the runtime accepts the cleaned curve
+    arrays.update(p1_cal_x=kx, p1_cal_y=ky)
+    with pytest.raises(G.ModelRejected, match="not monotone"):          # and still refused the raw one
+        G.GameValueModel(arrays, meta, "nfl")
+
+
+def test_clean_knots_does_not_hide_a_real_fault():
+    with pytest.raises(K.Refused):
+        K.clean_knots(np.array([0.0, 0.5, 0.4]), np.array([0.1, 0.2, 0.3]))
+    with pytest.raises(K.Refused):
+        K.clean_knots(np.array([0.0, 0.5, 1.0]), np.array([0.1, 0.9, 0.2]))
+    with pytest.raises(K.Refused):
+        K.clean_knots(np.array([0.0, 1.0]), np.array([0.0, 1.5]))
+
+
+@pytest.mark.parametrize("x,y", [([0.0, 0.6, 0.5], [0.1, 0.2, 0.3]), ([0.0, 0.5, 1.0], [0.1, 0.9, 0.2]), ([0.0, 1.0], [0.0, 1.2])])
+def test_runtime_still_refuses_non_monotone_knots(x, y):
+    arrays, meta = big_model()
+    arrays.update(p1_cal_x=np.array(x), p1_cal_y=np.array(y))
+    with pytest.raises(G.ModelRejected, match="not monotone"):
+        G.GameValueModel(arrays, meta, "nfl")
+
+
+def test_fetch_raw_reuses_attached_raw_files(tmp_path, monkeypatch):
+    shards, raw = tmp_path / "s", tmp_path / "raw"
+    (shards / "nba").mkdir(parents=True)
+    (raw / "nba").mkdir(parents=True)
+    (shards / "nba" / "2024.parquet").write_bytes(b"x")
+    (raw / "nba" / "pbp_2024.parquet").write_bytes(b"x")
+    import scripts.noggin_factory as NF
+    monkeypatch.setattr(NF, "_fetch", lambda *a, **k: pytest.fail("downloaded a file that was already attached"))
+    K.fetch_raw(shards, raw, ["nba"], True)
