@@ -55,8 +55,8 @@ DERIVED = ("margin_class", "closeness", "crunch_eta_s", "league_id", "game_frac_
 FEATURES_BY_VERSION = {"v2": FEATURES, "v3": FEATURES + HISTORY, "v4": FEATURES + HISTORY + DRIVE + DERIVED, "v5": FEATURES + HISTORY + DRIVE + DERIVED}
 V4_LIKE = ("v4", "v5")   # versions built on the drive state and the feed_row filter
 # v5 adds the kept columns of redzone/noggin/wide_features.py. The grammar is restated here so this file still does not import the builder; a test keeps the two in step.
-WIDE_RE = re.compile(r"^gv5__[a-z0-9_]+?__(all|home|away|lead|trail)__(p[0-9]+|s[0-9]+|game)__(sum|mean|rate|nz|max|std|slope|cum|per|since_s|since_p|streak)__(raw|lg|log)__"
-                     r"(none|close|late|crunch|last|margin|left|lead|down3|rz|short)$")
+WIDE_RE = re.compile(r"^gv5__[a-z0-9_]+?__(all|home|away|lead|trail)__(p[0-9]+|s[0-9]+|game)__(sum|mean|rate|nz|max|std|slope|cum|per|since_s|since_p|streak)__"
+                     r"((raw__(none|close|late|crunch|last|margin|left|lead|down3|rz|short))|((lg|log)__(margin|left)))$")
 WIDE_RAW_RE = re.compile(r"^gv5__(pts|plays|scoring)__(all|home|away)__(p[0-9]+|s[0-9]+)__sum__raw__none$")     # the kept columns the raw audit recomputes itself
 WIDE_RING = 256          # wide_features.RING: no window reaches further back than this many plays
 # league -> (points in one score, final-margin sd, points per 5 min, regulation seconds, league id): restated, and a test keeps it in step.
@@ -402,20 +402,22 @@ def _raw_wide(league: str, g: pd.DataFrame, names: list[str]) -> dict[float, lis
             kind_text = factory._nfl_type(r)
             if not kind_text or not wall or _one_source_only(kind_text, r.desc if isinstance(r.desc, str) else ""):
                 continue
-            plays.append((wall, _n(r.total_home_score), _n(r.total_away_score)))
+            plays.append((wall, _n(r.total_home_score), _n(r.total_away_score), kind_text.lower()))
         else:
             wall = holdset.ts(r.wallclock)
-            if wall and not (league == "cfb" and _one_source_only(r.type_text if isinstance(r.type_text, str) else "", r.text if isinstance(r.text, str) else "")):
-                plays.append((wall, _n(r.home_score), _n(r.away_score)))
+            kind_text = r.type_text if isinstance(r.type_text, str) else ""
+            if wall and not (league == "cfb" and _one_source_only(kind_text, r.text if isinstance(r.text, str) else "")):
+                plays.append((wall, _n(r.home_score), _n(r.away_score), kind_text.lower()))
     plays.sort(key=lambda x: x[0])
     per_play = []
     home = away = 0.0
-    for wall, h, a in plays:
-        dh, da = max(h - home, 0.0), max(a - away, 0.0)
+    canon = (lambda d, k: 7.0 if d >= 6.0 else 0.0 if 0.0 < d < 3.0 and "safety" not in k else d) if league in ("nfl", "cfb") else (lambda d, k: d)  # noqa: E731
+    for wall, h, a, kind in plays:
+        dh, da = canon(max(h - home, 0.0), kind), canon(max(a - away, 0.0), kind)
         home, away = h, a
         per_play.append({"pts": {"all": dh + da, "home": dh, "away": da}, "plays": {"all": 1.0}, "scoring": {"all": float(dh > 0) + float(da > 0), "home": float(dh > 0), "away": float(da > 0)}})
     out: dict[float, list[dict]] = {}
-    for i, (wall, _, _) in enumerate(plays):
+    for i, (wall, _, _, _) in enumerate(plays):
         row = {}
         for name in names:
             match = WIDE_RAW_RE.match(name)
@@ -578,6 +580,7 @@ def check_dir(out: Path, archive: Path | None = None, allow_personal_nba: bool =
             rep.fail("sidecar", f"{name}: features {version}, this check knows {sorted(FEATURES_BY_VERSION)}")
             version = FEATURES_VERSION
         wide = tuple(info.get("v5_columns") or ()) if version == "v5" else ()
+        own = tuple(info.get("v5_own") or ()) if version == "v5" else ()
         bad_names = [n for n in wide if not WIDE_RE.match(n)]
         if bad_names:
             rep.fail("columns", f"{name}: v5 columns that are not generated names: {bad_names[:5]}")
@@ -606,8 +609,11 @@ def check_dir(out: Path, archive: Path | None = None, allow_personal_nba: bool =
         check_times(df, name, rep)
         check_nights(df, league, name, archive, cache, allow_personal_nba, rep)
         check_label_copy(df, name, rep, FEATURES_BY_VERSION[version] + wide)
+        masked = sorted(set(wide) - set(own))
+        if masked and (df[masked].to_numpy(float) != 0).any():
+            rep.fail("columns", f"{name}: a wide column outside this league's own list is not zero")
         if raw is not None and (df.source != "archive").any():
-            audit_raw(df[df.source != "archive"], league, f.stem, name, raw, rep, version, wide)
+            audit_raw(df[df.source != "archive"], league, f.stem, name, raw, rep, version, own)
         pub = df[df.source != "archive"]
         seen["public_nights"].setdefault(league, set()).update(pub.night.astype(str).unique())
         games = df[["game_id", "night", "game_key", "source"]].drop_duplicates()
