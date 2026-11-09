@@ -22,7 +22,7 @@ from redzone import bets as betlib
 from redzone import buffer_rc8
 from redzone import fsm, reel, standby, trace, userstate, views
 from redzone.reel import REEL_DIR
-from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
+from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on, route_class
 from redzone.config import Config, ConfigError, for_league
 from redzone.governor import keep_awake_wanted
 from redzone.control import NO_STICK, STANDBY_NOT_READY, Controller, Outcome
@@ -46,6 +46,7 @@ from redzone.screen import boundary, scorebug
 from redzone.store import Store
 from redzone.fsm import MachineMap
 from redzone.machines import decider as M
+from redzone.noggin import gamequeue as gq
 
 log = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")
@@ -59,6 +60,7 @@ NOT_THE_TARGETS_FAULT = ("no safe moment", "safe exit window closed", "switch ca
                          "stick not responding", STANDBY_NOT_READY, NO_STICK)
 PEEK_HOLD_S = 90.0    # a game opened on the phone keeps the hidden stick this long (two_stick.pretune_on_open)
 SKIP_S = 300.0        # a skipped game stays off the TV this long after the TV leaves it
+_QUEUE_KLASS = {"prime": gq.LONG_LEAD, "espn": gq.LIVE_EDGE, "other": gq.LONG_LEAD}   # channels.route_class -> gamequeue
 SUPERSEDED = "switch cancelled: superseded"   # an in-flight switch replaced by a newer one (_act): resolved, recorded
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
@@ -382,6 +384,8 @@ class Engine:
         self._fresh = asyncio.Event()
         self._house_device_task = None
         self._st_scan_task = None
+        self.queue_pins: list[str] = []   # [queue] Nick's pins, first = strongest (action pin / move)
+        self._game_queue: dict | None = None   # [queue] snapshot['game_queue'], from the last tick
         from redzone.recorded import RecordedPlayback
         self.recorded = RecordedPlayback(self)
         from redzone.discovery.runtime import DiscoveryRuntime
@@ -476,7 +480,8 @@ class Engine:
         self.focus_m.to("suspended" if v else "none", f"focus on {v[0]} suspended for garbage time" if v else "restored")
 
     def _capture_user_state(self) -> dict:
-        return userstate.capture(self.decider.user, self.hold, self.skipped, self._suspended_focus)
+        state = userstate.capture(self.decider.user, self.hold, self.skipped, self._suspended_focus)
+        return {**state, "queue_pins": list(self.queue_pins)} if self.queue_pins else state
 
     def _skip_tick(self, now: float) -> None:
         """[controls] skip_m follows each skipped game: 'leaving' while still on screen (its five minutes count from when
@@ -522,6 +527,7 @@ class Engine:
                 return
             self.hold = userstate.apply(state, self.decider.user, FocusMode)
             self.skipped = dict(state.get("skipped") or {})
+            self.queue_pins = [g for g in state.get("queue_pins") or [] if isinstance(g, str)]
             sf = state.get("suspended_focus")
             if sf:
                 try:
@@ -1936,7 +1942,8 @@ class Engine:
                     # [jump mode] refill the hidden stick right away with the rotation's next pick: the
                     # game we just left is on it now, and readiness is the whole bottleneck
                     try:
-                        self._jump_standby(cands, urgent=True)
+                        if not (self.cfg.get("queue.enabled", False) and self._queue_refill(cands)):
+                            self._jump_standby(cands, urgent=True)
                     except Exception:
                         log.exception("jump standby refill failed")
             self.store.switch(ts=cmd_ts, frm=before, to_game=d.target, target=target, kind=d.kind, reason=d.reason,
@@ -2239,10 +2246,15 @@ class Engine:
             self._bj_park_why = "off"
         if not self.control.two_stick or dec.user.paused:
             self._plan_owner("idle", "one stick" if not self.control.two_stick else "paused")
+            self._game_queue = None
             return
+        queue_on = bool(self.cfg.get("queue.enabled", False))
+        queue_plan = self._queue_plan(cands, redzone) if queue_on else None
         if self._peeking():
             self._plan_owner("peek", f"{self.peek[0]} opened on the phone")
             return   # a game you opened on the phone is on the hidden stick: keep it there for now
+        if queue_on and self._queue_standby(cands, queue_plan):
+            return   # the queue (or a named lease) owns this tick; otherwise the plans below are the fallback
         if dec.jump_on() and not dec.replaying and self._jump_standby(cands):
             self._plan_owner("buffered" if dec.buffered_on() else "rotation",
                              str(self._jump_standby_note.get("standby_plan", "")))
@@ -2254,11 +2266,157 @@ class Engine:
         if pick:
             self.control.preload(pick.target, back_s=pick.back_s, replay_id=pick.replay_id)
 
+    # ------------------------------------------------------------------ the game queue (WP-12, queue.enabled)
+    # gamequeue answers "what should the hidden stick hold"; these methods give it the tick's facts and act on the
+    # answer. Nothing here flips a stick: a preload only fills the hidden one, and every cut still goes through _act.
+
+    def _stick_lease(self) -> str:
+        """The named lease on the hidden stick right now ("" = none). While one holds, the queue and its fallback plans
+        start nothing on that stick. Read from what each writer is already doing, so a writer can't leave a lease behind
+        and none of them had to change: the phone's peek is checked in _preload_standby."""
+        if self._st_scan_task and not self._st_scan_task.done():
+            return "sunday_ticket_scan"
+        ctl = self.control
+        job = ctl.stick_job()
+        if job == "verify":
+            return "plan_check"
+        if job == "refresh":
+            return "refresh_left"
+        if job.startswith("lock:"):
+            return job
+        tiles = getattr(ctl, "prime_plan", None) or ()
+        if job == "preload" and self.cfg.get("tuners.prime_multiview", False) and len(tiles) >= 2 \
+                and ctl.standby[0] in tiles:
+            return "prime_multiview"
+        warm = (getattr(self.tonight, "plan", None) or {}).get("warmup") or {}
+        if self.cfg.get("warmup.pregame", False) and warm.get("state") in ("tuning", "ready") \
+                and warm.get("target") == ctl.standby[0] and time.time() < float(warm.get("window") or 0.0):
+            return "pregame_warmup"
+        return ""
+
+    def _queue_plan(self, cands: dict, redzone: str | None = None) -> gq.Plan | None:
+        """One gamequeue.tick on this tick's facts, kept for the phone. Reads only. None if anything fails, so the
+        fallback plans run: a queue bug must never cost the hidden stick."""
+        try:
+            dec, u, ctl, now = self.decider, self.decider.user, self.control, time.time()
+            params = gq.Params.from_config(self.cfg.get)
+            hidden_t = ctl.standby[0]
+            hidden = self._game_on_target(hidden_t) if hidden_t else None
+            rank: dict[str, int] = {}
+            for i, o in enumerate(self._standby_options(cands, redzone)):
+                if o.replay_id is None:
+                    rank.setdefault(o.game_id, i)
+            checks = ((e.get("check") or {}) for e in (getattr(self.tonight, "plan", None) or {}).get("games") or ())
+            verified = {c.get("target") for c in checks if c.get("state") == "verified"}
+
+            def can_reach(target: str | None) -> bool:
+                return bool(target) and (target == hidden_t or bool(ctl.can_tune(target)))
+
+            self.queue_pins[:] = [g for g in self.queue_pins
+                                  if getattr(self.merger.games.get(g), "phase", None) != Phase.POST]
+            # Only the strongest pin that can be reached takes the Pin rung; the rest wait behind it, in your order.
+            top_pin = next((g for g in self.queue_pins
+                            if g != dec.current and g in cands and can_reach(cands[g].target)), None)
+            entries = []
+            for gid, x in cands.items():
+                if gid in u.muted:   # Drop is the existing mute
+                    continue
+                t, ok = x.target, can_reach(x.target)
+                routes = ()
+                if t:
+                    app, _, ref = t.partition(":")
+                    routes = (gq.Route(app, ref, _QUEUE_KLASS.get(route_class(t), gq.FAST),
+                                       bool(ctl.slow_tune(t)), not ok),)
+                state, on = (ctl.standby_m.state, ctl.hidden) if t and t == hidden_t else \
+                    ("ready", ctl.main) if gid == dec.current else (None, None)
+                buffered = on is not None and on.scrubbed(t) is not None
+                pin_i = self.queue_pins.index(gid) if gid in self.queue_pins else None
+                planner_rank = rank.get(gid) if pin_i is None or gid == top_pin else pin_i - len(self.queue_pins)
+                entries.append(gq.Entry(
+                    game=gid, routes=routes, level=gq.level_of(ok, t in verified, state, buffered),
+                    user="lock" if gid == u.locked_game else "pin" if gid == top_pin else "",
+                    committed=gid == getattr(self.last_decision, "want", None), planner_rank=planner_rank,
+                    value=min(100.0, max(0.0, float(x.scored.score)))))
+            job = ctl.stick_job()
+            measured = {app: m for app in params.tune_s if ":" not in app and (m := ctl.latency.median(app)) is not None}
+            stick = gq.Stick(busy_until=now + ctl.tune_estimate(hidden_t or "other") if job else 0.0,
+                             job_game=hidden if job == "preload" else None,
+                             job_to=gq.Level.R3 if job == "preload" else None, tune_s=measured)
+            plan = gq.tick(entries, dec.current, hidden, stick, now, params)
+            self._game_queue = gq.view(plan)
+            return plan
+        except Exception:
+            log.exception("game queue plan failed")
+            self._game_queue = None
+            return None
+
+    def _queue_preload(self, cands: dict, plan: gq.Plan, urgent: bool = False) -> None:
+        """Act on a tick that wants a swap. rotate=True: the queue's eviction rule, not the scrub guard, decides when a
+        scrubbed standby goes. A Lock or a Pin is Nick's own word, so it goes the way a game opened on the phone does."""
+        ctl, want = self.control, plan.want
+        target = cands[want.entry.game].target
+        started = ctl.standby != (target, None) and ctl.preload(
+            target, user=want.rung in (gq.Rung.LOCK, gq.Rung.PIN), urgent=urgent, rotate=True)
+        self._jump_standby_note = {"standby_plan": "queue", "want": want.entry.game,
+                                   "want_ready": bool(ctl.standby_ready(target)),
+                                   "preload": "started" if started else (ctl.preload_why or "refused")}
+
+    def _queue_standby(self, cands: dict, plan: gq.Plan | None) -> bool:
+        """This tick's owner when the queue is on. True: a lease or the queue has the hidden stick. False: nothing
+        above the planner rung wants it, so the rotation and standby.Planner run as they always did."""
+        lease = self._stick_lease()
+        if lease:
+            self._plan_owner("idle", f"lease: {lease}")
+            return True
+        if plan is None or plan.want is None or plan.want.rung >= gq.Rung.PLANNER:
+            return False
+        # engine.standby_plan has no 'queue' state yet (machines/decider.py is outside this package): the why names it.
+        self._plan_owner("planner", f"queue {plan.want.rung.name.lower()}: {plan.why}")
+        self._plan_prime_multiview(cands)
+        if plan.swap:
+            self._queue_preload(cands, plan)
+        return True
+
+    def _queue_refill(self, cands: dict) -> bool:
+        """The urgent refill after a jump, queue first. False: the rotation's refill runs as it always did."""
+        if self._stick_lease():
+            return True
+        plan = self._queue_plan(cands)
+        if plan is None or plan.want is None or plan.want.rung >= gq.Rung.PLANNER:
+            return False
+        if plan.swap:
+            self._queue_preload(cands, plan, urgent=True)
+        self._jump_status(force=True)
+        return True
+
+    def _queue_pin(self, gid: str | None, on: bool, at=None) -> tuple[bool, str]:
+        """Pin (or unpin) a game, or Move a pin. `at`: 0-based place in your pins, or 'up' / 'down'."""
+        if not gid:
+            return False, "Pick a game"
+        pins, was = self.queue_pins, self.queue_pins.index(gid) if gid in self.queue_pins else None
+        if not on:
+            if was is not None:
+                pins.pop(was)
+            return True, f"Unpinned {self._name(gid)}"
+        if gid in self.decider.user.muted:
+            return False, f"{self._name(gid)} is dropped: un-drop it first"
+        if at in ("up", "down"):
+            at = (len(pins) if was is None else was) + (-1 if at == "up" else 1)
+        elif at is not None and type(at) is not int:
+            return False, "Move it where?"
+        if was is not None:
+            pins.pop(was)
+        pins.insert(len(pins) if at is None and was is None else was if at is None else max(0, min(at, len(pins))), gid)
+        return True, f"Pinned {self._name(gid)}"
+
     def _buffered_park(self, cands: dict) -> None:
         """[buffered jump, park] The hidden stick (scrubbed behind live) pauses on the line-up just before its game's
         next LOGGED snap (redzone/decider/buffered.park_in); a park older than park_max_age_s is rolled and parks
         again. The next dead ball on screen flips to it (Decider._buffered_jump)."""
         dec, ctl = self.decider, self.control
+        if self.cfg.get("queue.enabled", False) and self._stick_lease():
+            self._bj_park_why = "lease"
+            return
         self._bj_park_why = ("off" if not dec.buffered_on() else "one_stick" if not ctl.two_stick
                              else "replaying" if dec.replaying else "no_standby" if not ctl.standby[0] else "buffer")
         if self._bj_park_why != "buffer":
@@ -2645,6 +2803,9 @@ class Engine:
         if action == "label":
             self.store.label(str(value), dec.current, {"decision": getattr(self.last_decision, "reason", "")})
             return True, f"Labeled: {value}"
+        if action in ("pin", "unpin", "move") and self.cfg.get("queue.enabled", False):
+            on = action == "move" or (action == "pin" and value is not False)
+            return self._queue_pin(game_id, on, value if action == "move" else None)
         return False, f"Unknown action {action}"
 
     def _hold(self, gid: str | None, force: bool = False) -> tuple[bool, str]:
@@ -3021,6 +3182,7 @@ class Engine:
             "tonight": self.tonight.view(),
             "screen_evidence": self.screen_evidence(),
             "queue": [self._queue_item(m) for m in sorted(dec.queue, key=lambda m: -m.value)[:10]],
+            **({"game_queue": self._game_queue} if self.cfg.get("queue.enabled", False) else {}),
             "log": self._log(),
             "server_time": time.time(),
             "recorded_playback": self.recorded.snapshot(),
