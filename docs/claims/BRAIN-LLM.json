@@ -1,0 +1,13 @@
+{
+  "card": "BRAIN-LLM",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "agent/kaggle/qwen_*",
+    "scripts/mac_brain_memory_test.py",
+    "tests/test_qwen_*.py",
+    "tests/test_mac_brain*.py"
+  ],
+  "started": 1794217853,
+  "expires": 1794390653
+}
