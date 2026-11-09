@@ -55,7 +55,7 @@ forward-chaining CV (mean and worst fold), leakage checks in CI.
 python -m pytest -q tests/<file>.py            # prefer targeted tests; full suite only when the app is idle
 ruff check .                                   # lint, real errors only
 python scripts/fetch_eval_data.py    # pinned eval data eval-data-v1, once
-python scripts/ci_scorecard.py --nfl-n 2 --nights 4   # scorecards; only the leagues you touch
+python scripts/ci_scorecard.py --nfl-n 2 --nights 4 --split fit   # scorecards; only the leagues you touch
 python scripts/release_gate.py heldout.json    # the 95% gates
 python scripts/check_memory.py                 # links resolve, decisions logged (CI)
 python scripts/state_machines.py --check       # state-machine doc current (CI)

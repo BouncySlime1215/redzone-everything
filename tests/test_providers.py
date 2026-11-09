@@ -895,3 +895,19 @@ def test_channel_map_gives_a_local_carolina_game_its_local_route_and_others_the_
     cm.codes["cbs"] = "AAAAAAAAAAA"
     assert cm.where(nfl_sunday(home="CAR", away="DEN")).target == "youtubetv:cbs"
     assert cm.where(nfl_sunday()).target == "youtubetv:st"
+
+
+@pytest.mark.parametrize("flag", [False, True])
+def test_runtime_choose_passes_st_wait_so_real_tuning_honours_the_flag(flag):
+    """Why: only the plan honoured discovery.st_wait; the engine's route goes through DiscoveryRuntime.choose (WP-01)."""
+    from types import SimpleNamespace
+
+    from redzone.discovery.runtime import DiscoveryRuntime
+
+    seen = {}
+    rt = object.__new__(DiscoveryRuntime)
+    values = {"teams": [], "sunday_ticket": True, "discovery.st_wait": flag}
+    rt.engine = SimpleNamespace(cfg=SimpleNamespace(get=lambda k, d=None: values.get(k, d)), channels=None)
+    rt.book = SimpleNamespace(choose=lambda g, base, teams, channels, **kw: seen.update(kw) or "pick")
+    assert rt.choose("game", "base") == "pick"
+    assert seen["st_wait"] is flag

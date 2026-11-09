@@ -122,7 +122,8 @@ class DiscoveryRuntime:
 
     def choose(self, game, base):
         return self.book.choose(game, base, self.engine.cfg.get("teams"), self.engine.channels,
-                                sunday_ticket=self.engine.cfg.get("sunday_ticket", True))
+                                sunday_ticket=self.engine.cfg.get("sunday_ticket", True),
+                                st_wait=bool(self.engine.cfg.get("discovery.st_wait", False)))   # [WP-01] off
 
     def on_outcome(self, outcome, game_id=None, replay=False):
         if outcome.dry_run:

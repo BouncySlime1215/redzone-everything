@@ -20,7 +20,7 @@ already made. Check what it reused before committing.
 5. **List every conflicted hunk in the PR:** `file:hunk: kept A / kept B / both, because ...`.
 6. **Never resolve by editing a test or a gate.** A conflict with one means `BLOCKED: <reason>`.
 7. **Run the full suite before pushing:** `python -m pytest -q -rs`, one run at a time, plus
-   `python scripts/ci_scorecard.py --nfl-n 2 --nights 4` for the leagues the conflicts touched.
+   `python scripts/ci_scorecard.py --nfl-n 2 --nights 4 --split fit` for the leagues the conflicts touched.
 8. **Push a new commit.** `git push origin <your-branch>`, then PR into `integration/next`.
 
 **A red batch is bisected, not retried** ([debugging](debugging.md) step 4). A PR gets 2 queue tries, then goes back
