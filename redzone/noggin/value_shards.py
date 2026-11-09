@@ -11,10 +11,15 @@ from before its decision (the-mind sections 5 and 9, build plan WP-25). Pure: no
 One row is one decision: every play and every 30 s of a game (5 s rows are near-duplicates). Each draws a feed lag
 from the measured per-league profile (redzone/lab/feed_lag_profile.json), seeded by the game id, because training
 on a fixed lag teaches a feed that never exists. `feed_cut_t = decision_t - lag_s`; features read only plays with
-wall <= feed_cut_t. The labels are anchored on the feed head, the newest such play:
+wall <= feed_cut_t. The labels are anchored on the decision, so they are the future the viewer can still see:
 
-    value_next_3m   sum of tier weights of redzone.moments in (feed head, +180 s]     raw points; the scale is WP-26's
-    p_tier1_60s     any Tier 1 in (feed head, +60 s]
+    value_next_3m   sum of tier weights of redzone.moments in (decision_t, +180 s]    raw points; the scale is WP-26's
+    p_tier1_60s     any Tier 1 in (decision_t, +60 s]
+
+Features v2: v1 anchored the labels on the feed head, so `since_head_s` told the model how much of the label had already
+passed and a silent feed read as a zero label. `label_first_t` records the first counted event; it must be after decision_t.
+Football reads drives.current as well as drives.previous, so a live feed head matches a finished game's. What this does
+not model is how far the picture runs behind the feed (a stream's delay is not in play-by-play): that needs a live night.
 
 Published win-probability columns never enter (nflfastR's were fit across seasons), so `winprobability` is removed
 before detection and wp5 / wp10 fire on no row: public and archive rows mean the same thing.
@@ -36,10 +41,10 @@ import numpy as np
 import pandas as pd
 
 from redzone.context.tokens import PERSONAL_USE
-from redzone.moments.detect import Detected, clock_s, detect, game_span, parse_ts
+from redzone.moments.detect import Detected, clock_s, detect, football_drives, game_span, parse_ts
 from redzone.noggin import factory
 
-FEATURES_VERSION = "v1"
+FEATURES_VERSION = "v2"
 HORIZON_S, TIER1_S, GRID_S, MAX_GAP_S, LAG_CAP_S = 180.0, 60.0, 30.0, 900.0, 180.0
 TIER_WEIGHTS = {1: 5.0, 2: 2.0, 3: 0.5}      # scripts/holdset.py WEIGHTS: same scale as the bar the brain must beat
 # pp_start waits on later penalties at the same game-clock tick (coincidental minors), so it is a label only.
@@ -54,7 +59,7 @@ VALUE_FEATURES = ("period", "clock_left", "game_left", "is_ot", "late", "abs_mar
             "t1_game", "value_10m", "down", "distance", "yards_to_goal", "playoff")
 VALUE_LABELS = ("value_next_3m", "p_tier1_60s")
 VALUE_META = ("league", "season", "game_id", "game_key", "night", "source_night_id", "source", "license", "plan",
-        "decision_t", "feed_cut_t", "feed_head_t", "feature_t_max", "lag_s", "label_full_window")
+        "decision_t", "feed_cut_t", "feed_head_t", "feature_t_max", "lag_s", "label_full_window", "label_first_t")
 VALUE_COLUMNS = VALUE_META + VALUE_FEATURES + VALUE_LABELS
 
 # league -> (source id, licence line, plan, url, seasons newest first). From the gaps report: Licence OK = Yes.
@@ -116,7 +121,7 @@ def strip_published_wp(summary: dict) -> dict:
 def flat_plays(league: str, summary: dict) -> list[tuple[float, dict]]:
     """(wall, play) for every timed play, oldest first (stable, so feed order breaks ties)."""
     if _football(league):
-        raw = [p for dr in (summary.get("drives") or {}).get("previous") or [] for p in dr.get("plays") or []]
+        raw = [p for dr in football_drives(summary) for p in dr.get("plays") or []]
     else:
         raw = summary.get("plays") or []
     timed = [(parse_ts(p.get("wallclock")), p) for p in raw]
@@ -129,7 +134,7 @@ def truncate(league: str, summary: dict, cut: float) -> dict:
     out = dict(summary)
     if _football(league):
         out["drives"] = {"previous": [{**dr, "plays": [p for p in dr.get("plays") or [] if keep(p)]}
-                                      for dr in (summary.get("drives") or {}).get("previous") or []]}
+                                      for dr in football_drives(summary)]}
     else:
         out["plays"] = [p for p in summary.get("plays") or [] if keep(p)]
     return out
@@ -212,6 +217,12 @@ def _sum_in(times: np.ndarray, cum: np.ndarray, lo: np.ndarray, hi: np.ndarray) 
     return padded[np.searchsorted(times, hi, "right")] - padded[np.searchsorted(times, lo, "right")]
 
 
+def _first_in(times: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:
+    """Time of the first event in (lo, hi], NaN where there is none."""
+    first = np.concatenate((times, [np.inf]))[np.searchsorted(times, lo, "right")]
+    return np.where(first <= hi, first, np.nan)
+
+
 def features(v: GameView, head: np.ndarray, decision_t: np.ndarray) -> dict[str, np.ndarray]:
     """The whole feature definition. Reads only plays up to `head` and moments at or before that play's wall."""
     wall = v.walls[head]
@@ -260,11 +271,12 @@ def build_rows(league: str, game_id: str, summary: dict, *, night: str, season: 
     wall = w[head]
     tier_all, t_all, cum_all = _moment_arrays(det.moments)
     data: dict = {"decision_t": decision, "feed_cut_t": cuts, "feed_head_t": wall, "feature_t_max": wall, "lag_s": lag,
-                  "label_full_window": (wall + HORIZON_S <= w[-1]).astype(np.int8)}
+                  "label_full_window": (decision + HORIZON_S <= w[-1]).astype(np.int8),
+                  "label_first_t": _first_in(t_all, decision, decision + HORIZON_S)}
     for k, val in feature_fn(view, head, decision).items():
         data[k] = np.asarray(val, dtype=np.float32)
-    data["value_next_3m"] = _sum_in(t_all, cum_all, wall, wall + HORIZON_S).astype(np.float32)
-    data["p_tier1_60s"] = (_count_in(tier_all[1], wall, wall + TIER1_S) > 0).astype(np.float32)
+    data["value_next_3m"] = _sum_in(t_all, cum_all, decision, decision + HORIZON_S).astype(np.float32)
+    data["p_tier1_60s"] = (_count_in(tier_all[1], decision, decision + TIER1_S) > 0).astype(np.float32)
     df = pd.DataFrame(data)
     for k, val in (("league", league), ("season", int(season)), ("game_id", str(game_id)), ("game_key", game_key),
                    ("night", night), ("source_night_id", f"{league}:{night}"), ("source", source),
@@ -301,9 +313,13 @@ def shard_paths(out: Path, league: str, shard: str) -> tuple[Path, Path]:
 
 
 def shard_done(out: Path, league: str, shard: str) -> bool:
-    """The sidecar is written last, so a killed session leaves no shard that looks finished."""
+    """The sidecar is written last, so a killed session leaves no shard that looks finished. A shard from an older
+    feature version is not finished either: its labels mean something else."""
     pq, side = shard_paths(out, league, shard)
-    return side.exists() and pq.exists() and bool(json.loads(side.read_text()).get("complete"))
+    if not (side.exists() and pq.exists()):
+        return False
+    info = json.loads(side.read_text())
+    return bool(info.get("complete")) and info.get("features_version") == FEATURES_VERSION
 
 
 def rows_sha(df: pd.DataFrame) -> str:

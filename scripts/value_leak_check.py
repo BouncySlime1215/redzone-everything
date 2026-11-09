@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Leak check for GameValue shards: exit 1 if any row is from a locked or fresh night or reads past its decision.
 
-    python scripts/value_leak_check.py <shards dir> [--archive data/archive] [--allow-personal-nba] [--json]
+    python scripts/value_leak_check.py <shards dir> [--archive data/archive] [--raw <dir>] [--allow-personal-nba] [--json]
 
 Why: a model trained on one locked night or one future feature makes every later gate a lie, and the shard builder
 cannot be trusted to grade itself (the-mind section 9, build plan WP-25). So this file does not import
@@ -10,6 +10,11 @@ in step. Night truth comes from redzone/noggin/factory.py (public cut) and scrip
 
 Fails closed: no shards, a missing sidecar, a missing splits file, or an archive row without an archive to check
 it against are all FAIL. Archive files for locked games are never opened: only scoreboards are read, to know the split.
+
+Stamps and the prefix rebuild only see what the shard builder and its adapter wrote, so a future fact an adapter put into a
+per-play field passes them. `--raw` is the check that catches it: for a sample of rows per game it reads the head play's
+fields straight from the raw source (not through the adapter) and recomputes the label from holdset's separate detector
+counting only events strictly after decision_t. scripts/kaggle_gamevalue.py refuses to train unless this ran.
 """
 from __future__ import annotations
 
@@ -27,14 +32,16 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from redzone.noggin import factory  # noqa: E402
+from scripts import holdset, holdset_public  # noqa: E402
 from scripts.coverage_audit import DevOnly, LockedNightError  # noqa: E402
 
 FEATURES = ("period", "clock_left", "game_left", "is_ot", "late", "abs_margin", "total_points", "pts_5m", "swing_5m",
             "lead_changes", "plays_5m", "since_head_s", "since_score_s", "since_start_s", "t1_5m", "t2_5m", "t3_5m",
             "t1_game", "value_10m", "down", "distance", "yards_to_goal", "playoff")
 LABELS = ("value_next_3m", "p_tier1_60s")
+FEATURES_VERSION = "v2"  # value_shards.FEATURES_VERSION: older shards anchor the label on the feed head
 META = ("league", "season", "game_id", "game_key", "night", "source_night_id", "source", "license", "plan",
-        "decision_t", "feed_cut_t", "feed_head_t", "feature_t_max", "lag_s", "label_full_window")
+        "decision_t", "feed_cut_t", "feed_head_t", "feature_t_max", "lag_s", "label_full_window", "label_first_t")
 ALLOWED = frozenset(META + FEATURES + LABELS)
 PUBLIC_SOURCES = {"nflverse_pbp": "nfl"}
 PERSONAL_SOURCES = {"hoopr_espn_nba": "nba"}
@@ -42,12 +49,15 @@ PERSONAL_TAG = "personal-use, not for commercial release"
 COPY_R = 0.995          # a feature this correlated with a label is the label
 MIN_ROWS_COPY = 200
 EPS = 1e-3              # seconds: float rounding on the stored times
+HORIZON_S, TIER1_S = 180.0, 60.0
+RAW_ROWS = 40           # rows per game re-read from the raw source
+RAW_FIELDS = ("period", "clock_left", "down", "distance", "yards_to_goal", "abs_margin", "total_points")
 
 
 class Report:
     def __init__(self):
         self.fails: list[str] = []
-        self.checked = {"shards": 0, "rows": 0, "prefix_rows": 0}
+        self.checked = {"shards": 0, "rows": 0, "prefix_rows": 0, "raw_rows": 0}
 
     def fail(self, check: str, msg: str):
         self.fails.append(f"{check}: {msg}")
@@ -77,6 +87,16 @@ def check_times(df: pd.DataFrame, name: str, rep: Report):
     bad_lag = int(((df.lag_s < 0) | (np.abs(df.decision_t - df.lag_s - df.feed_cut_t) > EPS)).sum())
     if bad_lag:
         rep.fail("future_feature", f"{name}: {bad_lag} rows where decision - lag is not the feed cut")
+    first, decision = df.label_first_t.to_numpy(float), df.decision_t.to_numpy(float)
+    has = ~np.isnan(first)
+    early = int((first[has] <= decision[has]).sum())
+    if early:
+        rep.fail("label_window", f"{name}: {early} rows count a label event at or before the decision")
+    late_ev = int((first[has] > decision[has] + HORIZON_S + EPS).sum())
+    if late_ev:
+        rep.fail("label_window", f"{name}: {late_ev} rows count a label event past the 180 s window")
+    if int((has != (df.value_next_3m.to_numpy(float) > 0)).sum()):
+        rep.fail("label_window", f"{name}: a label and its first event disagree about whether anything happened")
 
 
 def check_nights(df: pd.DataFrame, league: str, name: str, archive: Path | None, cache: dict, allow_nba: bool, rep: Report):
@@ -119,6 +139,97 @@ def check_nights(df: pd.DataFrame, league: str, name: str, archive: Path | None,
         if wrong_night:
             rep.fail("locked_night", f"{name}: {len(wrong_night)} games whose night is not their wall-clock night, "
                                      f"e.g. {wrong_night[:3]}")
+
+
+def _raw_clock(v) -> float:
+    """MM:SS or seconds -> seconds, -1 when there is no clock (value_shards' missing value)."""
+    text = v if isinstance(v, str) else ""
+    head = text.split(":")
+    try:
+        return float(head[0]) * 60 + float(head[1]) if len(head) >= 2 else float(text)
+    except ValueError:
+        return -1.0
+
+
+def _n(v, missing: float = 0.0) -> float:
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return missing
+    return missing if x != x else x
+
+
+def _raw_plays(league: str, g: pd.DataFrame) -> dict[float, list[dict]]:
+    """{wall: [what each raw play says]} read from the raw columns, not through holdset_public's adapter."""
+    out: dict[float, list[dict]] = {}
+    for r in g.itertuples(index=False):
+        wall = holdset.ts(r.time_of_day if league == "nfl" else r.wallclock)
+        if not wall:
+            continue
+        if league == "nfl":
+            home, away = _n(r.total_home_score), _n(r.total_away_score)
+            yl = _n(r.yardline_100, None)
+            play = {"period": _n(r.qtr, -1.0), "clock_left": _raw_clock(r.time), "down": _n(r.down), "distance": _n(r.ydstogo),
+                    "yards_to_goal": -1.0 if yl is None else max(0.0, yl - _n(r.yards_gained))}
+        else:
+            home, away = _n(r.home_score), _n(r.away_score)
+            play = {"period": _n(r.period_number, -1.0), "clock_left": _raw_clock(r.clock_display_value), "down": -1.0,
+                    "distance": -1.0, "yards_to_goal": -1.0}
+        out.setdefault(wall, []).append({**play, "abs_margin": abs(home - away), "total_points": home + away})
+    return out
+
+
+def _same(a, b) -> bool:
+    """Close enough for float32. A NaN in the shard is no number at all: the trainer drops that row."""
+    if a != a:
+        return True
+    return bool(np.isclose(float(a), float(b), rtol=1e-5, atol=1e-3))
+
+
+def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name: str, rep: Report):
+    """A sample of one game's rows against the raw source: the head play's fields, then the label."""
+    make = holdset_public.nfl_summary if league == "nfl" else holdset_public.hoops_summary
+    built = holdset.game_row(league, gid, make(g))
+    if built is None:
+        rep.fail("raw_audit", f"{name}: game {gid} has shard rows but is not a whole game in the raw source")
+        return
+    plays, events = _raw_plays(league, g), built[4]
+    picks = np.unique(np.linspace(0, len(rows) - 1, min(RAW_ROWS, len(rows))).astype(int))
+    for r in rows.iloc[picks].itertuples(index=False):
+        rep.checked["raw_rows"] += 1
+        candidates = plays.get(float(r.feed_head_t))
+        if not candidates:
+            rep.fail("raw_audit", f"{name}: game {gid} has a feed head at {r.feed_head_t} that no raw play has")
+            continue
+        if not any(all(_same(getattr(r, f), c[f]) for f in RAW_FIELDS) for c in candidates):
+            diff = [f"{f} {getattr(r, f)} vs raw {candidates[-1][f]}" for f in RAW_FIELDS if not _same(getattr(r, f), candidates[-1][f])]
+            rep.fail("raw_audit", f"{name}: game {gid} feature differs from the raw source: {', '.join(diff[:3])}")
+        window = [(w, tier) for w, tier in events if r.decision_t < w <= r.decision_t + HORIZON_S]
+        value = sum(holdset.WEIGHTS[tier] for _, tier in window)
+        tier1 = float(any(tier == 1 and w <= r.decision_t + TIER1_S for w, tier in window))
+        if not (_same(r.value_next_3m, value) and _same(r.p_tier1_60s, tier1)):
+            rep.fail("raw_audit", f"{name}: game {gid} label {r.value_next_3m} is not the events after its decision ({value})")
+
+
+def audit_raw(df: pd.DataFrame, league: str, shard: str, name: str, raw: Path, rep: Report):
+    """Public rows of one shard against <raw>/<league>/pbp_<shard>.parquet."""
+    path = Path(raw) / league / f"pbp_{shard}.parquet"
+    if not path.exists():
+        rep.fail("raw_audit", f"{name}: raw source {path} is missing")
+        return
+    frame = holdset_public.read_public(league, [path])
+    if league == "nfl":
+        frame = frame[frame.qtr.notna()].sort_values(["game_id", "play_id"], kind="stable") if len(frame) else frame
+    elif len(frame):
+        frame = frame[frame.type_text.fillna("").ne("Substitution") & frame.period_number.notna() & frame.wallclock.notna()].copy()
+        frame["sq"] = pd.to_numeric(frame.sequence_number, errors="coerce")
+        frame = frame.sort_values(["game_id", "sq"], kind="stable")
+    games = {str(k): g for k, g in frame.groupby("game_id", sort=False)} if len(frame) else {}
+    for gid, rows in df.groupby("game_id", sort=False):
+        if str(gid) not in games:
+            rep.fail("raw_audit", f"{name}: game {gid} is not in the raw source")
+            continue
+        _audit_game(league, str(gid), games[str(gid)], rows, name, rep)
 
 
 def check_label_copy(df: pd.DataFrame, name: str, rep: Report):
@@ -166,7 +277,9 @@ def check_splits(out: Path, seen: dict, rep: Report):
             rep.fail("game_two_sources", f"{key} comes from {sorted(sources)}")
 
 
-def check_dir(out: Path, archive: Path | None = None, allow_personal_nba: bool = False) -> Report:
+def check_dir(out: Path, archive: Path | None = None, allow_personal_nba: bool = False, raw: Path | None = None) -> Report:
+    """Every check on every shard. raw: the directory of pbp_<season>.parquet files; without it the raw audit does not run
+    (rep.checked["raw_rows"] stays 0), and the trainer refuses to go on."""
     rep, cache = Report(), {}
     out = Path(out)
     files = sorted(out.glob("*/*.parquet"))
@@ -182,6 +295,8 @@ def check_dir(out: Path, archive: Path | None = None, allow_personal_nba: bool =
         info = json.loads(side.read_text())
         if not info.get("complete"):
             rep.fail("sidecar", f"{name}: not marked complete")
+        if info.get("features_version") != FEATURES_VERSION:
+            rep.fail("sidecar", f"{name}: features {info.get('features_version')}, this check knows {FEATURES_VERSION}")
         df = pd.read_parquet(f)
         rep.checked["shards"] += 1
         rep.checked["rows"] += len(df)
@@ -206,6 +321,8 @@ def check_dir(out: Path, archive: Path | None = None, allow_personal_nba: bool =
         check_times(df, name, rep)
         check_nights(df, league, name, archive, cache, allow_personal_nba, rep)
         check_label_copy(df, name, rep)
+        if raw is not None and (df.source != "archive").any():
+            audit_raw(df[df.source != "archive"], league, f.stem, name, raw, rep)
         pub = df[df.source != "archive"]
         seen["public_nights"].setdefault(league, set()).update(pub.night.astype(str).unique())
         games = df[["game_id", "night", "game_key", "source"]].drop_duplicates()
@@ -222,9 +339,10 @@ def main(argv=None) -> int:
     ap.add_argument("shards", type=Path)
     ap.add_argument("--archive", type=Path, default=None, help="data/archive, needed only for archive rows")
     ap.add_argument("--allow-personal-nba", action="store_true", help="accept hoopR NBA rows tagged personal-use")
+    ap.add_argument("--raw", type=Path, default=None, help="dir of <league>/pbp_<season>.parquet: audit rows against the raw source")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
-    rep = check_dir(a.shards, a.archive, a.allow_personal_nba)
+    rep = check_dir(a.shards, a.archive, a.allow_personal_nba, a.raw)
     if a.json:
         print(json.dumps({"fails": rep.fails, **rep.checked}, indent=1))
     else:

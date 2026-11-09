@@ -23,7 +23,7 @@ Fails closed: a row with a NaN, an infinity, a non-number, a missing or extra fe
 range gets no estimate; the others in the batch are unaffected. A model file that is corrupt, altered, for another
 league or feature list, missing its personal-use tag, or marked anything but shadow-only does not load.
 
-Promotion is not a flag here: `promotion` needs the real Planner beaten on the hold-set test nights, then 7 of 7 shadow
+Promotion is not a flag here: `promotion` needs the real Planner, measured on the same nights, beaten on the hold-set test nights, then 7 of 7 shadow
 nights, and the file status stays "shadow_only" until WP-28 changes this module on purpose.
 """
 from __future__ import annotations
@@ -43,7 +43,7 @@ from redzone.models_rt.forest import MODEL_DIRS, Nodes, read_meta
 
 GV_SCHEMA = 1
 GV_LEAGUES = ("nfl", "nba")
-GV_FEATURES_VERSION = "v1"
+GV_FEATURES_VERSION = "v2"
 GV_FEATURES = ("period", "clock_left", "game_left", "is_ot", "late", "abs_margin", "total_points", "pts_5m", "swing_5m",
                "lead_changes", "plays_5m", "since_head_s", "since_score_s", "since_start_s", "t1_5m", "t2_5m", "t3_5m",
                "t1_game", "value_10m", "down", "distance", "yards_to_goal", "playoff")
@@ -61,7 +61,6 @@ GV_SCALE_POINTS = 5.0                # raw points that read 63 on the 0-100 scal
 GV_TABLE_SHAPE = (6, 4, 4, 4)        # period, clock band, margin band, field-position band (scripts/holdset.py key)
 GV_STATUS = "shadow_only"
 GV_PERSONAL_SOURCES = ("hoopr_espn_nba", "archive")
-GV_PLANNER_K4 = {"nfl": 72.4, "nba": 79.8}     # scripts/holdset_public.py archive, real standby.Planner, K=4 (NBA: 4 nights)
 GV_SHADOW_NIGHTS = 7
 GV_DIR = MODEL_DIRS["noggin"]
 
@@ -294,13 +293,20 @@ def model_path(league: str, version: str = "v1", directory: Path = GV_DIR) -> Pa
     return Path(directory) / f"gamevalue_{league}_{version}.npz"
 
 
-def promotion(league: str, model_k4_pct, shadow_nights: Sequence[bool]) -> tuple[bool, str]:
-    """(may promote, why). The model's K=4 capture on the hold-set test nights must beat the real Planner, strictly,
-    and the last 7 shadow nights must all have passed."""
-    bar = GV_PLANNER_K4.get(league)
-    if bar is None:
-        return False, f"{league}: no real-Planner bar on record"
-    if not isinstance(model_k4_pct, (int, float)) or isinstance(model_k4_pct, bool) or not math.isfinite(model_k4_pct):
+def _number(x) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
+def promotion(league: str, model_k4_pct, shadow_nights: Sequence[bool], planner_k4_pct=None) -> tuple[bool, str]:
+    """(may promote, why). The model's K=4 capture must beat the real Planner's, strictly, and the last 7 shadow nights
+    must all have passed. `planner_k4_pct` is the Planner measured on the same nights as the model
+    (scripts/kaggle_gamevalue_holdset.py): a stored number from other nights is not a bar, so without it nothing promotes."""
+    if league not in GV_LEAGUES:
+        return False, f"{league}: no GameValue model for this league"
+    if not _number(planner_k4_pct):
+        return False, f"{league}: no real-Planner K=4 measured on the same nights"
+    bar = float(planner_k4_pct)
+    if not _number(model_k4_pct):
         return False, f"{league}: no K=4 result"
     if model_k4_pct <= bar:
         return False, f"{league}: K=4 {model_k4_pct:.1f} does not beat the real Planner {bar:.1f}"

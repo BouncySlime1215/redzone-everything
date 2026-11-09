@@ -11,7 +11,7 @@ import pytest
 
 from redzone.moments.detect import detect
 from redzone.noggin import value_shards as V
-from scripts import holdset, kaggle_value_shards as K, value_leak_check as LC
+from scripts import holdset, holdset_public, kaggle_value_shards as K, value_leak_check as LC
 
 KICK = dt.datetime(2023, 10, 8, 17, 0, tzinfo=dt.timezone.utc)
 NIGHTS = ["20231008", "20231015", "20231022", "20231029", "20231105", "20231112", "20231119", "20231126"]
@@ -83,9 +83,35 @@ def test_every_row_has_source_night_id_and_labels_match_the_moments():
     assert r.feature_t_max.le(r.decision_t).all() and r.feed_cut_t.le(r.decision_t).all()
     moments = detect("nfl", V.strip_published_wp(nfl_summary()), "g1").moments
     for row in r.iloc[[10, 60, 200]].itertuples():
-        want = sum(V.TIER_WEIGHTS[m.tier] for m in moments if row.feed_head_t < m.t <= row.feed_head_t + 180)
-        t1 = any(m.tier == 1 and row.feed_head_t < m.t <= row.feed_head_t + 60 for m in moments)
+        want = sum(V.TIER_WEIGHTS[m.tier] for m in moments if row.decision_t < m.t <= row.decision_t + 180)
+        t1 = any(m.tier == 1 and row.decision_t < m.t <= row.decision_t + 60 for m in moments)
         assert row.value_next_3m == pytest.approx(want) and row.p_tier1_60s == float(t1)
+
+
+def test_label_is_the_future_of_the_decision_not_of_the_feed_head():
+    """Repro of the review's noise game: with a head-anchored label, a feed silent for 180 s read as a label of exactly 0."""
+    r = _rows()
+    stale = r[(r.feed_cut_t - r.feed_head_t) > 0]
+    assert len(stale) and (stale.decision_t > stale.feed_head_t).all()
+    moments = detect("nfl", V.strip_published_wp(nfl_summary()), "g1").moments
+    for row in r.iloc[::37].itertuples():
+        first = [m.t for m in moments if row.decision_t < m.t <= row.decision_t + 180]
+        if first:
+            assert row.label_first_t == min(first) and row.label_first_t > row.decision_t
+        else:
+            assert np.isnan(row.label_first_t) and row.value_next_3m == 0
+
+
+def test_a_silent_feed_is_not_a_mechanical_zero_label():
+    s = nfl_summary(td_every=46)                       # play 45 opens the fourth drive and is a touchdown
+    previous = s["drives"]["previous"]
+    gap = 240.0
+    for d in previous[3:]:
+        for p in d["plays"]:
+            p["wallclock"] = _iso(dt.datetime.fromisoformat(p["wallclock"].replace("Z", "+00:00")).timestamp() - KICK.timestamp() + gap)
+    r = V.build_rows("nfl", "g", s, night="20231008", season=2023, source="s", license_line="l", plan="A")
+    stale = r[(r.decision_t - r.feed_head_t >= 180) & (r.label_full_window == 1)]
+    assert len(stale) and (stale.value_next_3m > 0).any()
 
 
 def test_tier_weights_are_the_bar_the_brain_must_beat():
@@ -248,6 +274,133 @@ def test_planted_future_reading_feature_builder_fails(tmp_path):
             game_key="nfl:20231008:A@B", feature_fn=cheating), feature_fn=V.features)
     V.finalize(out)
     assert _has(_fails(out), "future_feature")
+
+
+def test_planted_label_event_before_the_decision_fails(out):
+    def plant(df):
+        df["label_first_t"] = df["decision_t"] - 1.0
+        df["value_next_3m"] = 1.0
+        return df
+    _rewrite(out, plant)
+    assert _has(_fails(out), "label_window")
+
+
+def test_planted_event_with_a_zero_label_fails(out):
+    def plant(df):
+        df["label_first_t"] = df["decision_t"] + 1.0
+        df["value_next_3m"] = 0.0
+        return df
+    _rewrite(out, plant)
+    assert _has(_fails(out), "label_window")
+
+
+def test_a_shard_from_before_the_label_fix_is_not_finished_and_fails(out):
+    side = V.shard_paths(out, "nfl", "w2")[1]
+    info = json.loads(side.read_text())
+    assert V.shard_done(out, "nfl", "w2")
+    side.write_text(json.dumps({**info, "features_version": "v1"}))
+    assert not V.shard_done(out, "nfl", "w2")
+    assert _has(_fails(out), "sidecar")
+
+
+def test_leak_check_knows_the_shards_version():
+    assert LC.FEATURES_VERSION == V.FEATURES_VERSION and LC.HORIZON_S == V.HORIZON_S and LC.TIER1_S == V.TIER1_S
+
+
+# --- the raw-source audit: a future fact written by the adapter ------------------------------------------------
+
+def _raw_game(gid="2023_05_AAA_BBB"):
+    """An nflverse-shaped game with sparse touchdowns, so a future-TD flag is a real signal."""
+    rows, home = [], 0
+    for i in range(180):
+        td = i % 25 == 24
+        home += 7 if td else 0
+        rows.append({"game_id": gid, "play_id": i + 1, "time_of_day": _iso(i * 60), "time": f"{14 - i % 15}:00", "qtr": 1 + i * 4 // 180,
+                     "play_type": "run", "desc": "x", "timeout": 0, "touchdown": float(td), "field_goal_result": None,
+                     "extra_point_result": None, "interception": 0, "fumble_lost": 0, "sack": 0, "complete_pass": 0, "safety": 0,
+                     "sp": float(td), "total_home_score": float(home), "total_away_score": 3.0, "season_type": "REG",
+                     "two_point_attempt": 0, "drive": i // 12, "down": 1.0, "ydstogo": 10.0, "yardline_100": 60.0, "yards_gained": 4.0})
+    return pd.DataFrame(rows)
+
+
+def _raw_shard(tmp_path, summary, frame, gid="2023_05_AAA_BBB"):
+    out, raw = tmp_path / "s", tmp_path / "raw"
+    rows = V.build_rows("nfl", gid, summary, night="20231008", season=2023, source="nflverse_pbp", license_line="CC-BY", plan="A",
+                        game_key="nfl:20231008:AAA@BBB")
+    n, bad = V.prefix_check("nfl", gid, summary, rows, n=len(rows))
+    V.write_shard(out, "nfl", "2023", rows, {"source": "nflverse_pbp", "license": "CC-BY", "plan": "A", "prefix_checked": n,
+                                             "prefix_failed": len(bad), "prefix_examples": bad[:2]})
+    V.finalize(out)
+    (raw / "nfl").mkdir(parents=True, exist_ok=True)
+    frame.to_parquet(raw / "nfl" / "pbp_2023.parquet", index=False)
+    return out, raw
+
+
+def test_clean_adapter_passes_the_raw_audit(tmp_path):
+    frame = _raw_game()
+    out, raw = _raw_shard(tmp_path, holdset_public.nfl_summary(frame), frame)
+    rep = LC.check_dir(out, raw=raw)
+    assert rep.fails == [] and rep.checked["raw_rows"] == LC.RAW_ROWS
+
+
+def _plant_future_td(summary):
+    """The adapter bug the review planted: a play's field says whether a touchdown comes in the next 180 s."""
+    plays = [p for d in summary["drives"]["previous"] for p in d["plays"]]
+    walls = np.array([V.parse_ts(p["wallclock"]) for p in plays])
+    tds = np.array(["Touchdown" in p["type"]["text"] for p in plays])
+    for i, p in enumerate(plays):
+        p["end"]["yardsToEndzone"] = 50.0 if tds[(walls > walls[i]) & (walls <= walls[i] + 180)].any() else 10.0
+    return summary
+
+
+def test_planted_future_touchdown_in_an_adapter_field_fails(tmp_path):
+    frame = _raw_game()
+    out, raw = _raw_shard(tmp_path, _plant_future_td(holdset_public.nfl_summary(frame)), frame)
+    assert LC.check_dir(out).fails == []                    # stamps and the prefix rebuild cannot see it
+    rep = LC.check_dir(out, raw=raw)
+    assert _has(rep.fails, "raw_audit")
+    assert any("yards_to_goal" in f for f in rep.fails)
+
+
+def test_planted_head_anchored_label_fails_the_raw_audit(tmp_path):
+    frame = _raw_game()
+    out, raw = _raw_shard(tmp_path, holdset_public.nfl_summary(frame), frame)
+    df = pd.read_parquet(V.shard_paths(out, "nfl", "2023")[0])
+    moments = detect("nfl", holdset_public.nfl_summary(frame), "x").moments
+    times = np.array([m.t for m in moments])
+    df["value_next_3m"] = [float(sum(V.TIER_WEIGHTS[m.tier] for m in moments if h < m.t <= h + 180)) for h in df.feed_head_t]
+    df["label_first_t"] = [float(times[(times > h)][0]) if ((times > h) & (times <= h + 180)).any() else float("nan") for h in df.feed_head_t]
+    side = json.loads(V.shard_paths(out, "nfl", "2023")[1].read_text())
+    V.write_shard(out, "nfl", "2023", df, {k: side.get(k) for k in ("source", "license", "plan", "prefix_checked", "prefix_failed")})
+    assert any(f.startswith("raw_audit") and "label" in f for f in LC.check_dir(out, raw=raw).fails)
+
+
+def test_raw_audit_fails_closed_on_a_missing_raw_file_or_game(tmp_path):
+    frame = _raw_game()
+    out, raw = _raw_shard(tmp_path, holdset_public.nfl_summary(frame), frame)
+    frame.assign(game_id="other").to_parquet(raw / "nfl" / "pbp_2023.parquet", index=False)
+    assert _has(LC.check_dir(out, raw=raw).fails, "raw_audit")
+    (raw / "nfl" / "pbp_2023.parquet").unlink()
+    assert _has(LC.check_dir(out, raw=raw).fails, "raw_audit")
+
+
+# --- the drive in progress -------------------------------------------------------------------------------------
+
+def test_the_drive_in_progress_counts_in_plays_truncate_and_moments():
+    s = nfl_summary()
+    whole = len(V.flat_plays("nfl", s))
+    live = {**s, "drives": {"previous": s["drives"]["previous"][:-1], "current": s["drives"]["previous"][-1]}}
+    assert len(V.flat_plays("nfl", live)) == whole
+    assert len(detect("nfl", live, "g").moments) == len(detect("nfl", s, "g").moments)
+    end = V.flat_plays("nfl", s)[-1][0] + 1
+    assert len(V.flat_plays("nfl", V.truncate("nfl", live, end))) == whole
+
+
+def test_a_play_listed_in_both_drives_counts_once():
+    s = nfl_summary()
+    prev = s["drives"]["previous"]
+    both = {**s, "drives": {"previous": prev, "current": {"plays": prev[-1]["plays"][-2:]}}}
+    assert len(V.flat_plays("nfl", both)) == len(V.flat_plays("nfl", s))
 
 
 def test_prefix_check_is_clean_on_the_real_features():

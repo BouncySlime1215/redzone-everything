@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """Train GameValue v0 (state table) and v1 (LightGBM) on Kaggle CPU and export both for the numpy runtime.
 
-    python scripts/kaggle_gamevalue.py --shards <value_shards dir> --out /kaggle/working/gamevalue --leagues nfl
+    python scripts/kaggle_gamevalue.py --shards <value_shards dir> --out /kaggle/working/gamevalue --raw /kaggle/working/raw --leagues nfl
     python scripts/kaggle_gamevalue.py --shards <dir> --out <dir> --leagues nfl,nba --personal-nba
 
 Why: the brain's value estimate needs more games than the 8 GB Mac should train on, and every step that could quietly
 make the later gates a lie has to refuse instead: leaked rows, a numpy export that differs from the booster, a model
 without its licence tag (the-mind steps 3-4, build plan WP-26). Nick launches it; it never runs on the Mac.
 
-Order: leak check first (scripts/value_leak_check.py; any failure exits 2 before a row is read), then per league
+Order: fetch the raw seasons, leak check with the raw audit (scripts/value_leak_check.py; any failure exits 2 before a row is read), then per league
 forward-chaining folds on the train + calib nights (whole nights, oldest fit; mean and worst fold), then the final fit on
 train with isotonic on calib, one score on the test nights, export, reload, and a check that the file gives the same
 numbers. Public rows only, with a full 180 s label window: archive rows are Ring 2 and go through scripts/holdset.py.
 
-The K=2 / K=4 capture printed here is Ring 1: slates made from the shard rows on holdset's 180 s clock, label anchored on
-the feed head. The bar that can promote a model is scripts/kaggle_gamevalue_holdset.py on the dev test nights.
+The K=2 / 4 / 8 capture printed here is scripts/holdset.py's capture, not a look-alike: one shared 180 s clock per night, the
+feed read at the decision with no lag, y over (t, t + 180 s], from the raw seasons. The state table, closest score, random
+and hindsight are computed on the same nights and printed beside the model (holdset_public.fold_report). The bar that can
+promote a model is scripts/kaggle_gamevalue_holdset.py, on the dev test nights against the real Planner on those nights.
 """
 from __future__ import annotations
 
@@ -37,6 +39,8 @@ from redzone.noggin import value_shards as V  # noqa: E402
 from redzone.noggin.predict_fit import isotonic, logloss  # noqa: E402
 from redzone.noggin.timing_fit import ece  # noqa: E402
 from redzone.scoring.brain3 import flatten  # noqa: E402
+from scripts import holdset_public as HP  # noqa: E402
+from scripts import kaggle_gamevalue_holdset as HOLD  # noqa: E402
 from scripts import value_leak_check as LC  # noqa: E402
 
 EXIT_REFUSED, EXIT_MAC = 2, 3
@@ -46,7 +50,6 @@ TWEEDIE_POWER = 1.5           # the target is a sum of weighted events with 40-4
 ROUNDS = 150                  # the-mind section 8: 300 trees is at the 5 ms edge for 32 games
 SHRINK = 20.0                 # scripts/holdset.py fit
 PARITY_TOL, PARITY_ROWS, MAX_BAD_ROWS, SCORE_BATCH = 1e-4, 2000, 0.01, 200_000
-SLATE_STEP, SLATE_START = 180.0, 300.0
 KS = (2, 4)
 COLUMNS = ["night", "game_id", "source", "license", "decision_t", "label_full_window", *G.GV_FEATURES, *V.VALUE_LABELS]
 
@@ -152,37 +155,52 @@ def predict_all(model: G.GameValueModel, df: pd.DataFrame) -> G.Batch:
     return G.Batch(*(np.concatenate(a) for a in zip(*parts)))
 
 
-def slate_ids(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
-    """(positions of the rows used, their slate id): each game's last row in each 180 s step of its night."""
-    start = df.groupby("night")["decision_t"].transform("min").to_numpy(float)
-    step = np.floor((df.decision_t.to_numpy(float) - start - SLATE_START) / SLATE_STEP).astype(np.int64)
-    frame = pd.DataFrame({"night": df.night.to_numpy(), "game": df.game_id.to_numpy(), "step": step, "t": df.decision_t.to_numpy(float),
-                          "pos": np.arange(len(df))})
-    last = frame[frame.step >= 0].sort_values("t", kind="stable").groupby(["night", "step", "game"], sort=False).tail(1)
-    slate = last.groupby(["night", "step"], sort=False).ngroup().to_numpy()
-    return last.pos.to_numpy(), slate
+class SharedClock:
+    """The raw seasons of one league as holdset rows, and the summaries a model is ranked from."""
+
+    def __init__(self, league: str, rows: dict, games: dict):
+        self.league, self.rows, self.games = league, rows, games
+
+    def report(self, model: G.GameValueModel, fit_nights: list[str], test_nights: list[str]) -> dict:
+        """holdset's capture on these nights: the model beside table, closest score, random and hindsight. {} when nothing scores."""
+        ranker = HOLD.ModelRanker(model, games=lambda _league, night: self.games.get(night, []))
+        got = HP.fold_report(self.league, self.rows, [n for n in fit_nights if self.rows.get(n)],
+                             [n for n in test_nights if self.rows.get(n)], ranker)
+        out = {}
+        for name, cell in (got or {}).items():
+            if isinstance(cell, dict):
+                cell = dict(cell)
+                cell["model_pct"] = cell.pop("planner_pct")
+            out[name] = cell
+        return out
 
 
-def capture(slate: np.ndarray, pred: np.ndarray, y: np.ndarray, k: int, seed: int = 0) -> float | None:
-    """Percent of the value available in slates of more than k games that the top-k by pred holds (holdset.capture)."""
-    tie = np.random.default_rng(seed).random(len(slate))
-    order = np.lexsort((tie, -pred, slate))
-    s, ys = slate[order], y[order]
-    starts = np.r_[0, np.flatnonzero(s[1:] != s[:-1]) + 1]
-    sizes = np.diff(np.r_[starts, len(s)])
-    place = np.arange(len(s)) - np.repeat(starts, sizes)
-    big = np.repeat(sizes, sizes) > k
-    total = float(ys[big].sum())
-    return round(float(ys[big & (place < k)].sum()) / total * 100.0, 2) if total > 0 else None
+def shared_clock(league: str, raw: Path, seasons: list[str], nights: set[str]) -> SharedClock:
+    """One league's raw seasons, through the same adapter and eval cut as holdset_public. Locked nights never get this far."""
+    files = [p for p in (raw / league / f"pbp_{s}.parquet" for s in seasons) if p.exists()]
+    if not files:
+        raise Refused(f"{league}: no raw seasons in {raw}")
+    rows, games = HP.public_rows(league, HP.read_public(league, files), keep_games=nights)
+    return SharedClock(league, rows, games)
 
 
-def grade(model: G.GameValueModel, df: pd.DataFrame) -> dict:
+def fetch_raw(shards: Path, raw: Path, leagues: list[str], personal_nba: bool, log=print) -> None:
+    """Download each built season's raw file to where the raw audit reads it. The shard builder deletes its copies."""
+    from scripts.noggin_factory import _fetch
+    for league in leagues:
+        url = V.public_source(league, personal_nba)[3]
+        for season in sorted(p.stem for p in (shards / league).glob("*.parquet")):
+            if season.isdigit() and not _fetch(url.format(y=season), raw / league / f"pbp_{season}.parquet"):
+                log(f"{league} {season}: no raw file", flush=True)
+
+
+def grade(model: G.GameValueModel, df: pd.DataFrame, clock: SharedClock, fit_nights: list[str], test_nights: list[str]) -> dict:
     b = predict_all(model, df)
     y, p1 = df.value_next_3m.to_numpy(float), df.p_tier1_60s.to_numpy(float)
     keep = b.ok
-    pos, slate = slate_ids(df)
-    use = keep[pos]
-    out = {f"k{k}_pct": capture(slate[use], b.value[pos][use], y[pos][use], k) for k in KS}
+    shared = clock.report(model, fit_nights, test_nights)
+    out = {f"k{k}_pct": (shared.get(f"K{k}") or {}).get("model_pct") for k in KS}
+    out["shared_clock"] = shared
     denom = float(((y[keep] - y[keep].mean()) ** 2).sum())
     out["r2"] = round(1.0 - float(((y[keep] - b.raw[keep]) ** 2).sum()) / denom, 4) if denom else None
     out["p1_logloss"] = round(logloss(p1[keep], b.p[keep]), 4)
@@ -222,12 +240,15 @@ def _gather(df: pd.DataFrame, nights: list[str]) -> pd.DataFrame:
     return df[df.night.isin(set(nights))].reset_index(drop=True)
 
 
-def train_league(shards: Path, out: Path, league: str, trainer, folds: int, leak: dict, log=print) -> dict:
+def train_league(shards: Path, out: Path, league: str, trainer, folds: int, leak: dict, raw: Path, log=print) -> dict:
     df, info = load_rows(shards, league)
     splits = json.loads((shards / "splits.json").read_text()).get(league) or {}
     train, calib, test = (list(splits.get(s) or []) for s in ("train", "calib", "test"))
     if not train or not calib or not test or not set(df.night) <= set(train + calib + test):
         raise Refused(f"{league}: splits.json does not cover the rows")
+    seasons = sorted(p.stem for p in (shards / league).glob("*.parquet"))
+    graded = {n for _, val in forward_folds(train + calib, folds) for n in val} | set(test)
+    clock = shared_clock(league, raw, seasons, graded)
     rows_cv: dict[str, list] = {"v0": [], "v1": []}
     fold_nights = []
     for fit_nights, val_nights in forward_folds(train + calib, folds):
@@ -236,9 +257,9 @@ def train_league(shards: Path, out: Path, league: str, trainer, folds: int, leak
             continue
         tr, ca, va = _gather(df, fit_nights[:-c]), _gather(df, fit_nights[-c:]), _gather(df, val_nights)
         a0, m0 = fit_v0(tr, league, leak)
-        rows_cv["v0"].append(grade(G.GameValueModel(a0, m0, league), va))
+        rows_cv["v0"].append(grade(G.GameValueModel(a0, m0, league), va, clock, fit_nights, val_nights))
         a1, m1 = fit_v1(tr, ca, league, trainer, leak)
-        rows_cv["v1"].append(grade(G.GameValueModel(a1, m1, league), va))
+        rows_cv["v1"].append(grade(G.GameValueModel(a1, m1, league), va, clock, fit_nights, val_nights))
         fold_nights.append({"fit": [fit_nights[0], fit_nights[-1]], "validate": [val_nights[0], val_nights[-1]]})
         log(json.dumps({"league": league, "fold": len(fold_nights), "v0": rows_cv["v0"][-1], "v1": rows_cv["v1"][-1]}), flush=True)
     if not fold_nights:
@@ -256,12 +277,16 @@ def train_league(shards: Path, out: Path, league: str, trainer, folds: int, leak
         if not (np.array_equal(a.raw, b.raw, equal_nan=True) and np.array_equal(a.p, b.p, equal_nan=True)):
             path.unlink(missing_ok=True)
             raise Refused(f"{league} {version}: reloaded file gives different numbers")
+        scored = grade(again, te, clock, train + calib, test)
+        if scored["k4_pct"] is None:
+            path.unlink(missing_ok=True)
+            raise Refused(f"{league} {version}: no K=4 decision on the test nights, so there is nothing to compare")
         report["models"][version] = {"file": path.name, "sha256": stamped["sha256"], "bytes": path.stat().st_size, "license_tag": meta["license_tag"],
-                                     "cv": {"folds": rows_cv[version], **summarize(rows_cv[version])}, "test": grade(again, te)}
+                                     "cv": {"folds": rows_cv[version], **summarize(rows_cv[version])}, "test": scored}
         log(json.dumps({"league": league, "version": version, "cv": summarize(rows_cv[version]), "test": report["models"][version]["test"]}), flush=True)
     may, why = G.promotion(league, None, [])
-    report["promotion"] = {"may_promote": may, "why": why, "real_planner_k4": G.GV_PLANNER_K4.get(league),
-                           "next": "scripts/kaggle_gamevalue_holdset.py on the dev test nights, then 7 of 7 shadow nights"}
+    report["promotion"] = {"may_promote": may, "why": why,
+                           "next": "scripts/kaggle_gamevalue_holdset.py (real Planner on the same dev test nights), then 7 of 7 shadow nights"}
     return report
 
 
@@ -272,6 +297,8 @@ def main(argv=None, trainer=None) -> int:
     ap.add_argument("--leagues", default="nfl")
     ap.add_argument("--personal-nba", action="store_true", help="accept hoopR NBA rows, tagged personal-use (off by default)")
     ap.add_argument("--archive", type=Path, default=None, help="data/archive, needed only if the shards hold archive rows")
+    ap.add_argument("--raw", type=Path, default=Path(os.environ.get("RZ_RAW", "/kaggle/working/raw")),
+                    help="where <league>/pbp_<season>.parquet are fetched to; the raw audit and the shared-clock capture read them")
     ap.add_argument("--folds", type=int, default=5)
     a = ap.parse_args(argv)
     if trainer is None and sys.platform == "darwin":
@@ -287,7 +314,14 @@ def main(argv=None, trainer=None) -> int:
         if status != "ok":
             print(f"REFUSED: {lg}: {why}", flush=True)
             return EXIT_REFUSED
-    rep = LC.check_dir(a.shards, a.archive, a.personal_nba)
+    try:
+        fetch_raw(a.shards, a.raw, leagues, a.personal_nba)
+    except Exception as e:  # noqa: BLE001 - no raw source means no audit, so nothing may train
+        print(f"REFUSED: the raw seasons could not be fetched ({type(e).__name__}: {e}).", flush=True)
+        return EXIT_REFUSED
+    rep = LC.check_dir(a.shards, a.archive, a.personal_nba, a.raw)
+    if not rep.fails and not rep.checked["raw_rows"]:
+        rep.fail("raw_audit", "no row was checked against the raw source")
     if rep.fails:
         for line in rep.fails[:50]:
             print("LEAK CHECK FAIL", line, flush=True)
@@ -300,7 +334,7 @@ def main(argv=None, trainer=None) -> int:
     report = {"leak_check": leak, "status": G.GV_STATUS, "rounds": getattr(fit_with, "rounds", None), "leagues": {}}
     try:
         for lg in leagues:
-            report["leagues"][lg] = train_league(a.shards, a.out, lg, fit_with, a.folds, leak)
+            report["leagues"][lg] = train_league(a.shards, a.out, lg, fit_with, a.folds, leak, a.raw)
     except (Refused, G.ModelRejected) as e:
         print(f"REFUSED: {e}", flush=True)
         return EXIT_REFUSED

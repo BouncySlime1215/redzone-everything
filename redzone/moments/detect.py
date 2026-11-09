@@ -81,9 +81,21 @@ def _emit(out: Detected, league: str, gid: str, t, kind: str, pid="") -> None:
         out.moments.append(Moment(t, gid, tiers.tier_of(league, kind) or 3, kind, str(pid or "")))
 
 
+def football_drives(d: dict) -> list[dict]:
+    """drives.previous plus the drive in progress, each play once (espn.flatten_plays' rule). Live, the feed head sits in
+    drives.current; a finished game has none."""
+    drives = d.get("drives") or {}
+    previous, current = list(drives.get("previous") or []), drives.get("current")
+    if not current:
+        return previous
+    seen = {p.get("id") for dr in previous for p in dr.get("plays") or []}
+    fresh = [p for p in current.get("plays") or [] if p.get("id") not in seen]
+    return previous + [{**current, "plays": fresh}] if fresh else previous
+
+
 def _football(league: str, gid: str, d: dict) -> Detected:
     out, wp = Detected(), _wp_swings(d)
-    for dr in (d.get("drives") or {}).get("previous") or []:
+    for dr in football_drives(d):
         rz = False
         for p in dr.get("plays") or []:
             t = parse_ts(p.get("wallclock"))
