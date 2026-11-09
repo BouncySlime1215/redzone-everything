@@ -14,9 +14,13 @@ counted as joins_walk, not joins_mid_play (which stays the strict Rule #1 counte
   python scripts/buffered_jump_sim.py --json out.json
   python scripts/buffered_jump_sim.py --maxrate --mr-sticks 3 --mr-prep 8    # the rate ceiling model (see run_maxrate)
   python scripts/buffered_jump_sim.py --maxrate-sweep --archive data/archive/nfl --json out.json   # the whole P1-MAXRATE table
+  python scripts/buffered_jump_sim.py --maxrate --mr-mix prime-heavy --league nba   # per-app prep on a real app mix (WP-11)
+  python scripts/buffered_jump_sim.py --maxrate-mix --archive data/archive/nba --league nba --json mix.json   # the mix table
+  --split fit|train|valid reads dev nights only (redzone/lab/splits.py); `test` (the locked set) is refused.
 
 Numbers only; no play text leaves this script.
-Why: Tests the buffered-jump pass bar (jumps per minute, Rule #1) on recorded slates (docstring).
+Why: Tests the buffered-jump pass bar (jumps per minute, Rule #1) on recorded slates (docstring). The mix model (WP-11)
+exists because a flat prep time hides that a Prime tune costs ~45 s and a YouTube TV tune ~4 s, and half a real slate is Prime.
 """
 from __future__ import annotations
 
@@ -35,6 +39,7 @@ from dataclasses import asdict, dataclass, replace
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from redzone.decider import buffered as bj  # noqa: E402
+from redzone.noggin.gamequeue import Params as QueueParams  # noqa: E402
 from redzone.decider.cuts import AFTER_PLAY_S, PLAY_S, DeadTracker, _is_action, walk_params  # noqa: E402
 from redzone.models import League  # noqa: E402
 from redzone.sources.espn import _kind, _ts, flatten_plays  # noqa: E402
@@ -63,10 +68,25 @@ def load_game(path: str, lg: League | None = None, d: dict | None = None):
     return out
 
 
-def slates(archive: str, min_games: int):
-    """Groups of games that overlap in time (a Sunday window), by scoreboard date."""
+def dev_game_ids(archive: str, split: str) -> set[str] | None:
+    """Game ids of one dev split of this archive (None = every game, today's behaviour). The locked `test` set is
+    refused: nothing here may read it (CLAUDE.md release gate)."""
+    if split == "all":
+        return None
+    if split == "test":
+        raise SystemExit("--split test is the LOCKED release set: this sim never reads it")
+    from redzone.lab import splits
+    nights = splits.nights_for(archive, split)
+    by_night = splits.archive_nights(archive)
+    return {g for n in (nights or ()) for g in by_night.get(n, ())}
+
+
+def slates(archive: str, min_games: int, only: set[str] | None = None):
+    """Groups of games that overlap in time (a Sunday window), by scoreboard date. `only` keeps those game ids."""
     by_day = defaultdict(list)
     for f in glob.glob(os.path.join(archive, "summary_*.json")):
+        if only is not None and os.path.basename(f)[8:-5] not in only:
+            continue
         try:
             g = load_game(f)
         except (OSError, ValueError):
@@ -320,6 +340,7 @@ class MR:
     policy: str = "fifo"            # which ready job a free stick takes: earliest showable, or earliest deadline
     lag_s: float = 20.0             # feed lag mean / sd, as in the editor sim
     lag_sd: float = 6.0
+    mix: tuple[tuple[str, float], ...] = ()   # (WP-11) (app, share) of the slate; () = off, every game costs prep_s
 
 
 @dataclass
@@ -421,12 +442,64 @@ def mr_truth_spans(gid: str, plays, lg: League, items: list[MRItem], p: MR) -> l
     return [(it.start, it.end) for it in items] if p.truth == "tight" and lg.base != League.NBA else play_spans(plays, lg)
 
 
-def mr_cost(st: dict, it: MRItem, t: float, p: MR, rng: random.Random) -> float | None:
-    """Seconds until this stick can be parked at this play's landing, or None if it can't get there."""
+# (WP-11) Real slate app mixes, shares of games. plan-file is Nov 8's plan (15 Prime, 12 YouTube TV, 3 ESPN).
+MR_MIXES: dict[str, tuple[tuple[str, float], ...]] = {
+    "plan-file": (("prime", 0.5), ("youtubetv", 0.4), ("espn", 0.1)),
+    "prime-heavy": (("prime", 0.6), ("youtubetv", 0.3), ("espn", 0.1)),
+    "all-youtubetv": (("youtubetv", 1.0),),
+}
+
+
+def parse_mix(spec: str) -> tuple[tuple[str, float], ...]:
+    """'prime-heavy' or 'prime=0.6,youtubetv=0.4' -> ((app, share), ...). '' = off. A bad spec raises ValueError."""
+    if not spec:
+        return ()
+    if spec in MR_MIXES:
+        return MR_MIXES[spec]
+    out = []
+    for part in spec.split(","):
+        app, _, share = part.partition("=")
+        if not app.strip() or float(share) < 0:
+            raise ValueError(f"bad mix part {part!r}")
+        out.append((app.strip(), float(share)))
+    if sum(w for _, w in out) <= 0:
+        raise ValueError("mix shares sum to 0")
+    return tuple(out)
+
+
+def assign_apps(gids: list[str], mix: tuple[tuple[str, float], ...]) -> dict[str, str]:
+    """Give each game an app so the counts follow the shares (largest remainder). Deterministic and no rng, so a
+    mix never shifts the random stream of a run without one. Games in start order take apps in a spread order."""
+    if not mix:
+        return {}
+    tot = sum(w for _, w in mix)
+    quota = [(a, len(gids) * w / tot) for a, w in mix]
+    counts = {a: int(q) for a, q in quota}
+    for a, q in sorted(quota, key=lambda z: -(z[1] - int(z[1])))[: len(gids) - sum(counts.values())]:
+        counts[a] += 1
+    pool = [a for a, _ in mix for _ in range(counts[a])]
+    # spread: take the app with the most games left each time, so one app does not hold every early game
+    out, left = {}, dict(counts)
+    for g in gids:
+        a = max((x for x in pool if left[x] > 0), key=lambda x: (left[x], -[m for m, _ in mix].index(x)))
+        out[g] = a
+        left[a] -= 1
+    return out
+
+
+def app_prep_s(app: str, q: QueueParams | None = None) -> float:
+    """Prep for one app, from the queue's own numbers (gamequeue.Params.tune_s; unknown apps use `other`)."""
+    t = (q or QueueParams()).tune_s
+    return float(t.get(app, t["other"]))
+
+
+def mr_cost(st: dict, it: MRItem, t: float, p: MR, rng: random.Random, prep: float | None = None) -> float | None:
+    """Seconds until this stick can be parked at this play's landing, or None if it can't get there.
+    `prep` is this game's app prep (WP-11); None = the flat p.prep_s."""
     if st["gid"] == it.gid and not p.skip:
         pos = st["pos"] + (t - st["pos_wall"] if not st["paused"] else 0.0)
         return None if it.land < pos else it.land - pos   # rolling 1x, no rewind
-    base = p.seek_s if st["gid"] == it.gid else p.prep_s
+    base = p.seek_s if st["gid"] == it.gid else (p.prep_s if prep is None else prep)
     return base + (rng.uniform(0.0, p.seek_step_s) if p.seek_step_s > 0 else 0.0)
 
 
@@ -456,6 +529,8 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
     lag = {g: max(5.0, rng.gauss(p.lag_s, p.lag_sd)) for g in plays}
     items = {g: mr_items(g, plays[g], lg, p, rng, lag[g]) for g in used}
     spans = {g: mr_truth_spans(g, plays[g], lg, items[g], p) for g in used}
+    app_of = assign_apps(order, p.mix)
+    prep_of = {g: app_prep_s(a) for g, a in app_of.items()}     # {} when no mix: every call falls back to p.prep_s
     walk = walk_params({}, lg)
     walks = {g: walk_spans(plays[g], walk, lg) for g in used}
     ads = {g: ad_windows(plays[g], lg) for g in used}
@@ -507,7 +582,7 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
                 if it.shown <= p.replay_repeats:
                     repeat_pool.append(it)
                 continue
-            c = mr_cost(st, it, t, p, rng)
+            c = mr_cost(st, it, t, p, rng, prep_of.get(it.gid))
             if c is None:
                 continue
             ready = max(t + c, it.land + EDGE_S + 1.0)
@@ -520,7 +595,7 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
                 best, best_key, best_cost = it, key, ready
         if best is None:
             for it in repeat_pool:     # (d) nothing new: show a play again
-                c = mr_cost(st, it, t, p, rng)
+                c = mr_cost(st, it, t, p, rng, prep_of.get(it.gid))
                 if c is None:
                     continue
                 ready = max(t + c, it.land + EDGE_S + 1.0)
@@ -531,7 +606,7 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
         if best is None:
             return False
         if p.fail_p and rng.random() < p.fail_p:
-            best_cost += p.seek_s if st["gid"] == best.gid else p.prep_s
+            best_cost += p.seek_s if st["gid"] == best.gid else prep_of.get(best.gid, p.prep_s)
         best.taken = True
         st.update(target=best, ready_at=best_cost, gid=best.gid, pos=best.land, pos_wall=best_cost, paused=True,
                   err=rng.gauss(0.0, sd))
@@ -642,11 +717,11 @@ def mr_summary(rows: list[dict], ten: float = 10.0) -> dict:
             "clip_mean_s": round(sum(r["clip_s"] for r in rows) / max(1, jumps), 1)}
 
 
-def maxrate_slates(archive: str, lg: League, min_games: int, max_games: int = 0):
+def maxrate_slates(archive: str, lg: League, min_games: int, max_games: int = 0, only: set[str] | None = None):
     """[(day, games)]: the slates this many games big, the same grouping as the editor sim."""
     global LG
     LG = lg
-    return [(d, g) for d, g in slates(archive, min_games) if not max_games or len(g) <= max_games]
+    return [(d, g) for d, g in slates(archive, min_games, only) if not max_games or len(g) <= max_games]
 
 
 def maxrate_run(group, p: MR, seed: int, lg: League) -> dict:
@@ -663,13 +738,45 @@ def maxrate_params(a) -> MR:
               prep_s=a.mr_prep, games=a.mr_games, block_s=a.mr_block, replay_depth_s=a.mr_replay_depth, replay_repeats=a.mr_replay_repeats,
               truth=a.mr_truth, snap_known=a.mr_snap_known, snap_sd=a.mr_snap_sd, pre_s=a.mr_pre, post_s=a.mr_post,
               err_sd=a.mr_err_sd, guard_sigmas=a.mr_guard_sigmas, behind_min=a.mr_behind_min, behind_max=a.mr_behind_max,
-              fail_p=a.mr_fail, policy=a.mr_policy, lag_s=a.lag, lag_sd=a.lag_sd)
+              fail_p=a.mr_fail, policy=a.mr_policy, lag_s=a.lag, lag_sd=a.lag_sd, mix=parse_mix(a.mr_mix))
+
+
+# (WP-11) rows of --maxrate-mix: the same editor settings, only the app mix changes. Flat = today's one prep for all.
+MR_MIX_BASE = {"games": 4, "seek_s": 8.0}
+MR_MIX_ROWS: list[tuple[str, dict]] = [
+    ("flat prep 15 (today's sim)", {"prep_s": 15.0, "mix": ()}),
+    ("all YouTube TV (prep 4)", {"mix": MR_MIXES["all-youtubetv"]}),
+    ("plan-file mix (50% Prime)", {"mix": MR_MIXES["plan-file"]}),
+    ("Prime-heavy (60% Prime)", {"mix": MR_MIXES["prime-heavy"]}),
+    ("all Prime (prep 45)", {"mix": (("prime", 1.0),)}),
+]
+
+
+def mix_table(archive: str, lg: League, a, only: set[str] | None) -> list[dict]:
+    """One row per MR_MIX_ROWS over the dev slates of one league. Small: one seed, no sweep."""
+    group = maxrate_slates(archive, lg, a.min_games, a.mr_slate_max, only)
+    group = group[: a.max_slates] if a.max_slates else group
+    out = []
+    for label, kw in MR_MIX_ROWS:
+        s = maxrate_run(group, replace(maxrate_params(a), **MR_MIX_BASE, **kw), a.seed, lg)
+        if s:
+            out.append({"league": lg.value, "row": label, "slates": len(group), **s})
+            print(f"{lg.value:4s} {label:28s} {s['jumps_per_10']:5.1f}/10 min  p90 {s['p90_per_10']:3d} worst {s['worst_per_10']:3d} "
+                  f"50+ {s['windows_50plus_pct']:5.1f}%  mid {s['joins_mid_play']} leave {s['leaves_mid_play']} "
+                  f"ads {s['ad_s_per_10']:.1f} late {s['late_jumps_per_10']:.1f}")
+    return out
 
 
 def maxrate_main(a) -> int:
     lg = League(a.league)
+    only = dev_game_ids(a.archive, a.split)
+    if a.maxrate_mix:
+        rows = mix_table(a.archive, lg, a, only)
+        if a.json:
+            json.dump(rows, open(a.json, "w"), indent=1)
+        return 0 if rows else 1
     if a.maxrate:
-        group = maxrate_slates(a.archive, lg, a.min_games, a.mr_slate_max)
+        group = maxrate_slates(a.archive, lg, a.min_games, a.mr_slate_max, only)
         group = group[: a.max_slates] if a.max_slates else group
         p = maxrate_params(a)
         s = maxrate_run(group, p, a.seed, lg)
@@ -680,7 +787,8 @@ def maxrate_main(a) -> int:
     base = os.path.dirname(a.archive.rstrip("/"))
     out = []
     for lgv, min_g, max_g, name in MR_GROUPS:
-        group = maxrate_slates(os.path.join(base, lgv), League(lgv), min_g, max_g)
+        sub = os.path.join(base, lgv)
+        group = maxrate_slates(sub, League(lgv), min_g, max_g, dev_game_ids(sub, a.split))
         for label, kw in MR_GRID:
             if kw.get("_only") and name not in kw["_only"]:
                 continue
@@ -735,6 +843,10 @@ def main(argv=None) -> int:
     ap.add_argument("--mr-behind-min", type=float, default=MR().behind_min, help="Nick's window: at least this far behind the live edge, s")
     ap.add_argument("--mr-behind-max", type=float, default=MR().behind_max, help="...and at most this far")
     ap.add_argument("--mr-fail", type=float, default=MR().fail_p, help="chance a seek or prep fails and is repeated")
+    ap.add_argument("--maxrate-mix", action="store_true", help="(WP-11) the app-mix table: flat, all YouTube TV, plan-file, Prime-heavy, all Prime")
+    ap.add_argument("--mr-mix", default="", help="(WP-11) per-app prep on a slate mix: plan-file, prime-heavy, all-youtubetv or app=share,... (default: off)")
+    ap.add_argument("--split", choices=("all", "train", "valid", "fit", "test"), default="all",
+                    help="read dev nights only (redzone/lab/splits.py). test is the locked set and is refused. A mix run with no --split reads fit")
     ap.add_argument("--mr-slate-max", type=int, default=0, help="only slates of at most this many games")
     ap.add_argument("--mr-policy", choices=("fifo", "edf"), default=MR().policy, help="which ready play a free stick takes")
     ap.add_argument("--json")
@@ -742,15 +854,17 @@ def main(argv=None) -> int:
     global LG
     LG = League(a.league)
     a.archive = a.archive or f"data/archive/{a.league}"
+    if (a.maxrate_mix or a.mr_mix) and a.split == "all":
+        a.split = "fit"      # a mix run is new: it starts on dev nights, never the locked ones
     cfg = {}
     for kv in a.set:
         k, v = kv.split("=", 1)
         cfg[f"buffered_jump.{k}"] = float(v)
-    if a.maxrate or a.maxrate_sweep:
+    if a.maxrate or a.maxrate_sweep or a.maxrate_mix:
         return maxrate_main(a)
     rng = random.Random(a.seed)
     rows = []
-    for n, (day, games) in enumerate(slates(a.archive, a.min_games)):
+    for n, (day, games) in enumerate(slates(a.archive, a.min_games, dev_game_ids(a.archive, a.split))):
         if a.max_slates and n >= a.max_slates:
             break
         r = run_slate(games, a, rng, cfg)

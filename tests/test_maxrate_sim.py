@@ -104,3 +104,55 @@ def test_flag_runs_and_writes_summary(tmp_path):
     assert sim.main(["--archive", str(tmp_path), "--maxrate", "--mr-games", "2", "--json", str(out)]) == 0
     s = json.loads(out.read_text())["summary"]
     assert s["joins_mid_play"] == 0 and s["jumps_per_10"] > 0
+
+
+# ---- WP-11: per-app prep and a real slate mix -------------------------------------------------------------------
+def test_mix_off_is_todays_run():
+    """No mix: the same numbers as a plain MR, byte for byte."""
+    assert run(sim.MR(games=2, mix=())) == run(sim.MR(games=2))
+
+
+def test_assign_apps_follows_the_shares_without_the_rng():
+    got = sim.assign_apps([str(i) for i in range(10)], sim.parse_mix("prime=0.6,youtubetv=0.3,espn=0.1"))
+    counts = {a: list(got.values()).count(a) for a in set(got.values())}
+    assert counts == {"prime": 6, "youtubetv": 3, "espn": 1}
+    assert sim.assign_apps(["a"], ()) == {}
+
+
+def test_prep_comes_from_the_queue_params_not_a_copy():
+    from redzone.noggin.gamequeue import Params
+    q = replace(Params(), tune_s={**Params().tune_s, "prime": 99.0})
+    assert sim.app_prep_s("prime", q) == 99.0
+    assert sim.app_prep_s("prime") == Params().tune_s["prime"]
+    assert sim.app_prep_s("never-heard-of") == Params().tune_s["other"]
+
+
+def test_parse_mix_rejects_junk():
+    import pytest
+    assert sim.parse_mix("") == ()
+    assert sim.parse_mix("prime-heavy") == sim.MR_MIXES["prime-heavy"]
+    with pytest.raises(ValueError):
+        sim.parse_mix("prime=0,espn=0")
+
+
+def test_a_prime_slate_jumps_no_more_than_a_youtubetv_slate_and_keeps_rule_one():
+    base = sim.MR(games=4, sticks=2, seek_s=8.0)
+    yt = run(replace(base, mix=sim.parse_mix("youtubetv=1")))
+    pr = run(replace(base, mix=sim.parse_mix("prime=1")))
+    assert pr["jumps"] <= yt["jumps"]
+    assert pr["joins_mid_play"] == 0 and pr["leaves_mid_play"] == 0 and pr["ad_s"] == 0.0
+
+
+def test_the_locked_split_is_refused(tmp_path):
+    import pytest
+    with pytest.raises(SystemExit):
+        sim.dev_game_ids(str(tmp_path), "test")
+    assert sim.dev_game_ids(str(tmp_path), "all") is None
+
+
+def test_dev_split_keeps_only_fit_nights(tmp_path):
+    for n in range(8):
+        night = f"2026110{n + 1}"
+        (tmp_path / f"scoreboard_{night}.json").write_text(json.dumps({"events": [{"id": f"g{n}"}]}))
+    ids = sim.dev_game_ids(str(tmp_path), "fit")
+    assert ids == {f"g{n}" for n in range(6)} and "g7" not in ids   # the newest 25% (2 nights) are locked
