@@ -309,6 +309,7 @@
   {"rule": "K2", "path": "redzone/models.py", "key": "PERIOD_S"},
   {"rule": "K2", "path": "redzone/network.py", "key": "CHECK_EVERY_S"},
   {"rule": "K2", "path": "redzone/network.py", "key": "SWEEP_SETTLE_S"},
+  {"rule": "K2", "path": "redzone/noggin/catchup.py", "key": "HARD_CAP_S"},
   {"rule": "K2", "path": "redzone/noggin/factory.py", "key": "TWO_MIN_S"},
   {"rule": "K2", "path": "redzone/noggin/features.py", "key": "MAX_LEN_S"},
   {"rule": "K2", "path": "redzone/noggin/timing.py", "key": "BIN_S"},

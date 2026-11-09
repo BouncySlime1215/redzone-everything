@@ -127,6 +127,17 @@ LEAVE_WAIT = Spec(
     edges={"idle": ("waiting",), "waiting": ("idle",)},
     initial="idle")
 
+CATCHUP_ROUTE = Spec(
+    "decider.catchup_route", owner="decider.Decider.catchup_m",
+    doc="[arbiter.catchup_route] one missed must-see airing in pieces on the hidden stick, in the screen's dead time",
+    states={
+        "idle": "no clip in pieces",
+        "airing": "a piece of the clip is on screen",
+        "between": "the live game is back on screen; the next piece waits for dead time, within the 180 s cap",
+    },
+    edges={"idle": ("airing",), "airing": ("between", "idle"), "between": ("airing", "idle")},
+    initial="idle")
+
 JUMP_BREAK = Spec(
     "decider.jump_break", owner="decider.Decider.jump_break_m", keyed=True,
     doc="[jump mode] per game: since when the feed has said 'break' (the break counts as on screen a delay later)",
