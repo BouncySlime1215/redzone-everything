@@ -2399,9 +2399,11 @@ class Engine:
             hidden_t = ctl.standby[0]
             hidden = self._game_on_target(hidden_t) if hidden_t else None
             rank: dict[str, int] = {}
+            worth: dict[str, float] = {}   # the option's own value (return bonus, seconds saved): eviction weighs what the ranking weighed
+            classes: dict[str, int] = {}
             for i, o in enumerate(self._standby_options(cands, redzone)):
-                if o.replay_id is None:
-                    rank.setdefault(o.game_id, i)
+                if o.replay_id is None and o.game_id not in rank:
+                    rank[o.game_id], worth[o.game_id], classes[o.game_id] = i, o.value, o.cls
             checks = ((e.get("check") or {}) for e in (getattr(self.tonight, "plan", None) or {}).get("games") or ())
             verified = {c.get("target") for c in checks if c.get("state") == "verified"}
             for t in [t for t, until in self._queue_off.items() if now >= until]:
@@ -2443,7 +2445,8 @@ class Engine:
                     user="lock" if gid == u.locked_game else "pin" if gid == top_pin else "",
                     committed=gid == getattr(self.last_decision, "want", None), tier=tier, join_in_s=join_in,
                     lookahead_s=ahead_s, lead_s=self._queue_lead(games.get(gid), t, now, within) if t and ok else None,
-                    planner_rank=planner_rank, value=min(100.0, max(0.0, float(score)))))
+                    planner_rank=planner_rank, value=min(100.0, max(0.0, float(worth.get(gid, score)))),
+                    standby_class=classes.get(gid)))
 
             for gid, x in cands.items():
                 if gid not in u.muted:   # Drop is the existing mute
@@ -2462,7 +2465,8 @@ class Engine:
             stick = gq.Stick(busy_until=now + ctl.tune_estimate(hidden_t or "other") if job else 0.0,
                              job_game=hidden if job == "preload" else None,
                              job_to=gq.Level.R3 if job == "preload" else None, tune_s=measured)
-            plan = gq.tick(entries, dec.current, hidden, stick, now, params)
+            final = {gid for gid, g in games.items() if g.phase == Phase.POST}   # an ended game on the stick blocks nobody
+            plan = gq.tick(entries, dec.current, hidden, stick, now, params, final)
             self._game_queue = gq.view(plan)
             return plan
         except Exception:
