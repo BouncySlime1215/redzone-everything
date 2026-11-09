@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import statistics
 import time
 from collections import deque
@@ -888,10 +889,28 @@ class Event:
     play_kind: str = ""
     spread: float = 0.0  # unsure by this much: it happened in [seen - spread, seen]
     score: tuple[int, int] | None = None  # "score" events: (home, away) right after the play
+    # [slate] football only, None when the feed can't say: the snap's gain (from the play text), the down and yards to go
+    # before it (the prior poll's situation, only when this poll has one new play), the yards to the goal line
+    gain: int | None = None
+    down: int | None = None
+    to_go: int | None = None
+    to_goal: int | None = None
+    ptype: str = ""       # ESPN's play type text, for the moment words
 
     @property
     def lo(self) -> float:
         return self.seen - self.spread
+
+
+def _gain(text: str) -> int | None:
+    """Yards gained from an ESPN football play's text, or None when it doesn't say (a nullified play counts as None)."""
+    t = (text or "").lower()
+    if "no play" in t:
+        return None
+    if "for no gain" in t:
+        return 0
+    m = re.search(r"\bfor (-?\d+) yards?\b", t)
+    return int(m[1]) if m else None
 
 
 class Timeline:
@@ -935,6 +954,7 @@ class Timeline:
         # newest entry this game's data has logged (any kind, markers included): see quiet_break().
         self.quiet_cfg: dict | None = None
         self.last_entry: Event | None = None
+        self._sit_prior: tuple[int | None, int | None, int | None] = (None, None, None)   # [slate] (down, to go, to goal) before this poll
 
     def lag_est(self) -> float:
         """How far behind real life this game's feed runs (recent worst case)."""
@@ -979,7 +999,12 @@ class Timeline:
             big = p.kind in ("td", "turnover", "goal", "hr") or (p.scoring and self.league.base != League.NBA) \
                 or self._nba_clutch(p, g)
             lo, hi = _bounds(p, now, prev_fresh)
-            self.events.append(Event(hi, "play", (p.text or p.kind)[:80], big, p.id, p.kind, hi - lo))
+            ev = Event(hi, "play", (p.text or p.kind)[:80], big, p.id, p.kind, hi - lo)
+            if self.league.base == League.NFL:
+                ev.gain, ev.ptype = _gain(p.text), (p.type_text or "")
+                if len(action) == 1:
+                    ev.down, ev.to_go, ev.to_goal = self._sit_prior
+            self.events.append(ev)
             if p.wallclock and prev_fresh is not None and not first_poll:
                 # It wasn't in the data at the last fresh poll, so the feed ran at least this far behind.
                 self._lags.append(min(LAG_SAMPLE_CAP_S, max(0.0, prev_fresh - p.wallclock)))
@@ -1011,6 +1036,8 @@ class Timeline:
             lo, hi = _bounds(p, now, prev_fresh)
             self.dead.add(p.id, lo, hi, p.kind, p.text, getattr(p, "type_text", ""),
                           getattr(p, "clock", None), getattr(p, "period", None))
+        sit = g.situation
+        self._sit_prior = (sit.down, sit.distance, sit.yards_to_goal) if sit is not None and self.league.base == League.NFL else (None, None, None)
         if not new and self._last_score is not None and score != self._last_score and None not in score:
             # No play-by-play from this source: a score change is still a play (time unknown: bound it).
             lo, hi = (prev_fresh or now) - FEED_LAG_MAX_S, now - FEED_LAG_MIN_S
