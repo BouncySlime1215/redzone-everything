@@ -48,3 +48,19 @@ def test_the_way_home_only_forgets_a_time_with_no_visit_left(cfg, clock):
     dec._home_set("a", clock.t + 100, "long-break visit")
     dec._home_set("a", dec._home_at, "a chained visit keeps its way back")
     assert dec.home_return_at == clock.t + 100 and dec.home_m.is_("visit_timed")
+
+
+def test_landing_on_the_home_game_by_any_switch_ends_the_visit(cfg, clock):
+    """Stale _home: only kind 'home' cleared it. Reaching the home game as a 'better' switch left it set, and the next
+    better game was pulled straight back as 'back to your game' (A -> B -> A)."""
+    dec = setup(cfg, clock)
+    dec._home_set("a", None, "a break visit")
+    dec._commit("a", kind="better")
+    assert dec.home_break_visit is None and dec.home_m.is_("none")
+
+
+def test_landing_elsewhere_keeps_the_visit(cfg, clock):
+    dec = setup(cfg, clock)
+    dec._home_set("a", None, "a break visit")
+    dec._commit("c", kind="better")
+    assert dec.home_break_visit == "a"

@@ -4376,8 +4376,8 @@ class Decider:
             self.stack.append(self.current)
         if kind == "home" and self.stack and self.stack[-1] == target:
             self.stack.pop()
-        if kind == "home" and target == self.home_break_visit:
-            self._home_set(None, None, "back home")
+        if target == self.home_break_visit:
+            self._home_set(None, None, "back home")   # [AUDIT-8] by any switch: a stale home pulls the next game back here
         if kind == "user":
             self._home_set(None, self._home_at, "you picked a game")
         if self.current and self.current != target:
