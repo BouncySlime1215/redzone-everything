@@ -158,7 +158,7 @@ class Merger:
                 if len(hits) >= UNHEALTHY_REGRESSIONS:
                     if not feed.is_("benched"):
                         feed.to("benched", f"{len(hits)} backward jumps in {REGRESSION_WINDOW_S:.0f}s", now)
-                    self._bench_end[bkey] = now + BENCH_S
+                        self._bench_end[bkey] = now + BENCH_S   # set once: a jump while benched must not extend it
                     h.benched = True
                 elif not feed.is_("benched"):   # a benched feed stays benched until its bench ends
                     feed.to("regressing", f"{len(hits)} backward jump(s)", now)
