@@ -58,6 +58,13 @@ def feed_dark(has_timeline: bool, marks, fresh_at: float | None, now: float, sta
     return no_dead_ball_data(has_timeline, marks) or fresh_at is None or now - fresh_at > stale_s
 
 
+def dwell_left(since: float, min_s: float, kind: str, kinds, now: float) -> float:
+    """Seconds this optional switch kind must still wait on the current game (<= 0: free to go)."""
+    if min_s <= 0 or kind not in set(kinds or ()):
+        return 0.0
+    return since + min_s - now
+
+
 @dataclass(frozen=True)
 class Facts:
     """What the rules read for one tick. Built by `Decider.legal_facts`; epoch s."""
@@ -68,6 +75,10 @@ class Facts:
     locked_game: str | None = None
     manual_until: float = 0.0
     arrival_until: float = 0.0
+    since: float = 0.0
+    dwell_min_s: float = 0.0
+    dwell_kinds: tuple[str, ...] = ()
+    #F
     #F
 
 
@@ -80,5 +91,8 @@ def legal_options(f: Facts) -> tuple[brain.Option, ...]:
         return (STAY,)
     if arriving(f.now, f.arrival_until):
         return (STAY,)
+    if f.current and dwell_left(f.since, f.dwell_min_s, kind_of("cut") or "", f.dwell_kinds, f.now) > 0:
+        return (STAY,)
+    #B
     #B
     return (STAY,)

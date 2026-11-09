@@ -46,3 +46,13 @@ def test_feed_dark():
     assert not legal.feed_dark(True, {1: 1}, 70.0, 100.0, 30.0)
     assert legal.no_dead_ball_data(False, None) and legal.no_dead_ball_data(True, {})
     assert not legal.no_dead_ball_data(True, {1: 1})
+
+
+def test_dwell():
+    assert legal.dwell_left(100.0, 30.0, "better", ["better"], 110.0) == 20.0
+    assert legal.dwell_left(100.0, 30.0, "better", ["better"], 130.0) <= 0
+    assert legal.dwell_left(100.0, 0.0, "better", ["better"], 110.0) == 0.0
+    assert legal.dwell_left(100.0, 30.0, "crunch", ["better"], 110.0) == 0.0
+    assert legal.dwell_left(100.0, 30.0, "better", None, 110.0) == 0.0
+    f = legal.Facts(now=110.0, current="a", since=100.0, dwell_min_s=30.0, dwell_kinds=("better",))
+    assert legal.legal_options(f) == (legal.STAY,)

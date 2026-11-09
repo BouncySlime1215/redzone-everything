@@ -1417,10 +1417,8 @@ class Decider:
         if d.action != "switch" or not self.current or self.current in PSEUDO:
             return d
         x = cands.get(self.current)
-        min_s = float(self._lc("decider.dwell.min_s", x, 0) or 0)
-        if min_s <= 0 or d.kind not in set(self._lc("decider.dwell.kinds", x, None) or ()):
-            return d
-        left = self.since + min_s - now
+        left = legal.dwell_left(self.since, float(self._lc("decider.dwell.min_s", x, 0) or 0), d.kind,
+                                self._lc("decider.dwell.kinds", x, None), now)
         if left <= 0:
             return d
         self._home_restore(home_before, "dwell: a stay")
