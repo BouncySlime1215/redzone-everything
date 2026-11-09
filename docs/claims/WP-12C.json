@@ -1,0 +1,12 @@
+{
+  "card": "WP-12C",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "redzone/engine.py",
+    "redzone/decider/decider.py",
+    "tests/test_queue_failover*.py"
+  ],
+  "started": 1794211116,
+  "expires": 1794383916
+}

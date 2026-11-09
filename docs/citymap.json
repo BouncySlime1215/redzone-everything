@@ -83,6 +83,13 @@
     "scripts/measure_break_lengths.py"
    ]
   },
+  "break_on_picture.jsonl": {
+   "readers": [],
+   "users": [],
+   "writers": [
+    "redzone/cheap_labels.py"
+   ]
+  },
   "buffer.jsonl": {
    "readers": [
     "scripts/collect_live_test.py"
@@ -160,7 +167,8 @@
     "redzone/governor.py",
     "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
-    "scripts/plan_tonight.py"
+    "scripts/plan_tonight.py",
+    "scripts/preflight.py"
    ],
    "writers": [
     "redzone/lab/night/run.py"
@@ -173,6 +181,13 @@
    "users": [],
    "writers": [
     "scripts/northstar.py"
+   ]
+  },
+  "cuts.csv": {
+   "readers": [],
+   "users": [],
+   "writers": [
+    "scripts/redzone_reconstruct.py"
    ]
   },
   "data-ledger.json": {
@@ -242,7 +257,9 @@
    "readers": [
     "redzone/channels.py"
    ],
-   "users": [],
+   "users": [
+    "scripts/coverage_audit.py"
+   ],
    "writers": [
     "redzone/channels.py"
    ]
@@ -328,6 +345,15 @@
     "scripts/build_reasoner_data.py",
     "scripts/eval.py",
     "scripts/eval_sports.py"
+   ],
+   "writers": []
+  },
+  "data/footprint.jsonl": {
+   "readers": [
+    "scripts/preflight.py"
+   ],
+   "users": [
+    "redzone/governor.py"
    ],
    "writers": []
   },
@@ -548,7 +574,8 @@
     "scripts/backfill_eval_v2.py"
    ],
    "users": [
-    "redzone/governor.py"
+    "redzone/governor.py",
+    "scripts/preflight.py"
    ],
    "writers": []
   },
@@ -729,7 +756,8 @@
    ],
    "users": [
     "redzone/lab/evaldata.py",
-    "scripts/exp023_belief.py"
+    "scripts/exp023_belief.py",
+    "scripts/holdset_public.py"
    ],
    "writers": []
   },
@@ -778,7 +806,8 @@
   },
   "feed_lag_profile.json": {
    "readers": [
-    "redzone/buffer_shadow.py"
+    "redzone/buffer_shadow.py",
+    "redzone/noggin/value_shards.py"
    ],
    "users": [
     "redzone/lab/timing.py"
@@ -950,8 +979,10 @@
    ],
    "writers": [
     "agent/kaggle/pack_data.py",
+    "redzone/noggin/value_shards.py",
     "scripts/build_training.py",
     "scripts/build_training3.py",
+    "scripts/kaggle_gamevalue.py",
     "scripts/kaggle_pbp_crew.py",
     "scripts/noggin_factory.py",
     "scripts/replay_check.py"
@@ -1147,6 +1178,13 @@
    "users": [],
    "writers": []
   },
+  "run_report.json": {
+   "readers": [],
+   "users": [],
+   "writers": [
+    "scripts/kaggle_value_shards.py"
+   ]
+  },
   "scorebug_reads.jsonl": {
    "readers": [],
    "users": [
@@ -1210,6 +1248,16 @@
     "agent/kaggle/build_moments_kaggle.py"
    ]
   },
+  "splits.json": {
+   "readers": [
+    "scripts/kaggle_gamevalue.py",
+    "scripts/value_leak_check.py"
+   ],
+   "users": [],
+   "writers": [
+    "redzone/noggin/value_shards.py"
+   ]
+  },
   "st.json": {
    "readers": [],
    "users": [],
@@ -1219,10 +1267,13 @@
   },
   "state.json": {
    "readers": [
+    "agent/kaggle/data_fetch.py",
     "scripts/deploy.py"
    ],
    "users": [],
-   "writers": []
+   "writers": [
+    "agent/kaggle/data_fetch.py"
+   ]
   },
   "student_data.json": {
    "readers": [
@@ -1258,7 +1309,8 @@
    "writers": [
     "scripts/buffer_sweep.py",
     "scripts/collect_live_test.py",
-    "scripts/publish_live_nights.py"
+    "scripts/publish_live_nights.py",
+    "scripts/redzone_reconstruct.py"
    ]
   },
   "summary/latest.json": {
@@ -1306,6 +1358,13 @@
    "users": [
     "redzone/lab/decision_records.py"
    ],
+   "writers": [
+    "redzone/supervisor.py"
+   ]
+  },
+  "switch_outcomes.jsonl": {
+   "readers": [],
+   "users": [],
    "writers": [
     "redzone/supervisor.py"
    ]
@@ -1467,6 +1526,13 @@
     "scripts/synth_build.py"
    ]
   },
+  "tiers.yaml": {
+   "readers": [
+    "redzone/moments/tiers.py"
+   ],
+   "users": [],
+   "writers": []
+  },
   "traces.jsonl": {
    "readers": [
     "redzone/platform/autofix.py",
@@ -1576,6 +1642,13 @@
     "agent/kaggle/dequant.py"
    ],
    "writers": []
+  },
+  "windows.csv": {
+   "readers": [],
+   "users": [],
+   "writers": [
+    "scripts/redzone_reconstruct.py"
+   ]
   },
   "wordings_teacher.json": {
    "readers": [],
@@ -2332,6 +2405,45 @@
     "untagged"
    ]
   },
+  "agent/kaggle/data_fetch.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "state.json"
+    ],
+    "uses": [],
+    "writes": [
+     "state.json"
+    ]
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "agent/kaggle/fetch_all.py",
+    "agent/kaggle/fetch_azure.py",
+    "agent/kaggle/fetch_backblaze.py",
+    "agent/kaggle/fetch_criteo.py",
+    "agent/kaggle/fetch_gdelt.py",
+    "agent/kaggle/fetch_kuairand27k.py",
+    "agent/kaggle/fetch_kuairec.py",
+    "agent/kaggle/fetch_lichess.py",
+    "agent/kaggle/fetch_sports_mlb.py",
+    "agent/kaggle/fetch_sports_nhl.py",
+    "agent/kaggle/fetch_wikimedia.py",
+    "agent/kaggle/fetch_zvuk.py",
+    "agent/kaggle/sports_common.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "Shared engine for the Kaggle fetch scripts: resumable, disk-capped, sharded parquet plus one manifest row.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "agent/kaggle/dequant.py": {
    "calls": [],
    "contracts": [],
@@ -2360,6 +2472,454 @@
    ],
    "owner": "LOCAL AI",
    "role": "Dequantize the Mac's own base (mlx-community/Qwen3-1.7B-4bit) with numpy, no MLX needed.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_all.py": {
+   "calls": [
+    "agent/kaggle/data_fetch.py:cli"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/data_fetch.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Launch one fetch by name: `python agent/kaggle/fetch_all.py <source> [options]` (or `list`).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_azure.py": {
+   "calls": [
+    "agent/kaggle/data_fetch.py:Item",
+    "agent/kaggle/data_fetch.py:SourceSpec",
+    "agent/kaggle/data_fetch.py:cli",
+    "agent/kaggle/data_fetch.py:hash_int"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/data_fetch.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fetch the Azure Public Dataset V2 VM CPU readings (public blob files) into parquet shards.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_backblaze.py": {
+   "calls": [
+    "agent/kaggle/data_fetch.py:Item",
+    "agent/kaggle/data_fetch.py:SourceSpec",
+    "agent/kaggle/data_fetch.py:cli",
+    "agent/kaggle/data_fetch.py:dt",
+    "agent/kaggle/data_fetch.py:keep_hash_rows",
+    "agent/kaggle/data_fetch.py:pc"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/data_fetch.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fetch Backblaze Drive Stats quarterly zips: every failure row plus every row of 1 drive in 10, into parquet shards.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_criteo.py": {
+   "calls": [
+    "agent/kaggle/data_fetch.py:SourceSpec",
+    "agent/kaggle/data_fetch.py:cli",
+    "agent/kaggle/data_fetch.py:hf_items",
+    "agent/kaggle/data_fetch.py:sampled_items"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/data_fetch.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fetch a hash-sampled subset of the Criteo 1TB click logs (Criteo's own HF repo, CC BY-NC-SA) into parquet shards.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_gdelt.py": {
+   "calls": [
+    "agent/kaggle/data_fetch.py:Item",
+    "agent/kaggle/data_fetch.py:SourceSpec",
+    "agent/kaggle/data_fetch.py:cli",
+    "agent/kaggle/data_fetch.py:dt"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/data_fetch.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fetch a day-stride sample of GDELT 1.0 events (public daily zips) into parquet shards.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_kuairand27k.py": {
+   "calls": [
+    "agent/kaggle/data_fetch.py:SourceSpec",
+    "agent/kaggle/data_fetch.py:cli",
+    "agent/kaggle/data_fetch.py:zenodo_items"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/data_fetch.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fetch KuaiRand-27K (Kuaishou short-video watch logs, random-exposure rows) from Zenodo into parquet shards.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_kuairec.py": {
+   "calls": [
+    "agent/kaggle/data_fetch.py:SourceSpec",
+    "agent/kaggle/data_fetch.py:cli",
+    "agent/kaggle/data_fetch.py:zenodo_items"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/data_fetch.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fetch KuaiRec (Kuaishou watch-ratio matrix, fully observed small part) from Zenodo into parquet shards.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_lichess.py": {
+   "calls": [
+    "agent/kaggle/data_fetch.py:SourceSpec",
+    "agent/kaggle/data_fetch.py:cli",
+    "agent/kaggle/data_fetch.py:hf_items",
+    "agent/kaggle/data_fetch.py:sampled_items"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/data_fetch.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fetch a hash-sampled subset of Lichess standard games (HF, CC0) into parquet shards.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_sports_cfb.py": {
+   "calls": [
+    "agent/kaggle/sports_common.py:main",
+    "agent/kaggle/sports_common.py:release_spec"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/sports_common.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fetch every college football play-by-play (ESPN via SportsDataverse, 507 columns, no date column so night = season Sept 1, night_exact=0) row, newest season...",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_sports_mlb.py": {
+   "calls": [
+    "agent/kaggle/data_fetch.py:Item",
+    "agent/kaggle/data_fetch.py:SourceSpec",
+    "agent/kaggle/sports_common.py:CsvDayFetcher",
+    "agent/kaggle/sports_common.py:fragment",
+    "agent/kaggle/sports_common.py:is_locked",
+    "agent/kaggle/sports_common.py:lock_filter",
+    "agent/kaggle/sports_common.py:main",
+    "agent/kaggle/sports_common.py:season_args"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/data_fetch.py",
+    "agent/kaggle/sports_common.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fetch every Statcast pitch (Baseball Savant csv export, one request per game day) as parquet shards.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_sports_nba.py": {
+   "calls": [
+    "agent/kaggle/sports_common.py:main",
+    "agent/kaggle/sports_common.py:release_spec"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/sports_common.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fetch every NBA play-by-play (hoopR/ESPN) row, newest season first, as parquet shards with the personal-use tag.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_sports_ncaam.py": {
+   "calls": [
+    "agent/kaggle/sports_common.py:main",
+    "agent/kaggle/sports_common.py:release_spec"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/sports_common.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fetch every NCAA men's basketball play-by-play (hoopR/ESPN) row, newest season first, as parquet shards with the personal-use tag.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_sports_nfl.py": {
+   "calls": [
+    "agent/kaggle/sports_common.py:main",
+    "agent/kaggle/sports_common.py:release_spec"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/sports_common.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fetch every NFL play-by-play (nflfastR, 372 columns) row, newest season first, as parquet shards with the personal-use tag.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_sports_nhl.py": {
+   "calls": [
+    "agent/kaggle/data_fetch.py:Item",
+    "agent/kaggle/data_fetch.py:SourceSpec",
+    "agent/kaggle/sports_common.py:JsonCsvFetcher",
+    "agent/kaggle/sports_common.py:frag_params",
+    "agent/kaggle/sports_common.py:fragment",
+    "agent/kaggle/sports_common.py:is_locked",
+    "agent/kaggle/sports_common.py:lock_filter",
+    "agent/kaggle/sports_common.py:main",
+    "agent/kaggle/sports_common.py:night_of",
+    "agent/kaggle/sports_common.py:season_args"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/data_fetch.py",
+    "agent/kaggle/sports_common.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fetch NHL play-by-play (api-web.nhle.com) or shift charts (api.nhle.com/stats) for every game, as parquet shards.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_wikimedia.py": {
+   "calls": [
+    "agent/kaggle/data_fetch.py:SourceSpec",
+    "agent/kaggle/data_fetch.py:cli",
+    "agent/kaggle/data_fetch.py:hf_items",
+    "agent/kaggle/data_fetch.py:sampled_items"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/data_fetch.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fetch a hash-sampled subset of the Wikimedia pageview time series (HF mirror, CC0) into parquet shards.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/fetch_zvuk.py": {
+   "calls": [
+    "agent/kaggle/data_fetch.py:SourceSpec",
+    "agent/kaggle/data_fetch.py:cli",
+    "agent/kaggle/data_fetch.py:local_items"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/data_fetch.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Copy Zvuk (244M listen interactions) from a Kaggle input mount into parquet shards.",
    "serves": [
     "untagged"
    ]
@@ -2546,6 +3106,41 @@
     "untagged"
    ]
   },
+  "agent/kaggle/sports_common.py": {
+   "calls": [
+    "agent/kaggle/data_fetch.py:Item",
+    "agent/kaggle/data_fetch.py:Run",
+    "agent/kaggle/data_fetch.py:SourceSpec",
+    "agent/kaggle/data_fetch.py:parser"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "agent/kaggle/data_fetch.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "agent/kaggle/fetch_sports_cfb.py",
+    "agent/kaggle/fetch_sports_mlb.py",
+    "agent/kaggle/fetch_sports_nba.py",
+    "agent/kaggle/fetch_sports_ncaam.py",
+    "agent/kaggle/fetch_sports_nfl.py",
+    "agent/kaggle/fetch_sports_nhl.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "Shared parts of the sports fetch scripts (agent/kaggle/fetch_sports_<league>.py): polite fetching, the lock cut, the tag.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "agent/kaggle/student_data.py": {
    "calls": [
     "agent/distill/student.py:build",
@@ -2628,7 +3223,7 @@
    },
    "outputs": [],
    "owner": "LOCAL AI",
-   "role": "no docstring",
+   "role": "Kaggle GPU notebook: a big teacher model labels moments, small student models are trained and graded.",
    "serves": [
     "untagged"
    ]
@@ -3163,6 +3758,7 @@
     "redzone/autonomy.py",
     "redzone/canary.py",
     "redzone/control.py",
+    "redzone/decider/gate.py",
     "redzone/demo/engine.py",
     "redzone/discovery/providers.py",
     "redzone/discovery/yttv.py",
@@ -3174,6 +3770,7 @@
     "redzone/sync_edge.py",
     "redzone/tuners/tuners.py",
     "redzone/web/server.py",
+    "scripts/coverage_audit.py",
     "scripts/edge_probe_try.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
@@ -3189,6 +3786,36 @@
    ],
    "owner": "SWITCHING",
    "role": "Where can you actually watch a game?",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/cheap_labels.py": {
+   "calls": [
+    "redzone/screen/scorebug.py:clock_seconds"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": [
+     "break_on_picture.jsonl"
+    ]
+   },
+   "inputs": [
+    "redzone/screen/scorebug.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/engine.py",
+    "redzone/supervisor.py"
+   ],
+   "owner": "unowned",
+   "role": "Cheap labels: record the data nobody else has, from reads the app already makes (logging only).",
    "serves": [
     "untagged"
    ]
@@ -3280,6 +3907,7 @@
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
     "scripts/hold_left_probe.py",
+    "scripts/holdset_public.py",
     "scripts/night_report.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
@@ -3442,7 +4070,9 @@
    "outputs": [
     "redzone/context/buzz.py",
     "redzone/context/nba.py",
-    "redzone/context/standings.py"
+    "redzone/context/standings.py",
+    "redzone/noggin/gamevalue.py",
+    "redzone/noggin/value_shards.py"
    ],
    "owner": "unowned",
    "role": "Context fact shards for Data Planner B, in lane 1's vocab v2 hand-off format.",
@@ -3510,6 +4140,7 @@
     "writes": []
    },
    "inputs": [
+    "redzone/contracts/brain.py",
     "redzone/contracts/breaks.py",
     "redzone/contracts/budget.py",
     "redzone/contracts/clock.py",
@@ -3586,6 +4217,32 @@
    "outputs": [],
    "owner": "INTEGRATION",
    "role": "Interfaces every thread codes against.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/contracts/brain.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/contracts/__init__.py",
+    "redzone/decider/decider.py",
+    "redzone/noggin/arbiter.py",
+    "redzone/noggin/legal.py"
+   ],
+   "owner": "INTEGRATION",
+   "role": "Brain contract: the typed input and output of the brain, and `valid()`.",
    "serves": [
     "untagged"
    ]
@@ -4159,10 +4816,15 @@
     "redzone/machines/control.py:STANDBY",
     "redzone/machines/control.py:TWO_STICK",
     "redzone/machines/control.py:VISIBLE",
+    "redzone/noggin/gamequeue.py:Entry",
+    "redzone/noggin/gamequeue.py:Params",
+    "redzone/noggin/gamequeue.py:Route",
+    "redzone/noggin/gamequeue.py:on_failure",
     "redzone/tuners/adb.py:Stick",
     "redzone/tuners/adb.py:adb_available",
     "redzone/tuners/adb.py:playback_ready",
     "redzone/tuners/adb.py:same_stream",
+    "redzone/tuners/join.py:plan_join",
     "redzone/tuners/join_watchdog.py:DriftMonitor",
     "redzone/tuners/join_watchdog.py:dcfg",
     "redzone/tuners/join_watchdog.py:enabled",
@@ -4176,6 +4838,7 @@
     "redzone/tuners/session_guard.py:settle_banner",
     "redzone/tuners/tuners.py:TUNERS",
     "redzone/tuners/tuners.py:TuneResult",
+    "redzone/tuners/tuners.py:apply_flags",
     "redzone/tuners/tuners.py:channel_matcher",
     "redzone/tuners/yttv_label.py:LabelProbe",
     "redzone/tuners/yttv_seek.py:enter_buffer",
@@ -4203,7 +4866,9 @@
     "redzone/fallback_ladder.py",
     "redzone/fsm.py",
     "redzone/machines/control.py",
+    "redzone/noggin/gamequeue.py",
     "redzone/tuners/adb.py",
+    "redzone/tuners/join.py",
     "redzone/tuners/join_watchdog.py",
     "redzone/tuners/prime_multiview.py",
     "redzone/tuners/replay_park.py",
@@ -4461,6 +5126,9 @@
    "calls": [
     "redzone/config.py:default",
     "redzone/config.py:for_league",
+    "redzone/contracts/brain.py:BrainInput",
+    "redzone/contracts/brain.py:Option",
+    "redzone/contracts/brain.py:get",
     "redzone/contracts/switching.py:seek_model",
     "redzone/decider/break_tail.py:WINDOW_KIND",
     "redzone/decider/break_tail.py:length",
@@ -4514,6 +5182,40 @@
     "redzone/machines/decider.py:START",
     "redzone/models.py:ByLeague",
     "redzone/models.py:Stoppage",
+    "redzone/moments/detect.py:Moment",
+    "redzone/moments/fill.py:GameInfo",
+    "redzone/moments/fill.py:moment_key",
+    "redzone/moments/fill.py:plan",
+    "redzone/moments/slate.py:Facts",
+    "redzone/moments/slate.py:Params",
+    "redzone/moments/slate.py:football_word",
+    "redzone/moments/slate.py:may_cut_to",
+    "redzone/moments/slate.py:pays_off",
+    "redzone/moments/slate.py:plan",
+    "redzone/moments/slate.py:returns_too_soon",
+    "redzone/moments/tiers.py:family",
+    "redzone/moments/tiers.py:tier_of",
+    "redzone/noggin/arbiter.py:NullBrain",
+    "redzone/noggin/arbiter.py:Params",
+    "redzone/noggin/arbiter.py:Show",
+    "redzone/noggin/arbiter.py:choose",
+    "redzone/noggin/arbiter.py:must_of",
+    "redzone/noggin/arbiter.py:preload_target",
+    "redzone/noggin/arbiter.py:timeline_word",
+    "redzone/noggin/arbiter.py:trigger_rank",
+    "redzone/noggin/legal.py:Facts",
+    "redzone/noggin/legal.py:GameRow",
+    "redzone/noggin/legal.py:arriving",
+    "redzone/noggin/legal.py:dwell_left",
+    "redzone/noggin/legal.py:feed_dark",
+    "redzone/noggin/legal.py:kind_of",
+    "redzone/noggin/legal.py:legal_options",
+    "redzone/noggin/legal.py:may_leave",
+    "redzone/noggin/legal.py:must_see",
+    "redzone/noggin/legal.py:no_dead_ball_data",
+    "redzone/noggin/legal.py:too_soon",
+    "redzone/noggin/legal.py:tunable",
+    "redzone/noggin/legal.py:user_block",
     "redzone/noggin/live.py:hook_for",
     "redzone/noggin/live.py:predict_hook_for",
     "redzone/noggin/lookahead.py:ahead",
@@ -4521,7 +5223,12 @@
     "redzone/noggin/pick.py:LiveGame",
     "redzone/noggin/pick.py:live_choice",
     "redzone/noggin/pick.py:model_for",
+    "redzone/noggin/priority.py:HardRules",
+    "redzone/noggin/priority.py:Preferences",
+    "redzone/noggin/priority.py:rank",
+    "redzone/noggin/wire.py:game_input",
     "redzone/noggin/wire.py:pick",
+    "redzone/noggin/wire.py:rules",
     "redzone/scoring/engine.py:Scored"
    ],
    "contracts": [
@@ -4534,6 +5241,7 @@
    },
    "inputs": [
     "redzone/config.py",
+    "redzone/contracts/brain.py",
     "redzone/contracts/switching.py",
     "redzone/decider/break_tail.py",
     "redzone/decider/buffered.py",
@@ -4545,9 +5253,16 @@
     "redzone/fsm.py",
     "redzone/machines/decider.py",
     "redzone/models.py",
+    "redzone/moments/detect.py",
+    "redzone/moments/fill.py",
+    "redzone/moments/slate.py",
+    "redzone/moments/tiers.py",
+    "redzone/noggin/arbiter.py",
+    "redzone/noggin/legal.py",
     "redzone/noggin/live.py",
     "redzone/noggin/lookahead.py",
     "redzone/noggin/pick.py",
+    "redzone/noggin/priority.py",
     "redzone/noggin/wire.py",
     "redzone/scoring/engine.py",
     "uses:seek_model"
@@ -4571,6 +5286,7 @@
    "outputs": [
     "redzone/buffer_shadow.py",
     "redzone/contracts/legacy.py",
+    "redzone/decider/gate.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
     "redzone/lab/backtest.py",
@@ -4578,7 +5294,8 @@
     "redzone/lab/tune.py",
     "redzone/supervisor.py",
     "scripts/exp607_trace_prime_belief.py",
-    "scripts/fault_drill.py"
+    "scripts/fault_drill.py",
+    "scripts/holdset_public.py"
    ],
    "owner": "DECISION",
    "role": "The switch decider: a producer that never cuts you off mid-play.",
@@ -4618,6 +5335,47 @@
    ],
    "owner": "unowned",
    "role": "Per-channel stream-delay predictor: how far each channel's picture runs behind real life.",
+   "serves": [
+    "Crunch live, NBA",
+    "Crunch live, NFL",
+    "Crunch live, NHL",
+    "Entries at a possession start (dead ball, no play missed)",
+    "Landings in dead time",
+    "Mid-play entries (per 100 landings)",
+    "Your-team crunch live"
+   ]
+  },
+  "redzone/decider/gate.py": {
+   "calls": [
+    "redzone/channels.py:redzone_on",
+    "redzone/decider/decider.py:Candidate",
+    "redzone/decider/screen.py:break_on_arrival",
+    "redzone/decider/screen.py:catchable"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/decider/decider.py",
+    "redzone/decider/screen.py",
+    "redzone/decider/whistle.py",
+    "redzone/models.py",
+    "redzone/reel.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/engine.py"
+   ],
+   "owner": "unowned",
+   "role": "One commit gate at the flip for every non-tap switch: an ordered list of named rules, re-read on every poll.",
    "serves": [
     "Crunch live, NBA",
     "Crunch live, NFL",
@@ -4736,6 +5494,7 @@
    },
    "outputs": [
     "redzone/decider/decider.py",
+    "redzone/decider/gate.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
     "redzone/grading.py",
@@ -4814,6 +5573,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/decider/gate.py",
     "redzone/engine.py",
     "redzone/lab/backtest.py"
    ],
@@ -5280,6 +6040,8 @@
     "redzone/channels.py:PRETTY",
     "redzone/channels.py:describe",
     "redzone/channels.py:redzone_on",
+    "redzone/channels.py:route_class",
+    "redzone/cheap_labels.py:CheapLabels",
     "redzone/commands.py:Commands",
     "redzone/config.py:Config",
     "redzone/config.py:for_league",
@@ -5294,8 +6056,11 @@
     "redzone/decider/decider.py:FocusMode",
     "redzone/decider/decider.py:State",
     "redzone/decider/delaymodel.py:FeedBias",
+    "redzone/decider/gate.py:commit_gate",
+    "redzone/decider/gate.py:entry_veto",
     "redzone/decider/screen.py:Delay",
     "redzone/decider/screen.py:DelayBook",
+    "redzone/decider/screen.py:MIN_BREAK_S",
     "redzone/decider/screen.py:PLAY_LEN_S",
     "redzone/decider/screen.py:break_on_arrival",
     "redzone/decider/screen.py:catchable",
@@ -5311,9 +6076,18 @@
     "redzone/governor.py:keep_awake_wanted",
     "redzone/grading.py:is_dead_ball",
     "redzone/models.py:League",
+    "redzone/moments/__init__.py:tier_of",
     "redzone/network.py:NetWatch",
     "redzone/noggin/belief.py:attach",
     "redzone/noggin/belief.py:enabled",
+    "redzone/noggin/gamequeue.py:Entry",
+    "redzone/noggin/gamequeue.py:Params",
+    "redzone/noggin/gamequeue.py:Route",
+    "redzone/noggin/gamequeue.py:Stick",
+    "redzone/noggin/gamequeue.py:level_of",
+    "redzone/noggin/gamequeue.py:tick",
+    "redzone/noggin/gamequeue.py:view",
+    "redzone/noggin/lookahead.py:ahead",
     "redzone/plan.py:Tonight",
     "redzone/plan.py:day_of",
     "redzone/plan.py:path_for",
@@ -5335,6 +6109,7 @@
     "redzone/screen/boundary.py:in_window",
     "redzone/screen/scorebug.py:ScoreBugWatcher",
     "redzone/screen/tap_bug.py:TapBug",
+    "redzone/sources/espn.py:_nhl_penalty",
     "redzone/sources/espn.py:athletes",
     "redzone/sources/espn.py:flatten_plays",
     "redzone/sources/espn.py:keep_college",
@@ -5384,10 +6159,14 @@
     "redzone/userstate.py:capture",
     "redzone/userstate.py:load",
     "redzone/userstate.py:save",
+    "redzone/views.py:ClockTape",
     "redzone/views.py:LEAGUE_LOGO",
     "redzone/views.py:clock_text",
     "redzone/views.py:game_detail",
+    "redzone/views.py:known_delay_s",
     "redzone/views.py:league_logo",
+    "redzone/views.py:screen_clock_on",
+    "redzone/views.py:screen_item",
     "redzone/views.py:situation",
     "redzone/views.py:team",
     "redzone/views.py:team_detail",
@@ -5428,6 +6207,7 @@
     "redzone/buffer_shadow.py",
     "redzone/calibration.py",
     "redzone/channels.py",
+    "redzone/cheap_labels.py",
     "redzone/commands.py",
     "redzone/config.py",
     "redzone/contracts/switching.py",
@@ -5435,6 +6215,7 @@
     "redzone/decider/buffered.py",
     "redzone/decider/decider.py",
     "redzone/decider/delaymodel.py",
+    "redzone/decider/gate.py",
     "redzone/decider/screen.py",
     "redzone/decider/sync.py",
     "redzone/decider/whistle.py",
@@ -5445,8 +6226,12 @@
     "redzone/grading.py",
     "redzone/machines/decider.py",
     "redzone/models.py",
+    "redzone/moments/__init__.py",
+    "redzone/moments/detect.py",
     "redzone/network.py",
     "redzone/noggin/belief.py",
+    "redzone/noggin/gamequeue.py",
+    "redzone/noggin/lookahead.py",
     "redzone/plan.py",
     "redzone/platform/agent_fix.py",
     "redzone/platform/wake.py",
@@ -5613,6 +6398,7 @@
     "reads": [],
     "uses": [
      "config.yaml",
+     "data/footprint.jsonl",
      "default_config.yaml"
     ],
     "writes": []
@@ -5635,7 +6421,8 @@
     "redzone/lab/night/run.py",
     "redzone/reel.py",
     "redzone/screen_ocr.py",
-    "scripts/disk_guard.py"
+    "scripts/disk_guard.py",
+    "scripts/preflight.py"
    ],
    "owner": "unowned",
    "role": "Resource governor: keep the Mac cool, quiet and with free disk while RedZone runs.",
@@ -5858,6 +6645,7 @@
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/exp607_trace_prime_belief.py",
+    "scripts/holdset_public.py",
     "scripts/ladder_replay.py",
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
@@ -6251,12 +7039,14 @@
     "redzone/lab/splits.py",
     "scripts/backfill_eval_v2.py",
     "scripts/build_eval_data.py",
+    "scripts/coverage_audit.py",
     "scripts/data_landing_grade.py",
     "scripts/eval.py",
     "scripts/eval_break_blend.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/fetch_eval_data.py",
+    "scripts/holdset_public.py",
     "scripts/leak_check.py"
    ],
    "owner": "unowned",
@@ -6290,7 +7080,8 @@
    "outputs": [
     "redzone/lab/backtest.py",
     "redzone/lab/outcome_label.py",
-    "redzone/lab/sportsgrade.py"
+    "redzone/lab/sportsgrade.py",
+    "scripts/redzone_reconstruct.py"
    ],
    "owner": "unowned",
    "role": "Leverage floor for a mid-play LEAVE (Nick, Nov 4 3:15 PM ET).",
@@ -7058,12 +7849,15 @@
     "redzone/lab/breakblend.py",
     "redzone/lab/tune.py",
     "scripts/backfill_eval_v2.py",
+    "scripts/buffered_jump_sim.py",
+    "scripts/coverage_audit.py",
     "scripts/data_landing_grade.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
+    "scripts/moment_rates.py",
     "scripts/switch_eval_pin.py"
    ],
    "owner": "unowned",
@@ -7568,6 +8362,7 @@
     "redzone/decider/core.py",
     "redzone/decider/cuts.py",
     "redzone/decider/decider.py",
+    "redzone/decider/gate.py",
     "redzone/decider/screen.py",
     "redzone/demo/engine.py",
     "redzone/discovery/providers.py",
@@ -7590,6 +8385,8 @@
     "redzone/lab/sportsdata.py",
     "redzone/lab/sportsgrade.py",
     "redzone/lab/tune.py",
+    "redzone/moments/fill.py",
+    "redzone/moments/slate.py",
     "redzone/noggin/factory.py",
     "redzone/noggin/features.py",
     "redzone/noggin/live.py",
@@ -7624,11 +8421,13 @@
     "scripts/buffered_jump_sim.py",
     "scripts/buffered_jump_try.py",
     "scripts/build_reasoner_data.py",
+    "scripts/coverage_audit.py",
     "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/exp1722_read.py",
     "scripts/fault_drill.py",
+    "scripts/holdset_public.py",
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
     "scripts/noggin_factory.py",
@@ -7636,7 +8435,9 @@
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
     "scripts/rc8_flip.py",
+    "scripts/redzone_reconstruct.py",
     "scripts/replay_check.py",
+    "scripts/show_scorecard.py",
     "scripts/train_noggin_pick.py",
     "scripts/train_noggin_timing.py"
    ],
@@ -7682,15 +8483,167 @@
     "drives": []
    },
    "outputs": [
+    "redzone/noggin/gamevalue.py",
     "redzone/noggin/pick.py",
     "redzone/noggin/predict.py",
     "redzone/noggin/timing.py",
     "redzone/reasoner/head.py",
     "redzone/scoring/brain.py",
-    "redzone/scoring/brain3.py"
+    "redzone/scoring/brain3.py",
+    "scripts/kaggle_gamevalue.py"
    ],
    "owner": "unowned",
    "role": "[one brain, step 4] One tree walker and one model loader (docs/onebrain-migration.md).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/moments/__init__.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/moments/detect.py",
+    "redzone/moments/tiers.py"
+   ],
+   "kind": "package",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/engine.py",
+    "scripts/moment_rates.py"
+   ],
+   "owner": "unowned",
+   "role": "Moments: the per-league tier list and the detectors that fill it from ESPN play-by-play.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/moments/detect.py": {
+   "calls": [
+    "redzone/moments/tiers.py:family",
+    "redzone/moments/tiers.py:tier_of"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/moments/tiers.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/decider/decider.py",
+    "redzone/engine.py",
+    "redzone/moments/__init__.py",
+    "redzone/moments/fill.py",
+    "redzone/noggin/value_shards.py",
+    "scripts/kaggle_gamevalue_holdset.py",
+    "scripts/moment_rates.py",
+    "scripts/redzone_reconstruct.py",
+    "scripts/show_scorecard.py"
+   ],
+   "owner": "unowned",
+   "role": "Moment detectors over one ESPN game summary (play-by-play): returns typed, timestamped moments.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/moments/fill.py": {
+   "calls": [
+    "redzone/models.py:league_index",
+    "redzone/reel.py:plan_reel"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models.py",
+    "redzone/moments/detect.py",
+    "redzone/reel.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/decider/decider.py"
+   ],
+   "owner": "unowned",
+   "role": "Fill: what the show does when nothing must be shown (ladder), the day's montage and the off-night plan.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/moments/slate.py": {
+   "calls": [
+    "redzone/models.py:league_index"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/decider/decider.py"
+   ],
+   "owner": "unowned",
+   "role": "Scenes and slate modes: which games the rotation may cut to right now, and whether a cut pays off.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/moments/tiers.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "tiers.yaml"
+    ],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/decider/decider.py",
+    "redzone/moments/__init__.py",
+    "redzone/moments/detect.py",
+    "redzone/noggin/arbiter.py",
+    "scripts/moment_rates.py",
+    "scripts/show_scorecard.py"
+   ],
+   "owner": "unowned",
+   "role": "The one per-league tier list: which kind of moment is must-show (1), setup (2) or highlight (3).",
    "serves": [
     "untagged"
    ]
@@ -7745,6 +8698,39 @@
     "untagged"
    ]
   },
+  "redzone/noggin/arbiter.py": {
+   "calls": [
+    "redzone/contracts/brain.py:BrainOutput",
+    "redzone/contracts/brain.py:valid",
+    "redzone/moments/tiers.py:must_show",
+    "redzone/moments/tiers.py:tier_of",
+    "redzone/noggin/legal.py:kind_of"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/contracts/brain.py",
+    "redzone/moments/tiers.py",
+    "redzone/noggin/legal.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/decider/decider.py"
+   ],
+   "owner": "unowned",
+   "role": "The arbiter: one pure choice among `legal_options()`, with a must-show floor no brain can lower.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/noggin/belief.py": {
    "calls": [],
    "contracts": [],
@@ -7795,14 +8781,18 @@
     "drives": []
    },
    "outputs": [
+    "redzone/noggin/value_shards.py",
     "scripts/exp022_tpp.py",
     "scripts/green_summaries.py",
+    "scripts/holdset_public.py",
     "scripts/kaggle_noggin_factory.py",
+    "scripts/kaggle_value_shards.py",
     "scripts/nhl_apiweb.py",
     "scripts/noggin_factory.py",
     "scripts/noggin_tokens.py",
     "scripts/retrosheet_plays.py",
     "scripts/train_noggin_pick.py",
+    "scripts/value_leak_check.py",
     "scripts/world_model_pilot.py"
    ],
    "owner": "unowned",
@@ -7848,6 +8838,92 @@
    ],
    "owner": "unowned",
    "role": "Noggin Timing features and window labels: numpy + stdlib only (the live app has no pandas).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/noggin/gamequeue.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/control.py",
+    "redzone/engine.py",
+    "redzone/platform/faults.py",
+    "scripts/buffered_jump_sim.py",
+    "scripts/fault_drill.py",
+    "scripts/queue_replay.py"
+   ],
+   "owner": "unowned",
+   "role": "Queue core: readiness R0-R5, prep time, who gets the hidden stick, and what a failed tune does next.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/noggin/gamevalue.py": {
+   "calls": [
+    "redzone/models_rt/forest.py:Nodes",
+    "redzone/models_rt/forest.py:read_meta"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/context/tokens.py",
+    "redzone/models_rt/forest.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/kaggle_gamevalue.py",
+    "scripts/kaggle_gamevalue_holdset.py"
+   ],
+   "owner": "unowned",
+   "role": "GameValue runtime: one game's causal features -> value_next_3m (0-100) and p_tier1_60s (0-1), numpy only.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/noggin/legal.py": {
+   "calls": [
+    "redzone/contracts/brain.py:Option"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/contracts/brain.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/decider/decider.py",
+    "redzone/noggin/arbiter.py"
+   ],
+   "owner": "unowned",
+   "role": "legal_options(): what the show may do right now, as typed options.",
    "serves": [
     "untagged"
    ]
@@ -7901,11 +8977,13 @@
     "drives": []
    },
    "outputs": [
-    "redzone/decider/decider.py"
+    "redzone/decider/decider.py",
+    "redzone/engine.py"
    ],
    "owner": "unowned",
    "role": "Clairvoyance: what the feed already knows that the screen hasn't shown yet (cycle 02, lane 2).",
    "serves": [
+    "GAME-04",
     "SAFE-02"
    ]
   },
@@ -8020,6 +9098,7 @@
     "drives": []
    },
    "outputs": [
+    "scripts/kaggle_gamevalue.py",
     "scripts/train_noggin_predict.py"
    ],
    "owner": "unowned",
@@ -8048,6 +9127,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/decider/decider.py",
     "redzone/noggin/wire.py",
     "redzone/web/phone_v2.py"
    ],
@@ -8174,10 +9254,51 @@
    "outputs": [
     "redzone/noggin/predict_fit.py",
     "scripts/exp022_tpp.py",
+    "scripts/kaggle_gamevalue.py",
     "scripts/train_noggin_timing.py"
    ],
    "owner": "unowned",
    "role": "Fit, calibrate and grade Noggin Timing v1 from the data factory's table (Kaggle CPU / Actions only).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/noggin/value_shards.py": {
+   "calls": [
+    "redzone/moments/detect.py:clock_s",
+    "redzone/moments/detect.py:detect",
+    "redzone/moments/detect.py:game_span",
+    "redzone/moments/detect.py:parse_ts",
+    "redzone/noggin/factory.py:assign_splits"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "feed_lag_profile.json"
+    ],
+    "uses": [],
+    "writes": [
+     "manifest.json",
+     "splits.json"
+    ]
+   },
+   "inputs": [
+    "redzone/context/tokens.py",
+    "redzone/moments/detect.py",
+    "redzone/noggin/factory.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/kaggle_gamevalue.py",
+    "scripts/kaggle_gamevalue_holdset.py",
+    "scripts/kaggle_value_shards.py"
+   ],
+   "owner": "unowned",
+   "role": "GameValue training rows: one game's play-by-play -> rows of causal features and next-minutes value labels.",
    "serves": [
     "untagged"
    ]
@@ -8254,6 +9375,7 @@
    "calls": [
     "redzone/channels.py:PRETTY",
     "redzone/channels.py:describe",
+    "redzone/channels.py:route_class",
     "redzone/models.py:League",
     "redzone/models.py:league_order"
    ],
@@ -8391,6 +9513,9 @@
   },
   "redzone/platform/faults.py": {
    "calls": [
+    "redzone/noggin/gamequeue.py:flippable",
+    "redzone/noggin/gamequeue.py:level",
+    "redzone/noggin/gamequeue.py:on_failure",
     "redzone/tuners/adb.py:RunResult",
     "redzone/tuners/tuners.py:TuneResult"
    ],
@@ -8401,6 +9526,7 @@
     "writes": []
    },
    "inputs": [
+    "redzone/noggin/gamequeue.py",
     "redzone/tuners/adb.py",
     "redzone/tuners/tuners.py"
    ],
@@ -8756,8 +9882,10 @@
     "drives": []
    },
    "outputs": [
+    "redzone/decider/gate.py",
     "redzone/engine.py",
-    "redzone/lab/night/run.py"
+    "redzone/lab/night/run.py",
+    "redzone/moments/fill.py"
    ],
    "owner": "DECISION",
    "role": "Catch-up reel: 5+ plays you missed, back to back, in 30-60 s (RedZone's \"here's what you missed\").",
@@ -8895,7 +10023,8 @@
     "redzone/noggin/pick.py",
     "redzone/noggin/predict_fit.py",
     "redzone/noggin/timing.py",
-    "redzone/scoring/brain.py"
+    "redzone/scoring/brain.py",
+    "scripts/kaggle_gamevalue.py"
    ],
    "owner": "unowned",
    "role": "Brain v3: one compact model per league, numpy only at runtime.",
@@ -8963,7 +10092,8 @@
    "outputs": [
     "redzone/demo/engine.py",
     "redzone/engine.py",
-    "redzone/lab/backtest.py"
+    "redzone/lab/backtest.py",
+    "scripts/holdset_public.py"
    ],
    "owner": "DECISION",
    "role": "RedZone mode, part 1: is this NFL drive alive?",
@@ -9017,7 +10147,8 @@
     "redzone/lab/backtest.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/reasoner_data.py",
-    "redzone/scoring/drive.py"
+    "redzone/scoring/drive.py",
+    "scripts/holdset_public.py"
    ],
    "owner": "DECISION",
    "role": "Excitement score, 0-100, with a plain-English reason.",
@@ -9192,6 +10323,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/cheap_labels.py",
     "redzone/engine.py",
     "redzone/screen/tap_bug.py"
    ],
@@ -9340,10 +10472,12 @@
     "redzone/views.py",
     "scripts/buffered_jump_sim.py",
     "scripts/buffered_jump_try.py",
+    "scripts/coverage_audit.py",
     "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/green_summaries.py",
+    "scripts/holdset_public.py",
     "scripts/measure_break_lengths.py",
     "scripts/noggin_factory.py",
     "scripts/noggin_tokens.py",
@@ -9651,7 +10785,8 @@
    "outputs": [
     "redzone/demo/engine.py",
     "redzone/engine.py",
-    "redzone/lab/backtest.py"
+    "redzone/lab/backtest.py",
+    "scripts/holdset_public.py"
    ],
    "owner": "SWITCHING",
    "role": "Hot standby: what the hidden stick should be playing, so the next switch is a 1-2s input flip.",
@@ -9700,6 +10835,9 @@
     "redzone/calibration.py:timing_from_summary",
     "redzone/channels.py:Where",
     "redzone/channels.py:redzone_on",
+    "redzone/cheap_labels.py:cut_fields",
+    "redzone/cheap_labels.py:is_on",
+    "redzone/cheap_labels.py:write_outcome",
     "redzone/config.py:Config",
     "redzone/contracts/health.py:Fix",
     "redzone/control.py:Outcome",
@@ -9745,12 +10883,14 @@
     "writes": [
      "supervisor.jsonl",
      "supervisor_cuts.jsonl",
-     "supervisor_moments.jsonl"
+     "supervisor_moments.jsonl",
+     "switch_outcomes.jsonl"
     ]
    },
    "inputs": [
     "redzone/calibration.py",
     "redzone/channels.py",
+    "redzone/cheap_labels.py",
     "redzone/config.py",
     "redzone/contracts/health.py",
     "redzone/control.py",
@@ -10062,6 +11202,7 @@
    },
    "outputs": [
     "redzone/canary.py",
+    "redzone/control.py",
     "redzone/tuners/join_calib.py",
     "redzone/tuners/join_watchdog.py",
     "scripts/join_try.py",
@@ -10590,6 +11731,8 @@
    "calls": [
     "redzone/screen_ocr.py:recognize",
     "redzone/tuners/adb.py:Stick",
+    "redzone/tuners/yttv_seek.py:band_png",
+    "redzone/tuners/yttv_seek.py:overlay_band",
     "redzone/tuners/yttv_seek.py:parse_overlay"
    ],
    "contracts": [],
@@ -10823,7 +11966,8 @@
     "drives": []
    },
    "outputs": [
-    "redzone/engine.py"
+    "redzone/engine.py",
+    "redzone/web/server.py"
    ],
    "owner": "DECISION",
    "role": "What you told the phone (pause, \"Watch this\", focus, lock), kept across service restarts.",
@@ -11004,6 +12148,7 @@
     "redzone/engine.py",
     "redzone/fsm.py",
     "redzone/platform/agent_fix.py",
+    "redzone/userstate.py",
     "redzone/web/phone_v2.py"
    ],
    "kind": "module",
@@ -11272,7 +12417,10 @@
     "redzone/decider/cuts.py:DeadTracker",
     "redzone/decider/cuts.py:_is_action",
     "redzone/decider/cuts.py:walk_params",
+    "redzone/lab/splits.py:archive_nights",
+    "redzone/lab/splits.py:nights_for",
     "redzone/models.py:League",
+    "redzone/noggin/gamequeue.py:Params",
     "redzone/sources/espn.py:_kind",
     "redzone/sources/espn.py:_ts",
     "redzone/sources/espn.py:flatten_plays"
@@ -11286,7 +12434,9 @@
    "inputs": [
     "redzone/decider/buffered.py",
     "redzone/decider/cuts.py",
+    "redzone/lab/splits.py",
     "redzone/models.py",
+    "redzone/noggin/gamequeue.py",
     "redzone/sources/espn.py"
    ],
    "kind": "entry",
@@ -11294,7 +12444,9 @@
     "declares": [],
     "drives": []
    },
-   "outputs": [],
+   "outputs": [
+    "scripts/show_scorecard.py"
+   ],
    "owner": "unowned",
    "role": "[buffered jump] Jumps per minute, plays shown and Rule #1 on recorded NFL slates (data/archive, ESPN wallclocks).",
    "serves": [
@@ -11830,6 +12982,49 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Phone controls drill: replay the end-to-end night with scripted phone presses and grade them.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/coverage_audit.py": {
+   "calls": [
+    "redzone/channels.py:ChannelMap",
+    "redzone/channels.py:NETWORKS",
+    "redzone/lab/evaldata.py:load_lock",
+    "redzone/lab/splits.py:archive_nights",
+    "redzone/lab/splits.py:league_split",
+    "redzone/sources/espn.py:parse_scoreboard"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [
+     "data/channels.json"
+    ],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/lab/evaldata.py",
+    "redzone/lab/splits.py",
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/holdset.py",
+    "scripts/kaggle_value_shards.py",
+    "scripts/reach_grid.py",
+    "scripts/redzone_reconstruct.py",
+    "scripts/show_scorecard.py",
+    "scripts/value_leak_check.py"
+   ],
+   "owner": "unowned",
+   "role": "Route every game on a public ESPN schedule through the repo's ChannelMap and print the reach table.",
    "serves": [
     "untagged"
    ]
@@ -12749,11 +13944,15 @@
     "redzone/engine.py:Engine",
     "redzone/models.py:GameState",
     "redzone/models.py:Team",
+    "redzone/noggin/gamequeue.py:Entry",
+    "redzone/noggin/gamequeue.py:Route",
     "redzone/platform/faults.py:FaultStick",
     "redzone/platform/faults.py:FaultTV",
     "redzone/platform/faults.py:FaultTuner",
+    "redzone/platform/faults.py:QueueTuner",
     "redzone/platform/faults.py:SkewClock",
     "redzone/platform/faults.py:World",
+    "redzone/platform/faults.py:drive_queue",
     "redzone/platform/faults.py:failing_transport",
     "redzone/platform/health.py:PlatformHealth",
     "redzone/sources/feeds.py:FeedBook",
@@ -12789,6 +13988,7 @@
     "redzone/decider/decider.py",
     "redzone/engine.py",
     "redzone/models.py",
+    "redzone/noggin/gamequeue.py",
     "redzone/platform/faults.py",
     "redzone/platform/health.py",
     "redzone/sources/feeds.py",
@@ -13037,6 +14237,98 @@
     "STK-07"
    ]
   },
+  "scripts/holdset.py": {
+   "calls": [
+    "scripts/coverage_audit.py:DevOnly"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "scripts/coverage_audit.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/holdset_public.py",
+    "scripts/kaggle_gamevalue_holdset.py"
+   ],
+   "owner": "unowned",
+   "role": "How much of the hold-set choice can any model win?",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/holdset_public.py": {
+   "calls": [
+    "redzone/config.py:Config",
+    "redzone/decider/decider.py:Candidate",
+    "redzone/lab/backtest.py:Replay",
+    "redzone/lab/backtest.py:_Clock",
+    "redzone/lab/evaldata.py:flatten_league_overrides",
+    "redzone/lab/evaldata.py:use_shipped_switch_costs",
+    "redzone/models.py:League",
+    "redzone/noggin/factory.py:EVAL_FIRST_NIGHT",
+    "redzone/noggin/factory.py:_nfl_type",
+    "redzone/noggin/factory.py:_plays_basketball",
+    "redzone/noggin/factory.py:night_of",
+    "redzone/scoring/drive.py:DriveScorer",
+    "redzone/scoring/engine.py:Personal",
+    "redzone/sources/espn.py:_ts",
+    "redzone/sources/espn.py:flatten_plays",
+    "redzone/sources/espn.py:parse_summary",
+    "redzone/standby.py:options",
+    "scripts/holdset.py:build",
+    "scripts/holdset.py:capture",
+    "scripts/holdset.py:decision_times",
+    "scripts/holdset.py:decisions",
+    "scripts/holdset.py:fit",
+    "scripts/holdset.py:game_row",
+    "scripts/holdset.py:games",
+    "scripts/holdset.py:report",
+    "scripts/holdset.py:table"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [
+     "eval_config.yaml"
+    ],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/config.py",
+    "redzone/decider/decider.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/evaldata.py",
+    "redzone/models.py",
+    "redzone/noggin/factory.py",
+    "redzone/scoring/drive.py",
+    "redzone/scoring/engine.py",
+    "redzone/sources/espn.py",
+    "redzone/standby.py",
+    "scripts/holdset.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/kaggle_value_shards.py"
+   ],
+   "owner": "unowned",
+   "role": "The bar the brain must beat: the hold-set measurement with the REAL standby.Planner, and on public seasons.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/join_try.py": {
    "calls": [
     "redzone/tuners/adb.py:Stick",
@@ -13089,6 +14381,94 @@
     "untagged"
    ]
   },
+  "scripts/kaggle_gamevalue.py": {
+   "calls": [
+    "redzone/models_rt/forest.py:Nodes",
+    "redzone/noggin/gamevalue.py:Batch",
+    "redzone/noggin/gamevalue.py:GV_PLANNER_K4",
+    "redzone/noggin/gamevalue.py:GameValueModel",
+    "redzone/noggin/gamevalue.py:load",
+    "redzone/noggin/gamevalue.py:model_path",
+    "redzone/noggin/gamevalue.py:promotion",
+    "redzone/noggin/gamevalue.py:save",
+    "redzone/noggin/gamevalue.py:table_key",
+    "redzone/noggin/gamevalue.py:valid_rows",
+    "redzone/noggin/predict_fit.py:isotonic",
+    "redzone/noggin/predict_fit.py:logloss",
+    "redzone/noggin/timing_fit.py:ece",
+    "redzone/noggin/value_shards.py:public_status",
+    "redzone/scoring/brain3.py:flatten",
+    "scripts/value_leak_check.py:check_dir"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "splits.json"
+    ],
+    "uses": [],
+    "writes": [
+     "manifest.json"
+    ]
+   },
+   "inputs": [
+    "redzone/models_rt/forest.py",
+    "redzone/noggin/gamevalue.py",
+    "redzone/noggin/predict_fit.py",
+    "redzone/noggin/timing_fit.py",
+    "redzone/noggin/value_shards.py",
+    "redzone/scoring/brain3.py",
+    "scripts/value_leak_check.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Train GameValue v0 (state table) and v1 (LightGBM) on Kaggle CPU and export both for the numpy runtime.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/kaggle_gamevalue_holdset.py": {
+   "calls": [
+    "redzone/moments/detect.py:detect",
+    "redzone/noggin/gamevalue.py:GV_PLANNER_K4",
+    "redzone/noggin/gamevalue.py:load",
+    "redzone/noggin/gamevalue.py:model_path",
+    "redzone/noggin/gamevalue.py:promotion",
+    "redzone/noggin/value_shards.py:features",
+    "redzone/noggin/value_shards.py:make_view",
+    "redzone/noggin/value_shards.py:strip_published_wp",
+    "scripts/holdset.py:decision_times",
+    "scripts/holdset.py:games",
+    "scripts/holdset.py:main"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/moments/detect.py",
+    "redzone/noggin/gamevalue.py",
+    "redzone/noggin/value_shards.py",
+    "scripts/holdset.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Grade an exported GameValue model on scripts/holdset.py's own test nights, against the real Planner's bar.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/kaggle_noggin_factory.py": {
    "calls": [
     "redzone/noggin/factory.py:build",
@@ -13112,7 +14492,7 @@
    },
    "outputs": [],
    "owner": "unowned",
-   "role": "no docstring",
+   "role": "Kaggle CPU notebook: Noggin data factory, resumable season shards plus oracle self-play parts.",
    "serves": [
     "untagged"
    ]
@@ -13135,7 +14515,51 @@
    },
    "outputs": [],
    "owner": "unowned",
-   "role": "no docstring",
+   "role": "Kaggle CPU notebook: builds the shared play-by-play table for Data Division A (EXP-1000 / EXP-097).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/kaggle_value_shards.py": {
+   "calls": [
+    "redzone/noggin/factory.py:night_of",
+    "redzone/noggin/factory.py:seasons",
+    "redzone/noggin/value_shards.py:build_rows",
+    "redzone/noggin/value_shards.py:finalize",
+    "redzone/noggin/value_shards.py:flat_plays",
+    "redzone/noggin/value_shards.py:prefix_check",
+    "redzone/noggin/value_shards.py:public_source",
+    "redzone/noggin/value_shards.py:public_status",
+    "redzone/noggin/value_shards.py:shard_done",
+    "redzone/noggin/value_shards.py:write_shard",
+    "scripts/coverage_audit.py:DevOnly",
+    "scripts/noggin_factory.py:_fetch",
+    "scripts/value_leak_check.py:main"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": [
+     "run_report.json"
+    ]
+   },
+   "inputs": [
+    "redzone/noggin/factory.py",
+    "redzone/noggin/value_shards.py",
+    "scripts/coverage_audit.py",
+    "scripts/holdset_public.py",
+    "scripts/noggin_factory.py",
+    "scripts/value_leak_check.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Build GameValue shards: public seasons on Kaggle CPU, or dev archive nights as a small local check.",
    "serves": [
     "untagged"
    ]
@@ -13335,6 +14759,37 @@
     "untagged"
    ]
   },
+  "scripts/moment_rates.py": {
+   "calls": [
+    "redzone/lab/splits.py:archive_nights",
+    "redzone/lab/splits.py:league_split",
+    "redzone/lab/splits.py:nights_for",
+    "redzone/moments/__init__.py:game_span"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/splits.py",
+    "redzone/moments/__init__.py",
+    "redzone/moments/detect.py",
+    "redzone/moments/tiers.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Measured must-see rates per league from the archive, compared with the planner's table (read only).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/multiview_probe.py": {
    "calls": [
     "redzone/channels.py:ChannelMap",
@@ -13480,7 +14935,9 @@
     "declares": [],
     "drives": []
    },
-   "outputs": [],
+   "outputs": [
+    "scripts/kaggle_value_shards.py"
+   ],
    "owner": "unowned",
    "role": "Noggin data factory: labeled dead-ball moments from public play-by-play (redzone/noggin/factory.py).",
    "serves": [
@@ -13798,6 +15255,37 @@
     "SAFE-01"
    ]
   },
+  "scripts/preflight.py": {
+   "calls": [
+    "redzone/governor.py:load_options",
+    "redzone/governor.py:sample"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "data/footprint.jsonl"
+    ],
+    "uses": [
+     "config.yaml",
+     "default_config.yaml"
+    ],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/governor.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Preflight: a read-only go/no-go for the Mac before a TV session.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/press_probe.py": {
    "calls": [],
    "contracts": [],
@@ -14040,6 +15528,36 @@
     "STK-06"
    ]
   },
+  "scripts/queue_replay.py": {
+   "calls": [
+    "redzone/noggin/gamequeue.py:Entry",
+    "redzone/noggin/gamequeue.py:Route",
+    "redzone/noggin/gamequeue.py:Stick",
+    "redzone/noggin/gamequeue.py:on_failure",
+    "redzone/noggin/gamequeue.py:tick",
+    "redzone/noggin/gamequeue.py:view"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/noggin/gamequeue.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Replay queue decisions from a scenario file, offline, and time them for a 32-game slate.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/rc8_flip.py": {
    "calls": [
     "redzone/buffer_rc8.py:buffer_for",
@@ -14103,6 +15621,31 @@
     "untagged"
    ]
   },
+  "scripts/reach_grid.py": {
+   "calls": [
+    "scripts/coverage_audit.py:DevOnly"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "scripts/coverage_audit.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "How much of each Tier 1 is reachable on facts alone: the join point must be known before the stick has to start.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/reactgrade.py": {
    "calls": [
     "redzone/lab/reactgrade.py:load",
@@ -14126,6 +15669,41 @@
    "outputs": [],
    "owner": "unowned",
    "role": "[EXP-301] Grade the delay-and-react arms (lane 2's EXP-209 rows) per league and condition.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/redzone_reconstruct.py": {
+   "calls": [
+    "redzone/lab/leverage.py:high_leverage",
+    "redzone/moments/detect.py:detect",
+    "redzone/moments/detect.py:parse_ts",
+    "scripts/coverage_audit.py:DevOnly"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": [
+     "cuts.csv",
+     "summary.json",
+     "windows.csv"
+    ]
+   },
+   "inputs": [
+    "redzone/lab/leverage.py",
+    "redzone/models.py",
+    "redzone/moments/detect.py",
+    "scripts/coverage_audit.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Rebuild the NFL RedZone show a control room would plausibly have aired, from ESPN play-by-play.",
    "serves": [
     "untagged"
    ]
@@ -14501,6 +16079,42 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Session drill (sync hardening item 4): the real yttv_seek.enter_buffer against the Nov 6 post-tune banner, with and without the session guard's banner wait,...",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/show_scorecard.py": {
+   "calls": [
+    "redzone/models.py:League",
+    "redzone/moments/detect.py:detect",
+    "redzone/moments/tiers.py:family",
+    "redzone/moments/tiers.py:must_show",
+    "scripts/buffered_jump_sim.py:MR",
+    "scripts/buffered_jump_sim.py:maxrate_slates",
+    "scripts/buffered_jump_sim.py:run_maxrate",
+    "scripts/coverage_audit.py:DevOnly"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models.py",
+    "redzone/moments/detect.py",
+    "redzone/moments/tiers.py",
+    "scripts/buffered_jump_sim.py",
+    "scripts/coverage_audit.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[show scorecard] Info-only product scorecard per league: what the SIMULATED show let a viewer see, by moment tier.",
    "serves": [
     "untagged"
    ]
@@ -15125,6 +16739,40 @@
     "untagged"
    ]
   },
+  "scripts/value_leak_check.py": {
+   "calls": [
+    "redzone/noggin/factory.py:EVAL_FIRST_NIGHT",
+    "redzone/noggin/factory.py:night_of",
+    "scripts/coverage_audit.py:DevOnly",
+    "scripts/coverage_audit.py:LockedNightError"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "splits.json"
+    ],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/noggin/factory.py",
+    "scripts/coverage_audit.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/kaggle_gamevalue.py",
+    "scripts/kaggle_value_shards.py"
+   ],
+   "owner": "unowned",
+   "role": "Leak check for GameValue shards: exit 1 if any row is from a locked or fresh night or reads past its decision.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/watchdog_try.py": {
    "calls": [
     "redzone/channels.py:ChannelMap",
@@ -15323,13 +16971,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 1563,
-  "data_files": 185,
+  "calls": 1837,
+  "data_files": 193,
   "machines": 49,
-  "modules": 383,
-  "orphans": 15,
-  "unowned": 209,
-  "untagged": 315
+  "modules": 427,
+  "orphans": 31,
+  "unowned": 234,
+  "untagged": 358
  },
  "version": 2
 }
