@@ -41,6 +41,7 @@ from redzone.noggin import legal
 
 STAY_ID = legal.STAY.id
 NOT_FLOOR = 99        # trigger rank of anything the floor does not cover
+TD_WEIGHT = 1000.0    # plan_clips: a touchdown is worth more than any run without it
 
 # RedZone's reported order: score, red-zone entry, turnover, late one-possession game. Nick's major plays follow it.
 # Other leagues use the same shape through their own scoring kinds.
@@ -176,6 +177,49 @@ def pick_clip(cands: Sequence[tuple], now: float, flip_s: float, prep_worst_s: f
     fits = [c for c in cands if c is not first and c[3] <= first[3] and (c[1] != NOT_FLOOR or first[1] == NOT_FLOOR)
             and c[3] + max(flip_s + c[5], prep_worst_s) + flip_s <= first[6]]
     return min(fits, key=lambda c: (c[3], key(c)))[0] if fits else first[0]
+
+
+def clip_weight(ranks: Sequence[int]) -> float:
+    """What airing a clip is worth when the run is planned: one per owed moment inside it. A touchdown outweighs any number
+    of other clips, and a clip the floor doesn't cover only fills a gap nothing owed can use."""
+    if not ranks:
+        return 0.01
+    return len(ranks) + (TD_WEIGHT if min(ranks) == 0 else 0.0)
+
+
+def _front(states: list[tuple]) -> list[tuple]:
+    """The states nothing beats: no other is worth as much and leaves the screen free as early."""
+    out, end = [], float("inf")
+    for s in sorted(states, key=lambda x: (-x[0], x[1])):
+        if s[1] < end:
+            out.append(s)
+            end = s[1]
+    return out
+
+
+def plan_clips(cands: Sequence[tuple], free_at: float, flip_s: float, next_prep_s: float, keep=None, sure_prep_s: float | None = None):
+    """MUST-SHOW-3: the first clip of the most valuable run the TV can still air, or None. Each cand is (id, weight, window
+    open, last legal flip, seconds, wall time this stick is ready). Why: at a real rewind the window is about 35 s wide and
+    a clip about 30 s long, so the third play landing close to two others is the one that dies, and which one dies is a
+    scheduling question the trigger order alone answers badly. Windows are about equally wide, so a run goes in window
+    order. Only the first clip uses this stick; after each cut, the stick that left the screen needs next_prep_s for the
+    next clip (sure_prep_s, the worst case, in front of a touchdown). `keep`, the clip the stick already holds, wins a tie:
+    a stick throws its prep away only for a run really worth more."""
+    sure = next_prep_s if sure_prep_s is None else sure_prep_s
+    states: list[tuple] = [(0.0, free_at, None, None)]     # (value, screen free again, last cut, first clip)
+    for c in sorted(cands, key=lambda x: (x[3], x[2], str(x[0]))):
+        grown = list(states)
+        for value, end, cut, first in states:
+            ready = c[5] if cut is None else cut + (sure if c[1] >= TD_WEIGHT else next_prep_s)
+            at = max(end, c[2], ready)
+            if at <= c[3]:
+                grown.append((value + c[1], at + flip_s + c[4], at, c[0] if first is None else first))
+        states = _front([s for s in grown if s[3] == keep]) + _front([s for s in grown if s[3] != keep])
+    top = max(s[0] for s in states)
+    if top <= 0.0:
+        return None
+    won = [s for s in states if s[0] == top]
+    return keep if any(s[3] == keep for s in won) else min(won, key=lambda s: s[1])[3]
 
 
 def catchup_pick(clips: Iterable[tuple[str, int, float]], options: Sequence[brain.Option], show: Show, now: float,

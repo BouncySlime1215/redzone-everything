@@ -394,7 +394,8 @@ MR_GRID: list[tuple[str, dict]] = [
 @dataclass(frozen=True)
 class Arb:
     """policy="arbiter": the WP-17 floor over the max-rate model, one switch per rule, plus MUST-SHOW-2's catch-up.
-    Defaults are the WP-17 build ("best" in its harness): the before row of the MUST-SHOW-2 table."""
+    Defaults are the WP-17 build ("best" in its harness) plus MUST-SHOW-3's plan; plan=False, save_leave=False is the
+    MUST-SHOW-2 table's before row."""
     floor: bool = True        # a must-show clip outranks everything else a free stick could take
     reach: bool = True        # ...on any live game, not only the block's few
     repick: bool = True       # a stick mid-prep drops a lesser clip for a touchdown
@@ -404,9 +405,11 @@ class Arb:
     catchup_s: float = 0.0    # (MUST-SHOW-2) must-shows may still air this deep behind live, after the live picks
     order: str = "rank"       # must-show order among fresh clips: "rank" (trigger order), "edf" (TD first, then earliest deadline)
     merge_max_s: float = 0.0  # (MUST-SHOW-2) hurry-up plays that cannot be landed between air as one clip, up to this long
+    save_leave: bool = True   # (MUST-SHOW-3) a must-show about to die may leave a low-leverage, not-owed play mid-way (the rule allows those)
     fill: bool = False        # (MUST-SHOW-2) a clip that can air first goes in front of a best clip still waiting for its window
     protect: int = -1         # (MUST-SHOW-2) fill never goes in front of a clip of this trigger rank or better (0: a TD)
     cuts_cap: float = 0.0     # (MUST-SHOW-2) catch-up clips stop while the last 10 min already hold this many cuts (0: off)
+    plan: bool = True         # (MUST-SHOW-3) a free stick takes the first clip of the best known run (arbiter.plan_clips), as late as it can
 
 
 # arbiter policy: MR(policy="arbiter", arb=Arb(...)) replaces the fifo/edf key with the must-show floor. fifo and edf stay
@@ -623,6 +626,7 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None, fact
     ap = arb_rules.DEFAULT_PARAMS
     _late_ids: set[int] = set()
     rank_of: dict[int, tuple[int, str]] = {}
+    weight_of: dict[int, float] = {}                   # (MUST-SHOW-3) what airing this clip is worth to the plan
     visits: dict[str, int] = {}
     screen_log: list[tuple[float, float, int]] = []    # (cut, clip end, floor rank) of every clip aired
     hidden_log: list[list] = []                        # [assign, ready or drop, floor rank]: the hidden stick's jobs
@@ -635,6 +639,7 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None, fact
             for it in items[g]:
                 rank_of[id(it)] = min(fl[bisect.bisect_left(ts, it.land):bisect.bisect_right(ts, it.leave)],
                                       key=lambda x: (x[1], x[2]), default=(0.0, arb_rules.NOT_FLOOR, ""))[1:]
+                weight_of[id(it)] = arb_rules.clip_weight([x[1] for x in fl[bisect.bisect_left(ts, it.land):bisect.bisect_right(ts, it.leave)]])
 
     def high_at(g: str, at: float) -> bool:
         """Is the game close and late as of the plays at or before wall time `at`?"""
@@ -645,6 +650,7 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None, fact
     def is_floor(it: MRItem) -> bool:
         return rank_of[id(it)][0] != arb_rules.NOT_FLOOR
     joins_mid, joins_walk, leaves_mid, late_jumps, repeats, flips_held, shown_clip_s = 0, 0, 0, 0, 0, 0, 0.0
+    save_leaves = 0
 
     def vis_pos(at: float) -> float:
         return seg_pos + ((min(at, freeze_at) if freeze_at is not None else at) - seg_wall)
@@ -657,11 +663,74 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None, fact
             freeze_at = at     # already at a break: hold right here
             return
         nxt = min((a for a, _ in ads[vis["gid"]] if a >= pos), default=None)
-        freeze_at = None if nxt is None else at + max(0.0, nxt - pos - guard)
+        if nxt is None:
+            freeze_at = None
+            return
+        stop = nxt - guard
+        if arb and arb.plan:      # a play ending just before the break: don't freeze so near its whistle that the error lands inside it
+            ends = [e for _, e in spans[vis["gid"]] if stop - guard < e <= stop]
+            if ends:
+                stop = min(max(ends) + guard, nxt - 0.5)
+        freeze_at = at + max(0.0, stop - pos)
 
     set_freeze(t0)
 
+    def plan_pool(st: dict, t: float) -> list[tuple]:
+        """(MUST-SHOW-3) Every clip this stick could still air, as arbiter.plan_clips reads it. Same filters as assign; the
+        cost is the expected one, so asking again doesn't change the answer."""
+        out = []
+        now_on = active(t)
+        for it in jobs[bisect.bisect_left(lands, t - mu_max - 1.0):bisect.bisect_right(lands, t + 1.0)]:
+            if it.known_at > t or it.taken or it.shown or (it.gid not in now_on and not (arb.reach and is_floor(it))):
+                continue
+            floor = is_floor(it)
+            if not floor:
+                if arb.late and any(high_at(g, t) for g in used) and not high_at(it.gid, t):
+                    continue
+                if arb.budget and ap.visit_budget > 0 and visits.get(it.gid, 0) >= (
+                        ap.visit_budget if high_at(it.gid, t) else ap.visit_budget - ap.visit_reserve):
+                    continue
+            base = p.seek_s if st["gid"] == it.gid else prep_of.get(it.gid, p.prep_s)
+            out.append((id(it), weight_of[id(it)], it.land + mu_min - f, (deadline(it) if floor else it.land + mu_max_fresh) - f,
+                        it.leave - it.land, max(t + base + p.seek_step_s / 2.0, it.land + EDGE_S + 1.0), it, base))
+        return out
+
+    def plan_pick(st: dict, t: float, keep: MRItem | None = None):
+        """(first clip of the best run or None, the wall time this stick has to start it by)."""
+        pool = plan_pool(st, t)
+        if keep is not None:
+            pool.append((id(keep), weight_of[id(keep)], keep.land + mu_min - f, deadline(keep) - f, keep.leave - keep.land, st["ready_at"], keep, 0.0))
+        first = arb_rules.plan_clips([c[:6] for c in pool], max(t, clip_end), f, p.prep_s + p.seek_step_s / 2.0, id(keep) if keep is not None else None, p.prep_s + p.seek_step_s)
+        c = next((x for x in pool if x[0] == first), None)
+        return (None, None) if c is None else (c[6], c[2] - c[7] - p.seek_step_s - 1.0)
+
+    def plan_assign(st: dict, t: float) -> bool:
+        """(MUST-SHOW-3) Decide last: the stick stays free until the run's first clip needs it, so a play the feed reports
+        in the meantime can still change the pick."""
+        it, by = plan_pick(st, t)
+        st["wait_until"] = 0.0
+        if it is None:
+            return False
+        if t < by:
+            st["wait_until"] = by
+            return False
+        ready = max(t + mr_cost(st, it, t, p, rng, prep_of.get(it.gid)), it.land + EDGE_S + 1.0)
+        show = max(ready, it.land + mu_min - f)
+        if show + f > it.land + mu_max_fresh:
+            ready += (show - it.land - mu_max_fresh + f) / CATCHUP_STEP_S * CATCHUP_PRESS_S
+            show = max(ready, it.land + mu_min - f)
+        if show + f > deadline(it) or (not is_floor(it) and show + f > it.land + mu_max_fresh):
+            return False
+        if p.fail_p and rng.random() < p.fail_p:
+            ready += p.seek_s if st["gid"] == it.gid else prep_of.get(it.gid, p.prep_s)
+        it.taken = True
+        hidden_log.append([t, ready, rank_of[id(it)][0], st])
+        st.update(target=it, ready_at=ready, gid=it.gid, pos=it.land, pos_wall=ready, paused=True, err=rng.gauss(0.0, sd))
+        return True
+
     def assign(st: dict, t: float):
+        if arb and arb.plan:
+            return plan_assign(st, t)
         lo = bisect.bisect_left(lands, t - mu_max - 1.0)
         hi = bisect.bisect_right(lands, t + 1.0)
         best, best_key, best_cost, repeat_pool = None, None, None, []
@@ -745,7 +814,13 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None, fact
         for st in sorted(hidden, key=lambda s: s["free_at"]):
             if st["target"] is not None and t + f > deadline(st["target"]):
                 drop(st, t)
-            if arb and arb.repick and arb.floor and st["target"] is not None and st["ready_at"] > t:
+            if arb and arb.plan and st["target"] is not None:        # a play the feed just reported can change the run
+                known = bisect.bisect_right(by_known, t)
+                if known != st.get("planned_at"):
+                    st["planned_at"] = known
+                    if plan_pick(st, t, st["target"])[0] is not st["target"]:
+                        drop(st, t)
+            elif arb and arb.repick and arb.floor and st["target"] is not None and st["ready_at"] > t:
                 held = rank_of[id(st["target"])][0]
                 lo_ = bisect.bisect_left(lands, t - mu_max - 1.0)
                 if any(j.known_at <= t and not j.taken and not j.shown and rank_of[id(j)][0] < held
@@ -768,6 +843,18 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None, fact
                     stall_log.append((t, cut_at[-ap.ceiling_per_min] + 60.0))
                     t = cut_at[-ap.ceiling_per_min] + 60.0
                     continue
+                if busy and arb and arb.plan and arb.save_leave and st["target"] is not None and is_floor(st["target"]):
+                    # The clip on the stick would die waiting for this whistle: leave it, if that's a leave the rules allow.
+                    hold_to = t + max(0.05, max(busy) - pv + guard)
+                    tgt = st["target"]
+                    td_behind = any(j.known_at <= t and not j.taken and not j.shown and weight_of[id(j)] >= arb_rules.TD_WEIGHT
+                                    and deadline(j) - f < hold_to + f + (tgt.leave - tgt.land) + f
+                                    for j in jobs[bisect.bisect_left(lands, t - mu_max - 1.0):bisect.bisect_right(lands, t + 1.0)])
+                    if (hold_to + f > deadline(tgt) or td_behind) and not (high_at(vis["gid"], pv) or high_at(vis["gid"], pv + f + guard)) \
+                            and not any(is_floor(x) or x.known_at > t for x in items[vis["gid"]]
+                                    if x.start - guard < pv + f and pv - guard < x.end):
+                        busy = []
+                        save_leaves += 1
                 if busy:                          # the picture rolled into a play: hold the flip to its whistle
                     flips_held += 1
                     t = min(t_end, t + max(0.05, max(busy) - pv + guard))
@@ -829,6 +916,7 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None, fact
                 wakes += [st["ready_at"], st["target"].land + mu_min - f, deadline(st["target"]) - f + 0.01]
             else:
                 wakes.append(st["free_at"])
+                wakes.append(st.get("wait_until", 0.0))
                 i = bisect.bisect_right(by_known, t)
                 if i < len(by_known):
                     wakes.append(by_known[i])
@@ -855,7 +943,7 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None, fact
     if arb:
         break_s = sum(max(0.0, min(b_ - mu, e) - max(a - mu, s)) for g, a, b_, mu in segs for s, e in ads[g])
         late_shown = sum(1 for it in jobs if it.shown and it.gid and is_floor(it) and id(it) in _late_ids)
-        out.update(leaves_high=leaves_high, leaves_low=leaves_low, plays_missed_entry=missed_entry,
+        out.update(leaves_high=leaves_high, leaves_low=leaves_low, plays_missed_entry=missed_entry, save_leaves=save_leaves,
                    dead_air_pct=round(100.0 * (break_s + frozen_s) / max(1.0, (t_end - t0)), 1), frozen_s=round(frozen_s, 1),
                    catchup_clips=late_shown,
                    misses=_arb_misses(lg, items, used, facts, t0, t_end, screen_log, hidden_log, stall_log,
