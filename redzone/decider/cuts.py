@@ -27,7 +27,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from redzone.models import PERIOD_S, REGULATION, League
+from redzone.models import PERIOD_S, REGULATION, ByLeague, League
 from redzone.sources.espn import OT_S
 
 # ----------------------------------------------------------------------------- dead windows
@@ -183,7 +183,7 @@ PLAY_S = {League.NFL: 10.0, League.MLB: 8.0}
 AFTER_PLAY_S = 3.0           # celebration / whistle after a discrete play: not a clean landing yet
 CLOCK_RESUME_MARGIN_S = 3.0  # a restart worked back from the game clock: wallclock and clock rounding
 # Basketball: after an inbound the ball can be live for a full shot clock with nothing logged.
-SILENT_S = {League.NBA: 24.0}
+SILENT_S = ByLeague({League.NBA: 24.0, League.CBB: 30.0, League.WCBB: 30.0})   # college: a 30 s shot clock
 FROZEN_HOLD_S = 300.0        # after a frozen-wallclock stretch, distrust windows this long
 LEARNED_MAX_S = 1800.0       # a learned restart further out than this is a broken reading
 # How long before play resumes the picture should come up: the line-up / set / faceoff circle.
@@ -438,7 +438,7 @@ class DeadTracker:
                         cur.end, cur.exact = max(cur.start, m.lo), True
                     elif m.after is None and not m.faceoff:
                         # live action logged, no better evidence: play resumed before it at the latest
-                        cur.end = max(cur.start, m.lo - SILENT_S.get(lg, 0.0) - 2.0)
+                        cur.end = max(cur.start, m.lo - SILENT_S.get(self.league, 0.0) - 2.0)
                     if cur.end is not None:
                         out.append(cur)
                         cur = None
@@ -482,7 +482,7 @@ class DeadTracker:
         if self.fresh_at is None:
             return None
         lg = _lg(self.league)
-        return self.fresh_at - max(self.lag, self.lag_floor) - PLAY_S.get(lg, 0.0) - SILENT_S.get(lg, 0.0) - (
+        return self.fresh_at - max(self.lag, self.lag_floor) - PLAY_S.get(lg, 0.0) - SILENT_S.get(self.league, 0.0) - (
             0.0 if lg in (League.NFL, League.MLB) else 2.0)
 
     @staticmethod
