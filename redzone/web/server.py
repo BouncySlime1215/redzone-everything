@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 import re
 
 from redzone.channels import parse_yttv_link
+from redzone import userstate
 from redzone.config import LIMITS, ConfigError
 from redzone.engine import Engine
 from redzone.web import phone_v2
@@ -92,8 +93,69 @@ def _tap_status(engine: Engine, rec: dict) -> dict:
     return {"state": "done"}
 
 
+# ---- phone queue card (flag queue.enabled; WP-14) --------------------------------------------------------
+# Why: the phone shows what the hidden stick is lining up, in plain words, and never what happens next.
+# Only these keys ever leave the server: no tier, join time, value or outcome (gamequeue.view is already
+# spoiler-safe; this is the second lock).
+_CARD_KEYS = ("game", "level", "app", "prep_s", "owner", "reason", "flippable")
+LEVEL_WORDS = {
+    "R0": "No way to reach it", "R1": "Found, not tried yet", "R2": "Tried tonight, works",
+    "R3": "Playing on the other stick", "R4": "Buffered and read", "R5": "Ready to flip",
+}
+QUEUE_ROWS = 5
+
+
+def _queue_on(engine) -> bool:
+    try:
+        return bool(engine.cfg.get("queue.enabled", False))
+    except Exception:
+        return False
+
+
+def _safe_card(c) -> dict | None:
+    if not isinstance(c, dict) or not c.get("game"):
+        return None
+    out = {k: c.get(k) for k in _CARD_KEYS}
+    out["level_word"] = LEVEL_WORDS.get(str(c.get("level")), "")
+    return out
+
+
+def queue_card(gq, pins=()) -> dict:
+    """The phone card from snapshot["game_queue"]: top 5 rows (hidden stick first), plus the can't-reach list."""
+    gq = gq if isinstance(gq, dict) else {}
+    cards = [_safe_card(gq.get("hidden"))] + [_safe_card(c) for c in gq.get("up_next") or []]
+    rows = [c for c in cards if c][:QUEUE_ROWS]
+    pinned = set(pins)
+    for r in rows:
+        r["pinned"] = r["game"] in pinned or r.get("owner") == "pin"
+    return {"rows": rows, "cant_reach": [g for g in gq.get("cant_reach") or [] if isinstance(g, str)],
+            "pins": list(pins)}
+
+
 def build_app(engine: Engine) -> FastAPI:
     app = FastAPI(title="RedZone Everything", docs_url=None, redoc_url=None)
+    state_path = getattr(engine, "_user_state_path", None)
+    pins_path = state_path.with_name(userstate.PINS_FILE) if state_path else None
+    pins: list[str] = userstate.load_pins(pins_path) if pins_path else []
+    restored = {"done": False}
+
+    def _restore_pins() -> None:
+        """After a restart, hand the saved pins back to the queue once it is on."""
+        if restored["done"] or not _queue_on(engine):
+            return
+        restored["done"] = True
+        for g in list(pins):
+            try:
+                engine.action("pin", g, True)
+            except Exception:
+                pass
+
+    def _snap() -> dict:
+        snap = engine.snapshot()
+        if _queue_on(engine) and "game_queue" in snap:
+            _restore_pins()
+            snap = {**snap, "game_queue_card": queue_card(snap["game_queue"], pins)}
+        return snap
 
     @app.middleware("http")
     async def lan_only(request: Request, call_next):
@@ -150,7 +212,7 @@ def build_app(engine: Engine) -> FastAPI:
 
     @app.get("/api/state")
     async def state():
-        return JSONResponse(json.loads(json.dumps(engine.snapshot(), default=str)))
+        return JSONResponse(json.loads(json.dumps(_snap(), default=str)))
 
     @app.get("/api/machines")
     def machines_view(name: str = ""):
@@ -175,7 +237,7 @@ def build_app(engine: Engine) -> FastAPI:
     async def stream(request: Request):
         q: asyncio.Queue = asyncio.Queue()
         engine.subscribers.add(q)
-        q.put_nowait(("state", json.dumps(engine.snapshot(), default=str)))
+        q.put_nowait(("state", json.dumps(_snap(), default=str)))
 
         async def gen():
             try:
@@ -191,6 +253,48 @@ def build_app(engine: Engine) -> FastAPI:
                 engine.subscribers.discard(q)
         return StreamingResponse(gen(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.get("/api/queue")
+    async def queue_api():
+        if not _queue_on(engine):
+            return JSONResponse({"ok": False, "message": "queue is off"}, status_code=404)
+        _restore_pins()
+        return {"ok": True, **queue_card(engine.snapshot().get("game_queue"), pins)}
+
+    async def _queue_tap(kind: str, body: dict):
+        if not _queue_on(engine):
+            return JSONResponse({"ok": False, "message": "queue is off"}, status_code=404)
+        gid = body.get("game_id")
+        if not isinstance(gid, str) or not gid:
+            return {"ok": False, "message": "which game?"}
+        value = body.get("value", True if kind == "pin" else "up")
+        if kind == "pin":
+            value = bool(value)
+        elif value not in ("up", "down"):
+            return {"ok": False, "message": "move up or down"}
+        ok, message = engine.action(kind, gid, value)
+        if ok and kind == "pin":
+            if value and gid not in pins:
+                pins.append(gid)
+            elif not value and gid in pins:
+                pins.remove(gid)
+            if pins_path:
+                try:
+                    userstate.save_pins(pins_path, pins)
+                except OSError:
+                    pass
+        if ok:
+            for fn in ("decide", "broadcast"):
+                getattr(engine, fn, lambda: None)()
+        return {"ok": ok, "message": message}
+
+    @app.post("/api/queue/pin")
+    async def queue_pin(body: dict):
+        return await _queue_tap("pin", body)
+
+    @app.post("/api/queue/move")
+    async def queue_move(body: dict):
+        return await _queue_tap("move", body)
 
     @app.post("/api/action")
     async def action(body: dict):

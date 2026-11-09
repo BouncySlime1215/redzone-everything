@@ -15,6 +15,7 @@ const CHECK = {
 const STATUS = {
   "needs setup": ["chip--break", "link", "Needs setup"],
   blackout: ["chip--live", "octagon", "Blacked out"],
+  "at risk": ["chip--break", "alert", "At risk"],
   skip: ["", "minus", "Skipped"],
 };
 
