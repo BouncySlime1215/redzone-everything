@@ -67,6 +67,7 @@ def test_plan_waits_when_it_cannot_rewind():
 
 def test_nba_restart_worked_back_from_the_clock():
     dt = DeadTracker(League.NBA)
+    dt.add("q", 1500, 1500, "jumper", "misses jumper", "Jump Shot", 700.0, 2)   # the quarter seen from its start
     dt.add("a", 2000, 2000, "jumper", "makes jumper", "Jump Shot", 300.0, 2)
     dt.add("b", 2010, 2010, "foul", "shooting foul", "Shooting Foul", 290.0, 2)
     dt.add("c", 2030, 2030, "free_throw_-_1_of_2", "makes free throw 1 of 2", "Free Throw - 1 of 2", 290.0, 2)
@@ -85,6 +86,7 @@ def test_nba_restart_worked_back_from_the_clock():
 
 def test_nba_open_window_floors_and_frozen_wallclock():
     dt = DeadTracker(League.NBA)
+    dt.add("q", 1500, 1500, "jumper", "misses jumper", "Jump Shot", 700.0, 2)   # the quarter seen from its start
     dt.add("a", 2000, 2000, "jumper", "makes jumper", "Jump Shot", 300.0, 2)
     dt.add("b", 2010, 2010, "timeout", "Full timeout", "Full Timeout", 290.0, 2)
     dt.seen(2020, 10)

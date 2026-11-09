@@ -313,6 +313,7 @@ class DeadTracker:
         self.fresh_at: float | None = None
         self.lag: float = 10.0
         self._timeouts: dict[int | None, int] = {}
+        self._first_clock: dict[int | None, float | None] = {}   # period -> clock of the first entry seen in it
         self._last_stamp: tuple | None = None
         self.frozen_until: float = float("-inf")
         # Brain v3's entry point for the newest event: (event wallclock, (p10, p50, p90) seconds to the
@@ -344,10 +345,12 @@ class DeadTracker:
             after = "between_batters"
         tt = (type_text or "").lower()
         lg = _lg(self.league)
+        self._first_clock.setdefault(period, clock)
         if after == "timeout" and lg == League.NBA:
             # The first two timeouts of a quarter are the long (commercial) ones, whoever calls them.
             n = self._timeouts[period] = self._timeouts.get(period, 0) + 1
-            after = "timeout_long" if n <= 2 and not self.league.college else "timeout_short"
+            # ... a count that only holds for a period we saw start: ESPN's feed hands over the last 8 plays only.
+            after = "timeout_long" if n <= 2 and not self.league.college and self._saw_start(period) else "timeout_short"
         if lo == hi and clock is not None and lg not in (League.NFL, League.MLB):
             # ESPN's wallclock sometimes freezes for a stretch (every entry stamped alike while the
             # game clock runs): real times there are unknown, so no window there is certified.
@@ -453,6 +456,12 @@ class DeadTracker:
             out = [w if w.start > self.frozen_until else Window(w.start, w.start, w.kind) for w in out]
         self._windows = out
         return out
+
+    def _saw_start(self, period: int | None, within: float = 60.0) -> bool:
+        """Did the first entry we hold for this basketball period come within its first minute? Else timeouts may
+        have gone by before we joined it, and this one can't be called the period's first or second."""
+        first = self._first_clock.get(period)
+        return first is not None and period is not None and first >= _period_length(self.league, period) - within
 
     def _ran_in_later_period(self, m: Mark, p0: int | None) -> float | None:
         """Basketball: the game clock already run when this entry of a LATER period than the window's was logged, or
