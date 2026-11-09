@@ -32,7 +32,7 @@ from redzone.decider import gate
 from redzone.decider import whistle
 from redzone.decider.decider import ENTRY_EXEMPT, REDZONE, REEL, Candidate, Decider, Decision, FocusMode, Missed, State
 from redzone.decider.screen import (MIN_BREAK_S, PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
-                                   leave_gate, leave_window, screen_evidence)
+                                   leave_gate, screen_evidence)
 from redzone.models import GameState, League, Phase
 from redzone.moments import tier_of
 from redzone.moments.detect import _PEN_EXCLUDED
@@ -2013,7 +2013,7 @@ class Engine:
 
         def cut_veto() -> str:
             """Why this switch may not cut right now ("" = it may). [P1-ROOTCAUSE-04] Named for every kind, not only jumps."""
-            if d.kind != "user" and self.cfg.get("commit_gate.enabled", False):
+            if d.kind != "user" and (self.cfg.get("commit_gate.enabled", False) or getattr(d, "leave_held", False)):
                 return gate.commit_gate(self, d, before, target, cands, replay_exit)   # [WP-05] one gate, every non-tap kind
             if self.decider.user.paused or self.cfg.get("mode.dry_run", True):
                 return "paused_or_dry_run"
@@ -2268,21 +2268,9 @@ class Engine:
 
     def safe_to_leave(self, gid: str | None, required_s: float = 0.0) -> bool:
         """Re-checked right before a two-stick input flip: is a play on screen in the game we're leaving?"""
-        if not gid or gid in (REDZONE, REEL):   # [S-5] a pseudo game has no timeline and no play to cut
-            return True
-        if self.decider.replaying or self.decider.after_replay:
-            return time.time() >= max(self.decider.replay_until, self.decider.replay_exit_after)
-        if gid not in self.decider.timelines:
-            return False  # no screen timing evidence is not an open cutting window
-        if self.decider._ending_still_airing(gid, time.time()) > 0:
-            return False
-        g = self.merger.games.get(gid)
-        if g is not None and g.phase == Phase.POST:
-            return True   # its last play has aired (checked above): there's nothing left to cut
-        target = getattr(self.where.get(gid), "target", None) or "unknown"
-        gate = leave_window(self.decider.timelines[gid], self.delays.get(target), time.time(),
-                            self.cfg.get("decider.uncalibrated_sigma_s"), required_s)
-        return gate.safe
+        g = self.merger.games.get(gid or "")
+        return gate.leave_open(self.decider, gid, getattr(self.where.get(gid or ""), "target", None), g.phase if g is not None else None,
+                               time.time(), self.cfg.get("decider.uncalibrated_sigma_s"), required_s)
 
     def _preload_standby(self, cands: dict, redzone: str | None = None) -> None:
         """Two sticks: keep the hidden one on what the next switch most likely needs, so that switch

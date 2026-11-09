@@ -111,6 +111,7 @@ class Facts:
     last_switch_at: float | None = None
     min_gap_s: float = 0.0
     gate_ok: bool = True
+    leave_at_flip: bool = False       # [LEAVE-AT-FLIP] a shut leave gate or no landing yet doesn't take a cut off the list: the pick waits (Decider._arbiter)
     moment_lock: str = ""
     focus_game: str | None = None     # a focus mode is on: only this game (or a must-see, below)
     focus_must_see: bool = False
@@ -131,11 +132,11 @@ def legal_options(f: Facts) -> tuple[brain.Option, ...]:
         return (STAY,)
     if too_soon(f.last_switch_at, f.min_gap_s, f.now):
         return (STAY,)
-    if f.current and not may_leave(f.gate_ok, f.moment_lock):
+    if f.current and not may_leave(f.gate_ok or f.leave_at_flip, f.moment_lock):
         return (STAY,)
     opts = [STAY]
     for g in f.games:
-        if g.game_id == f.current or not g.tunable or g.dark or not g.landable or g.app.lower() in f.banned_apps:
+        if g.game_id == f.current or not g.tunable or g.dark or not (g.landable or f.leave_at_flip) or g.app.lower() in f.banned_apps:
             continue
         if f.focus_game and g.game_id != f.focus_game and not (f.focus_must_see and g.must_see):
             continue
@@ -156,7 +157,7 @@ def refusals(f: Facts, game_id: str) -> tuple[str, ...]:
         out.append("dwell")
     if too_soon(f.last_switch_at, f.min_gap_s, f.now):
         out.append("too_soon")
-    if f.current and not f.gate_ok:
+    if f.current and not f.gate_ok and not f.leave_at_flip:
         out.append("leave_gate")
     if f.current and f.moment_lock:
         out.append("moment_lock")
@@ -164,7 +165,7 @@ def refusals(f: Facts, game_id: str) -> tuple[str, ...]:
     if g is None:
         return (*out, "unknown_game")
     out += [n for n, hit in (("on_screen", game_id == f.current), ("not_tunable", not g.tunable), ("dark", g.dark),
-                             ("no_landing", not g.landable), ("banned_app", g.app.lower() in f.banned_apps),
+                             ("no_landing", not g.landable and not f.leave_at_flip), ("banned_app", g.app.lower() in f.banned_apps),
                              ("focus", bool(f.focus_game) and game_id != f.focus_game and not (f.focus_must_see and g.must_see)))
             if hit]
     return tuple(out)

@@ -24,6 +24,7 @@ Only `Machine.to()` moves a state; an undeclared move fails tests and logs a war
 | [decider.entry_wait](#decider.entry_wait) | `decider.Decider.entry_m` | [cut timing] a switch waiting for a dead ball to land on (bounded by decider.entry.max_wait_s.<league>) | 2 |
 | [decider.home](#decider.home) | `decider.Decider.home_m` | A break visit: the game we left only for its break (home_break_visit) and when to head back | 3 |
 | [decider.jump_break](#decider.jump_break) | `decider.Decider.jump_break_m` | [jump mode] per game: since when the feed has said 'break' (the break counts as on screen a delay later) | 2 |
+| [decider.leave_wait](#decider.leave_wait) | `decider.Decider.leave_m` | [legal.leave_at_flip] the arbiter's cut, remembered until the flip's leave rules and a dead-ball landing both allow it | 2 |
 | [decider.lock_wait](#decider.lock_wait) | `decider.Decider.lock_m` | [lock wait] your locked game can't be reached: wait with a reason and a retry, then give the lock up | 3 |
 | [decider.override](#decider.override) | `decider.Decider.override_m` | Your strongest override this tick, in the order the decider honours them (a view of UserState + safe mode) | 6 |
 | [decider.owner](#decider.owner) | `decider.Decider.owner_m` | Which decider owns the TV this tick: set once per decide(), the others' gates read it | 8 |
@@ -564,6 +565,22 @@ stateDiagram-v2
     [*] --> play
     play --> break
     break --> play
+```
+
+## decider.leave_wait
+
+Owner: `decider.Decider.leave_m`. [legal.leave_at_flip] the arbiter's cut, remembered until the flip's leave rules and a dead-ball landing both allow it
+
+| State | Meaning | Can move to |
+|---|---|---|
+| `idle` (initial) | no cut is waiting | waiting |
+| `waiting` | the cut to the key's game goes when leave and landing allow it, or expires (too long, can't be entered, not worth it) | idle |
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> waiting
+    waiting --> idle
 ```
 
 ## decider.lock_wait

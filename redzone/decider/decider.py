@@ -205,6 +205,24 @@ class Decision:
     defer_s: float = 0.0      # [EXP-803 A1] cut this long after the decision (a break's tail inside one tick)
     jump: dict | None = None  # [jump mode] why this jump: numbers and short codes only (data/jumps.jsonl)
     owner: str = ""           # [owner] which decider owned the TV on this tick (decider.owner: jump, normal, user...)
+    leave_held: bool = False  # [LEAVE-AT-FLIP] listed with the leave gate shut: the commit gate judges its flip, whatever commit_gate.enabled says
+
+
+def flip_gate():
+    """redzone.decider.gate: it imports this module, so it is imported on first use."""
+    from redzone.decider import gate
+    return gate
+
+
+@dataclass(frozen=True)
+class LeaveHold:
+    """[LEAVE-AT-FLIP] The arbiter's cut, waiting on the leave rules or a landing: what was picked, off which game, since when."""
+    option_id: str
+    target: str
+    kind: str
+    why: str              # the arbiter's reason ("floor:td", "brain"): says what "still worth it" means
+    current: str | None
+    at: float
 
 
 @dataclass
@@ -268,6 +286,7 @@ class Decider:
         self.override_m = M.OVERRIDE.new(clock=clock)    # your strongest override this tick
         self.lock_m = M.LOCK_WAIT.new(clock=clock)       # [lock wait]
         self.entry_m = M.ENTRY_WAIT.new(clock=clock)     # [cut timing] a whistle wait (was _entry_wait)
+        self.leave_m = M.LEAVE_WAIT.new(clock=clock)     # [legal.leave_at_flip] the arbiter's cut waiting on the leave rules
         self._dark_since: dict[str, float] = {}      # [P1-REVIEW-05] gid -> when an entry first waited on a feed that can't prove a dead ball
         self._dark_said: set[str] = set()            # ...and told the phone once
         self.entry_stuck: str | None = None          # the engine toasts this once: nothing else to go to
@@ -392,8 +411,9 @@ class Decider:
     _start_retry_at: float = 0.0
     _entry_last: float = 0.0
     home_leaks: int = 0
+    _leave_pick: LeaveHold | None = None
     _LAZY = {"owner_m": M.OWNER, "screen_m": M.DECIDER_SCREEN, "start_m": M.START, "gone_m": M.SCREEN_GONE, "home_m": M.DECIDER_HOME,
-             "safe_m": M.SAFE, "override_m": M.OVERRIDE, "lock_m": M.LOCK_WAIT, "entry_m": M.ENTRY_WAIT}
+             "safe_m": M.SAFE, "override_m": M.OVERRIDE, "lock_m": M.LOCK_WAIT, "entry_m": M.ENTRY_WAIT, "leave_m": M.LEAVE_WAIT}
 
     def __getattr__(self, name: str):
         spec = Decider._LAZY.get(name)
@@ -565,6 +585,7 @@ class Decider:
                 "home": {**self.home_m.view(now, history=0), "game": self._home, "return_at": self._home_at},
                 "safe": self.safe_m.view(now, history=0), "override": self.override_m.view(now, history=0),
                 "lock_wait": self.lock_m.view(now, history=0), "entry_wait": self.entry_m.view(now, history=0),
+                "leave_wait": self.leave_m.view(now, history=0),
                 "jump_break": self.jump_break_m.view(now), "home_leaks": self.home_leaks}
 
     # ----- inputs -----------------------------------------------------------
@@ -709,6 +730,7 @@ class Decider:
             d = Decision(now, "stay", self.current, f"restart: holding the saved game's leverage ({d.reason})", d.state,
                          d.gate, want=d.target)
         d = self._safe(d, cands, now, home_before)
+        self._leave_settle(d, now)
         if d.action not in ("switch", "replay") and self._home is not None and self._home != home_before[0]:
             # [home] a filter turned a switch into a stay without putting the planned visit back: never leak it
             self.home_leaks += 1
@@ -766,7 +788,8 @@ class Decider:
             dwell_kinds=tuple(self._lc("decider.dwell.kinds", cur, None) or ()),
             last_switch_at=self.history[-1][0] if self.history else None,
             min_gap_s=float(c.get("noggin.pick.min_gap_s", 0.0)),
-            gate_ok=bool(gate and gate.safe), moment_lock=(cur.scored.lock or "") if cur is not None else "",
+            gate_ok=bool(gate and gate.safe), leave_at_flip=self._leave_at_flip(),
+            moment_lock=(cur.scored.lock or "") if cur is not None else "",
             focus_game=u.focus_game if u.focus_mode != FocusMode.AUTOPILOT else None,
             focus_must_see=u.focus_mode == FocusMode.FOCUS_MUST_SEE,
             banned_apps=HardRules.from_config(c).banned_apps, games=tuple(rows))
@@ -2028,9 +2051,13 @@ class Decider:
         all still run on it. Your tap, crunch, a finished game and the other hard kinds are never touched."""
         if not self._arbiter_on() or self.replaying or self.after_replay or d.action == "replay" or self.safe_mode \
                 or self.user.paused or (d.action == "switch" and d.kind in ARBITER_KEEPS):
+            self._leave_end("the arbiter isn't choosing this tick", now)
             return d
+        if self._leave_pick is not None and (held := self._leave_held(d, cands, now, home_before)) is not None:
+            return held
         p = self._arbiter_params()
-        opts = legal.legal_options(self.legal_facts(cands, now))
+        facts = self.legal_facts(cands, now)
+        opts = legal.legal_options(facts)
         inp = brain.BrainInput(tick=len(self.log), now=now, options=opts)
         base = arbiter.STAY_ID if d.action != "switch" else f"cut:{d.target}"
         show = self._arbiter_show(cands, now, p)
@@ -2040,7 +2067,8 @@ class Decider:
         self.arbiter_log[ch.why] += 1
         o = ch.option
         if d.action == "stay" and o is not None and o.verb == "stay" and not ch.why.startswith("floor:") \
-                and (rp := self._arbiter_catchup(cands, opts, show, now, p)) is not None:
+                and (rp := self._arbiter_catchup(cands, legal.legal_options(replace(facts, leave_at_flip=False)) if facts is not None and self._leave_at_flip() else opts,
+                                                show, now, p)) is not None:
             self.arbiter_log["catchup"] += 1
             return self._replay_decision(rp, State.REPLAY, f"arbiter: catch-up ({d.reason})", now)
         if o is None or o.id == base or (ch.why == "thinned" and d.kind == "break_visit"):
@@ -2051,7 +2079,90 @@ class Decider:
         if o.game_id is None or legal.kind_of(o.verb) is None:
             return d
         self._home_restore(home_before, f"arbiter: {ch.why}")
+        if self._leave_at_flip():   # the flag lists it whatever the leave and the landing say: it goes only when both allow it
+            cut = Decision(now, "switch", o.game_id, f"arbiter: {ch.why}", d.state, kind=legal.kind_of(o.verb), leave_held=True)
+            veto = self._leave_blocker(cut, facts, cands, now)
+            if not veto:
+                return cut
+            self._leave_begin(LeaveHold(o.id, o.game_id, cut.kind, ch.why, self.current, now), veto, now)
+            return Decision(now, "stay", self.current, f"arbiter: {ch.why}, waiting ({veto})", d.state, d.gate, want=o.game_id)
         return Decision(now, "switch", o.game_id, f"arbiter: {ch.why}", d.state, kind=legal.kind_of(o.verb))
+
+    # ----- [LEAVE-AT-FLIP] a cut refused only by the leave or the landing is remembered, and goes when neither refuses -----
+
+    def _leave_at_flip(self) -> bool:
+        return bool(self.cfg.get("legal.leave_at_flip", False))
+
+    def _leave_begin(self, h: LeaveHold, veto: str, now: float) -> None:
+        self._leave_pick, self.leave_m.key = h, h.target
+        self.leave_m.to("waiting", f"{h.why}: {h.target} waits ({veto})", now=now)
+
+    def _leave_end(self, why: str, now: float) -> None:
+        if self._leave_pick is None:
+            return
+        self._leave_pick = None
+        self.leave_m.to("idle", why, now=now)
+
+    def _leave_settle(self, d: Decision, now: float) -> None:
+        """The tick's verdict on a held pick. A stay: it keeps waiting (a later stage may hold a released cut for a tick)."""
+        h = self._leave_pick
+        if h is not None and d.action != "stay":
+            self._leave_end("released" if d.target == h.target else f"a {d.kind or d.action} switch came first", now)
+
+    def _leave_expired(self, h: LeaveHold, cands: dict[str, Candidate], now: float) -> str:
+        """Why the remembered pick is off ("" = still good): too long, the screen moved, the target can't be entered at all
+        (gone, dark, untunable, a lock or a block of Nick's), not worth it. A landing that isn't there yet is what it waits for."""
+        if now - h.at >= float(self.cfg.get("legal.leave_wait_s", 45.0)):
+            return "waited too long"
+        if self.current != h.current:
+            return "the screen moved"
+        facts = self.legal_facts(cands, now)
+        refused = legal.refusals(facts, h.target)
+        if refused:
+            return f"entry not clean: {refused[0]}"
+        return "" if self._leave_worth(h, facts, cands, now) else "no longer worth it"
+
+    def _leave_worth(self, h: LeaveHold, facts: legal.Facts, cands: dict[str, Candidate], now: float) -> bool:
+        """A pick of the floor: its must-show is still owed. A brain's: it still beats staying by the margin (a brain with no
+        opinion this tick doesn't end the wait)."""
+        p = self._arbiter_params()
+        inp = brain.BrainInput(tick=len(self.log), now=now, options=legal.legal_options(facts))
+        if h.why.startswith("floor:"):
+            show = self._arbiter_show(cands, now, p)
+            pool = arbiter.lowest_l1_class([o for o in inp.options if o.verb == "stay" or legal.kind_of(o.verb)], show.current_class)
+            return h.option_id in arbiter.must_show_floor(pool, self._arbiter_musts(cands, now, p), show.current, now, p)
+        out = self._arbiter_think(inp)
+        if out is None or not brain.valid(out, inp) or not out.scores:
+            return True
+        s = out.scores
+        return s.get(h.option_id, -math.inf) - s.get(arbiter.STAY_ID, -math.inf) >= p.brain_margin
+
+    def _leave_blocker(self, cut: Decision, facts: legal.Facts, cands: dict[str, Candidate], now: float) -> str:
+        """What stops this cut this tick ("" = nothing): no dead-ball landing, else the flip's leave rules."""
+        row = next((g for g in facts.games if g.game_id == cut.target), None)
+        return "no_landing" if row is None or not row.landable else flip_gate().leave_veto(self, cut, cands, now)
+
+    def _leave_status(self, cands: dict[str, Candidate], now: float) -> tuple[str, str]:
+        """The held pick this tick: ("go", ""), ("wait", what stops it) or ("over", why it expired; the hold is cleared)."""
+        h = self._leave_pick
+        why = self._leave_expired(h, cands, now)
+        if why:
+            self._leave_end(why, now)
+            return "over", why
+        cut = Decision(now, "switch", h.target, "", State.WATCHING, kind=h.kind, leave_held=True)
+        veto = self._leave_blocker(cut, self.legal_facts(cands, now), cands, now)
+        return ("wait", veto) if veto else ("go", "")
+
+    def _leave_held(self, d: Decision, cands: dict[str, Candidate], now: float, home_before) -> Decision | None:
+        """This tick's decision while a cut waits to leave. The pick is not chosen again. None: it expired, the arbiter chooses."""
+        h = self._leave_pick
+        status, veto = self._leave_status(cands, now)
+        if status == "over":
+            return None
+        self._home_restore(home_before, f"arbiter: {h.why}, waiting to leave")
+        if status == "go":
+            return Decision(now, "switch", h.target, f"arbiter: {h.why}, left at the flip", d.state, kind=h.kind, leave_held=True)
+        return Decision(now, "stay", self.current, f"arbiter: {h.why}, waiting ({veto})", d.state, d.gate, want=h.target)
 
     def _arbiter_catchup(self, cands: dict[str, Candidate], opts: tuple, show: arbiter.Show, now: float,
                          p: arbiter.Params) -> Missed | None:

@@ -117,6 +117,16 @@ ENTRY_WAIT = Spec(
     edges={"idle": ("waiting",), "waiting": ("idle", "waiting")},
     initial="idle")
 
+LEAVE_WAIT = Spec(
+    "decider.leave_wait", owner="decider.Decider.leave_m",
+    doc="[legal.leave_at_flip] the arbiter's cut, remembered until the flip's leave rules and a dead-ball landing both allow it",
+    states={
+        "idle": "no cut is waiting",
+        "waiting": "the cut to the key's game goes when leave and landing allow it, or expires (too long, can't be entered, not worth it)",
+    },
+    edges={"idle": ("waiting",), "waiting": ("idle",)},
+    initial="idle")
+
 JUMP_BREAK = Spec(
     "decider.jump_break", owner="decider.Decider.jump_break_m", keyed=True,
     doc="[jump mode] per game: since when the feed has said 'break' (the break counts as on screen a delay later)",
