@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 from agent.kaggle import sports_common as sc
-from redzone.moments.detect import detect
+from redzone.moments.detect import clock_s, detect
 from redzone.noggin import value_shards as V
 from scripts import holdset, kaggle_value_shards as K, value_leak_check as LC
 from scripts.holdset_public import hoops_summary
@@ -160,11 +160,32 @@ def test_tenths_on_the_clock_pass_the_exact_raw_comparison(tmp_path, capsys):
     assert rc == 0 and "raw_audit" not in text
 
 
-def test_a_clock_one_second_ahead_still_fails_the_raw_audit(tmp_path, capsys):
-    assert _run(tmp_path, _attach(tmp_path, [_tenths()])) == 0
+CLOCK_FORMS = ["3.9", "29.2", "0.1", "59.1", "0:03.9", "0:29.2", "0:00.1", "00:03.9", "3", "0:03", "1:05", "12:00", "", "bad"]
+
+
+@pytest.mark.parametrize("form", CLOCK_FORMS)
+def test_the_audit_parses_every_clock_form_as_the_feature_does(form):
+    c = clock_s({"clock": {"displayValue": form}})
+    assert LC._raw_clock(form) == (-1.0 if c is None else float(c))
+
+
+def test_a_game_mixing_bare_seconds_and_tenths_passes_the_exact_raw_comparison(tmp_path, capsys):
+    df = _game("g1")
+    df["clock_display_value"] = [CLOCK_FORMS[i % 12] for i in range(len(df))]
+    rc = _run(tmp_path, _attach(tmp_path, [df]))
+    text = capsys.readouterr().out
+    assert rc == 0 and "raw_audit" not in text
+
+
+@pytest.mark.parametrize("pattern", ["0:{s}.{d}", "{s}.{d}"], ids=["minute_form", "bare_seconds"])
+def test_a_clock_one_second_ahead_still_fails_the_raw_audit(tmp_path, capsys, pattern):
+    df = _game("g1")
+    df["clock_display_value"] = [pattern.format(s=59 - i % 50, d=i % 9 + 1) for i in range(len(df))]
+    assert _run(tmp_path, _attach(tmp_path, [df])) == 0
     raw = tmp_path / "r" / "nba" / "pbp_2024.parquet"
     df = pd.read_parquet(raw)
     # every play's clock one second further on (nearer the end of the period) than the shard recorded
-    df["clock_display_value"] = [f"0:{58 - i % 50}.{i % 9 + 1}" for i in range(len(df))]
+    df["clock_display_value"] = [pattern.format(s=58 - i % 50, d=i % 9 + 1) for i in range(len(df))]
     df.to_parquet(raw, index=False)
-    assert any("raw_audit" in f and "clock_left" in f for f in _raw_fails(tmp_path, capsys).fails)
+    fails = [f for f in _raw_fails(tmp_path, capsys).fails if "raw_audit" in f and "clock_left" in f]
+    assert fails and "raw clock text" in fails[0]

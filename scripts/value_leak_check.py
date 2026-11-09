@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -32,6 +31,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from redzone.moments.detect import clock_s  # noqa: E402
 from redzone.noggin import factory  # noqa: E402
 from scripts import holdset, holdset_public  # noqa: E402
 from scripts.coverage_audit import DevOnly, LockedNightError  # noqa: E402
@@ -143,17 +143,10 @@ def check_nights(df: pd.DataFrame, league: str, name: str, archive: Path | None,
 
 
 def _raw_clock(v) -> float:
-    """The same representation the feature uses (redzone.moments.detect.clock_s), -1 when there is no clock: M:SS[.d] is
-    whole seconds, a bare number keeps its tenths. Written out here so this file still does not import the builder. The
-    comparison stays exact, so a clock one second off fails."""
-    text = v if isinstance(v, str) else ""
-    m = re.match(r"^(\d+):(\d+)", text)
-    if m:
-        return int(m[1]) * 60.0 + int(m[2])
-    try:
-        return float(text)
-    except ValueError:
-        return -1.0
+    """The feature's own parser (redzone.moments.detect.clock_s), -1 when there is no clock: one parser, so the raw audit
+    can only disagree when the value does. The comparison stays exact, so a clock one second off fails."""
+    c = clock_s({"clock": {"displayValue": v if isinstance(v, str) else ""}})
+    return -1.0 if c is None else float(c)
 
 
 def _n(v, missing: float = 0.0) -> float:
@@ -174,11 +167,12 @@ def _raw_plays(league: str, g: pd.DataFrame) -> dict[float, list[dict]]:
         if league == "nfl":
             home, away = _n(r.total_home_score), _n(r.total_away_score)
             yl = _n(r.yardline_100, None)
-            play = {"period": _n(r.qtr, -1.0), "clock_left": _raw_clock(r.time), "down": _n(r.down), "distance": _n(r.ydstogo),
+            play = {"period": _n(r.qtr, -1.0), "clock_left": _raw_clock(r.time), "clock_text": r.time, "down": _n(r.down), "distance": _n(r.ydstogo),
                     "yards_to_goal": -1.0 if yl is None else max(0.0, yl - _n(r.yards_gained))}
         else:
             home, away = _n(r.home_score), _n(r.away_score)
-            play = {"period": _n(r.period_number, -1.0), "clock_left": _raw_clock(r.clock_display_value), "down": -1.0,
+            play = {"period": _n(r.period_number, -1.0), "clock_left": _raw_clock(r.clock_display_value),
+                    "clock_text": r.clock_display_value, "down": -1.0,
                     "distance": -1.0, "yards_to_goal": -1.0}
         out.setdefault(wall, []).append({**play, "abs_margin": abs(home - away), "total_points": home + away})
     return out
@@ -208,7 +202,8 @@ def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name
             continue
         if not any(all(_same(getattr(r, f), c[f]) for f in RAW_FIELDS) for c in candidates):
             diff = [f"{f} {getattr(r, f)} vs raw {candidates[-1][f]}" for f in RAW_FIELDS if not _same(getattr(r, f), candidates[-1][f])]
-            rep.fail("raw_audit", f"{name}: game {gid} feature differs from the raw source: {', '.join(diff[:3])}")
+            rep.fail("raw_audit", f"{name}: game {gid} feature differs from the raw source: {', '.join(diff[:3])} "
+                            f"(raw clock text {candidates[-1]['clock_text']!r})")
         window = [(w, tier) for w, tier in events if r.decision_t < w <= r.decision_t + HORIZON_S]
         value = sum(holdset.WEIGHTS[tier] for _, tier in window)
         tier1 = float(any(tier == 1 and w <= r.decision_t + TIER1_S for w, tier in window))
