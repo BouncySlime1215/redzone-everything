@@ -24,7 +24,9 @@ docs/agents/data/2026-11-09-redzone-viewers-production.md. That is why each is i
 
 `clip_key` and `pick_clip` order the clips a free hidden stick could prepare (MUST-SHOW-2: live picks first, then the
 catch-up replays Nick accepted, and never parked waiting while a clip that can air first expires). The max-rate sim
-(scripts/buffered_jump_sim.py policy="arbiter") measures them; the live decider does not call them yet.
+(scripts/buffered_jump_sim.py policy="arbiter") measures them. `catchup_pick` is the live decider's use of the same order
+(ARBITER-LIVE): only a tick the arbiter already chose to stay, only a must-show that already aired unseen, and the replay
+goes out as the decider's ordinary replay decision, so the commit gate judges it at the flip.
 
 Pure: no clock, no I/O, no decider import. `now` is passed in, so a replay gives the same choice.
 """
@@ -68,6 +70,7 @@ class Params:
     ceiling_per_min: int = 3          # RedZone's reported peak, a hard ceiling; 0 turns it off
     brain_margin: float = 3.0         # a brain's cut must beat stay by this many points
     flip_margin_s: float = 1.0        # seconds of slack on every route's deadline
+    catchup_s: float = 600.0          # a missed must-show may still air as a replay this long after the play; 0 turns it off
 
     @classmethod
     def from_config(cls, get: Callable[..., object]) -> "Params":
@@ -173,6 +176,23 @@ def pick_clip(cands: Sequence[tuple], now: float, flip_s: float, prep_worst_s: f
     fits = [c for c in cands if c is not first and c[3] <= first[3] and (c[1] != NOT_FLOOR or first[1] == NOT_FLOOR)
             and c[3] + max(flip_s + c[5], prep_worst_s) + flip_s <= first[6]]
     return min(fits, key=lambda c: (c[3], key(c)))[0] if fits else first[0]
+
+
+def catchup_pick(clips: Iterable[tuple[str, int, float]], options: Sequence[brain.Option], show: Show, now: float,
+                 p: Params = DEFAULT_PARAMS) -> str | None:
+    """The missed must-show to replay on a tick the arbiter chose to stay, or None. Each clip is (id, trigger rank, when the
+    play happened). Live picks come first, so a catch-up never starts while anything but stay is on the table for a
+    reason of its own: an empty option list means the leave gate or a user block said no, and a game of a better L1 class
+    (your team, crunch) on screen or on offer keeps the TV. Ordered by `clip_key`, as the sim orders them."""
+    cuts = _cuts(options)
+    if p.catchup_s <= 0 or not cuts or show.current_class < 2 or any(o.l1_class < 2 for o in cuts):
+        return None
+    if (p.ceiling_per_min > 0 and show.cuts_60s >= p.ceiling_per_min) or (p.last_game and show.live_games <= 1):
+        return None
+    late = [c for c in clips if c[1] != NOT_FLOOR and now - c[2] <= p.catchup_s]
+    if not late:
+        return None
+    return min(late, key=lambda c: clip_key(c[1], True, now, c[2] + p.catchup_s, "rank", True))[0]
 
 
 def must_of(league: str, kind: str, game_id: str, air_at: float, moment_id: str = "", p: Params = DEFAULT_PARAMS) -> Must | None:

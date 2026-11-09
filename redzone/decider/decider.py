@@ -2002,10 +2002,14 @@ class Decider:
         opts = legal.legal_options(self.legal_facts(cands, now))
         inp = brain.BrainInput(tick=len(self.log), now=now, options=opts)
         base = arbiter.STAY_ID if d.action != "switch" else f"cut:{d.target}"
-        ch = arbiter.choose(inp, self._arbiter_think(inp), base, musts=self._arbiter_musts(cands, now, p),
-                            show=self._arbiter_show(cands, now, p), p=p)
+        show = self._arbiter_show(cands, now, p)
+        ch = arbiter.choose(inp, self._arbiter_think(inp), base, musts=self._arbiter_musts(cands, now, p), show=show, p=p)
         self.arbiter_log[ch.why] += 1
         o = ch.option
+        if d.action == "stay" and o is not None and o.verb == "stay" and not ch.why.startswith("floor:") \
+                and (rp := self._arbiter_catchup(cands, opts, show, now, p)) is not None:
+            self.arbiter_log["catchup"] += 1
+            return self._replay_decision(rp, State.REPLAY, f"arbiter: catch-up ({d.reason})", now)
         if o is None or o.id == base or (ch.why == "thinned" and d.kind == "break_visit"):
             return d        # the budget trims whipping, never a break visit: that one fills dead air
         if o.verb == "stay":
@@ -2015,6 +2019,30 @@ class Decider:
             return d
         self._home_restore(home_before, f"arbiter: {ch.why}")
         return Decision(now, "switch", o.game_id, f"arbiter: {ch.why}", d.state, kind=legal.kind_of(o.verb))
+
+    def _arbiter_catchup(self, cands: dict[str, Candidate], opts: tuple, show: arbiter.Show, now: float,
+                         p: arbiter.Params) -> Missed | None:
+        """[ARBITER-LIVE] A must-show that aired unseen, as an ordinary replay decision (arbiter.catchup_s). Only the existing
+        queue, so everything that keeps a replay off the screen still applies (_parkable: YouTube TV reaches about 95 s
+        back), and the commit gate judges it at the flip like any other replay. Not with buffered jump: its hidden stick is
+        the next cut and the engine parks no replay on it (_scan_missed keeps no queue then)."""
+        queue = getattr(self, "queue", ())       # empty on every tick without a missed play
+        cur = cands.get(self.current or "")
+        if not queue or self.buffered_on() or not self.cfg.get("replay.enabled", True) or self._home is not None \
+                or self.current is None or cur is None or _holds_replays(cur.scored) or cur.scored.crunch_now or cur.scored.high_leverage or self._crunch_on(cands):
+            return None
+        games = self._replay_pool(cands)
+        ready = {f"{m.game_id}:{m.pid}": m for m in queue
+                 if m.game_id != self.current and not (m.seen_live or m.replayed) and m.retry_at <= now
+                 and self._parkable(m, now) and self._replayable(games.get(m.game_id))}
+        pick = arbiter.catchup_pick([(i, self._arbiter_missed_rank(m, p), m.t) for i, m in ready.items()], opts, show, now, p)
+        return ready.get(pick) if pick is not None else None
+
+    def _arbiter_missed_rank(self, m: Missed, p: arbiter.Params) -> int:
+        """The trigger rank of a queued play, from its own Timeline row. A play the Timeline no longer holds isn't owed."""
+        tl = self.timelines.get(m.game_id)
+        e = next((e for e in reversed(tl.events) if e.kind == "play" and (e.pid or e.label) == m.pid), None) if tl else None
+        return arbiter.trigger_rank(tl.league.value, self._moment_word(tl, e), p) if e is not None else arbiter.NOT_FLOOR
 
     def _arbiter_rotation(self, rows: list, baseline: str, cands: dict[str, Candidate], now: float) -> tuple[str, dict] | None:
         """[jump mode] The floor and the copied rules over the rotation's pick, among games already proven to land on
