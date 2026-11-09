@@ -6,6 +6,7 @@ nights of an archive, then asks of every moment redzone/moments detects (play-by
   python scripts/show_scorecard.py                          # nfl and nba, dev nights only (--split fit)
   python scripts/show_scorecard.py --leagues nba --games 4 --max-slates 5 --json out.json
   --nights 20261101,20261102   only those nights; exit 2 if any is locked or fresh
+  --leagues nfl --games 4 --policy arbiter --catchup-s 600 --merge-s 120 --fill --protect 0    # MUST-SHOW-2's build; no flags after --policy = WP-17's
 
 Columns: must-show seen (tiers.must_show kinds; wider than tier 1 for football), setup seen (tier 2), highlight seen
 (tier 3), cuts per 10 min against the planner band (docs/agents/planner/2026-11-09-product-per-league.md section 4),
@@ -27,6 +28,7 @@ needs a number for "did the show show the must-see moments" that does not edit a
 from __future__ import annotations
 
 import argparse
+import collections
 import contextlib
 import json
 import random
@@ -138,7 +140,7 @@ def pct(pair: list[int]) -> float | None:
 
 
 def score_league(league: str, root: Path, p: bjs.MR, seed: int, min_games: int, max_slates: int,
-                 only_nights: list[str] | None = None) -> dict:
+                 only_nights: list[str] | None = None, detail: bool = False) -> dict:
     """One league's row over its dev slates. Raises LockedNightError for a locked/fresh night or an unknown split."""
     lg = League(league)
     dev = DevOnly(root, league)
@@ -151,9 +153,11 @@ def score_league(league: str, root: Path, p: bjs.MR, seed: int, min_games: int, 
     group = bjs.maxrate_slates(league_dir, lg, min_games, 0, set(ids))
     group = group[:max_slates] if max_slates else group
     seen, rows = empty(), []
+    ceilings: dict[str, list[int]] = {}
     for n, (_day, games) in enumerate(group):
+        facts = bjs.arbiter_facts(league_dir, lg, [g for g, _ in games]) if p.policy == "arbiter" else None
         with capture_items() as items:
-            r = bjs.run_maxrate(games, p, random.Random(seed + n), lg)
+            r = bjs.run_maxrate(games, p, random.Random(seed + n), lg, facts)
         if not r:
             continue
         t0, t_end = window(dict(games))
@@ -162,13 +166,30 @@ def score_league(league: str, root: Path, p: bjs.MR, seed: int, min_games: int, 
             f = league_dir + f"/summary_{gid}.json"
             moments += detect_moments(league, json.load(open(f)), gid).moments
         merge(seen, seen_counts(league, moments, items, t0, t_end))
+        if detail:
+            must = [(m.game_id, m.t) for m in moments if tiers.must_show(league, m.kind)]
+            for key, depth in (("live", 0.0), ("catchup", p.arb.catchup_s if p.arb else 0.0)):
+                tot, reach, air = bjs.must_ceiling(items, must, t0, t_end, p, depth)
+                c = ceilings.setdefault(key, [0, 0, 0])
+                c[0] += tot; c[1] += reach; c[2] += air
         rows.append(r)
     if not rows:
         return {"league": league, "slates": 0}
     mins = sum(r["minutes"] for r in rows)
     jumps = sum(r["jumps"] for r in rows)
     games = p.games or statistics.median(r["games_used"] for r in rows)   # the held set, else the slate
+    extra = {}
+    if detail:      # policy="arbiter" only; the seen counts above are the same function either way
+        misses = collections.Counter(m for r in rows for m in r.get("misses", ()))
+        extra = {"td_seen_pct": pct(seen["by_kind"].get("td", [0, 0])),
+                 "leaves_high": sum(r.get("leaves_high", 0) for r in rows), "leaves_low": sum(r.get("leaves_low", 0) for r in rows),
+                 "plays_missed_entry": sum(r.get("plays_missed_entry", 0) for r in rows),
+                 "catchup_clips": sum(r.get("catchup_clips", 0) for r in rows),
+                 "ceilings": ceilings,
+                 "dead_air_pct": round(sum(r.get("dead_air_pct", 0.0) * r["minutes"] for r in rows) / mins, 1),
+                 "misses": {f"{k}|{w}": n for (k, w), n in sorted(misses.items())}}
     return {
+        **extra,
         "league": league, "slates": len(rows), "minutes": round(mins), "games_live": games,
         "must_seen_pct": pct(seen["must"]), "must_n": seen["must"][1],
         "setup_seen_pct": pct(seen["setup"]), "setup_n": seen["setup"][1],
@@ -193,7 +214,25 @@ def render(rows: list[dict]) -> str:
         out.append(f"{r['league']:<6}{r['slates']:>7}{r['games_live']:>6.0f}{f(r['must_seen_pct']):>8}{r['must_n']:>6}"
                    f"{f(r['setup_seen_pct']):>8}{r['setup_n']:>6}{f(r['highlight_seen_pct']):>8}{r['highlight_n']:>6}"
                    f"{r['cuts_per_10']:>9.1f}{b:>8}{r['mid_play_joins']:>9}{r['mid_play_leaves']:>10}{r['ad_s_per_10']:>8.1f}")
+    for r in rows:
+        if r.get("misses") is not None:
+            out += render_misses(r)
     return "\n".join(out)
+
+
+def render_misses(r: dict) -> list[str]:
+    """Missed must-shows by kind and reason, and the ceilings (policy="arbiter" only). Counts of moments."""
+    whys = bjs.MISS_WHYS
+    table: dict[str, collections.Counter] = {}
+    for k, n in r["misses"].items():
+        kind, why = k.split("|")
+        table.setdefault(kind, collections.Counter())[why] += n
+    out = [f"\n{r['league']} misses by kind and why (moments; seen% is the scorecard's own):", f"{'kind':<10}{'seen%':>7}" + "".join(f"{w[:9]:>10}" for w in whys) + f"{'catchup':>10}"]
+    for kind, c in sorted(table.items(), key=lambda kv: -sum(kv[1].values())):
+        out.append(f"{kind:<10}{r['by_kind'].get(kind, 0):>7.1f}" + "".join(f"{c[w]:>10}" for w in whys) + f"{c['seen_catchup']:>10}")
+    for name, (tot, reach, air) in r["ceilings"].items():
+        out.append(f"ceiling ({name}): {air} of {tot} airable = {100.0 * air / max(1, tot):.1f}%; {tot - reach} never a clean clip even merged")
+    return out
 
 
 def main(argv=None) -> int:
@@ -211,6 +250,13 @@ def main(argv=None) -> int:
     ap.add_argument("--max-slates", type=int, default=0, help="0 = every dev slate")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--json", type=Path)
+    ap.add_argument("--policy", choices=("fifo", "arbiter"), default="fifo", help="arbiter: the must-show floor picks (scripts/buffered_jump_sim.py Arb)")
+    ap.add_argument("--catchup-s", type=float, default=0.0, help="arbiter: must-shows may still air this deep behind live")
+    ap.add_argument("--order", choices=("rank", "edf", "show"), default="rank", help="arbiter: must-show order")
+    ap.add_argument("--fill", action="store_true", help="arbiter: a clip that can air first goes in front of one still waiting")
+    ap.add_argument("--protect", type=int, default=-1, help="arbiter: --fill never goes in front of this trigger rank or better")
+    ap.add_argument("--merge-s", type=float, default=0.0, help="arbiter: air hurry-up plays as one clip up to this long")
+    ap.add_argument("--cuts-cap", type=float, default=0.0, help="arbiter: no catch-up clips while the last 10 min hold this many cuts")
     a = ap.parse_args(argv)
     if a.split != "fit":
         print(f"REFUSED: --split {a.split} would read the locked nights; this scorecard reads dev nights only", file=sys.stderr)
@@ -221,11 +267,12 @@ def main(argv=None) -> int:
         print(f"unknown league {bad}: pick from {LEAGUES}", file=sys.stderr)
         return 2
     only = [n for n in a.nights.split(",") if n] or None
-    p = replace(bjs.MR(), games=a.games, sticks=a.sticks, seek_s=a.seek, prep_s=a.prep)
+    p = replace(bjs.MR(), games=a.games, sticks=a.sticks, seek_s=a.seek, prep_s=a.prep, policy=a.policy,
+                arb=bjs.Arb(catchup_s=a.catchup_s, order=a.order, fill=a.fill, protect=a.protect, merge_max_s=a.merge_s, cuts_cap=a.cuts_cap) if a.policy == "arbiter" else None)
     rows = []
     for league in leagues:
         try:
-            rows.append(score_league(league, a.archive, p, a.seed, a.min_games, a.max_slates, only))
+            rows.append(score_league(league, a.archive, p, a.seed, a.min_games, a.max_slates, only, a.policy == "arbiter"))
         except LockedNightError as e:
             print(f"REFUSED: {e}", file=sys.stderr)
             return 2

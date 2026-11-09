@@ -17,6 +17,7 @@ counted as joins_walk, not joins_mid_play (which stays the strict Rule #1 counte
   python scripts/buffered_jump_sim.py --maxrate --mr-mix prime-heavy --league nba   # per-app prep on a real app mix (WP-11)
   python scripts/buffered_jump_sim.py --maxrate-mix --archive data/archive/nba --league nba --json mix.json   # the mix table
   --split fit|train|valid reads dev nights only (redzone/lab/splits.py); `test` (the locked set) is refused.
+  --maxrate --mr-policy arbiter   the must-show floor picks (Arb knobs; show_scorecard.py --policy arbiter has the table)
 
 Numbers only; no play text leaves this script.
 Why: Tests the buffered-jump pass bar (jumps per minute, Rule #1) on recorded slates (docstring). The mix model (WP-11)
@@ -40,6 +41,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from redzone.decider import buffered as bj  # noqa: E402
 from redzone.noggin.gamequeue import Params as QueueParams  # noqa: E402
+from redzone.noggin import arbiter as arb_rules  # noqa: E402
 from redzone.decider.cuts import AFTER_PLAY_S, PLAY_S, DeadTracker, _is_action, walk_params  # noqa: E402
 from redzone.models import League  # noqa: E402
 from redzone.sources.espn import _kind, _ts, flatten_plays  # noqa: E402
@@ -341,6 +343,7 @@ class MR:
     lag_s: float = 20.0             # feed lag mean / sd, as in the editor sim
     lag_sd: float = 6.0
     mix: tuple[tuple[str, float], ...] = ()   # (WP-11) (app, share) of the slate; () = off, every game costs prep_s
+    arb: "Arb | None" = None        # (MUST-SHOW-2) knobs for policy="arbiter"; None there = Arb()
 
 
 @dataclass
@@ -360,6 +363,7 @@ class MRItem:
 # whistle), so this is an ASSUMPTION, not a measurement; the report says so and tonight's test measures it.
 MR_PLAY_MEAN_S, MR_PLAY_SD_S, MR_PLAY_MIN_S, MR_PLAY_MAX_S = 6.5, 2.0, 3.0, 12.0
 MR_TIGHT_AFTER_S = 1.0      # the whistle
+CATCHUP_STEP_S, CATCHUP_PRESS_S = 15.0, 0.35     # catch-up: one seek step back per 15 s of depth; an assumption, 0.35 s a press
 MR_LAND_LOOK_S = 0.5        # the Rule #1 check looks at the first half second of the picture
 MR_WINDOW_S = 600.0
 # (league dir, min games, max games, name) for --maxrate-sweep; filled by MR_GRID's rows
@@ -385,6 +389,42 @@ MR_GRID: list[tuple[str, dict]] = [
     ("all games, 4 sticks, seek 4, prep 8, flip 1", {"sticks": 4, "seek_s": 4.0, "prep_s": 8.0, "flip_s": 1.0}),
     ("all games, 4 sticks, same, tight dwell", {"sticks": 4, "seek_s": 4.0, "prep_s": 8.0, "flip_s": 1.0, "_only": MR_FOOTBALL, **TIGHT}),
 ]
+
+
+@dataclass(frozen=True)
+class Arb:
+    """policy="arbiter": the WP-17 floor over the max-rate model, one switch per rule, plus MUST-SHOW-2's catch-up.
+    Defaults are the WP-17 build ("best" in its harness): the before row of the MUST-SHOW-2 table."""
+    floor: bool = True        # a must-show clip outranks everything else a free stick could take
+    reach: bool = True        # ...on any live game, not only the block's few
+    repick: bool = True       # a stick mid-prep drops a lesser clip for a touchdown
+    late: bool = True         # late in the slate, non-floor clips only from close games
+    budget: bool = True       # non-floor visits per game (arbiter.visit_budget)
+    ceiling: bool = True      # arbiter.ceiling_per_min
+    catchup_s: float = 0.0    # (MUST-SHOW-2) must-shows may still air this deep behind live, after the live picks
+    order: str = "rank"       # must-show order among fresh clips: "rank" (trigger order), "edf" (TD first, then earliest deadline)
+    merge_max_s: float = 0.0  # (MUST-SHOW-2) hurry-up plays that cannot be landed between air as one clip, up to this long
+    fill: bool = False        # (MUST-SHOW-2) a clip that can air first goes in front of a best clip still waiting for its window
+    protect: int = -1         # (MUST-SHOW-2) fill never goes in front of a clip of this trigger rank or better (0: a TD)
+    cuts_cap: float = 0.0     # (MUST-SHOW-2) catch-up clips stop while the last 10 min already hold this many cuts (0: off)
+
+
+# arbiter policy: MR(policy="arbiter", arb=Arb(...)) replaces the fifo/edf key with the must-show floor. fifo and edf stay
+# byte-for-byte; every branch that reads `arb` is guarded. Why: reproduce WP-17's number and break down what it misses.
+def arbiter_facts(league_dir: str, lg: League, gids) -> dict:
+    """{gid: (floor [(t, rank, kind)], leverage [(wall, high)])} from each game's summary.
+    What the arbiter policy may know once a play's feed entry has arrived; opened only for the ids the caller allows."""
+    from redzone.lab.leverage import high_leverage
+    from redzone.moments.detect import detect
+    league = lg.value
+    out = {}
+    for g in gids:
+        with open(os.path.join(league_dir, f"summary_{g}.json")) as fh:
+            d = json.load(fh)
+        floor = sorted((m.t, arb_rules.trigger_rank(league, m.kind), m.kind) for m in detect(league, d, g).moments
+                       if arb_rules.trigger_rank(league, m.kind) != arb_rules.NOT_FLOOR)
+        out[g] = (floor, sorted((t, bool(high_leverage(lg, x))) for x in flatten_plays(lg, d) if (t := _ts(x.get("wallclock")))))
+    return out
 
 
 def mr_guard(p: MR) -> float:
@@ -503,10 +543,34 @@ def mr_cost(st: dict, it: MRItem, t: float, p: MR, rng: random.Random, prep: flo
     return base + (rng.uniform(0.0, p.seek_step_s) if p.seek_step_s > 0 else 0.0)
 
 
-def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> dict:
+def mr_merge(its: list[MRItem], guard: float, max_s: float) -> None:
+    """Hurry-up plays too close to land between (not clean) become one clip from the first's landing to the last's leave,
+    in place (the show scorecard reads this same list). Only when both outer ends are clean and it fits in max_s."""
+    out: list[MRItem] = []
+    i = 0
+    while i < len(its):
+        j = i
+        while j + 1 < len(its) and (its[j + 1].land - guard < its[j].end or its[j].leave + guard > its[j + 1].start):
+            j += 1
+        a, b = its[i], its[j]
+        if j > i and b.leave - a.land <= max_s and (not i or a.land - guard >= its[i - 1].end) \
+                and (j + 1 == len(its) or b.leave + guard <= its[j + 1].start):
+            out.append(MRItem(a.gid, a.land, b.leave, a.start, b.end, b.known_at))
+        else:
+            out.extend(its[i:j + 1])
+        i = j + 1
+    its[:] = out
+
+
+def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None, facts: dict | None = None) -> dict:
     """The TV shows one clip at a time; each hidden stick seeks or tunes to the next play and parks. Rule #1 is checked
-    against truth at every landing and leave: the true picture is the parked position + a per-seek error."""
+    against truth at every landing and leave: the true picture is the parked position + a per-seek error.
+    policy="arbiter" needs `facts` (arbiter_facts): each clip's must-show rank, causal through known_at like every pick."""
     lg = lg or LG
+    is_arb = p.policy == "arbiter"
+    arb = (p.arb or Arb()) if is_arb else None
+    if is_arb and facts is None:
+        raise ValueError('policy="arbiter" needs facts=arbiter_facts(...)')
     plays = dict(games)
     first = {g: q[0][0] for g, q in plays.items()}
     last = {g: q[-1][0] for g, q in plays.items()}
@@ -528,6 +592,9 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
         return {live[(off + i) % len(live)] for i in range(min(p.games, len(live)))}
     lag = {g: max(5.0, rng.gauss(p.lag_s, p.lag_sd)) for g in plays}
     items = {g: mr_items(g, plays[g], lg, p, rng, lag[g]) for g in used}
+    if arb and arb.merge_max_s > 0:
+        for g in used:
+            mr_merge(items[g], mr_guard(p), arb.merge_max_s)
     spans = {g: mr_truth_spans(g, plays[g], lg, items[g], p) for g in used}
     app_of = assign_apps(order, p.mix)
     prep_of = {g: app_prep_s(a) for g, a in app_of.items()}     # {} when no mix: every call falls back to p.prep_s
@@ -537,7 +604,7 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
     jobs = sorted((it for g in used for it in items[g] if it.clean), key=lambda it: it.land)
     lands = [it.land for it in jobs]
     by_known = sorted(it.known_at for it in jobs)
-    mu_min, mu_max = EDGE_S + p.behind_min, EDGE_S + max(p.behind_max, p.replay_depth_s)
+    mu_min, mu_max = EDGE_S + p.behind_min, EDGE_S + max(p.behind_max, p.replay_depth_s, arb.catchup_s if arb else 0.0)
     mu_max_fresh = EDGE_S + p.behind_max
     guard = mr_guard(p)
     sd = guard / p.guard_sigmas if p.guard_sigmas else p.err_sd
@@ -553,6 +620,30 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
     vis, clip_end, seg_wall, seg_pos = sticks[0], t0, t0, t0 - EDGE_S - 75.0   # the first picture is whatever is on
     freeze_at = None
     cut_at, mid_at, segs = [], [], []
+    ap = arb_rules.DEFAULT_PARAMS
+    _late_ids: set[int] = set()
+    rank_of: dict[int, tuple[int, str]] = {}
+    visits: dict[str, int] = {}
+    screen_log: list[tuple[float, float, int]] = []    # (cut, clip end, floor rank) of every clip aired
+    hidden_log: list[list] = []                        # [assign, ready or drop, floor rank]: the hidden stick's jobs
+    stall_log: list[tuple[float, float]] = []          # cuts the ceiling held back
+    leaves_high, leaves_low, missed_entry, frozen_s = 0, 0, 0, 0.0
+    if arb:
+        for g in used:
+            fl = facts[g][0]
+            ts = [x[0] for x in fl]
+            for it in items[g]:
+                rank_of[id(it)] = min(fl[bisect.bisect_left(ts, it.land):bisect.bisect_right(ts, it.leave)],
+                                      key=lambda x: (x[1], x[2]), default=(0.0, arb_rules.NOT_FLOOR, ""))[1:]
+
+    def high_at(g: str, at: float) -> bool:
+        """Is the game close and late as of the plays at or before wall time `at`?"""
+        rows = facts[g][1]
+        i = bisect.bisect_right(rows, (at, True)) - 1
+        return rows[i][1] if i >= 0 else False
+
+    def is_floor(it: MRItem) -> bool:
+        return rank_of[id(it)][0] != arb_rules.NOT_FLOOR
     joins_mid, joins_walk, leaves_mid, late_jumps, repeats, flips_held, shown_clip_s = 0, 0, 0, 0, 0, 0, 0.0
 
     def vis_pos(at: float) -> float:
@@ -574,10 +665,17 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
         lo = bisect.bisect_left(lands, t - mu_max - 1.0)
         hi = bisect.bisect_right(lands, t + 1.0)
         best, best_key, best_cost, repeat_pool = None, None, None, []
+        cands: list[tuple] = []
         now_on = active(t)
         for it in jobs[lo:hi]:
-            if it.known_at > t or it.taken or it.gid not in now_on:
+            if it.known_at > t or it.taken or (it.gid not in now_on and not (arb and arb.reach and is_floor(it))):
                 continue
+            if arb and not is_floor(it):
+                if arb.late and any(high_at(g, t) for g in used) and not high_at(it.gid, t):
+                    continue
+                if arb.budget and ap.visit_budget > 0 and visits.get(it.gid, 0) >= (
+                        ap.visit_budget if high_at(it.gid, t) else ap.visit_budget - ap.visit_reserve):
+                    continue
             if it.shown:
                 if it.shown <= p.replay_repeats:
                     repeat_pool.append(it)
@@ -589,8 +687,23 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
             show = max(ready, it.land + mu_min - f)
             if show + f > deadline(it):
                 continue
+            if arb and show + f > it.land + mu_max_fresh:         # past the live window: catch-up
+                if not is_floor(it) or (arb.cuts_cap and sum(c > t - MR_WINDOW_S for c in cut_at[-int(arb.cuts_cap):])
+                                        >= arb.cuts_cap):
+                    continue
+                ready += (show - it.land - mu_max_fresh + f) / CATCHUP_STEP_S * CATCHUP_PRESS_S     # the longer press run back
+                show = max(ready, it.land + mu_min - f)
+                if show + f > deadline(it):
+                    continue
             fresh = show + f > it.land + mu_max_fresh       # False sorts first: a play inside the window before a late one
-            key = (fresh, show, deadline(it)) if p.policy == "fifo" else (fresh, deadline(it), show)
+            if arb and arb.fill:
+                cands.append((id(it), rank_of[id(it)][0], fresh, show, deadline(it), it.leave - it.land,
+                              (deadline(it) if fresh else it.land + mu_max_fresh) - f, it, ready))
+            if arb:
+                key = arb_rules.clip_key(rank_of[id(it)][0] if arb.floor else arb_rules.NOT_FLOOR, fresh, show, deadline(it),
+                                         arb.order, arb.catchup_s > 0)
+            else:
+                key = (fresh, show, deadline(it)) if p.policy == "fifo" else (fresh, deadline(it), show)
             if best_key is None or key < best_key:
                 best, best_key, best_cost = it, key, ready
         if best is None:
@@ -603,17 +716,27 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
                     key = (True, ready, -it.land)
                     if best_key is None or key < best_key:
                         best, best_key, best_cost = it, key, ready
+        if cands:
+            pick = arb_rules.pick_clip(cands, t, f, p.prep_s + p.seek_step_s, arb.order, arb.catchup_s > 0, protect_rank=arb.protect)
+            best, best_cost = next(((c[7], c[8]) for c in cands if c[0] == pick), (best, best_cost))
         if best is None:
             return False
         if p.fail_p and rng.random() < p.fail_p:
             best_cost += p.seek_s if st["gid"] == best.gid else prep_of.get(best.gid, p.prep_s)
         best.taken = True
+        if arb:
+            hidden_log.append([t, best_cost, rank_of[id(best)][0], st])
         st.update(target=best, ready_at=best_cost, gid=best.gid, pos=best.land, pos_wall=best_cost, paused=True,
                   err=rng.gauss(0.0, sd))
         return True
 
     def drop(st: dict, t: float):
         st["target"].taken = False
+        if arb:
+            for h in reversed(hidden_log):
+                if h[3] is st:
+                    h[1] = t
+                    break
         st.update(target=None, free_at=t)
 
     t = t0
@@ -622,6 +745,13 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
         for st in sorted(hidden, key=lambda s: s["free_at"]):
             if st["target"] is not None and t + f > deadline(st["target"]):
                 drop(st, t)
+            if arb and arb.repick and arb.floor and st["target"] is not None and st["ready_at"] > t:
+                held = rank_of[id(st["target"])][0]
+                lo_ = bisect.bisect_left(lands, t - mu_max - 1.0)
+                if any(j.known_at <= t and not j.taken and not j.shown and rank_of[id(j)][0] < held
+                       and rank_of[id(j)][0] <= ap.repick_max_rank and j.land + mu_max - f > t + p.prep_s
+                       for j in jobs[lo_:bisect.bisect_right(lands, t + 1.0)]):
+                    drop(st, t)
             if st["target"] is None and t >= st["free_at"]:
                 assign(st, t)
         wakes = []
@@ -633,6 +763,11 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
                 pv = vis_pos(t)
                 frozen = freeze_at is not None and t >= freeze_at
                 busy = [] if frozen else [e for s_, e in spans.get(vis["gid"], []) if s_ - guard < pv + f and pv - guard < e - 0.01]
+                if arb and arb.ceiling and ap.ceiling_per_min > 0 and len(cut_at) >= ap.ceiling_per_min \
+                        and t - cut_at[-ap.ceiling_per_min] < 60.0:
+                    stall_log.append((t, cut_at[-ap.ceiling_per_min] + 60.0))
+                    t = cut_at[-ap.ceiling_per_min] + 60.0
+                    continue
                 if busy:                          # the picture rolled into a play: hold the flip to its whistle
                     flips_held += 1
                     t = min(t_end, t + max(0.05, max(busy) - pv + guard))
@@ -645,6 +780,13 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
                 if in_play(spans.get(vis["gid"], []), pv_true, pv_true + f):
                     leaves_mid += 1
                     mid_at.append(t)
+                    if arb:
+                        if high_at(vis["gid"], pv_true):
+                            leaves_high += 1
+                        else:
+                            leaves_low += 1
+                if arb and in_play(spans[it.gid], true_pos - f, true_pos):
+                    missed_entry += 1
                 if in_play(spans[it.gid], true_pos, true_pos + 0.5):
                     if in_walk(walks[it.gid], true_pos, true_pos + 0.5):
                         joins_walk += 1
@@ -656,8 +798,15 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
                 if b > seg_wall:
                     segs.append((vis["gid"], seg_wall, b, seg_wall - (seg_pos + vis["err"])))
                 cut_at.append(t)
+                if arb and freeze_at is not None and t > freeze_at:
+                    frozen_s += t - max(freeze_at, seg_wall)
+                if arb:
+                    screen_log.append((t, t + f + (it.leave - it.land), rank_of[id(it)][0]))
+                    visits[it.gid] = visits.get(it.gid, 0) + 1
                 late_jumps += landed - it.land > mu_max_fresh
                 repeats += it.shown > 0
+                if arb and landed - it.land > mu_max_fresh:
+                    _late_ids.add(id(it))
                 it.shown += 1
                 it.taken = False
                 vis.update(free_at=t, target=None, paused=False, pos=pv, pos_wall=t)
@@ -672,6 +821,10 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
         else:
             wakes.append(clip_end)
         for st in hidden:
+            if arb and arb.repick and arb.floor:
+                i = bisect.bisect_right(by_known, t)
+                if i < len(by_known):
+                    wakes.append(by_known[i])
             if st["target"] is not None:
                 wakes += [st["ready_at"], st["target"].land + mu_min - f, deadline(st["target"]) - f + 0.01]
             else:
@@ -681,6 +834,8 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
                     wakes.append(by_known[i])
         wakes = [w for w in wakes if w > t]
         t = min(wakes + [t_end]) if wakes else t + 0.5
+    if arb and freeze_at is not None and t_end > freeze_at:
+        frozen_s += t_end - max(freeze_at, seg_wall)
     b = min(t_end, freeze_at) if freeze_at is not None else t_end
     if b > seg_wall:
         segs.append((vis["gid"], seg_wall, b, seg_wall - (seg_pos + vis["err"])))
@@ -693,10 +848,119 @@ def run_maxrate(games, p: MR, rng: random.Random, lg: League | None = None) -> d
         windows.append(sum(1 for c in cut_at if w0 <= c < w0 + MR_WINDOW_S))
         w0 += MR_WINDOW_S
     supply = sum(1 for g in used for it in items[g] if t0 <= it.start and it.end <= t_end and g in active(it.start + EDGE_S + 75.0))
-    return {"games": len(plays), "games_used": len(used), "minutes": round(mins, 1), "jumps": len(cut_at), "windows": windows,
-            "plays_shown": shown, "supply": supply, "joins_mid_play": joins_mid, "joins_walk": joins_walk,
-            "leaves_mid_play": leaves_mid, "ad_s": round(ad_s, 1), "clip_s": round(shown_clip_s, 1),
-            "flips_held": flips_held, "repeats": repeats, "late_jumps": late_jumps}
+    out = {"games": len(plays), "games_used": len(used), "minutes": round(mins, 1), "jumps": len(cut_at), "windows": windows,
+           "plays_shown": shown, "supply": supply, "joins_mid_play": joins_mid, "joins_walk": joins_walk,
+           "leaves_mid_play": leaves_mid, "ad_s": round(ad_s, 1), "clip_s": round(shown_clip_s, 1),
+           "flips_held": flips_held, "repeats": repeats, "late_jumps": late_jumps}
+    if arb:
+        break_s = sum(max(0.0, min(b_ - mu, e) - max(a - mu, s)) for g, a, b_, mu in segs for s, e in ads[g])
+        late_shown = sum(1 for it in jobs if it.shown and it.gid and is_floor(it) and id(it) in _late_ids)
+        out.update(leaves_high=leaves_high, leaves_low=leaves_low, plays_missed_entry=missed_entry,
+                   dead_air_pct=round(100.0 * (break_s + frozen_s) / max(1.0, (t_end - t0)), 1), frozen_s=round(frozen_s, 1),
+                   catchup_clips=late_shown,
+                   misses=_arb_misses(lg, items, used, facts, t0, t_end, screen_log, hidden_log, stall_log,
+                                      p, arb, mu_min, mu_max, f, prep_of, _late_ids))
+    return out
+
+
+MISS_WHYS = ("rule_never_a_clean_clip", "rule_ceiling", "already_past", "prep_time", "two_sticks", "another_must_on", "lesser_or_idle")
+
+
+def must_ceiling(its: dict[str, list[MRItem]], moments, t0: float, t_end: float, p: MR, catchup_s: float) -> tuple[int, int, int]:
+    """Hindsight ceiling for one TV and two sticks: the most must-show moments that could air in full with no feed lag, no
+    prep and every pick perfect. Every clip's window is the same width, so airing clips in landing order costs almost
+    nothing (it only misorders the rare long merged clip): a near-exact bound, one pass. (moments total, in any clean clip, airable)."""
+    total, reachable, by_it = 0, 0, {}
+    for g, t in moments:
+        if not (t0 <= t <= t_end):
+            continue
+        total += 1
+        it = next((x for x in its[g] if x.land <= t <= x.leave), None)
+        if it is not None and it.clean:
+            reachable += 1
+            by_it[id(it)] = (it, by_it.get(id(it), (it, 0))[1] + 1)
+    f = p.flip_s
+    width = max(p.behind_max, catchup_s) - p.behind_min
+    dp = [0.0]         # dp[w]: the earliest wall time the screen is free having aired w must-show moments
+    for it, w in sorted(by_it.values(), key=lambda x: x[0].land):
+        r = it.land + EDGE_S + p.behind_min - f
+        d = it.leave - it.land + f
+        grown = dp + [math.inf] * w
+        for done in range(len(dp) - 1, -1, -1):
+            if dp[done] == math.inf:
+                continue
+            end = max(dp[done], r) + d
+            if end <= r + width + d and end < grown[done + w]:
+                grown[done + w] = end
+        dp = grown
+    return total, reachable, max((w for w, v in enumerate(dp) if v < math.inf), default=0)
+
+
+def _covered(iv: list[tuple[float, float]], lo: float, hi: float) -> float:
+    """Seconds of [lo, hi] inside the union of the intervals `iv`."""
+    tot, cur = 0.0, lo
+    for a, b in sorted(iv):
+        a, b = max(a, cur), min(b, hi)
+        if b > a:
+            tot += b - a
+            cur = b
+    return tot
+
+
+def _gaps(iv: list[tuple[float, float]], lo: float, hi: float) -> list[tuple[float, float]]:
+    """The parts of [lo, hi] outside the union of the intervals `iv`."""
+    out, cur = [], lo
+    for a, b in sorted(iv):
+        if a > cur:
+            out.append((cur, min(a, hi)))
+        cur = max(cur, b)
+        if cur >= hi:
+            break
+    if cur < hi:
+        out.append((cur, hi))
+    return [(a, b) for a, b in out if b > a]
+
+
+def _arb_misses(lg, items, used, facts, t0, t_end, screen_log, hidden_log, stall_log, p, arb, mu_min, mu_max, f, prep_of, late_ids):
+    """Every must-show moment the sim did not air, with the reason from what the screen and the hidden stick were doing
+    through its whole legal window; a seen moment that aired as a catch-up reads "seen_catchup". Report only: read after
+    the run, never by a pick. [(kind, why)] (see MISS_WHYS)."""
+    from redzone.moments import tiers
+    must_iv = [(a, b) for a, b, r in screen_log if r != arb_rules.NOT_FLOOR]
+    hid_must = [(a, b) for a, b, r, _ in hidden_log if r != arb_rules.NOT_FLOOR]
+    out = []
+    for g in used:
+        for t, _rank, kind in facts[g][0]:
+            if not (tiers.must_show(lg.value, kind) or kind in arb_rules.DEFAULT_PARAMS.floor_extra) or not (t0 <= t <= t_end):
+                continue
+            it = next((x for x in items[g] if x.land <= t <= x.leave), None)
+            if it is not None and it.shown:
+                if id(it) in late_ids:
+                    out.append((kind, "seen_catchup"))
+                continue
+            if it is None or not it.clean:
+                out.append((kind, "rule_never_a_clean_clip"))
+                continue
+            w_end = it.land + mu_max - f
+            w_start = max(it.known_at, it.land + mu_min - f, t0)
+            min_prep = min(p.seek_s, prep_of.get(it.gid, p.prep_s))
+            if w_start > w_end - min_prep:
+                out.append((kind, "already_past"))
+                continue
+            if _covered(must_iv, w_start, w_end) >= (w_end - w_start) - 1.0:
+                out.append((kind, "another_must_on"))
+                continue
+            gaps = _gaps(must_iv, w_start, w_end)
+            if _covered(stall_log, w_start, w_end) > 0 and any(a < gap[1] and gap[0] < b for gap in gaps for a, b in stall_log):
+                out.append((kind, "rule_ceiling"))
+                continue
+            if all(_covered(hid_must, a, b) >= (b - a) - 1.0 for a, b in gaps):
+                out.append((kind, "two_sticks"))
+                continue
+            free = [gap for gap in gaps if _covered(hid_must, gap[0], gap[1]) < (gap[1] - gap[0]) - 1.0]
+            u = min(a for a, _ in free)
+            out.append((kind, "prep_time" if u + prep_of.get(g, p.prep_s) > w_end else "lesser_or_idle"))
+    return out
 
 
 def mr_summary(rows: list[dict], ten: float = 10.0) -> dict:
@@ -724,9 +988,12 @@ def maxrate_slates(archive: str, lg: League, min_games: int, max_games: int = 0,
     return [(d, g) for d, g in slates(archive, min_games, only) if not max_games or len(g) <= max_games]
 
 
-def maxrate_run(group, p: MR, seed: int, lg: League) -> dict:
-    """One combination over one group of slates: the same seed per slate, so rows differ only by their knobs."""
-    rows = [r for n, (_, games) in enumerate(group) if (r := run_maxrate(games, p, random.Random(seed + n), lg))]
+def maxrate_run(group, p: MR, seed: int, lg: League, archive: str | None = None) -> dict:
+    """One combination over one group of slates: the same seed per slate, so rows differ only by their knobs.
+    policy="arbiter" reads each game's summary from `archive`, which is required then."""
+    rows = [r for n, (_, games) in enumerate(group)
+            if (r := run_maxrate(games, p, random.Random(seed + n), lg,
+                                 arbiter_facts(archive, lg, [g for g, _ in games]) if p.policy == "arbiter" else None))]
     s = mr_summary(rows) if rows else {}
     if s and s.get("clip_mean_s"):
         s["screen_cap_per_10"] = round(MR_WINDOW_S / (s["clip_mean_s"] + p.flip_s), 1)
@@ -779,7 +1046,7 @@ def maxrate_main(a) -> int:
         group = maxrate_slates(a.archive, lg, a.min_games, a.mr_slate_max, only)
         group = group[: a.max_slates] if a.max_slates else group
         p = maxrate_params(a)
-        s = maxrate_run(group, p, a.seed, lg)
+        s = maxrate_run(group, p, a.seed, lg, a.archive)
         print(json.dumps(s, indent=1))
         if a.json:
             json.dump({"params": asdict(p), "summary": s}, open(a.json, "w"), indent=1)
@@ -848,7 +1115,7 @@ def main(argv=None) -> int:
     ap.add_argument("--split", choices=("all", "train", "valid", "fit", "test"), default="fit",
                     help="read dev nights only (redzone/lab/splits.py). test is the locked set and is refused. Default fit: the locked nights are never read by accident")
     ap.add_argument("--mr-slate-max", type=int, default=0, help="only slates of at most this many games")
-    ap.add_argument("--mr-policy", choices=("fifo", "edf"), default=MR().policy, help="which ready play a free stick takes")
+    ap.add_argument("--mr-policy", choices=("fifo", "edf", "arbiter"), default=MR().policy, help="which ready play a free stick takes")
     ap.add_argument("--json")
     a = ap.parse_args(argv)
     global LG
