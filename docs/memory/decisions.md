@@ -87,6 +87,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 
 ## Gates and quality
 
+- 2026-11-08 (card S, timing accuracy; Nick: know exactly when a play ends on each picture): new delay knobs, all OFF, wired by docs/agents/patches/s-sync.patch: `delay.scorebug_midpoint`, `delay.scorebug_clock_fit`, `delay.sync.robust`, `delay.feed_bias.{enabled,apply}`, `sync.edge.{midpoint,meter,meter_every_s,meter_sd_s}`, `delay.sync.app_min_sigma_s: {}`. The 4 s sigma floor is unchanged: `DelayBook.set_app_floor` lowers it per app only with a forward-chaining replay where no fold's mid-play cuts rose (`delaymodel.replay_allows_floor`). Why: the filter wasn't the limit, the timestamps and the single-read anchors were; a too-narrow interval cuts plays mid-play, so narrowing needs its own replay. Live error log is numbers only: data/sync_truth/delay_error/<night>.jsonl.
+
 - 2026-11-08: **Grader and release gate re-frozen at v47: they see every league and can only get stricter** (package E of
   the P1 sprint; Nick N5, pass bar: 0 mid-play, 0 commercial seconds, every red-zone trip). Gate: `entries mid-play = 0`
   is now a hard row on the per-night path too (a card with 1 mid-play entry in 300 used to PASS); a card not graded on

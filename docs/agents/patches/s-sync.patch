@@ -1,0 +1,113 @@
+diff --git a/redzone/default_config.yaml b/redzone/default_config.yaml
+index 2ce2eacd..7049e31e 100644
+--- a/redzone/default_config.yaml
++++ b/redzone/default_config.yaml
+@@ -70,6 +70,11 @@ sync:
+     # [Prime epoch, Nick Nov 5 3:30 AM] Prime's position is the frame's wall clock: E = screen behind the frame clock
+     # (~6.4 s, sd ~0.1). Each score-bug clock/score delay sample read while a fresh epoch row exists gives
+     # K = arena - frame clock = delay - E; K is fused per target (inverse variance). Rows log k_s and epoch_delay_s.
++    midpoint: false        # [Nov 8] a read's time = the midpoint of its adb round trip (its end, today)
++    meter: false           # [Nov 8] E = wall - position into the sync filter (YouTube TV's live edge, Prime's epoch): anchors
++                           # then only set the per-tune constant. Off until tonight's rows grade it
++    meter_every_s: 2.0     # at most one meter read per target this often
++    meter_sd_s: 0.3        # doubt of one meter read before the round trip's own
+     epoch_signal: false    # feed E + K to the sync filter as an "epoch" sample (off until tonight's rows grade it)
+     k_pair_s: 30.0         # an epoch row this recent pairs with a score-bug sample
+     k_min_reads: 5         # K counts once this many samples are fused ...
+@@ -970,9 +975,17 @@ delay:                     # seconds your screen runs behind real life, per app;
+                            # league_overrides; measured q90: nba 69.7, nfl 62.5, nhl 71.3, redzone/lab/feed_lag_profile.json)
+   scorebug_band: false     # [Nick Nov 5 3:30 AM, "Yes, read it"] Prime score bug: read only the lower third as raw
+                            # pixels (no PNG encode on the stick, ~6.5 s a frame now); numbers kept, never frames
++  scorebug_midpoint: false # [Nov 8] a frame's time = midpoint of its capture request and done, with its own doubt
++  scorebug_clock_fit: false # [Nov 8] the running game clock fitted over a 30 s window of frames, not single reads
++  feed_bias:               # [Nov 8] how late each feed's wall clock runs vs NBA timeActual, from scoring plays both report
++    enabled: false         # learn it (shadow)
++    apply: false           # take it out of the plays' wall clocks before the score bug is timed against them
+   sync:                    # every channel's delay found automatically (redzone/decider/sync.py), no taps
+     enabled: true          # Kalman filter per channel: show flips, score bug (score + clock), stick position, taps
+     min_sigma_s: 4         # a synced channel's stated doubt never goes below this (the gates' tested floor)
++    robust: false          # [Nov 8] Student-t weights + change points: one bad OCR read no longer costs 300 s of "uncertain"
++    app_min_sigma_s: {}    # [Nov 8] per-app floor, e.g. youtubetv: {floor_s: 1.5, replay: {method: forward_chaining, folds: [...]}};
++                           # refused without a forward-chaining replay showing no fold's mid-play cuts rose
+     log: true              # every signal + estimate to data/sync.jsonl (scripts/eval_sync.py --log grades it)
+   edge_model:              # [Nick Nov 6 order item 3] a scrubbed YouTube TV tune: delay = D_edge(channel) + behind_live,
+     enabled: false         # behind_live read off the overlay time label (not media_session, wrong after a seek). OFF
+diff --git a/redzone/engine.py b/redzone/engine.py
+index d1792a64..97f28e2f 100644
+--- a/redzone/engine.py
++++ b/redzone/engine.py
+@@ -231,9 +231,16 @@ class Engine:
+                 self.sync = _belief.attach(self.delays, **sync_kw)
+             else:
+                 self.sync = self.delays.attach_sync(**sync_kw)
++            self.sync.robust = bool(self.cfg.get("delay.sync.robust", False))   # Student-t + change points (OFF)
++            for app, spec in (self.cfg.get("delay.sync.app_min_sigma_s") or {}).items():   # needs its replay verdict
++                self.delays.set_app_floor(app, spec.get("floor_s", 4.0), spec.get("replay"))
+             # [league overrides] each channel's floor follows the league of the game it shows
+             self.delays.sync_floor_for = lambda target: float(for_league(
+                 self.cfg, "delay.sync.min_sigma_s", self._league_of(target), 4.0))
++        if self.cfg.get("delay.feed_bias.enabled", False):   # [feed bias] learned per source, applied only with .apply
++            from redzone.decider.delaymodel import FeedBias
++            from redzone.decider.screen import Timeline
++            Timeline.feed_bias = FeedBias(apply=bool(self.cfg.get("delay.feed_bias.apply", False)))
+         self.control = Controller(self.cfg, self.channels,
+                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
+         self.decider.deadline_cost = self.control.deadline_cost
+@@ -306,6 +313,9 @@ class Engine:
+         # Stream delay measured from the broadcast score bug in Prime screenshots (not DRM-blanked).
+         self.scorebug = scorebug.ScoreBugWatcher(on_sample=self._scorebug_sample, on_tune=self._sync_tune,
+                                                  on_clock=self._sync_clock)
++        self.scorebug.on_clock_fit, self.scorebug.on_stop = self._sync_clock_fit, self._scorebug_stop
++        self.scorebug.honest_frames = bool(self.cfg.get("delay.scorebug_midpoint", False))     # [Nov 8] OFF
++        self.scorebug.clock_fit = bool(self.cfg.get("delay.scorebug_clock_fit", False))        # [Nov 8] OFF
+         self.planner = standby.Planner(self.cfg)   # what the hidden stick holds between switches
+         self._hand_left: tuple[str, float] | None = None   # (game you left by hand, when): standby.options hand_back
+         # owed TV timeouts per game: when a break is coming (+ the learned brain, when brain.enabled)
+@@ -340,6 +350,7 @@ class Engine:
+         # [SYNC, Nick 3:30 AM] a Prime epoch read + K -> a delay sample (sync.edge.epoch_signal, off)
+         self.sync_probe.label_of = lambda t: (self.delays.labels[t][0] if self.delays.labelled(t) else None)
+         self.sync_probe.on_epoch = lambda target, z, t, sd: self._sync_measure(target, z, "epoch", t, sd)
++        self.sync_probe.on_position = self._sync_position   # [meter] sync.edge.meter (OFF)
+         self.sync_probe.on_force_live = lambda target, row: (   # [SYNC B] re-link to live (flags off)
+             self.control.force_live_hidden(target) if row["role"] == "hidden" else self.control.relink_visible_live(target))
+         self._alarmed: dict[str, float] = {}   # [SYNC 6] target -> last drift alarm
+@@ -620,6 +631,16 @@ class Engine:
+         self._sync_measure(target, delay_s, "clock", wall)
+         self.sync_probe.frame_k(target, delay_s, wall, SIGMA["clock"])   # [SYNC, Nick 3:30 AM] K = arena - frame clock
+ 
++    def _sync_clock_fit(self, target: str, wall: float, delay_s: float, sd: float) -> None:
++        """[clock fit] One fitted window of the bug's running clock: a delay sample with the fit's own doubt."""
++        self._sync_measure(target, delay_s, "clock_fit", wall, sd)
++        self.sync_probe.frame_k(target, delay_s, wall, sd)
++
++    def _scorebug_stop(self, target: str, wall: float, delay_s: float, sd: float) -> None:
++        """[clock stop] Where the bug's clock stopped against the feed's play there: logged only (shadow)."""
++        if self.sync is not None:
++            self.sync.note(target, "clock_stop", wall, delay_s, sd=sd, stick=self._stick_of(target))
++
+     def _boundary_sample(self, s) -> None:
+         from redzone.decider.sync import SIGMA
+         self._sync_measure(s.target, s.sample, "flip", s.flip_wall, max(SIGMA["flip"], s.error_s))
+@@ -854,9 +875,10 @@ class Engine:
+                     gid = self._game_on(f["target"], f["visible"])
+                     g = self.merger.games.get(gid or "")
+                     tl = self.decider.timelines.get(gid or "")
+-                    bug = None
++                    bug, frame = None, None
+                     if g is not None and tl is not None:
+-                        bug = await asyncio.to_thread(scorebug.read_png, f["png"], g.home, g.away, recognize)
++                        bug, frame = await asyncio.to_thread(scorebug.read_frame, f["png"], g.home, g.away, recognize,
++                                                             f["target"].split(":", 1)[0])
+                     why = why or ("no_game" if g is None or tl is None else "no_bug" if bug is None else "")
+                     # The pipeline (switch/flip) may have moved while OCR ran: those frames don't count.
+                     if self._pending_decision is not None or not any(
+@@ -864,7 +886,8 @@ class Engine:
+                                 bool(self.cfg.get("delay.scorebug_hidden", False)))):
+                         self.scorebug.reset()
+                         break
+-                    self.scorebug.observe(f["stick"].host, f["target"], f["tune"], f["t0"], bug, tl)
++                    self.scorebug.observe(f["stick"].host, f["target"], f["tune"], f["t0"], bug, tl, t_done=f["t1"],
++                                          kind=frame)
+                     if g is not None and str(for_league(self.cfg, "decider.entry.user_bug_gate", g.league.value,
+                                                         "off") or "off") == "shadow":
+                         # [EXP-741 E shadow] every Prime bug read logged as clock numbers: lane 3 grades

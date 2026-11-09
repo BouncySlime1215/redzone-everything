@@ -31,6 +31,7 @@ show change 6 s) and the margins for another night / stale samples are unchanged
 from __future__ import annotations
 
 import math
+import statistics
 from dataclasses import dataclass
 
 # Between-channel spread assumed before measuring it. Real YouTube TV channels, Nov 2 2026:
@@ -109,3 +110,72 @@ def combine(prior_mu: float, prior_sd: float, x: float, x_sd: float) -> tuple[fl
     """Precision-weighted combination of a prior and a measurement: (mean, sd)."""
     a, b = 1.0 / prior_sd ** 2, 1.0 / x_sd ** 2
     return (prior_mu * a + x * b) / (a + b), 1.0 / math.sqrt(a + b)
+
+
+def replay_allows_floor(replay: dict | None, min_folds: int = 3) -> bool:
+    """May a lower sigma floor ship for an app? Only on a forward-chaining replay over whole nights where NO fold's
+    mid-play cuts rose: {"method": "forward_chaining", "folds": [{"base_mid_play": n, "new_mid_play": m}, ...]}."""
+    if not isinstance(replay, dict) or replay.get("method") != "forward_chaining":
+        return False
+    folds = replay.get("folds") or []
+    try:
+        return len(folds) >= min_folds and all(int(f["new_mid_play"]) <= int(f["base_mid_play"]) for f in folds)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+class FeedBias:
+    """How late each feed's wall clock runs against a feed with true event times, per league and source. The same
+    scoring play reported by two sources (a game's score only happens once) gives one difference; the median of those is
+    the bias. Reference: NBA liveData's timeActual ("nba_cdn"). Learned in shadow; adjust() applies it only with apply on."""
+
+    def __init__(self, reference: str = "nba_cdn", min_n: int = 5, keep: int = 100, apply: bool = False):
+        self.reference, self.min_n, self.keep, self.apply = reference, int(min_n), int(keep), bool(apply)
+        self._walls: dict[tuple, dict[str, float]] = {}
+        self.diffs: dict[tuple[str, str], list[float]] = {}
+
+    def add(self, game, league: str, score: tuple, source: str, wall: float) -> None:
+        """One scoring play as one source timed it."""
+        if not source or not wall:
+            return
+        key = (game, score)
+        got = self._walls.setdefault(key, {})
+        if source in got:
+            return
+        got[source] = float(wall)
+        for other, t in got.items():
+            if other == source:
+                continue
+            if source == self.reference:
+                self._diff(league, other, t - float(wall))
+            elif other == self.reference:
+                self._diff(league, source, float(wall) - t)
+        while len(self._walls) > 2000:
+            self._walls.pop(next(iter(self._walls)))
+
+    def _diff(self, league: str, source: str, d: float) -> None:
+        ds = self.diffs.setdefault((league, source), [])
+        ds.append(d)
+        del ds[:-self.keep]
+
+    def bias(self, league: str, source: str) -> tuple[float, float, int] | None:
+        """(median s late vs the reference, its robust sd, pairs), or None until min_n pairs."""
+        ds = self.diffs.get((league, source))
+        if not ds or len(ds) < self.min_n:
+            return None
+        med = statistics.median(ds)
+        return med, 1.4826 * statistics.median(abs(x - med) for x in ds), len(ds)
+
+    def adjust(self, league: str, source: str, wall: float) -> float:
+        """The wall clock with the source's bias taken out, when apply is on and the bias is learned."""
+        b = self.bias(league, source) if self.apply else None
+        return wall if b is None else wall - b[0]
+
+    def status(self) -> list[dict]:
+        out = []
+        for (league, source), ds in sorted(self.diffs.items()):
+            b = self.bias(league, source)
+            out.append({"league": league, "source": source, "pairs": len(ds),
+                        "bias_s": None if b is None else round(b[0], 2), "sd_s": None if b is None else round(b[1], 2)})
+        return out
+
