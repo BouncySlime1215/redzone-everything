@@ -264,6 +264,7 @@ class Engine:
             self.sync.robust = bool(self.cfg.get("delay.sync.robust", False))   # Student-t + change points (OFF)
             for app, spec in (self.cfg.get("delay.sync.app_min_sigma_s") or {}).items():   # needs its replay verdict
                 self.delays.set_app_floor(app, spec.get("floor_s", 4.0), spec.get("replay"))
+            self.delays.apply_timing_config(self.cfg.get("delay.timing.app_sigma"))   # [timing] OFF until the yaml has it
             # [league overrides] each channel's floor follows the league of the game it shows
             self.delays.sync_floor_for = lambda target: float(for_league(
                 self.cfg, "delay.sync.min_sigma_s", self._league_of(target), 4.0))
