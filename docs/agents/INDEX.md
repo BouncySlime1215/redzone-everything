@@ -93,3 +93,9 @@ Standard: [docs/STANDARD.md](../STANDARD.md). Plan and process gate: [docs/PLAN.
 | R-RULES | 2026-11-08 | [Agent rule files in practice: what changes behaviour, what gets ignored](../research/2026-11-08/agents/rule-files.md) | reviewed | 45 (45) | - |
 | R-SAFEAGENT | 2026-11-08 | [Safe and effective AI coding agents on real-time, hardware-in-the-loop, invariant-heavy code](../research/2026-11-08/agents/safe-agents-realtime.md) | reviewed | 36 (21) | - |
 | W1-RULES | 2026-11-08 | [Debugging, validation, merge and organization rules for coding agents](rules/2026-11-08-debug-validate-merge.md) | draft | 28 (25) | - |
+
+## training
+
+| id | date | title | status | sources (verified) | gate items |
+|---|---|---|---|---|---|
+| D-FRONTIER | 2026-11-09 | [Frontier prediction methods for RedZone: what to try, what is hype, and one joint where-and-when design](training/2026-11-09-frontier-prediction.md) | draft | 48 (44) | - |
