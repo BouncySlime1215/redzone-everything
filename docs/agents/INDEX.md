@@ -16,6 +16,7 @@ Standard: [docs/STANDARD.md](../STANDARD.md). Plan and process gate: [docs/PLAN.
 | P1-BOTTLENECKS | 2026-11-08 | [Switching bottlenecks, measured (Nov 5-8 2026 data)](audit/2026-11-08-p1-bottlenecks.md) | draft | 0 (0) | - |
 | P1-REVIEW | 2026-11-08 | [Independent Rule 1 review of the P1 merge (entry, switch path, TV)](audit/2026-11-08-rule1-review.md) | draft | 0 (0) | P1-REVIEW-01, P1-REVIEW-02, P1-REVIEW-03, P1-REVIEW-04, P1-REVIEW-05, P1-REVIEW-06 |
 | P1-ROOTCAUSE | 2026-11-08 | [Root causes of the P1 switching bottlenecks (Nov 7 slate)](audit/2026-11-08-p1-root-causes.md) | draft | 0 (0) | P1-ROOTCAUSE-01, P1-ROOTCAUSE-02, P1-ROOTCAUSE-03, P1-ROOTCAUSE-04, P1-ROOTCAUSE-05, P1-ROOTCAUSE-07, P1-ROOTCAUSE-08, P1-ROOTCAUSE-09 |
+| P1-MAXRATE | 2026-11-09 | [What 2-4 games at a time can reach, and what tonight must measure](audit/2026-11-09-max-rate.md) | draft | 0 (0) | - |
 
 ## context
 

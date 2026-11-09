@@ -70,6 +70,11 @@ sync:
     # [Prime epoch, Nick Nov 5 3:30 AM] Prime's position is the frame's wall clock: E = screen behind the frame clock
     # (~6.4 s, sd ~0.1). Each score-bug clock/score delay sample read while a fresh epoch row exists gives
     # K = arena - frame clock = delay - E; K is fused per target (inverse variance). Rows log k_s and epoch_delay_s.
+    midpoint: false        # [Nov 8] a read's time = the midpoint of its adb round trip (its end, today)
+    meter: false           # [Nov 8] E = wall - position into the sync filter (YouTube TV's live edge, Prime's epoch): anchors
+                           # then only set the per-tune constant. Off until tonight's rows grade it
+    meter_every_s: 2.0     # at most one meter read per target this often
+    meter_sd_s: 0.3        # doubt of one meter read before the round trip's own
     epoch_signal: false    # feed E + K to the sync filter as an "epoch" sample (off until tonight's rows grade it)
     k_pair_s: 30.0         # an epoch row this recent pairs with a score-bug sample
     k_min_reads: 5         # K counts once this many samples are fused ...
@@ -970,9 +975,17 @@ delay:                     # seconds your screen runs behind real life, per app;
                            # league_overrides; measured q90: nba 69.7, nfl 62.5, nhl 71.3, redzone/lab/feed_lag_profile.json)
   scorebug_band: false     # [Nick Nov 5 3:30 AM, "Yes, read it"] Prime score bug: read only the lower third as raw
                            # pixels (no PNG encode on the stick, ~6.5 s a frame now); numbers kept, never frames
+  scorebug_midpoint: false # [Nov 8] a frame's time = midpoint of its capture request and done, with its own doubt
+  scorebug_clock_fit: false # [Nov 8] the running game clock fitted over a 30 s window of frames, not single reads
+  feed_bias:               # [Nov 8] how late each feed's wall clock runs vs NBA timeActual, from scoring plays both report
+    enabled: false         # learn it (shadow)
+    apply: false           # take it out of the plays' wall clocks before the score bug is timed against them
   sync:                    # every channel's delay found automatically (redzone/decider/sync.py), no taps
     enabled: true          # Kalman filter per channel: show flips, score bug (score + clock), stick position, taps
     min_sigma_s: 4         # a synced channel's stated doubt never goes below this (the gates' tested floor)
+    robust: false          # [Nov 8] Student-t weights + change points: one bad OCR read no longer costs 300 s of "uncertain"
+    app_min_sigma_s: {}    # [Nov 8] per-app floor, e.g. youtubetv: {floor_s: 1.5, replay: {method: forward_chaining, folds: [...]}};
+                           # refused without a forward-chaining replay showing no fold's mid-play cuts rose
     log: true              # every signal + estimate to data/sync.jsonl (scripts/eval_sync.py --log grades it)
   edge_model:              # [Nick Nov 6 order item 3] a scrubbed YouTube TV tune: delay = D_edge(channel) + behind_live,
     enabled: false         # behind_live read off the overlay time label (not media_session, wrong after a seek). OFF

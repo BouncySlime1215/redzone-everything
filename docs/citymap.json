@@ -270,6 +270,7 @@
    ],
    "writers": [
     "redzone/config.py",
+    "scripts/deploy.py",
     "scripts/service.py"
    ]
   },
@@ -1167,6 +1168,13 @@
     "redzone/lab/night/run.py"
    ]
   },
+  "screen_state.json": {
+   "readers": [],
+   "users": [
+    "redzone/engine.py"
+   ],
+   "writers": []
+  },
   "seeks.jsonl": {
    "readers": [
     "redzone/calibration.py",
@@ -1521,6 +1529,13 @@
     "scripts/fault_drill.py"
    ],
    "writers": []
+  },
+  "v2-00000000000000000000.yaml": {
+   "readers": [],
+   "users": [],
+   "writers": [
+    "redzone/config.py"
+   ]
   },
   "valid.jsonl": {
    "readers": [
@@ -2157,6 +2172,27 @@
    ],
    "owner": "LOCAL AI",
    "role": "Teacher prompts, request files and answer parsing.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/install.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Render (and optionally write) the watchdog's launchd plist from the repo template.",
    "serves": [
     "untagged"
    ]
@@ -2927,6 +2963,7 @@
     ]
    },
    "outputs": [
+    "redzone/control.py",
     "redzone/discovery/runtime.py",
     "redzone/lab/night/run.py",
     "redzone/tvsetup.py"
@@ -3189,7 +3226,8 @@
     ],
     "uses": [],
     "writes": [
-     "data/config.yaml"
+     "data/config.yaml",
+     "v2-00000000000000000000.yaml"
     ]
    },
    "inputs": [],
@@ -3226,7 +3264,9 @@
     "redzone/tuners/adb.py",
     "redzone/tuners/join.py",
     "redzone/tuners/join_calib.py",
+    "redzone/tuners/providers.py",
     "redzone/tuners/yttv_edge_probe.py",
+    "redzone/tv.py",
     "redzone/web/phone_v2.py",
     "redzone/web/server.py",
     "scripts/backtest.py",
@@ -3716,7 +3756,7 @@
     "redzone/contracts/__init__.py"
    ],
    "owner": "INTEGRATION",
-   "role": "Feature flags / kill switches: one per subsystem.",
+   "role": "Feature flag names and degraded modes: one per subsystem.",
    "serves": [
     "untagged"
    ]
@@ -4103,6 +4143,7 @@
   },
   "redzone/control.py": {
    "calls": [
+    "redzone/autonomy.py:stick_identity",
     "redzone/channels.py:match_title",
     "redzone/config.py:any_league",
     "redzone/config.py:default",
@@ -4155,6 +4196,7 @@
     "writes": []
    },
    "inputs": [
+    "redzone/autonomy.py",
     "redzone/channels.py",
     "redzone/config.py",
     "redzone/contracts/switching.py",
@@ -4443,7 +4485,10 @@
     "redzone/decider/core.py:rate",
     "redzone/decider/core.py:reel_fits",
     "redzone/decider/core.py:window_value",
+    "redzone/decider/cuts.py:join_cfg",
     "redzone/decider/cuts.py:plan_entry",
+    "redzone/decider/cuts.py:settle_wait",
+    "redzone/decider/cuts.py:walk_params",
     "redzone/decider/playbooks.py:Safety",
     "redzone/decider/scenarios.py:Scenarios",
     "redzone/decider/screen.py:Gate",
@@ -4568,7 +4613,8 @@
     "drives": []
    },
    "outputs": [
-    "redzone/decider/screen.py"
+    "redzone/decider/screen.py",
+    "redzone/engine.py"
    ],
    "owner": "unowned",
    "role": "Per-channel stream-delay predictor: how far each channel's picture runs behind real life.",
@@ -4659,6 +4705,7 @@
     "redzone/decider/delaymodel.py:Centre",
     "redzone/decider/delaymodel.py:app_prior",
     "redzone/decider/delaymodel.py:combine",
+    "redzone/decider/delaymodel.py:replay_allows_floor",
     "redzone/decider/sync.py:SyncBook",
     "redzone/fsm.py:MachineMap",
     "redzone/models.py:ByLeague",
@@ -5246,6 +5293,7 @@
     "redzone/decider/decider.py:Decision",
     "redzone/decider/decider.py:FocusMode",
     "redzone/decider/decider.py:State",
+    "redzone/decider/delaymodel.py:FeedBias",
     "redzone/decider/screen.py:Delay",
     "redzone/decider/screen.py:DelayBook",
     "redzone/decider/screen.py:PLAY_LEN_S",
@@ -5260,12 +5308,15 @@
     "redzone/fsm.py:MachineMap",
     "redzone/fsm.py:run_commit",
     "redzone/governor.py:Governor",
+    "redzone/governor.py:keep_awake_wanted",
     "redzone/grading.py:is_dead_ball",
     "redzone/models.py:League",
     "redzone/network.py:NetWatch",
     "redzone/noggin/belief.py:attach",
     "redzone/noggin/belief.py:enabled",
     "redzone/plan.py:Tonight",
+    "redzone/plan.py:day_of",
+    "redzone/plan.py:path_for",
     "redzone/platform/agent_fix.py:view",
     "redzone/platform/wake.py:WakeWatch",
     "redzone/platform/wake.py:recover",
@@ -5359,6 +5410,7 @@
      "jumps.jsonl",
      "ladder.jsonl",
      "scorebug_reads.jsonl",
+     "screen_state.json",
      "seeks.jsonl",
      "switch_times.json",
      "sync.jsonl",
@@ -5382,6 +5434,7 @@
     "redzone/control.py",
     "redzone/decider/buffered.py",
     "redzone/decider/decider.py",
+    "redzone/decider/delaymodel.py",
     "redzone/decider/screen.py",
     "redzone/decider/sync.py",
     "redzone/decider/whistle.py",
@@ -5596,6 +5649,8 @@
     "redzone/crunch.py:row",
     "redzone/decider/screen.py:_is_marker",
     "redzone/models.py:ByLeague",
+    "redzone/models.py:League",
+    "redzone/models.py:pro_period",
     "redzone/sources/espn.py:_clock_s",
     "redzone/sources/espn.py:_get",
     "redzone/sources/espn.py:_int",
@@ -5851,6 +5906,7 @@
   "redzone/lab/brain3data.py": {
    "calls": [
     "redzone/lab/datasets.py:STOPPAGE_CODE",
+    "redzone/lab/splits.py:league_split",
     "redzone/scoring/brain3.py:kclass"
    ],
    "contracts": [],
@@ -5861,6 +5917,7 @@
    },
    "inputs": [
     "redzone/lab/datasets.py",
+    "redzone/lab/splits.py",
     "redzone/lab/sportsdata.py",
     "redzone/scoring/brain3.py"
    ],
@@ -5882,7 +5939,7 @@
   },
   "redzone/lab/brain3fit.py": {
    "calls": [
-    "redzone/lab/brain3data.py:night_split",
+    "redzone/lab/brain3data.py:night_splits",
     "redzone/lab/brainfit.py:auc",
     "redzone/lab/brainfit.py:binary_report",
     "redzone/lab/brainfit.py:calib",
@@ -6210,6 +6267,7 @@
   },
   "redzone/lab/leverage.py": {
    "calls": [
+    "redzone/models.py:pro_period",
     "redzone/sources/espn.py:_clock_s",
     "redzone/sources/espn.py:_get",
     "redzone/sources/espn.py:_int"
@@ -6996,6 +7054,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/lab/brain3data.py",
     "redzone/lab/breakblend.py",
     "redzone/lab/tune.py",
     "scripts/backfill_eval_v2.py",
@@ -9114,7 +9173,9 @@
   },
   "redzone/screen/scorebug.py": {
    "calls": [
-    "redzone/decider/sync.py:clock_sample"
+    "redzone/decider/sync.py:clock_sample",
+    "redzone/decider/sync.py:fit_clock_window",
+    "redzone/decider/sync.py:fit_delay"
    ],
    "contracts": [],
    "data": {
@@ -10259,6 +10320,7 @@
   },
   "redzone/tuners/providers.py": {
    "calls": [
+    "redzone/config.py:default",
     "redzone/discovery/providers.py:BY_KEY",
     "redzone/discovery/providers.py:classify_screen",
     "redzone/discovery/providers.py:is_purchase_screen",
@@ -10277,6 +10339,7 @@
     "writes": []
    },
    "inputs": [
+    "redzone/config.py",
     "redzone/discovery/providers.py",
     "redzone/tuners/adb.py",
     "redzone/tuners/profiles.py",
@@ -10293,7 +10356,7 @@
     "scripts/providers_check.py"
    ],
    "owner": "SWITCHING",
-   "role": "Tuners for the other streaming apps: Peacock, Fubo, Paramount+, HBO Max, Netflix, NFL, NBA, Apple TV and DAZN.",
+   "role": "Tuners for the other streaming apps: Fubo, Paramount+, HBO Max, Netflix, NFL, NBA, Apple TV and DAZN.",
    "serves": [
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -10420,6 +10483,7 @@
     "redzone/discovery/yttv.py:_scores",
     "redzone/discovery/yttv.py:load_table",
     "redzone/fsm.py:MachineMap",
+    "redzone/screen_ocr.py:OCRResult",
     "redzone/tuners/adb.py:playback_ready",
     "redzone/tuners/adb.py:same_stream",
     "redzone/tuners/prime_multiview.py:Session",
@@ -10657,6 +10721,7 @@
   },
   "redzone/tv.py": {
    "calls": [
+    "redzone/config.py:default",
     "redzone/machines/control.py:SMARTTHINGS"
    ],
    "contracts": [],
@@ -10670,6 +10735,7 @@
     "writes": []
    },
    "inputs": [
+    "redzone/config.py",
     "redzone/machines/control.py",
     "redzone/platform/breaker.py"
    ],
@@ -11205,6 +11271,7 @@
     "redzone/decider/buffered.py:rotate_due",
     "redzone/decider/cuts.py:DeadTracker",
     "redzone/decider/cuts.py:_is_action",
+    "redzone/decider/cuts.py:walk_params",
     "redzone/models.py:League",
     "redzone/sources/espn.py:_kind",
     "redzone/sources/espn.py:_ts",
@@ -11896,6 +11963,7 @@
     "uses": [],
     "writes": [
      "data/agent.jsonl",
+     "data/config.yaml",
      "deploy.jsonl",
      "in_progress.json"
     ]
@@ -15255,13 +15323,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 1544,
-  "data_files": 183,
+  "calls": 1563,
+  "data_files": 185,
   "machines": 49,
-  "modules": 382,
-  "orphans": 14,
+  "modules": 383,
+  "orphans": 15,
   "unowned": 209,
-  "untagged": 314
+  "untagged": 315
  },
  "version": 2
 }
