@@ -347,6 +347,27 @@ def describe(target: str | None) -> str:
     return target
 
 
+ROUTE_CLASSES = ("local", "cable", "ticket", "event", "prime", "espn", "other", "none")
+
+
+def route_class(target: str | None) -> str:
+    """[WP-01] What kind of route a target is, so the plan and the queue can treat kinds alike:
+    local (a broadcast station through YouTube TV), cable (any other YouTube TV channel), ticket (a
+    Sunday Ticket slot, matched or not), event (a YouTube TV event link), prime (Prime Video: a game
+    link or a League Pass / Monumental channel), espn (the ESPN app), other (any other app), none (no target).
+    Why: the plan could not tell a local CBS route from a Sunday Ticket one (Nov 8)."""
+    if not target:
+        return "none"
+    app, _, rest = target.partition(":")
+    if app == "youtubetv":
+        if rest.startswith("st"):
+            return "ticket"
+        if rest.startswith(("ev:", "espnplus")):
+            return "event"
+        return "local" if rest in BROADCAST else "cable"
+    return {"prime": "prime", "espn": "espn"}.get(app, "other")
+
+
 def _is_sunday_afternoon(g: GameState) -> bool:
     if not g.start_time:
         return False

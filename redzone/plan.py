@@ -9,6 +9,13 @@ checked on the hidden stick before it started.
                    verified / failed. It never touches the stick on screen, never runs in dry run,
                    and steps aside for any switch (a switch cancels the check like a preload).
 
+[WP-01 route truth] A route flagged bad (Apple geo flag, "may be blacked out", a failed check) is never
+"ready": it reads "at risk" until a check on the hidden stick plays it. Every game carries a route class
+(channels.route_class) and the plan lists the games that cannot be reached (`cant_reach`). With
+plan.sweep on, the hidden-stick check starts 30 minutes before the first window, covers every planned
+route, and keeps going in idle gaps while games are on (it still stops on any switch).
+Why: Nov 8's plan called 11 flagged Prime routes "ready" and 0 games were ever verified in 7 plans.
+
 scripts/plan_tonight.py prints and writes the same plan without the engine (no device work).
 """
 from __future__ import annotations
@@ -22,7 +29,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 from zoneinfo import ZoneInfo
 
-from redzone.channels import PRETTY, describe
+from redzone.channels import PRETTY, describe, route_class
 from redzone.models import GameState, League, Phase, league_order
 
 log = logging.getLogger(__name__)
@@ -35,6 +42,7 @@ WINDOW_S = 15 * 60        # games starting within 15 minutes of the first form o
 GAP_S = 20.0              # breathing room between two checks
 REBUILD_S = 60.0          # the plan follows the slate (new links, your corrections) every minute
 LEAGUE_POS = {League(v): i for i, v in enumerate(league_order())}   # [one brain, step 1] models.LEAGUE_ORDER
+SWEEP_LEAD_MIN = 30       # [plan.sweep] the sweep starts this long before the night's first window
 WARMUP_LEAD_S = 10 * 60   # [warmup.pregame] the first window's likely first game goes on the hidden stick this early
 WARMUP_LATE_S = 30 * 60   # ...and is kept until it goes live: listed starts run late (tip / kick ~5-15 min after)
 
@@ -65,9 +73,12 @@ def _src(x) -> dict | None:
     target = getattr(x, "target", None)
     if not target:
         return None
-    return {"target": target, "label": getattr(x, "label", "") or describe(target),
-            "tunable": bool(getattr(x, "tunable", False)), "confidence": getattr(x, "confidence", ""),
-            "app": target.partition(":")[0]}
+    label = getattr(x, "label", "") or describe(target)
+    tunable = bool(getattr(x, "tunable", False))
+    return {"target": target, "label": label, "tunable": tunable, "confidence": getattr(x, "confidence", ""),
+            "app": target.partition(":")[0], "route_class": route_class(target),
+            "risky": tunable and (bool(getattr(x, "risky", False)) or getattr(x, "geo_ok", None) is False
+                                  or "black" in label.lower())}
 
 
 def gaps_for(target: str | None, label: str, tunable: bool) -> list[str]:
@@ -101,6 +112,8 @@ def _status(src: dict | None, label: str) -> tuple[str, str]:
         return ("blackout" if "black" in low else "skip"), label or "No way to watch this game was found"
     if not src["tunable"]:
         return "needs setup", label
+    if src.get("risky"):
+        return "at risk", label or "flagged: may be blacked out"
     return "ready", ""
 
 
@@ -129,7 +142,7 @@ def build_plan(games: Iterable[GameState], choose: Callable[[GameState], object]
         status, why = _status(src, label)
         fallbacks = [f for f in (_src(a) for a in getattr(pick, "alternates", None) or []) if f]
         gaps = gaps_for(src and src["target"], label, bool(src and src["tunable"]))
-        backup = next((f for f in fallbacks if f["tunable"]), None)
+        backup = next((f for f in fallbacks if f["tunable"] and not f.get("risky")), None)
         if src and not src["tunable"] and backup:
             status, why = "ready", f"{label} isn't ready; using {backup['label']}"
             gaps += [APP_NOTES[backup["app"]]] if backup["app"] in APP_NOTES else []
@@ -140,12 +153,44 @@ def build_plan(games: Iterable[GameState], choose: Callable[[GameState], object]
             "phase": g.phase.value, "mine": bool(teams),
             "priority": f"your team ({', '.join(sorted(teams))})" if teams else "",
             "source": src, "fallbacks": fallbacks[:4], "status": status, "why": why,
+            "route_class": (src or {}).get("route_class", "none"),
             "gaps": gaps,
-            "check": {"state": "pending" if status == "ready" else "n/a", "target": None, "at": None, "detail": ""},
+            "check": {"state": "pending" if status in ("ready", "at risk") else "n/a", "target": None, "at": None, "detail": ""},
         })
     entries.sort(key=lambda e: (e["start"] or 0, not e["mine"], LEAGUE_POS.get(League(e["league"]), 9)))
-    return {"day": day.isoformat(), "built": now, "games": entries, "windows": windows(entries),
+    plan = {"day": day.isoformat(), "built": now, "games": entries, "windows": windows(entries),
             "gaps": sorted({x for e in entries for x in e["gaps"]}), "note": ""}
+    plan["cant_reach"] = cant_reach(plan)
+    return plan
+
+
+def _waiting(e: dict) -> bool:
+    """Waiting for its Sunday Ticket slot: not lost, the scan matches it before kickoff."""
+    src = e.get("source")
+    return bool(src) and src["target"] == "youtubetv:st"
+
+
+def cant_reach(plan: dict) -> list[dict]:
+    """[WP-01] Games with no route that works right now: nothing found, blacked out, needs setup, flagged
+    or failed. A game waiting for its Sunday Ticket slot is not listed. Your teams first, then by start."""
+    out = [{"game_id": e["game_id"], "league": e["league"], "matchup": e["matchup"], "start": e["start"],
+            "start_et": e["start_et"], "mine": e["mine"], "status": e["status"],
+            "route_class": e.get("route_class", "none"),
+            "why": e["why"] or (e["gaps"][0] if e["gaps"] else "")}
+           for e in plan["games"] if e["status"] != "ready" and not _waiting(e)]
+    out.sort(key=lambda r: (not r["mine"], r["start"] or 0))
+    return out
+
+
+def _settle(e: dict) -> None:
+    """A check decides a flagged route: played = ready, failed = at risk. Never the other way round."""
+    state, src = e["check"]["state"], e.get("source")
+    if not src or not src["tunable"] or e["status"] not in ("ready", "at risk"):
+        return
+    if state == "failed" and e["status"] == "ready":
+        e["status"], e["why"] = "at risk", f"the check failed: {e['check']['detail'] or 'no video'}"
+    elif state == "verified" and e["status"] == "at risk" and _target(e) == src["target"]:
+        e["status"], e["why"] = "ready", "verified on the hidden stick"
 
 
 def windows(entries: list[dict]) -> list[dict]:
@@ -178,7 +223,9 @@ def carry_checks(new: dict, old: dict | None) -> dict:
         if p and p.get("check", {}).get("state") not in (None, "pending", "n/a") \
                 and p["check"].get("target") == _target(e):
             e["check"] = dict(p["check"])
+            _settle(e)
     new["note"] = old.get("note", "")
+    new["cant_reach"] = cant_reach(new)
     return new
 
 
@@ -189,7 +236,9 @@ def record_check(plan: dict, target: str, ok: bool, detail: str, at: float) -> i
         if e["check"]["state"] == "pending" and _target(e) == target:
             e["check"] = {"state": "verified" if ok else "failed", "target": target, "at": at,
                           "detail": detail}
+            _settle(e)
             n += 1
+    plan["cant_reach"] = cant_reach(plan)
     return n
 
 
@@ -212,6 +261,16 @@ def due(plan: dict, now: float, lead_s: float = LEAD_S) -> list[str]:
         if t and t not in out:
             out.append(t)
     return out
+
+
+def sweep_due(plan: dict, now: float, lead_min: float = SWEEP_LEAD_MIN) -> list[str]:
+    """[plan.sweep] Targets to check now: from lead_min before the night's first window, EVERY pending
+    game that has not started (your teams first, then by start), one check per target. Later windows
+    are reached in the idle gaps between checks instead of waiting for their own T-20."""
+    first = next(iter(plan.get("windows") or []), None)
+    if first is None or now < first["start"] - lead_min * 60:
+        return []
+    return due(plan, now, float("inf"))   # due()'s own order and one-check-per-target rule, with no lead limit
 
 
 def warmup_target(plan: dict, now: float, lead_s: float = WARMUP_LEAD_S) -> tuple[str, float] | None:
@@ -294,8 +353,12 @@ class Tonight:
     # building
     def _choose(self, g: GameState):
         e = self.engine
-        base = e.channels.where(g, sunday_ticket=e.cfg.get("sunday_ticket", True))
+        st = e.cfg.get("sunday_ticket", True)
+        base = e.channels.where(g, sunday_ticket=st)
         try:
+            book = getattr(e.discovery, "book", None)
+            if e.cfg.get("discovery.st_wait", False) and hasattr(book, "choose"):   # [WP-01] flag discovery.st_wait
+                return book.choose(g, base, e.cfg.get("teams"), e.channels, sunday_ticket=st, st_wait=True)
             return e.discovery.choose(g, base)
         except Exception:
             log.exception("plan: provider choice failed for %s", g.game_id)
@@ -316,7 +379,7 @@ class Tonight:
         return new
 
     # checking
-    def idle_reason(self, check: bool = True) -> str | None:
+    def idle_reason(self, check: bool = True, sweep: bool = False) -> str | None:
         """Why the hidden stick can't be used for a check (or, check=False, the warm-up) right now."""
         e, c = self.engine, self.engine.control
         if check and not e.cfg.get("plan.verify", True):
@@ -334,7 +397,10 @@ class Tonight:
         if e._pending_decision is not None:
             return "a switch is in flight"
         if any(g.phase == Phase.LIVE and g.league in e._leagues() for g in e.merger.games.values()):
-            return "games are on: autopilot owns the hidden stick"
+            # [plan.sweep] games being on is not enough to refuse: an idle hidden stick is an idle gap
+            # (no standby held, nothing shown by autopilot, no tune running). Any switch still cancels the check.
+            if not sweep or getattr(c, "standby", None) is not None or getattr(c, "hidden_ready", False):
+                return "games are on: autopilot owns the hidden stick"
         if e.decider.current is not None:
             return "autopilot is showing a game"
         if c._busy():
@@ -351,8 +417,12 @@ class Tonight:
             expire(plan, now + LEAD_S, "not checked: the warm-up holds the hidden stick")
             self._save_quiet(plan)
             return
-        targets = due(plan, now, float(self.engine.cfg.get("plan.verify_lead_min", 20)) * 60)
-        why = self.idle_reason() if targets else None
+        sweep = bool(self.engine.cfg.get("plan.sweep", False))
+        if sweep:
+            targets = sweep_due(plan, now, float(self.engine.cfg.get("plan.sweep_lead_min", SWEEP_LEAD_MIN)))
+        else:
+            targets = due(plan, now, float(self.engine.cfg.get("plan.verify_lead_min", 20)) * 60)
+        why = self.idle_reason(sweep=sweep) if targets else None
         if why:
             plan["note"] = why
         expire(plan, now, f"not checked: {plan['note']}" if plan.get("note") else "")
@@ -444,9 +514,10 @@ class Tonight:
                  "source": e["source"]["label"] if e["source"] else "",
                  "fallbacks": fallback_labels(e)[:2],
                  "check": e["check"]["state"], "check_detail": e["check"]["detail"],
-                 "gaps": e["gaps"][:2]} for e in p["games"]]
+                 "gaps": e["gaps"][:2], "route_class": e.get("route_class", "none")} for e in p["games"]]
         count = lambda k, v: sum(1 for e in p["games"] if e[k] == v)  # noqa: E731
         return {"day": p["day"], "games": rows, "gaps": p["gaps"][:5], "note": p.get("note", ""),
+                "cant_reach": cant_reach(p)[:5], "cant_reach_n": len(cant_reach(p)),
                 "checking": self._checking,
                 "checking_games": [e["game_id"] for e in p["games"]
                                    if self._checking and e["check"]["state"] == "pending" and _target(e) == self._checking],

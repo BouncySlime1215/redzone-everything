@@ -1,0 +1,994 @@
+{
+ "note": "Sanitized from the Nov 8 2026 plan: ids and teams are public; Prime and ESPN refs replaced; flagged Prime sources carry geo_ok=false. When Apple flags a game, every Prime or ESPN feed of it is flagged (geo_ok=false).",
+ "day": "2026-11-08",
+ "games": [
+  {
+   "game_id": "401873038",
+   "league": "nfl",
+   "away": "CIN",
+   "home": "ATL",
+   "start": 1794148200.0,
+   "phase": "live",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:nflnetwork",
+     "label": "NFL Network \u00b7 YouTube TV",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "channel"
+    },
+    {
+     "provider": "espn",
+     "target": "espn:fx-01",
+     "label": "ESPN app",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    },
+    {
+     "provider": "fubo",
+     "target": "fubo:45409",
+     "label": "NFL Network \u00b7 Fubo",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ]
+  },
+  {
+   "game_id": "401924646",
+   "league": "cbb",
+   "away": "IONA",
+   "home": "SJU",
+   "start": 1794157200.0,
+   "phase": "live",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:nbcsn",
+     "label": "NBCSN \u00b7 YouTube TV",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "channel"
+    },
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:nbc",
+     "label": "NBC \u00b7 YouTube TV",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ]
+  },
+  {
+   "game_id": "401873043",
+   "league": "nfl",
+   "away": "LAR",
+   "home": "WSH",
+   "start": 1794160800.0,
+   "phase": "pre",
+   "mine": true,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-02",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ],
+   "base": {
+    "target": "youtubetv:st",
+    "label": "Sunday Ticket (channel not matched yet)",
+    "confidence": "likely",
+    "tunable": false
+   }
+  },
+  {
+   "game_id": "401873040",
+   "league": "nfl",
+   "away": "DAL",
+   "home": "IND",
+   "start": 1794160800.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-03",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ],
+   "base": {
+    "target": "youtubetv:st",
+    "label": "Sunday Ticket (channel not matched yet)",
+    "confidence": "likely",
+    "tunable": false
+   }
+  },
+  {
+   "game_id": "401873045",
+   "league": "nfl",
+   "away": "NYJ",
+   "home": "KC",
+   "start": 1794160800.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "needs setup",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ],
+   "base": {
+    "target": "youtubetv:st",
+    "label": "Sunday Ticket (channel not matched yet)",
+    "confidence": "likely",
+    "tunable": false
+   }
+  },
+  {
+   "game_id": "401873042",
+   "league": "nfl",
+   "away": "DET",
+   "home": "MIA",
+   "start": 1794160800.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "needs setup",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ],
+   "base": {
+    "target": "youtubetv:st",
+    "label": "Sunday Ticket (channel not matched yet)",
+    "confidence": "likely",
+    "tunable": false
+   }
+  },
+  {
+   "game_id": "401873039",
+   "league": "nfl",
+   "away": "CLE",
+   "home": "NO",
+   "start": 1794160800.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "needs setup",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ],
+   "base": {
+    "target": "youtubetv:st",
+    "label": "Sunday Ticket (channel not matched yet)",
+    "confidence": "likely",
+    "tunable": false
+   }
+  },
+  {
+   "game_id": "401873044",
+   "league": "nfl",
+   "away": "NYG",
+   "home": "PHI",
+   "start": 1794160800.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-04",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ],
+   "base": {
+    "target": "youtubetv:st",
+    "label": "Sunday Ticket (channel not matched yet)",
+    "confidence": "likely",
+    "tunable": false
+   }
+  },
+  {
+   "game_id": "401873041",
+   "league": "nfl",
+   "away": "DEN",
+   "home": "CAR",
+   "start": 1794160800.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:cbs",
+     "label": "CBS \u00b7 YouTube TV",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ]
+  },
+  {
+   "game_id": "401920424",
+   "league": "cbb",
+   "away": "ARK",
+   "home": "UVA",
+   "start": 1794160800.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:espn",
+     "label": "ESPN \u00b7 YouTube TV",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "channel"
+    },
+    {
+     "provider": "fubo",
+     "target": "fubo:10179",
+     "label": "ESPN \u00b7 Fubo",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ]
+  },
+  {
+   "game_id": "401892674",
+   "league": "nhl",
+   "away": "FLA",
+   "home": "BOS",
+   "start": 1794160800.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-05",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-06",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    },
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:nhlnetwork",
+     "label": "NHL Network \u00b7 YouTube TV",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ]
+  },
+  {
+   "game_id": "401909945",
+   "league": "nba",
+   "away": "PHI",
+   "home": "CHI",
+   "start": 1794169800.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-07",
+     "label": "NBA League Pass \u00b7 Prime",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-08",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-09",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    }
+   ]
+  },
+  {
+   "game_id": "401892675",
+   "league": "nhl",
+   "away": "VGK",
+   "home": "BUF",
+   "start": 1794169800.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-10",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    },
+    {
+     "provider": "espn",
+     "target": "espn:fx-11",
+     "label": "ESPN+ \u00b7 ESPN app",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    },
+    {
+     "provider": "espn",
+     "target": "espn:fx-12",
+     "label": "ESPN+ \u00b7 ESPN app \u2014 Golden Knights Broadcast",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    }
+   ]
+  },
+  {
+   "game_id": "401873046",
+   "league": "nfl",
+   "away": "HOU",
+   "home": "LAC",
+   "start": 1794171900.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "needs setup",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ],
+   "base": {
+    "target": "youtubetv:st",
+    "label": "Sunday Ticket (channel not matched yet)",
+    "confidence": "likely",
+    "tunable": false
+   }
+  },
+  {
+   "game_id": "401873049",
+   "league": "nfl",
+   "away": "GB",
+   "home": "NE",
+   "start": 1794173100.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-13",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ],
+   "base": {
+    "target": "youtubetv:st",
+    "label": "Sunday Ticket (channel not matched yet)",
+    "confidence": "likely",
+    "tunable": false
+   }
+  },
+  {
+   "game_id": "401873047",
+   "league": "nfl",
+   "away": "LV",
+   "home": "SF",
+   "start": 1794173100.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-14",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ],
+   "base": {
+    "target": "youtubetv:st",
+    "label": "Sunday Ticket (channel not matched yet)",
+    "confidence": "likely",
+    "tunable": false
+   }
+  },
+  {
+   "game_id": "401873048",
+   "league": "nfl",
+   "away": "ARI",
+   "home": "SEA",
+   "start": 1794173100.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-15",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:st",
+     "label": "Sunday Ticket (channel not matched yet)",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ],
+   "base": {
+    "target": "youtubetv:st",
+    "label": "Sunday Ticket (channel not matched yet)",
+    "confidence": "likely",
+    "tunable": false
+   }
+  },
+  {
+   "game_id": "401909946",
+   "league": "nba",
+   "away": "LAL",
+   "home": "DET",
+   "start": 1794178800.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:nbatv",
+     "label": "NBA TV \u00b7 YouTube TV",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "channel"
+    },
+    {
+     "provider": "fubo",
+     "target": "fubo:45537",
+     "label": "NBA TV \u00b7 Fubo",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "channel"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-16",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    }
+   ]
+  },
+  {
+   "game_id": "401892677",
+   "league": "nhl",
+   "away": "TB",
+   "home": "WPG",
+   "start": 1794178800.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "espn",
+     "target": "espn:fx-17",
+     "label": "ESPN+ \u00b7 ESPN app",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "espn",
+     "target": "espn:fx-18",
+     "label": "ESPN+ \u00b7 ESPN app \u2014 Lightning Broadcast",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    }
+   ]
+  },
+  {
+   "game_id": "401909947",
+   "league": "nba",
+   "away": "UTAH",
+   "home": "MIN",
+   "start": 1794182400.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-19",
+     "label": "NBA League Pass \u00b7 Prime",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-20",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-21",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    }
+   ]
+  },
+  {
+   "game_id": "401892676",
+   "league": "nhl",
+   "away": "NJ",
+   "home": "TOR",
+   "start": 1794182400.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-22",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    },
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:nhlnetwork",
+     "label": "NHL Network \u00b7 YouTube TV",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ]
+  },
+  {
+   "game_id": "401892678",
+   "league": "nhl",
+   "away": "PHI",
+   "home": "CGY",
+   "start": 1794182400.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "espn",
+     "target": "espn:fx-23",
+     "label": "ESPN+ \u00b7 ESPN app",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "espn",
+     "target": "espn:fx-24",
+     "label": "ESPN+ \u00b7 ESPN app \u2014 Flyers Broadcast",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    }
+   ]
+  },
+  {
+   "game_id": "401909948",
+   "league": "nba",
+   "away": "BKN",
+   "home": "DAL",
+   "start": 1794184200.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-25",
+     "label": "NBA League Pass \u00b7 Prime",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-26",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-27",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    }
+   ]
+  },
+  {
+   "game_id": "401909949",
+   "league": "nba",
+   "away": "BOS",
+   "home": "MIL",
+   "start": 1794186000.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-28",
+     "label": "NBA League Pass \u00b7 Prime",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-29",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-30",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    }
+   ]
+  },
+  {
+   "game_id": "401892679",
+   "league": "nhl",
+   "away": "PIT",
+   "home": "ANA",
+   "start": 1794186000.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "espn",
+     "target": "espn:fx-31",
+     "label": "ESPN+ \u00b7 ESPN app",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "espn",
+     "target": "espn:fx-32",
+     "label": "ESPN+ \u00b7 ESPN app \u2014 Penguins Broadcast",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-33",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    }
+   ]
+  },
+  {
+   "game_id": "401873050",
+   "league": "nfl",
+   "away": "TB",
+   "home": "CHI",
+   "start": 1794187200.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:nbc",
+     "label": "NBC \u00b7 YouTube TV",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "channel"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-34",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-35",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": null,
+     "kind": "event"
+    }
+   ]
+  },
+  {
+   "game_id": "401918053",
+   "league": "cbb",
+   "away": "HOU",
+   "home": "CAL",
+   "start": 1794187800.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "needs setup",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:cw",
+     "label": "The CW \u00b7 YouTube TV",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ]
+  },
+  {
+   "game_id": "401909950",
+   "league": "nba",
+   "away": "NO",
+   "home": "LAC",
+   "start": 1794189600.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-36",
+     "label": "NBA League Pass \u00b7 Prime",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-37",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-38",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    }
+   ]
+  },
+  {
+   "game_id": "401909951",
+   "league": "nba",
+   "away": "MIA",
+   "home": "SAC",
+   "start": 1794189600.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "ready",
+   "sources": [
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-39",
+     "label": "NBA League Pass \u00b7 Prime",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-40",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    },
+    {
+     "provider": "prime",
+     "target": "prime:amzn1.dv.gti.fx-41",
+     "label": "Prime Video",
+     "tunable": true,
+     "geo_ok": false,
+     "kind": "event"
+    }
+   ]
+  },
+  {
+   "game_id": "401919029",
+   "league": "cbb",
+   "away": "USC",
+   "home": "WICH",
+   "start": 1794196800.0,
+   "phase": "pre",
+   "mine": false,
+   "status_then": "needs setup",
+   "sources": [
+    {
+     "provider": "youtubetv",
+     "target": "youtubetv:cw",
+     "label": "The CW \u00b7 YouTube TV",
+     "tunable": false,
+     "geo_ok": null,
+     "kind": "channel"
+    }
+   ]
+  }
+ ]
+}
