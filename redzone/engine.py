@@ -426,6 +426,7 @@ class Engine:
         # Home / away from home / Tailscale stealing the home routes (redzone/network.py). Read-only.
         self.network = NetWatch(self.discovery.autonomy.paths.devices)
         from redzone.platform.wake import WakeWatch
+        self._house_busy_s = 0.0                      # how long the last housekeeping tick's work ran (WakeWatch)
         self.wake = WakeWatch()                       # hardening.mac: the Mac slept / changed network
         self._net_where: str | None = None
         self.tonight = Tonight(self)   # today's plan + pre-game checks on the hidden stick
@@ -1228,6 +1229,7 @@ class Engine:
     async def _house_loop(self) -> None:
         while True:
             await asyncio.sleep(10)
+            started = time.monotonic()
             try:
                 self._save_screen_state()
             except Exception:
@@ -1251,11 +1253,12 @@ class Engine:
                     self.store.prune()
             except Exception:
                 log.exception("housekeeping failed")
+            self._house_busy_s = time.monotonic() - started   # the next wake check must not count this as a stall
 
     async def _after_wake(self) -> list[str] | None:
         """hardening.mac: after a sleep or a network change, every connection re-proves itself now
         (redzone/platform/wake.py), before this tick's device keepalive. Off: nothing."""
-        slept = self.wake.check()
+        slept = self.wake.check(getattr(self, "_house_busy_s", 0.0))
         where = self.network.state.where
         prev, self._net_where = self._net_where, where
         moved = prev not in (None, "unknown") and where not in (prev, "unknown")

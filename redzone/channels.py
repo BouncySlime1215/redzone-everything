@@ -17,6 +17,7 @@ Rules (Raleigh-Durham market, YouTube TV + Sunday Ticket + Prime):
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass
@@ -25,6 +26,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from redzone.models import GameState, League, Phase
+
+log = logging.getLogger(__name__)
 
 DATA = Path(__file__).resolve().parent.parent / "data"
 
@@ -124,7 +127,17 @@ class ChannelMap:
         if self.path.exists():
             try:
                 d = json.loads(self.path.read_text())
-            except ValueError:
+                if not isinstance(d, dict):
+                    raise ValueError("not a JSON object")
+            except ValueError as e:
+                # Never let the next save() overwrite the only copy of the pasted codes and your corrections.
+                bad = self.path.with_name(self.path.name + ".corrupt")
+                log.error("channels: %s is unreadable (%s); starting empty, the file is kept as %s",
+                          self.path, e, bad.name)
+                try:
+                    self.path.replace(bad)
+                except OSError:
+                    pass
                 d = {}
             self.codes = d.get("codes", {})
             self.overrides = d.get("overrides", {})
