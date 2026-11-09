@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SINCE = "2026-11-09T00:00:00Z"     # the rule started (decisions.md 2026-11-08); committer time, UTC
 FIX = re.compile(r"^\s*(bug|hot)?fix(es|ed)?\b", re.I)
 NO_TEST = re.compile(r"^No-test:\s*\S", re.M)
+DATA_SKIP = "pinned eval data not fetched"   # Nick, 2026-11-09: allowed; the replay runs whenever the data is present
 REPRO_LINE = re.compile(r"^Repro:\s*\S", re.M)
 REPRO_SECTION = re.compile(r"^##\s*Repro\b[^\n]*\n(.*?)(?=^##\s|\Z)", re.M | re.S)
 COMMENT = re.compile(r"<!--.*?-->", re.S)
@@ -52,7 +53,7 @@ def test_problems(files: list[FileDiff]) -> list[str]:
     """Every PR: tests are the acceptance signal, so they don't get deleted or skipped."""
     why = []
     for f in files:
-        if any(_SKIP.search(x) for x in f.added):
+        if any(_SKIP.search(x) and DATA_SKIP not in x for x in f.added):
             why.append(f"{f.path}: adds a skip/xfail")
         if not f.path.startswith("tests/"):
             continue

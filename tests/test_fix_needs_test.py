@@ -93,3 +93,15 @@ def test_removing_a_test_function_is_refused_but_renaming_is_not():
     assert any("removes 1" in w for w in F.test_problems([gone]))
     renamed = FileDiff("tests/test_a.py", "M", removed=["def test_a():"], added=["def test_b():"])
     assert F.test_problems([renamed]) == []
+
+
+def test_only_the_data_gated_skip_is_allowed():
+    """Why: Nick allowed the eval-data skip on 2026-11-09; every other new skip still fails the rule."""
+    from types import SimpleNamespace as NS
+
+    import fix_needs_test as F
+
+    ok = NS(path="tests/a.py", added=['pytest.skip("pinned eval data not fetched (x)")'], removed=[], status="M")
+    bad = NS(path="tests/b.py", added=['pytest.skip("flaky")'], removed=[], status="M")
+    assert not [w for w in F.test_problems([ok]) if "skip" in w]
+    assert [w for w in F.test_problems([bad]) if "skip" in w]
