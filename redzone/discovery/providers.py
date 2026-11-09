@@ -1018,15 +1018,31 @@ class ProviderBook:
             provs[prov] = [_compact(r) for r in recs[:12]]
         if not provs:
             return 0
-        self.links[g.game_id] = {"start": g.start_time, "providers": provs}
+        self.links[g.game_id] = {"start": g.start_time, "seen": self._now(), "providers": provs}
         return sum(len(v) for v in provs.values())
 
     def prune(self) -> None:
-        """Drop links of games long over and skips that expired."""
+        """Drop links of games long over, skips that expired, and stale per-stick walls and fail counts."""
         now = self._now()
-        self.links = {gid: v for gid, v in self.links.items()
-                      if not isinstance(v, dict) or not v.get("start") or now - float(v["start"]) < LINKS_KEEP_S}
+        keep = {}
+        for gid, v in self.links.items():
+            if isinstance(v, dict):
+                # a game with no start time ages from when we first saw its links (else it is kept forever)
+                born = float(v.get("start") or 0) or float(v.setdefault("seen", now))
+                if now - born >= LINKS_KEEP_S:
+                    continue
+            keep[gid] = v
+        self.links = keep
         self.skips = self.active_skips()
+        for host in list(self.stick_skips):
+            live = {t: s for t, s in (self.stick_skips[host] or {}).items()
+                    if isinstance(s, dict) and now - float(s.get("at") or 0) < SKIP_S.get(s.get("kind"), 0)}
+            if live:
+                self.stick_skips[host] = live
+            else:
+                del self.stick_skips[host]
+        self._fails = {t: r for t, r in ((t, [x for x in r if now - x < SKIP_S["failed"]])
+                                         for t, r in self._fails.items()) if r}
 
     def game_for(self, target: str | None) -> str | None:
         """The game whose stored event link is this target (None for channels / unknown)."""

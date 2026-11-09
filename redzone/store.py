@@ -65,8 +65,11 @@ class Store:
             self._db.execute("ALTER TABLE calibrations ADD COLUMN kind TEXT DEFAULT 'tap'")
 
     def _x(self, sql: str, args: tuple = ()):
+        """Run one statement and read its rows while the lock is held: a cursor on the shared
+        connection must not be fetched after another thread's statement has run."""
         with self._lock:
-            return self._db.execute(sql, args)
+            cur = self._db.execute(sql, args)
+            return _Rows(cur.fetchall() if cur.description else [], cur.description, cur.lastrowid)
 
     def decision(self, d) -> None:
         self._x("INSERT INTO decisions VALUES (?,?,?,?,?,?,?)",
@@ -174,6 +177,23 @@ class Store:
         cutoff = time.time() - keep_days * 86400
         for t in ("decisions", "snapshots"):
             self._x(f"DELETE FROM {t} WHERE ts < ?", (cutoff,))
+
+
+class _Rows:
+    """Rows already fetched under the store lock, with the cursor surface the callers use."""
+
+    def __init__(self, rows: list, description, lastrowid):
+        self._rows, self.description, self.lastrowid = rows, description, lastrowid
+
+    def fetchall(self) -> list:
+        rows, self._rows = self._rows, []
+        return rows
+
+    def fetchone(self):
+        return self._rows.pop(0) if self._rows else None
+
+    def __iter__(self):
+        return iter(self.fetchall())
 
 
 def _set_aside(path: Path) -> Path:

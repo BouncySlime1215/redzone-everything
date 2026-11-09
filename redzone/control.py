@@ -332,12 +332,16 @@ class LatencyBook:
             d = json.loads(path.read_text())
         except (OSError, ValueError):
             return
-        for k, v in (d.get("samples") or {}).items():
-            for x in (v or [])[-self.keep:]:
+        if not isinstance(d, dict):
+            return
+        samples, preloaded = d.get("samples"), d.get("preloaded")
+        for k, v in (samples if isinstance(samples, dict) else {}).items():
+            for x in (v if isinstance(v, list) else [])[-self.keep:]:
                 if isinstance(x, (int, float)) and not isinstance(x, bool):
                     self.record(str(k), float(x))
-        for k, v in (d.get("preloaded") or {}).items():
-            self.preloaded[str(k)] = deque((bool(x) for x in (v or [])[-self.keep:]), maxlen=self.keep)
+        for k, v in (preloaded if isinstance(preloaded, dict) else {}).items():
+            self.preloaded[str(k)] = deque((bool(x) for x in (v if isinstance(v, list) else [])[-self.keep:]),
+                                           maxlen=self.keep)
         self.dirty = False
 
 
@@ -502,6 +506,7 @@ class Controller:
         self._cec_restore: dict[str, asyncio.Task] = {}   # host -> "turn CEC off again" after a HOME fallback
         self._cec_pending: tuple[int | None, int] = (None, 0)   # (stick index CEC alone says, syncs in a row)
         self._tv_maintained_at = 0.0
+        self._held_saved_at = 0.0
 
     # --- devices -----------------------------------------------------------------
 
@@ -851,6 +856,7 @@ class Controller:
                 return
         # Both sticks at once: a stick that times out (~6 s) mustn't hold up the other one.
         await asyncio.gather(*(self._reconnect(s) for s in self.sticks))
+        self.touch_held()
         self._roles_check()
         if time.time() - self._tv_maintained_at >= TV_MAINTAIN_S and not self._busy() and not self._flipping:
             self._tv_maintained_at = time.time()
@@ -2334,8 +2340,18 @@ class Controller:
             tmp = p.with_suffix(".tmp")   # [S-7] atomic: a crash mid-save can't leave half a file
             tmp.write_text(json.dumps({"ts": time.time(), "held": self.held, "behind_on": behind}))
             tmp.replace(p)
+            self._held_saved_at = time.time()
         except OSError:
             log.debug("held offsets not saved", exc_info=True)
+
+    def touch_held(self, every_s: float = 60.0) -> bool:
+        """Heartbeat for data/held.json: restore_held trusts the file only if its `ts` is recent, but a steady
+        hold never changes, so its `ts` was the time of the LAST CHANGE, and a restart an hour into a hold threw
+        the real offset away. Rewrite it every minute while anything is held."""
+        if not self.held or time.time() - self.__dict__.get("_held_saved_at", 0.0) < every_s:
+            return False
+        self._save_held()
+        return True
 
     def restore_held(self, now: float | None = None) -> dict[str, float]:
         """At start: the offsets saved within timing.behind_live_s.held_max_age_s (the app was down, nothing pressed a key)."""

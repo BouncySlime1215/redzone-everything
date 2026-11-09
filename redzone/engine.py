@@ -3535,8 +3535,11 @@ class Engine:
             q.put_nowait(("state", payload))
 
     def toast(self, text: str, level: str = "info") -> None:
+        payload = json.dumps({"text": text, "level": level})
         for q in list(self.subscribers):
-            q.put_nowait(("toast", json.dumps({"text": text, "level": level})))
+            if q.qsize() > 20:
+                continue  # a phone that stopped reading: don't let its queue grow without bound
+            q.put_nowait(("toast", payload))
 
     # ------------------------------------------------------------------ mac
 

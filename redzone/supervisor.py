@@ -1218,8 +1218,8 @@ class Supervisor:
         try:
             rep = night_report(prev, getattr(self.e, "store", None), self.root, now=now,
                                budget_cfg=self.opt("budget"), ops_cfg=self.opt("night_ops"))
+            write_metrics(path.with_suffix(".json"), rep["metrics"])   # sidecar first: the .md is the "done" marker
             write_report(path, rep["text"])
-            write_metrics(path.with_suffix(".json"), rep["metrics"])
         except Exception:
             # A crash must not cost the night its report: look again later, a few times, then give up.
             self._report_failed += 1
@@ -1839,8 +1839,8 @@ def main(argv: list[str] | None = None) -> int:
     from redzone.store import Store
     rep = night_report(night, Store(), DATA, budget_cfg=budget_cfg)
     path = DATA / "reports" / f"{night.isoformat()}.md"
-    write_report(path, rep["text"])
     write_metrics(path.with_suffix(".json"), rep["metrics"])
+    write_report(path, rep["text"])
     print(rep["text"])
     print(f"\nSaved {path}")
     if "--push" in args:
