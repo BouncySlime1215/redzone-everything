@@ -19,8 +19,9 @@ from functools import cached_property
 from typing import Any, Callable
 
 from redzone.channels import redzone_on
-from redzone.decider.decider import ENTRY_EXEMPT, PSEUDO, REDZONE, REEL, Candidate
+from redzone.decider.decider import ENTRY_FASTEST_S, PSEUDO, REDZONE, REEL, Candidate
 from redzone.decider.screen import break_on_arrival, catchable
+from redzone.decider.whistle import WHISTLE_LEAGUES
 from redzone.models import Phase
 from redzone.reel import REEL_DIR
 
@@ -86,12 +87,12 @@ class Flip:
         one = {d.target: Candidate(host.scored[d.target], self.target)} if d.target in host.scored else {}
         x = one.get(d.target)
         timed = dec._cut_timed(d.target, one)
-        entry_only = not timed and d.kind not in ENTRY_EXEMPT and dec._entry_only(x, d) \
+        entry_only = not timed and not _own_frame(self) and dec._entry_only(x, d) \
             and not host.control._scrub_wanted(self.target)
         if not (timed or entry_only):
             return False, None
         pos = entry_only and dec._possession_start(x, d)
-        urgent = d.kind == "crunch" or (entry_only and dec._entry_urgent(d, x, one))
+        urgent = _crunch_earned(x) if d.kind == "crunch" else (entry_only and dec._entry_urgent(d, x, one))   # [WP-15B] the thin margin is earned, not claimed
         return True, dec.entry_plan(d.target, one, self.now, self.cost, urgent=urgent or pos, possession=pos)
 
 
@@ -143,9 +144,13 @@ def _landing(f: Flip) -> bool:
     if f.game is None:
         return False
     if f.jump:
-        return not f.host.decider.jump_lands_dead(f.d.target, f.live.get(f.d.target), f.now, f.cost)
-    timed, plan = f.replan
-    return timed and plan is not None and not plan.ok
+        if not f.host.decider.jump_lands_dead(f.d.target, f.live.get(f.d.target), f.now, f.cost):
+            return True
+    else:
+        timed, plan = f.replan
+        if timed and plan is not None and not plan.ok:
+            return True
+    return _lands_with_clock_running(f)
 
 
 def _landing_unproven(f: Flip) -> bool:
@@ -202,8 +207,10 @@ def _leave(f: Flip) -> bool:
     if f.replay_exit is not None:
         return False
     if f.jump:
-        return not f.host.decider.jump_may_leave(f.before, f.live, f.now, f.host._leave_margin())
-    return not f.host.safe_to_leave(f.before, required_s=8.0)   # the value cut_veto has always used
+        ok = f.host.decider.jump_may_leave(f.before, f.live, f.now, f.host._leave_margin())
+    else:
+        ok = f.host.safe_to_leave(f.before, required_s=8.0)   # the value cut_veto has always used
+    return not ok or _leaves_high_leverage_play(f)
 
 
 def _landing_whistle(f: Flip) -> bool:
@@ -257,3 +264,73 @@ def entry_veto(host: Any, d: Any, target: str | None, now: float | None = None) 
     one = {d.target: Candidate(host.scored[d.target], target)} if d.target in host.scored else {}
     f = Flip(host, d, None, target, one, None, now)
     return next((name for name, rule in ENTRY_RULES if rule(f)), "")
+
+
+# ----- facts a rule reads that aren't one poll's measurements (kept out of Flip so a rule stays a one-liner) -----------
+
+def _own_frame(f: Flip) -> bool:
+    """A real resume or skip lands on a frame its own tune already fixed, so an entry plan doesn't apply. "Real" is read from
+    the replay stack's own record, not from the kind: a resume goes back to the game a replay paused (the newest
+    resume_log entry, with the rewind that reaches it) and a skip stays on the game on screen. Anything else wearing these
+    kinds gets the ordinary landing checks. [WP-15B] these kinds used to be exempt by name (1,208 mid-play entries)."""
+    d, dec = f.d, f.host.decider
+    if d.kind == "skip":
+        return d.target == getattr(dec, "current", None)
+    if d.kind != "resume" or not float(getattr(d, "rewind_s", 0.0) or 0.0) > 0:
+        return False
+    log = getattr(dec, "resume_log", None) or ()
+    return bool(log) and log[-1][1] == "replay" and log[-1][2] == d.target
+
+
+def _crunch_earned(x: Any) -> bool:
+    """A "crunch" cut really is into crunch time on the scores of now (see _crunch_pick's pool). No candidate: the kind stands."""
+    if x is None:
+        return True
+    s = x.scored
+    return bool(s.crunch or s.crunch_now or getattr(s, "lock", None) == "empty net")
+
+
+def _clock_ran(events: Any, x0: float, x1: float) -> bool:
+    """The game clock was running at some moment of the real-time span [x0, x1], by the play-by-play around it: two
+    neighbouring rows of one period whose clock fell, with the span inside the last `drop` seconds before the later row (the
+    latest the clock could have started and still fallen that far: the same reading as grading.resume_after). Rows are
+    (wall, period, clock left, type), any order. A span the data can't prove running is False: an open window stays open."""
+    ev = sorted(events)
+    for (w1, p1, c1, _), (w2, p2, c2, _) in zip(ev, ev[1:]):
+        drop = c1 - c2
+        if p1 == p2 and drop > 0.05 and max(w1, w2 - drop) <= x1 and w2 > x0:
+            return True
+    return False
+
+
+def _lands_with_clock_running(f: Flip) -> bool:
+    """[WP-15B] Basketball: a dead window can outlast the restart, so the picture still comes up mid-play (a window opened at
+    a period's end runs on into the next period, where its clock checks don't apply: 5 of the 7 mid-play NBA jumps). When
+    the game clock is proven running across the whole arrival, wait. No margin: this is a proof, not a bar, so a thin-margin
+    landing the plans allow stays allowed. A buffered jump's picture isn't the live edge: its own bar (bj.lands) judges it."""
+    g, tl = f.game, f.timeline
+    events = getattr(tl, "clock_events", None)
+    if g is None or not events or g.league.base.value not in WHISTLE_LEAGUES or _own_frame(f):
+        return False
+    d = f.delay
+    if f.jump and f.host.decider._bj_pic(f.d.target, f.live.get(f.d.target), f.now) is not None:
+        return False
+    mu = d.mu - getattr(d, "behind", 0.0) + float(getattr(f.d, "rewind_s", 0.0) or 0.0)
+    fastest = min(f.cost, float(f.host.cfg.get("decider.entry.fastest_s", ENTRY_FASTEST_S)))
+    return _clock_ran(events, f.now + fastest - mu, f.now + f.cost - mu)
+
+
+def _leaves_high_leverage_play(f: Flip) -> bool:
+    """[WP-15B] A high-leverage game on screen, its clock proven running across the leave (safe_to_leave's data can read an
+    old stoppage as still open: NBA, 3:14 left, leave 1 s before a shooting foul). Leaving at low leverage stays allowed."""
+    before = f.before or ""
+    tl = f.host.decider.timelines.get(before)
+    g = f.host.merger.games.get(before)
+    events = getattr(tl, "clock_events", None)
+    if g is None or not events or g.league.base.value not in WHISTLE_LEAGUES or before not in f.live:
+        return False
+    s = f.live[before].scored
+    if not (getattr(s, "high_leverage", False) or s.crunch or s.crunch_now):
+        return False
+    mu = f.host.delays.get(getattr(f.host.where.get(before), "target", None) or "unknown").mu
+    return _clock_ran(events, f.now - mu, f.now + f.host._leave_margin() - mu)

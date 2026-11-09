@@ -23,9 +23,11 @@ from tests.adversarial.harness import Truth, WorstBrain, cap_from_env, score
 from tests.brains import ATTACKS, AdversarialBrain, RandomBrain
 
 ROOT = Path(__file__).resolve().parent.parent
-HOLE_LANDING = ("HOLE (production, jump_lands_dead / entry plan): NBA dead windows pass a landing the grader calls mid-play, "
-                "mostly a period's first seconds (end_period window after 12:00 substitutions). Needs a fix in "
-                "redzone/decider/cuts.py or decider.py, outside WP-15's files.")
+GRADER_WALLS = ("GRADER ARTIFACT, not a hole (WP-15B, all three landings checked by hand): Replay.load makes wallclock "
+                "monotonic, so a foul ESPN logs after its substitutions gets the substitutions' later time (raw -200 s -> "
+                "+8 s HOU @ SA, raw -26 s -> +3 s BKN @ CLE, raw -25 s -> +6 s POR @ LAL). The gate landed in the real "
+                "stoppage; the grader moved it. The clock-running veto closed the real ones (period-start windows, NBA "
+                "better 5 -> 2, jump 7 -> 3). Passes once the grader reads raw wallclocks.")
 
 
 def _data(league):
@@ -53,7 +55,7 @@ def test_the_worst_valid_brain_cannot_break_rule_1(league, kind):
 
 
 @pytest.mark.parametrize("kind", ["jump", "better"])
-@pytest.mark.xfail(strict=True, reason=HOLE_LANDING)
+@pytest.mark.xfail(strict=True, reason=GRADER_WALLS)
 def test_the_worst_valid_brain_cannot_break_rule_1_nba(kind):
     _data("nba")
     r = score("nba", WorstBrain, kind=kind, cap=None)     # every fit night: the count is the point
@@ -68,16 +70,16 @@ def test_a_random_brain_cannot_break_rule_1_and_still_gets_cuts(league):
     _assert_safe(r)
 
 
-@pytest.mark.xfail(strict=True, reason="HOLE (production, entry plan with kind crunch): on NHL fit nights a random brain's "
-                                       "crunch-kind cut got 1 mid-play entry through the gate in about 9,000 proposals.")
 def test_a_random_brain_crunch_cut_cannot_land_mid_play_nhl():
     _data("nhl")
     _assert_safe(score("nhl", lambda t: RandomBrain(1), kind="crunch", cap=None))
 
 
-@pytest.mark.xfail(strict=True, reason="HOLE (production, safe_to_leave at required_s=8): a non-jump leave passed about 1 s before a "
-                                       "shooting foul, 3:14 left, close NBA game; graded a high-leverage mid-play leave. Only seen with "
-                                       "valid() bypassed.")
+@pytest.mark.xfail(strict=True, reason="GRADER ARTIFACT, not a hole (WP-15B): the one graded leave is WSH @ CHA 0:33.3 Q4, between free "
+                                       "throws: clock 33.3 before and after, FT2 24 s later. sportsgrade._clean_cut reads the FT2 row as "
+                                       "the next action and backs off 26 s (RESUME_LEAD), so it calls the dead ball mid-play. The real leave "
+                                       "(HOU @ SA, 3:14 left, 1 s before a shooting foul, clock running) is now vetoed, see "
+                                       "test_commit_gate.test_a_leave_is_vetoed_when_a_high_leverage_game_has_its_clock_running.")
 def test_a_raw_brain_cannot_cut_a_high_leverage_play_nba():
     _data("nba")
     r = score("nba", lambda t: AdversarialBrain("wrong_tick"), kind="better", raw=True, cap=None)
@@ -115,10 +117,6 @@ def test_the_worst_brain_is_valid_by_the_contract():
     assert contract.valid(WorstBrain(Truth()).think(inp), inp)
 
 
-@pytest.mark.xfail(strict=True, reason="HOLE (production, Flip.replan / ENTRY_EXEMPT): kinds resume and skip get no landing "
-                                       "check in a league without cut timing, so a resume with no planned frame lands anywhere "
-                                       "(NBA, NHL replay: every one of them mid-play). The arbiter (WP-17) must never give a "
-                                       "brain's cut those kinds, or the gate must demand rewind_s > 0 for the exemption.")
 @pytest.mark.parametrize("kind", ["resume", "skip"])
 def test_a_resume_with_no_planned_frame_still_has_to_land_dead(kind, monkeypatch):
     monkeypatch.setattr(gate, "break_on_arrival", lambda *a: False)

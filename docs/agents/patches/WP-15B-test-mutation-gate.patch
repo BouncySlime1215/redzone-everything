@@ -1,0 +1,66 @@
+diff --git a/tests/test_mutation_gate.py b/tests/test_mutation_gate.py
+index 82ea63f8..afbebe11 100644
+--- a/tests/test_mutation_gate.py
++++ b/tests/test_mutation_gate.py
+@@ -230,8 +230,11 @@ def _entry_only(h, plan=None):
+ def k_entry_only(m):
+     _ready(m)
+     assert V(m, h_with(_entry_only)) == "landing"
+-    for exempt in ("resume", "skip"):
+-        assert V(m, h_with(_entry_only), kind=exempt) == ""
++    assert V(m, h_with(_entry_only), kind="resume") == "landing"     # [WP-15B] no longer exempt by name
++    assert V(m, h_with(_entry_only), kind="skip") == "landing"
++    real = h_with(_entry_only)
++    real.decider.current, real.decider.resume_log = "b", [(AT - 90.0, "replay", "b", 2.0)]
++    assert V(m, real, kind="resume", rewind_s=95.0) == "" and V(m, real, kind="skip") == ""
+     assert V(m, h_with(lambda h: (_entry_only(h), _set(h.control, _scrub_wanted=lambda t: True))[0])) == ""
+     h = _host()
+     _entry_only(h)
+@@ -375,6 +378,24 @@ def k_leave(m):
+     assert V(m, h_with(no_jump)) == ""                # not a jump: the other bar
+ 
+ 
++def k_clock_checks(m):
++    """[WP-15B] the landing and the leave each ask the clock, on top of the answer they already had."""
++    _ready(m)
++    ev = [(895.0, 2, 720.0, "sub"), (915.0, 2, 702.0, "foul")]
++    ld = _host()
++    ld.decider.timelines["b"] = NS(clock_events=ev)
++    ld.delays = NS(get=lambda t: NS(mu=AT - 900.0, behind=0.0, current_sigma=lambda at: 2.0))
++    ld.decider.jump_lands_dead = lambda *a: True
++    ld.decider._bj_pic = lambda *a: None
++    assert V(m, ld) == "landing" and V(m, ld, kind="jump") == "landing"
++    lv = _host()
++    lv.decider.timelines["a"] = NS(clock_events=ev)
++    lv.scored = {"a": NS(high_leverage=True, crunch=False, crunch_now=False)}
++    lv.delays = ld.delays
++    cs = _cands()
++    assert V(m, lv, cands=cs) == "leave" and V(m, lv, cands=cs, kind="jump") == "leave"
++
++
+ def k_landing_whistle(m):
+     _ready(m)
+     no = lambda h: _set(h, _flip_lands_whistle=lambda d, t: False)  # noqa: E731
+@@ -488,14 +509,14 @@ CHECKS = [v for k, v in sorted(globals().items()) if k.startswith("k_") and call
+ # Equivalent mutants: no flip can tell them apart. id -> why.
+ REPLAN = "replan returns a plan only when timed is true, so `plan is not None` already implies it"
+ EQUIVALENT = {
+-    "Flip.game:50:drop_operand_1": "merger.games.get(None) and .get('') are both None: no game has either id",
+-    "Flip.game:50:change_str": "merger.games.get('_mutated') is None like .get(''): only reached with a falsy target",
+-    "_landing:148:drop_operand_0": REPLAN,
+-    "_rewind_changed:160:drop_operand_0": REPLAN,
+-    "_arrival_break:168:drop_operand_0": REPLAN,
+-    "_arrival_break:165:drop_operand_0": "timeline is None whenever game is None (Flip.timeline), the same guard's other half",
+-    "_hold:176:drop_operand_1": "None is never a key of f.live, so `before not in live` already covers it",
+-    "_hold:181:drop_operand_1": "f.live is built from f.cands: a key of live is always a key of cands",
++    "Flip.game:51:drop_operand_1": "merger.games.get(None) and .get('') are both None: no game has either id",
++    "Flip.game:51:change_str": "merger.games.get('_mutated') is None like .get(''): only reached with a falsy target",
++    "_landing:151:drop_operand_0": REPLAN,
++    "_rewind_changed:165:drop_operand_0": REPLAN,
++    "_arrival_break:173:drop_operand_0": REPLAN,
++    "_arrival_break:170:drop_operand_0": "timeline is None whenever game is None (Flip.timeline), the same guard's other half",
++    "_hold:181:drop_operand_1": "None is never a key of f.live, so `before not in live` already covers it",
++    "_hold:186:drop_operand_1": "f.live is built from f.cands: a key of live is always a key of cands",
+ }
+ 
+ 
