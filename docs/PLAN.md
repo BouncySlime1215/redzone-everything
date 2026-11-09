@@ -51,6 +51,12 @@ Bars (Nick, 2026-11-08):
   achieves on those games (today's sim: 0.6-0.9 cuts/min, best 10-min window 12), 60-90 s behind live, 0 commercials on
   screen, 0 late joins. Rotating and catching up across many games (every play of an 8-game slate is about 59 per
   10 min, 4 games about 31) is brain-phase work (section 4). Reference: [redzone-numbers](research/2026-11-08/redzone-numbers.md).
+- Football must-show plays (Nick, 2026-11-08): every touchdown and every major play: turnover, 10+ yard gain, field goal,
+  big 3rd down, 4th down, large EPA. Measured on 19 Sundays (4+ games live): about 14 per 10 min across all live games
+  (median 14, p90 21, max 35): TDs 1.7, 10+ gains 5.9, large win-probability swings 2.4, big 3rd downs 1.4, FGs 1.3, 4th
+  downs 1.1, turnovers 0.6. ESPN has no EPA, so a 5-point win-probability swing stands in for it (nflverse EPA in the brain phase).
+  Fast-stick target from [the max-rate study](agents/audit/2026-11-09-max-rate.md): 13-15 jumps per 10 min on 2-4 games.
+  Plays from other games that the live rotation can't reach become catch-up clips (brain phase).
 - Works on both HDMI inputs and on both Prime Video and YouTube TV.
 
 Steps: (1) instrument every stage of a switch (decision, tune, scrub/hold, flip, picture) and measure on recorded

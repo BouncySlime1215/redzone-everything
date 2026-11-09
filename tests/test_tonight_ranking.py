@@ -71,6 +71,7 @@ def test_sticky_home_break_only_visits_games_we_can_leave(cfg, clock):
 def test_vanished_basketball_game_is_held_longer_than_football(cfg, clock):
     from redzone.decider.decider import GONE_MAX_HOLD_CONTINUOUS_S, GONE_MAX_HOLD_S
     from redzone.decider.screen import Event
+    cfg.update({"decider": {"entry": {"allow_live_fallback": True}}})   # [D-01] no play-by-play here; this is the hold on a vanished game, not the landing
     dec = Decider(cfg, DelayBook({"youtubetv": 40}, 15, clock=clock), clock=clock)
     assert dec.decide({"a": _c("a", League.NBA, 80), "b": _c("b", League.NBA, 50)}).target == "a"
     tl = dec.timeline("a", League.NBA)
@@ -86,6 +87,7 @@ def test_vanished_basketball_game_is_held_longer_than_football(cfg, clock):
 
 
 def test_start_waits_for_your_team_instead_of_an_inescapable_neutral_game(cfg, clock):
+    cfg.update({"decider": {"entry": {"allow_live_fallback": True}}})   # [D-01] no play-by-play here; this is the wait for your team, not the landing
     dec = Decider(cfg, DelayBook({"youtubetv": 40}, 15, clock=clock), clock=clock)
     nhl = {"det": _c("det", League.NHL, 70)}
     d = dec.decide(nhl, commit=False)

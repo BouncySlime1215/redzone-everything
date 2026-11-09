@@ -129,7 +129,9 @@ class BufferShadow:
                         cost = float(ec(target) if ec is not None else self.editor._deadline_cost(target))
                     except Exception:
                         cost = 0.0
-                    mu, sd = float(ld.mu), float(ld.current_sigma(now))
+                    # the row's mu is the delay WITHOUT B (arena_at = picture_at - behind_s - mu - rewind_s): a stream the
+                    # live controller already holds behind has that hold inside ld.mu, so use what the editor planned on
+                    mu, sd = float(self.delays.get(target).mu) - b, float(ld.current_sigma(now))
                     pic = now + cost
                     row.update({"to": d.target, "picture_at": round(pic, 2), "mu": round(mu, 2), "sd": round(sd, 2),
                                 "arena_at": round(pic - b - mu - float(getattr(d, "rewind_s", 0.0) or 0.0), 2)})

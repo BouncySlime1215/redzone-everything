@@ -367,8 +367,13 @@ def test_watchdog_reports_stolen_routes():
 
 
 def test_watchdog_unchanged_at_home():
-    o = Obs(sticks_offline=["100.110.165.150:5555"], offline_min=1)
-    assert rules(o).action == "reconnect_stick"
+    """At home a dead stick is still reconnected. P-09 (one owner): the app's own supervisor gets the first
+    APP_OWNS_RECONNECT_MIN minutes; the watchdog is the second line after that, and never mid-switch."""
+    from agent.policy import APP_OWNS_RECONNECT_MIN
+    host = ["100.110.165.150:5555"]
+    assert rules(Obs(sticks_offline=host, offline_min=1)).action == "none"                      # the app is still trying
+    assert rules(Obs(sticks_offline=host, offline_min=APP_OWNS_RECONNECT_MIN)).action == "reconnect_stick"
+    assert rules(Obs(sticks_offline=host, offline_min=APP_OWNS_RECONNECT_MIN, switch_in_flight=True)).action != "reconnect_stick"
 
 
 # --- engine view ------------------------------------------------------------------------------

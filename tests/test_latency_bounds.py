@@ -96,6 +96,7 @@ def test_unknown_picture_does_not_credit_an_elapsed_replay(dec, clock):
 
 
 def test_transport_in_flight_blocks_duplicate_decisions_without_a_dwell_quota(dec, clock):
+    dec.cfg.update({"decider": {"entry": {"allow_live_fallback": True}}})   # [D-01] no play-by-play here; this is the transport hold, not the landing
     cands = {'game': candidate('game')}
     dec.deadline_cost = lambda target: 12.0
     first = dec.decide(cands)

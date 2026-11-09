@@ -817,7 +817,20 @@ def grade(night: Night) -> dict:
                 t0 = d["t"] + (d.get("dur") or 0)
         return t0
     starts = [(p, clock_from(p)) for p in shown_prompts]
-    prompt_ok = all(any(c[0] >= p[0] and c[0] - t0 <= 60 and c[2] == p[2] for c in cleared) for p, t0 in starts)
+    sources = [x for x in ev if x[1] == "tv_source"]
+
+    def prompt_handled(p, t0: float) -> bool:
+        # Cleared within 60 s, or the TV left that stick first: nobody sees a prompt on a hidden stick, so its clock
+        # restarts if the TV comes back to it with the prompt still up (a flip 1 s after the prompt, seed 2).
+        done = next((c[0] for c in cleared if c[0] >= p[0] and c[2] == p[2]), None)
+        if done is not None and done - t0 <= 60:
+            return True
+        left = next((x[0] for x in sources if p[0] <= x[0] <= t0 + 60 and x[2] != p[2]), None)
+        if left is None:
+            return False
+        back = next((x[0] for x in sources if x[0] > left and x[2] == p[2]), None)
+        return back is None or (done is not None and done - back <= 60)
+    prompt_ok = all(prompt_handled(p, t0) for p, t0 in starts)
     check("still_watching_cleared", prompt_ok,
           {"shown": [_et(p[0]) for p in shown_prompts], "cleared": [(_et(c[0]), c[3]) for c in cleared],
            "clock_from": [_et(t0) for _, t0 in starts]})

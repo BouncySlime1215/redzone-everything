@@ -100,7 +100,7 @@ def is_dead_ball(league: str, typ: str) -> bool:
 
 def is_big(league: League, p: dict, prev: dict | None) -> bool:
     t = play_type(p)
-    orig, league = league, league.base            # [grader v47] a college league is judged by its pro league's rule
+    orig = League(league); league = orig.base     # [grader v47] a college league is judged by its pro league's rule
     if league == League.NFL:
         return bool(p.get("scoringPlay")) or "interception" in t or "fumble recovery (opponent)" in t \
             or bool(p.get("isTurnover"))

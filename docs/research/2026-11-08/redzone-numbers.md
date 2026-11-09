@@ -53,6 +53,13 @@ number of times the next event is in a different game than the last one (the few
 Per Sunday: 30-70 touchdowns and 45-97 red-zone trips, depending on how many games and hours (full slates with
 the late window are 6+ hours).
 
+## Major plays per 10 minutes (Nick's must-show list, measured)
+
+Same 19 Sundays, windows with 4+ games live, all live games counted once per play:
+touchdowns 1.7, 10+ yard gains 5.9, win-probability swing of 5+ points 2.4 (stand-in for large EPA: ESPN has no EPA), big
+3rd downs (conversion, 5+ yards to go) 1.4, field goals 1.3, 4th-down tries 1.1, turnovers 0.6.
+Total: mean 14.3, median 14, p90 21, max 35 per 10 minutes.
+
 ## What this means for the pass bar
 
 - **75 jumps in 10 minutes is about 15x what RedZone itself needs.** A good RedZone does about 5 cuts per 10 minutes,

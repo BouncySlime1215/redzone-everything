@@ -11,5 +11,6 @@ results go to the locked results store (location set by the wave-1 "locked resul
 | 1 | App starts on the merged build, both sticks connect, `/api/machines` shows sane states | merged code is new | app on, no game needed | 5 min | every machine in a declared state, no illegal moves | waiting: Nick's "turn it back on" |
 | 2 | One buffered jump on YouTube TV, HDMI1 -> HDMI2 and back | S-1 snap-park fix + merge | 1 live game pair on YTTV | 1 min | jump completes, lands on a dead ball | waiting |
 | 3 | Same with Prime on the hidden stick | Prime delay sync | 1 Prime + 1 YTTV game | 1 min | jump completes, Prime sigma < 4 s | waiting |
-| 4 | 10-minute window, NFL | P1 pace bar | NFL Sunday | 10 min | 0 late joins, 0 commercial s, cuts within event count | waiting |
+| 3a | Stick speed numbers, per app and HDMI (P1-MAXRATE): hidden seek latency by distance (<= 8 s), seek failure rate (< 10%), parked position error (<= 1.5 s sd), game-change prep (15 s), flip and PLAY-to-picture (2.5 s), 30 s pause holds, can Prime seek in steps | sets what pace is reachable | any game on the hidden stick | 10 min | numbers recorded in the results ledger | waiting |
+| 4 | 10-minute window, NFL | P1 pace bar | NFL Sunday | 10 min | 0 late joins, 0 commercial s, must-show plays seen on the games shown | waiting |
 | 5 | 10-minute window, NBA | basketball join rule | NBA night | 10 min | joins only after a shot or at a dead ball | waiting |

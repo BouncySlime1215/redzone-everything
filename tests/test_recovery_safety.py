@@ -90,6 +90,7 @@ def _replay_keys(request):
         request.getfixturevalue("cfg").update({"replay": {"yttv_seek": "keys"}})
 
 def test_unconfirmed_plan_does_not_become_watched_game(cfg, clock):
+    cfg.update({"decider": {"entry": {"allow_live_fallback": True}}})   # [D-01] no play-by-play here; this is confirmation, not the landing
     dec = Decider(cfg, DelayBook(cfg.get("delay.default"), cfg.get("delay.sigma_default")), clock=clock)
     game = nfl()
     scored = Scorer(cfg).score(game, Personal())

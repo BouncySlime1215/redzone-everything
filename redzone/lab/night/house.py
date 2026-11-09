@@ -537,6 +537,7 @@ class House:
         self.tv.source = stick
         self.tv.input_at = time.time()
         self.tv.flips += 1
+        self.event("tv_source", stick.host if stick is not None else "")   # still_watching_cleared: is a prompt on screen?
         if old is not None:
             old.lost_input()
         self.observe(cause="input")

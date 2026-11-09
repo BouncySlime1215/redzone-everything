@@ -76,7 +76,7 @@ def make_tv_class(tv_mod, house, rng: random.Random):
             s = house.tv.source
             return s.hdmi if s is not None else house.tv.other
 
-        async def warm(self) -> bool:
+        async def warm(self, probe: bool = False) -> bool:   # the keepalive passes probe=True (DEV-07)
             return True
 
     return NightSmartThingsTV
