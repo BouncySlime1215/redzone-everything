@@ -652,6 +652,239 @@ def test_holdset_grading_counts_no_published_win_probability(monkeypatch):
     assert rows["20231008"][0][4] == plain[4]
 
 
+# --- fair capture: FC-lag and FC-reach ----------------------------------------------------------------------------
+
+
+class _Cfg(dict):
+    pass
+
+
+def _fc_cfg(nba_cdn=False):
+    return _Cfg({"sources.nba_primary": True} if nba_cdn else {})
+
+
+def test_fc_lag_draws_from_the_measured_table_in_order_and_reproduces():
+    walls = [1000.0 + 20.0 * i for i in range(500)]
+    a = H.FeedLag("nfl", _fc_cfg()).arrivals("g", walls)
+    assert np.array_equal(a, H.FeedLag("nfl", _fc_cfg()).arrivals("g", walls))         # seeded
+    assert not np.array_equal(a, H.FeedLag("nfl", _fc_cfg(), seed=1).arrivals("g", walls))
+    assert not np.array_equal(a, H.FeedLag("nfl", _fc_cfg()).arrivals("other", walls))  # each game its own draws
+    assert np.all(np.diff(a) >= 0)                                                     # delivered in order
+    prof = json.loads(V.LAG_PROFILE.read_text())["leagues"]["nfl"]["q"]
+    lags = a - np.array(walls)
+    assert prof[0] <= lags.min() and lags.max() <= prof[19]
+    raw = [H.FeedLag("nfl", _fc_cfg()).sampler.draw("nfl", random.Random(i)) for i in range(4000)]
+    assert abs(float(np.median(raw)) - prof[10]) < 2.0                                   # the table's median, not a constant
+    same_play = H.FeedLag("nfl", _fc_cfg()).arrivals("g", walls[:1])
+    assert same_play[0] == a[0]                                                        # a play's lag does not hang on the play list
+
+
+def test_fc_lag_uses_the_feed_in_use_and_refuses_an_unmeasured_table():
+    assert H.FeedLag("nba", _fc_cfg()).info["source"] == "espn_summary"
+    cdn = H.FeedLag("nba", _fc_cfg(nba_cdn=True))
+    assert cdn.info["source"] == "nba_cdn" and cdn.info["n"] > 0 and cdn.info["p50_s"] < 15.0
+    prof = json.loads(V.LAG_PROFILE.read_text())
+    prof["leagues"]["nfl"]["n"] = 0
+    with pytest.raises(H.LagTableError):
+        H.FeedLag("nfl", _fc_cfg(), profile=prof)
+    prof["leagues"].pop("nfl")
+    with pytest.raises(H.LagTableError):
+        H.FeedLag("nfl", _fc_cfg(), profile=prof)
+
+
+class _Late:
+    def __init__(self, s):
+        self.s = s
+
+    def arrivals(self, gid, walls):
+        return np.asarray(walls, float) + self.s
+
+
+def test_lagged_model_ranks_read_only_what_has_arrived(run, monkeypatch):
+    gid, summary = "g1", nfl_summary(0.0, 9)
+    night = [holdset.game_row("nfl", gid, summary)]
+    monkeypatch.setattr(H.holdset, "games", lambda league, only=None: [("n", gid, summary)])
+    model = _model(run)
+    now = H.ModelRanker(model)("nfl", "n", night)
+    zero = H.ModelRanker(model, feed=_Late(0.0))("nfl", "n", night)
+    late = H.ModelRanker(model, feed=_Late(600.0))("nfl", "n", night)
+    assert now == zero
+    times = sorted(now)
+    assert now[times[0]] and not late[times[0]]                                         # the first play is still 600 s away
+    assert any(now[t] != late[t] for t in times if late[t])                             # later decisions read an older head
+
+
+def _night_rows(events_by_game):
+    s, e = 0.0, 7200.0
+    states = [(w, 1, 100, 0, None) for w in np.arange(s, e, 30.0)]
+    return [(gid, s, e, states, sorted(ev)) for gid, ev in events_by_game.items()]
+
+
+def test_reach_earns_nothing_before_the_first_allowed_entry():
+    rows = _night_rows({"a": [(310.0, 1), (500.0, 1)], "b": [(310.0, 1)], "c": []})
+    night = "n"
+    times = holdset.decision_times(rows)
+    t = times[0]                 # 300.0
+    assert t == 300.0
+    ranks = {x: {"a": 3.0, "b": 2.0, "c": 1.0} for x in times}
+    by_night = {night: holdset.decisions("nfl", rows, ranks)}
+    of = {night: rows}
+    # no allowed entry at all: nothing is earned, the denominator is untouched
+    g0, tot, n = H.reach_capture(by_night, of, {}, 2, random.Random(0))
+    assert g0 == 0.0 and tot == sum(x[3] for d in by_night[night] if len(d) > 2 for x in d) and n > 0
+    # game a may land at t+20 only: its 310 s event is gone, the 500 s one is not (and it was still reached at decision 1 of the 180 s step)
+    entries = {night: {"a": ([t + 5.0], [t + 20.0])}}
+    got, _, _ = H.reach_capture(by_night, of, entries, 2, random.Random(0))
+    assert got == 5.0                                                                     # only the 500 s event counts
+    # entering before the event: both of a's events, plus b's when b enters on time
+    entries = {night: {"a": ([t], [t]), "b": ([t], [t])}}
+    got, _, _ = H.reach_capture(by_night, of, entries, 2, random.Random(0))
+    assert got == 15.0
+
+
+def test_reach_with_every_game_entered_at_once_is_fc_lag():
+    rows = _night_rows({"a": [(310.0, 1), (700.0, 2)], "b": [(320.0, 1), (900.0, 3)], "c": [(400.0, 1)], "d": [(350.0, 3)]})
+    times = holdset.decision_times(rows)
+    ranks = {t: {"a": 1.0, "b": 1.0, "c": 1.0, "d": 1.0} for t in times}       # ties, so the shuffle has to match capture's
+    by_night = {"n": holdset.decisions("nfl", rows, ranks)}
+    entries = {"n": {g: ([x for x in times], [x for x in times]) for g in "abcd"}}
+    for k_ in (1, 2, 3):
+        got, tot, n = H.reach_capture(by_night, {"n": rows}, entries, k_, random.Random(0))
+        g2, t2, _, n2 = holdset.capture(by_night["n"], lambda x: x[5], k_, random.Random(0))
+        assert (got, tot, n) == (g2, t2, n2)
+
+
+def test_a_game_kept_in_the_hold_set_is_entered_once_and_a_dropped_one_again():
+    rows = _night_rows({"a": [(310.0, 1), (500.0, 1)], "b": [(490.0, 1)], "c": []})
+    times = holdset.decision_times(rows)
+    t0, t1 = times[0], times[1]
+    # a is entered once at the first decision and keeps earning at the second, with no second entry available
+    ranks = {t: {"a": 3.0, "b": 2.0, "c": 1.0} for t in times}
+    by_night = {"n": holdset.decisions("nfl", rows, ranks)}
+    entries = {"n": {"a": ([t0], [t0])}}
+    got, _, _ = H.reach_capture(by_night, {"n": rows}, entries, 1, random.Random(0))
+    assert got == 10.0
+    # a drops out at decision 2 and comes back at decision 3: with one entry at t0 only, it earns nothing after it left
+    rows2 = _night_rows({"a": [(310.0, 1), (t1 + 190.0, 1)], "b": [], "c": []})
+    ranks2 = {t: {"a": 3.0, "b": 2.0, "c": 1.0} for t in times}
+    ranks2[t1] = {"a": 1.0, "b": 3.0, "c": 2.0}
+    by_night2 = {"n": holdset.decisions("nfl", rows2, ranks2)}
+    got, _, _ = H.reach_capture(by_night2, {"n": rows2}, entries, 1, random.Random(0))
+    assert got == 5.0                                                                     # only the 310 s event, earned while first held
+
+
+def test_first_landing_only_looks_inside_the_decision_window():
+    series = ([100.0, 200.0, 500.0], [90.0, 190.0, 480.0])
+    assert H.first_landing(series, 150.0, 330.0) == 190.0
+    assert H.first_landing(series, 201.0, 381.0) is None
+    assert H.first_landing(None, 0.0, 1.0) is None
+
+
+def test_decision_clock_refuses_decisions_it_cannot_line_up():
+    rows = _night_rows({"a": [(310.0, 1)], "b": [], "c": []})
+    decs = holdset.decisions("nfl", rows, {})
+    clock = H.decision_clock(rows, decs)
+    assert clock == [t for t in holdset.decision_times(rows)] and len(clock) == len(decs)
+    with pytest.raises(RuntimeError):
+        H.decision_clock(rows, decs[1:])
+
+
+def _with_header(summary, gid):
+    """The header espn.parse_summary needs, so the real Planner and timing gate can read a fixture game."""
+    teams = [{"homeAway": "home", "id": "1", "team": {"abbreviation": "HOM", "id": "1"}, "score": "0"},
+             {"homeAway": "away", "id": "2", "team": {"abbreviation": "AWY", "id": "2"}, "score": "0"}]
+    return {**summary, "header": {"id": gid, "competitions": [{"id": gid, "competitors": teams, "status": {"type": {"state": "post"}}}]}}
+
+
+def test_entry_series_goes_through_the_real_timing_gate(monkeypatch):
+    from redzone.decider.cuts import EntryPlan
+    from redzone.decider.decider import Decider
+    cfg = HP.make_config(None, "nfl")
+    night = [holdset.game_row("nfl", g, s) for g, s in (("g1", nfl_summary(0.0, 9)), ("g2", nfl_summary(60.0, 7)))]
+    games = [("n", "g1", _with_header(nfl_summary(0.0, 9), "g1")), ("n", "g2", _with_header(nfl_summary(60.0, 7), "g2"))]
+    monkeypatch.setattr(H.holdset, "games", lambda league, only=None: games)
+    feed = _Late(44.0)
+    series = H.entry_series("nfl", "n", night, feed, cfg)
+    assert set(series) == {"g1", "g2"} and series["g1"][0], series
+    ticks, lands = series["g1"]
+    assert ticks == sorted(ticks) and all(x <= t for t, x in zip(ticks, lands))         # a fresh tune shows the past, never the future
+    calls = []
+
+    def refuse(self, gid, cands, now, cost=None, urgent=False, possession=False):
+        calls.append(now)
+        return EntryPlan(False, 0.0, None, "waiting")
+    monkeypatch.setattr(Decider, "entry_plan", refuse)
+    assert all(v == ([], []) for v in H.entry_series("nfl", "n", night, feed, cfg).values()) and calls
+    calls.clear()
+    monkeypatch.undo()
+    monkeypatch.setattr(H.holdset, "games", lambda league, only=None: games)
+    monkeypatch.setattr(Decider, "entry_plan", refuse)
+    assert all(v == ([], []) for v in H.entry_series("nfl", "n", night, _Late(10 ** 9), cfg).values()) and not calls    # nothing arrived, nothing to enter
+
+
+def test_lagged_planner_with_no_feed_is_the_real_planner(monkeypatch):
+    games = [("n", f"g{i}", _with_header(nfl_summary(0.0 + i * 90, 6 + i), f"g{i}")) for i in range(3)]
+    night = [holdset.game_row("nfl", g, s) for _, g, s in games]
+    monkeypatch.setattr(H.holdset, "games", lambda league, only=None: games)
+    base = HP.PlannerRanker(None, 30.0)("nfl", "n", night)
+    assert H.LaggedPlannerRanker(None, None, 30.0)("nfl", "n", night) == base
+    late = H.LaggedPlannerRanker(_Late(600.0), None, 30.0)("nfl", "n", night)
+    assert set(late) == set(base) and late != base and not late[min(base)]               # no game has arrived yet at the first decision
+
+
+def _fair_nights():
+    nights = NIGHTS[:5]
+    games = {}
+    for w, night in enumerate(nights):
+        start = (dt.datetime.strptime(night, "%Y%m%d").replace(hour=17, tzinfo=dt.timezone.utc) - KICK).total_seconds()
+        games[night] = [(night, f"g{w}{i}", nfl_summary(start + i * 60, 5 + (w + i) % 9 * 4)) for i in range(6)]
+    return games
+
+
+def test_fair_capture_keeps_every_existing_column_and_its_fc_is_the_report(run, tmp_path, monkeypatch):
+    games = _fair_nights()
+    monkeypatch.setattr(H.holdset, "games", lambda league, only=None: [g for n in (only or sorted(games)) for g in games[n]])
+
+    class FakePlanner:
+        def __init__(self, config, poll):
+            pass
+
+        def __call__(self, league, night, night_rows):
+            return {t: {g[0]: float(i) for i, g in enumerate(night_rows)} for t in holdset.decision_times(night_rows)}
+
+    class FakeLagged(FakePlanner):
+        def __init__(self, feed, config, poll):
+            pass
+
+        def __call__(self, league, night, night_rows):
+            return {t: {g[0]: float(-i) for i, g in enumerate(night_rows)} for t in holdset.decision_times(night_rows)}
+    monkeypatch.setattr(H, "PlannerRanker", FakePlanner)
+    monkeypatch.setattr(H, "LaggedPlannerRanker", FakeLagged)
+    monkeypatch.setattr(H, "entry_series", lambda league, n, rows, feed, cfg: {g[0]: ([], []) for g in rows})
+    args = ["--archive", str(tmp_path / "a"), "--models", str(run[0]), "--leagues", "nfl"]
+    assert H.main(args + ["--out", str(tmp_path / "off.json")]) == 0
+    assert H.main(args + ["--out", str(tmp_path / "on.json"), "--fair-capture"]) == 0
+    off, on = (json.loads((tmp_path / f"{x}.holdset.json").read_text()) for x in ("off", "on"))
+    assert set(off) == {"model", "planner"}                                               # no flag, no new columns
+    assert off["model"] == on["model"] and off["planner"] == on["planner"]
+    assert json.loads((tmp_path / "off.json").read_text()) == json.loads((tmp_path / "on.json").read_text())
+    fair = on["fair_capture"]["nfl"]
+    assert fair["lag_table"]["source"] == "espn_summary" and fair["lag_table"]["n"] == 150 and fair["lag_seed"] == 0
+    for name in ("model", "planner"):
+        for k_ in ("K2", "K4", "K8"):
+            cell, res = fair[name][k_], on[name]["nfl"][k_]
+            assert cell["fc_pct"] == res["planner_pct"]
+            assert cell["decisions"] == res["decisions"] and cell["nights"] == res["nights"]
+            assert cell["fc_reach_pct"] in (0.0, None)                                    # the gate allowed no entry (None: k_ has no decisions)
+
+
+def test_fair_report_says_so_when_there_is_no_measured_table(monkeypatch):
+    def refuse(*a, **k):
+        raise H.LagTableError("nope")
+    monkeypatch.setattr(H, "FeedLag", refuse)
+    assert H.fair_report("nfl", {}, None, 30.0, 0, None, {}, {}, {}, {}) == {"skipped": "nope"}
+
+
 # --- latency ---------------------------------------------------------------------------------------------------
 
 
