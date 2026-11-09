@@ -1,3 +1,7 @@
+"""One-off analysis (queue/dev.py) behind docs/agents/planner/2026-11-09-queue-games-fast.md; not part of the app.
+
+Why: kept so the planner report numbers can be re-run (build plan WP-00).
+"""
 import json,glob,os,datetime as dt
 A='./data/archive/nfl'; D='analysis_tmp/queue/nfl_dev'
 n=k=0

@@ -1,3 +1,7 @@
+"""One-off analysis (queue/stages.py) behind docs/agents/planner/2026-11-09-queue-games-fast.md; not part of the app.
+
+Why: kept so the planner report numbers can be re-run (build plan WP-00).
+"""
 import sqlite3,json,collections,statistics as st
 c=sqlite3.connect('file:data/redzone.db?mode=ro',uri=True)
 rows=c.execute("select ts,target,kind,ok,detail from switches where dry_run=0 order by ts").fetchall()

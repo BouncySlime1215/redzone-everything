@@ -1,4 +1,7 @@
-"""Per-league must-see rates from data/archive (read only). Locked/fresh nights excluded per release_gate.HELDOUT."""
+"""Per-league must-see rates from data/archive (read only). Locked/fresh nights excluded per release_gate.HELDOUT.
+
+Why: kept so the planner report numbers can be re-run (build plan WP-00).
+"""
 import json,glob,os,sys,collections,statistics as st,datetime as dt,re,math
 A='./data/archive'
 EXCL={'nfl':'20251209','nba':'20261029','nhl':'20261029'}   # first excluded night (locked + fresh)

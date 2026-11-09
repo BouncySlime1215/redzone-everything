@@ -1,3 +1,7 @@
+"""One-off analysis (major/fill.py) behind docs/agents/planner/2026-11-09-major-considerations.md; not part of the app.
+
+Why: kept so the planner report numbers can be re-run (build plan WP-00).
+"""
 import sys
 p=sys.argv[1]; s=open(p).read()
 ANS='''1. **"Every league, every night" does not hold today.** Of 12,870 games in the past year, a route that has actually worked exists for 33%. Only 21% are on a fast, seekable route. Without college basketball the figure is 40%.

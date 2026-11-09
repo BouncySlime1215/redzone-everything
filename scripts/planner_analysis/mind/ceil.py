@@ -1,4 +1,7 @@
-"""Noise ceiling for next-3-min must-see value, dev nights only. Compound-Poisson: Var(y | true rate) has mean E[sum w^2]."""
+"""Noise ceiling for next-3-min must-see value, dev nights only. Compound-Poisson: Var(y | true rate) has mean E[sum w^2].
+
+Why: kept so the planner report numbers can be re-run (build plan WP-00).
+"""
 import sys, json, runpy, collections, random
 import numpy as np
 sys.argv=['x','/dev/null']

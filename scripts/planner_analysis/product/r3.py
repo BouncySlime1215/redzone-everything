@@ -1,3 +1,7 @@
+"""One-off analysis (product/r3.py) behind docs/agents/planner/2026-11-09-product-per-league.md; not part of the app.
+
+Why: kept so the planner report numbers can be re-run (build plan WP-00).
+"""
 import sys,collections,datetime as dt
 src=open(sys.argv[1]+'/rates.py').read().split("FN={'nfl'")[0]; ns={}; exec(src,ns)
 FN={'nfl':ns['football'],'cfb':ns['football'],'nba':ns['hoops'],'cbb':ns['hoops'],'nhl':ns['hockey'],'mlb':ns['baseball']}

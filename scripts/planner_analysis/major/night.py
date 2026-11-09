@@ -1,4 +1,7 @@
-"""Per-night reachability from cover.py rows. A night runs 5 AM to 5 AM ET."""
+"""Per-night reachability from cover.py rows. A night runs 5 AM to 5 AM ET.
+
+Why: kept so the planner report numbers can be re-run (build plan WP-00).
+"""
 import pickle,sys,collections,datetime as D,zoneinfo,statistics as S
 ET=zoneinfo.ZoneInfo('America/New_York')
 rows=pickle.load(open(sys.argv[1],'rb'))

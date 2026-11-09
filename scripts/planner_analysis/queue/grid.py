@@ -1,3 +1,7 @@
+"""One-off analysis (queue/grid.py) behind docs/agents/planner/2026-11-09-queue-games-fast.md; not part of the app.
+
+Why: kept so the planner report numbers can be re-run (build plan WP-00).
+"""
 import subprocess,json,re,sys
 base=['nice','-n','15','python','scripts/buffered_jump_sim.py','--maxrate','--archive','analysis_tmp/queue/nfl_dev','--min-games','7']
 def run(st,g,prep,seek,fail):

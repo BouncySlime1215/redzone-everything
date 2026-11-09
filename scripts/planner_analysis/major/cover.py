@@ -1,4 +1,7 @@
-"""Route every game on the past year's public ESPN schedule through the repo's ChannelMap; read only."""
+"""Route every game on the past year's public ESPN schedule through the repo's ChannelMap; read only.
+
+Why: kept so the planner report numbers can be re-run (build plan WP-00).
+"""
 import sys,json,glob,os,collections,datetime as D,zoneinfo,pickle
 W=sys.argv[1]; RAW=sys.argv[2]
 sys.path.insert(0,W)

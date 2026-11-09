@@ -1,5 +1,8 @@
 """How much of each Tier 1 is reachable on facts alone: the join point must be known before the stick has to start.
-Read only, dev nights only (locked/fresh excluded as in Planner 1)."""
+Read only, dev nights only (locked/fresh excluded as in Planner 1).
+
+Why: kept so the planner report numbers can be re-run (build plan WP-00).
+"""
 import json,glob,os,re,collections,datetime as dt
 A='./data/archive'
 EXCL={'nfl':'20251209','nba':'20261029','nhl':'20261029'}

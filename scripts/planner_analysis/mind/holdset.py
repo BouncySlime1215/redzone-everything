@@ -1,6 +1,9 @@
 """How much of the hold-set choice can any model win? Dev nights only (locked and fresh excluded). Read only, no training.
 Every 180 s on each multi-game slate, for each live game: y = tier-weighted must-see in the NEXT 180 s (past the look-ahead).
-Compare picking top-K games by: random, closest-score hand rule, a shrunken state table fit on the older dev nights, hindsight."""
+Compare picking top-K games by: random, closest-score hand rule, a shrunken state table fit on the older dev nights, hindsight.
+
+Why: kept so the planner report numbers can be re-run (build plan WP-00).
+"""
 import sys, json, collections, random, importlib.util, io, contextlib, os, math
 import numpy as np
 HERE = os.path.dirname(__file__)

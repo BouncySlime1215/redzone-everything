@@ -1,3 +1,7 @@
+"""One-off analysis (product/nights.py) behind docs/agents/planner/2026-11-09-product-per-league.md; not part of the app.
+
+Why: kept so the planner report numbers can be re-run (build plan WP-00).
+"""
 import json,glob,collections,datetime as dt
 A='./data/archive'
 D={'nfl':3.08,'cfb':3.45,'nba':2.43,'cbb':2.1,'nhl':2.56,'mlb':2.93}

@@ -1,3 +1,7 @@
+"""One-off analysis (major/fetch2.py) behind docs/agents/planner/2026-11-09-major-considerations.md; not part of the app.
+
+Why: kept so the planner report numbers can be re-run (build plan WP-00).
+"""
 import json,time,urllib.request,sys,os,gzip,datetime as D
 out=sys.argv[1]
 P={'nfl':'football/nfl','cfb':'football/college-football','nba':'basketball/nba','cbb':'basketball/mens-college-basketball','nhl':'hockey/nhl','mlb':'baseball/mlb'}
