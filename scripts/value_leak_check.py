@@ -40,10 +40,19 @@ FEATURES = ("period", "clock_left", "game_left", "is_ot", "late", "abs_margin", 
             "lead_changes", "plays_5m", "since_head_s", "since_score_s", "since_start_s", "t1_5m", "t2_5m", "t3_5m",
             "t1_game", "value_10m", "down", "distance", "yards_to_goal", "playoff")
 LABELS = ("value_next_3m", "p_tier1_60s")
-FEATURES_VERSION = "v2"  # value_shards.FEATURES_VERSION: older shards anchor the label on the feed head
+FEATURES_VERSION = "v2"  # value_shards' default FEATURES_VERSION: older shards anchor the label on the feed head
+HISTORY = ("pts_last3", "pts_last5", "swing_last5", "run_pts", "run_by_trailing", "to_5m", "fouls_5m", "plays_2m",
+           "sec_per_play_10", "timeouts_period", "since_timeout_s", "timeout_recent")
+FEATURES_BY_VERSION = {"v2": FEATURES, "v3": FEATURES + HISTORY}
 META = ("league", "season", "game_id", "game_key", "night", "source_night_id", "source", "license", "plan",
         "decision_t", "feed_cut_t", "feed_head_t", "feature_t_max", "lag_s", "label_full_window", "label_first_t")
 ALLOWED = frozenset(META + FEATURES + LABELS)
+
+
+def allowed_for(version: str) -> frozenset:
+    return frozenset(META + FEATURES_BY_VERSION[version] + LABELS)
+
+
 PUBLIC_SOURCES = {"nflverse_pbp": "nfl"}
 PERSONAL_SOURCES = {"hoopr_espn_nba": "nba", "hoopr_espn_cbb": "cbb"}
 PERSONAL_TAG = "personal-use, not for commercial release"
@@ -178,6 +187,73 @@ def _raw_plays(league: str, g: pd.DataFrame) -> dict[float, list[dict]]:
     return out
 
 
+def _raw_kind(league: str, type_text: str, text: str) -> str:
+    """The raw play's kind: its own rule here, not gamevalue.play_kind, so a slip in either shows up as a difference."""
+    t = type_text.lower()
+    if "timeout" in t:
+        return "timeout"
+    if league == "nfl":
+        return "turnover" if ("interception" in t or "fumble recovery (opponent)" in t or "fumble return" in t) else "foul" if "penalty" in t else ""
+    low = (text or "").lower()
+    if "turnover" in t or "turnover" in low or any(v in t for v in ("traveling", "shot clock", "backcourt", "palming", "double dribble", "kicked ball", "8 second")):
+        return "turnover"
+    return "foul" if "foul" in t else ""
+
+
+def _raw_history(league: str, g: pd.DataFrame) -> dict[float, list[dict]]:
+    """{wall: [v3 history features]} recomputed from the raw rows in wall order. The score, run and event logic is this file's own.
+    NFL rows the shards never see (extra points and two-point tries fold into the touchdown; a row with no ESPN type) are skipped."""
+    plays = []
+    for r in g.itertuples(index=False):
+        if league == "nfl":
+            wall = holdset.ts(r.time_of_day) if isinstance(r.time_of_day, str) else None
+            if r.play_type == "extra_point" or r.two_point_attempt == 1:
+                continue
+            kind_text = factory._nfl_type(r)
+            if not kind_text or not wall:
+                continue
+            plays.append((wall, _n(r.total_home_score), _n(r.total_away_score), _raw_kind(league, kind_text, ""), r.qtr))
+        else:
+            wall = holdset.ts(r.wallclock)
+            if wall:
+                plays.append((wall, _n(r.home_score), _n(r.away_score), _raw_kind(league, r.type_text if isinstance(r.type_text, str) else "", r.text if isinstance(r.text, str) else ""), r.period_number))
+    plays.sort(key=lambda x: x[0])
+    out: dict[float, list[dict]] = {}
+    home = away = run = 0.0
+    team, period, in_period = 0, None, 0
+    walls, totals, margins, kinds = [], [], [], []
+    last_to = None
+
+    def recent(i: int, span: float, k: str | None) -> float:
+        n, j, end = 0, i, walls[i]
+        while j >= 0 and walls[j] > end - span:
+            n += k is None or kinds[j] == k
+            j -= 1
+        return float(n)
+
+    for i, (wall, h, a, kind, per) in enumerate(plays):
+        if h < home or a < away:
+            run, team = 0.0, 0
+        elif h > home or a > away:
+            scorer = 1 if h - home >= a - away else -1
+            run, team = (run + h - home + a - away, scorer) if scorer == team else (h - home + a - away, scorer)
+        home, away = h, a
+        if per != period:
+            period, in_period = per, 0
+        in_period += kind == "timeout"
+        walls.append(wall); totals.append(home + away); margins.append(home - away); kinds.append(kind)
+        back = lambda arr, n: arr[i - n] if i >= n else 0.0  # noqa: E731
+        if kind == "timeout":
+            last_to = wall
+        out.setdefault(wall, []).append({
+            "pts_last3": totals[i] - back(totals, 3), "pts_last5": totals[i] - back(totals, 5), "swing_last5": abs(margins[i] - back(margins, 5)),
+            "run_pts": run, "run_by_trailing": float(team != 0 and team * (home - away) < 0), "to_5m": recent(i, 300.0, "turnover"), "fouls_5m": recent(i, 300.0, "foul"),
+            "plays_2m": recent(i, 120.0, None), "sec_per_play_10": (wall - walls[i - 10]) / 10.0 if i >= 10 else -1.0,
+            "timeouts_period": float(in_period), "since_timeout_s": wall - last_to if last_to is not None else -1.0,
+            "timeout_recent": float("timeout" in kinds[max(i - 1, 0):i + 1])})
+    return out
+
+
 def _same(a, b) -> bool:
     """Close enough for float32. A NaN in the shard is no number at all: the trainer drops that row."""
     if a != a:
@@ -185,7 +261,7 @@ def _same(a, b) -> bool:
     return bool(np.isclose(float(a), float(b), rtol=1e-5, atol=1e-3))
 
 
-def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name: str, rep: Report):
+def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name: str, rep: Report, version: str = FEATURES_VERSION):
     """A sample of one game's rows against the raw source: the head play's fields, then the label."""
     make = holdset_public.nfl_summary if league == "nfl" else holdset_public.hoops_summary
     built = holdset.game_row(league, gid, make(g))
@@ -193,6 +269,7 @@ def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name
         rep.fail("raw_audit", f"{name}: game {gid} has shard rows but is not a whole game in the raw source")
         return
     plays, events = _raw_plays(league, g), built[4]
+    history = _raw_history(league, g) if version != "v2" else {}
     picks = np.unique(np.linspace(0, len(rows) - 1, min(RAW_ROWS, len(rows))).astype(int))
     for r in rows.iloc[picks].itertuples(index=False):
         rep.checked["raw_rows"] += 1
@@ -204,6 +281,11 @@ def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name
             diff = [f"{f} {getattr(r, f)} vs raw {candidates[-1][f]}" for f in RAW_FIELDS if not _same(getattr(r, f), candidates[-1][f])]
             rep.fail("raw_audit", f"{name}: game {gid} feature differs from the raw source: {', '.join(diff[:3])} "
                             f"(raw clock text {candidates[-1]['clock_text']!r})")
+        if version != "v2":
+            found = history.get(float(r.feed_head_t)) or []
+            if not any(all(_same(getattr(r, f), c[f]) for f in HISTORY) for c in found):
+                wrong = [f"{f} {getattr(r, f)} vs raw {found[-1][f]}" for f in HISTORY if found and not _same(getattr(r, f), found[-1][f])]
+                rep.fail("raw_audit", f"{name}: game {gid} history differs from the raw source: {', '.join(wrong[:3]) or 'no raw play at the head'}")
         window = [(w, tier) for w, tier in events if r.decision_t < w <= r.decision_t + HORIZON_S]
         value = sum(holdset.WEIGHTS[tier] for _, tier in window)
         tier1 = float(any(tier == 1 and w <= r.decision_t + TIER1_S for w, tier in window))
@@ -211,7 +293,7 @@ def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name
             rep.fail("raw_audit", f"{name}: game {gid} label {r.value_next_3m} is not the events after its decision ({value})")
 
 
-def audit_raw(df: pd.DataFrame, league: str, shard: str, name: str, raw: Path, rep: Report):
+def audit_raw(df: pd.DataFrame, league: str, shard: str, name: str, raw: Path, rep: Report, version: str = FEATURES_VERSION):
     """Public rows of one shard against <raw>/<league>/pbp_<shard>.parquet."""
     path = Path(raw) / league / f"pbp_{shard}.parquet"
     if not path.exists():
@@ -229,17 +311,17 @@ def audit_raw(df: pd.DataFrame, league: str, shard: str, name: str, raw: Path, r
         if str(gid) not in games:
             rep.fail("raw_audit", f"{name}: game {gid} is not in the raw source")
             continue
-        _audit_game(league, str(gid), games[str(gid)], rows, name, rep)
+        _audit_game(league, str(gid), games[str(gid)], rows, name, rep, version)
 
 
-def check_label_copy(df: pd.DataFrame, name: str, rep: Report):
+def check_label_copy(df: pd.DataFrame, name: str, rep: Report, features: tuple = FEATURES):
     if len(df) < MIN_ROWS_COPY:
         return
     for label in LABELS:
         y = df[label].to_numpy(float)
         if y.std() == 0:
             continue
-        for f in FEATURES:
+        for f in features:
             x = df[f].to_numpy(float)
             if x.std() > 0 and abs(float(np.corrcoef(x, y)[0, 1])) >= COPY_R:
                 rep.fail("label_copy", f"{name}: feature {f} is a copy of label {label}")
@@ -295,13 +377,16 @@ def check_dir(out: Path, archive: Path | None = None, allow_personal_nba: bool =
         info = json.loads(side.read_text())
         if not info.get("complete"):
             rep.fail("sidecar", f"{name}: not marked complete")
-        if info.get("features_version") != FEATURES_VERSION:
-            rep.fail("sidecar", f"{name}: features {info.get('features_version')}, this check knows {FEATURES_VERSION}")
+        version = info.get("features_version")
+        if version not in FEATURES_BY_VERSION:
+            rep.fail("sidecar", f"{name}: features {version}, this check knows {sorted(FEATURES_BY_VERSION)}")
+            version = FEATURES_VERSION
+        allowed = allowed_for(version)
         df = pd.read_parquet(f)
         rep.checked["shards"] += 1
         rep.checked["rows"] += len(df)
-        unknown = sorted(set(df.columns) - ALLOWED)
-        absent = sorted(ALLOWED - set(df.columns))
+        unknown = sorted(set(df.columns) - allowed)
+        absent = sorted(allowed - set(df.columns))
         if unknown:
             rep.fail("columns", f"{name}: columns not on the allow-list: {unknown[:5]}")
         if absent:
@@ -320,9 +405,9 @@ def check_dir(out: Path, archive: Path | None = None, allow_personal_nba: bool =
         rep.checked["prefix_rows"] += int(info.get("prefix_checked") or 0)
         check_times(df, name, rep)
         check_nights(df, league, name, archive, cache, allow_personal_nba, rep)
-        check_label_copy(df, name, rep)
+        check_label_copy(df, name, rep, FEATURES_BY_VERSION[version])
         if raw is not None and (df.source != "archive").any():
-            audit_raw(df[df.source != "archive"], league, f.stem, name, raw, rep)
+            audit_raw(df[df.source != "archive"], league, f.stem, name, raw, rep, version)
         pub = df[df.source != "archive"]
         seen["public_nights"].setdefault(league, set()).update(pub.night.astype(str).unique())
         games = df[["game_id", "night", "game_key", "source"]].drop_duplicates()
