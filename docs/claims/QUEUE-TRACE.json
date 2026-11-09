@@ -1,0 +1,11 @@
+{
+  "card": "QUEUE-TRACE",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "scripts/queue_trace*.py",
+    "tests/test_queue_trace*.py"
+  ],
+  "started": 1794219554,
+  "expires": 1794392354
+}
