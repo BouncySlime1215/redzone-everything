@@ -65,6 +65,7 @@ from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
+from redzone import cheap_labels
 from redzone import observability as obs
 from redzone.fsm import MachineMap
 from redzone.machines.platform import (SUPERVISOR_APP, SUPERVISOR_CONDITION, SUPERVISOR_LOOP, SUPERVISOR_SAFE_EPISODE,
@@ -1183,6 +1184,11 @@ class Supervisor:
                 continue
             self._cuts_judged[t["id"]] = None
             g = grade_cut(t, timelines)
+            labels = getattr(self.e, "cheap_labels", None)
+            if cheap_labels.is_on(getattr(self.e, "cfg", None)):   # [cheap labels] off: no new rows, no new fields
+                if g is not None:
+                    g.update(cheap_labels.cut_fields(labels, t))
+                cheap_labels.write_outcome(self.root / "switch_outcomes.jsonl", t, r, g)
             if g is not None:
                 append_jsonl(self.cuts_path, g)
                 if g.get("leave") == "play":
@@ -1622,7 +1628,7 @@ def night_report(night: date, store: Any, root: Path, now: float | None = None,
     for r in failed:
         cause_targets[failure_cause(_detail(r).get("detail"))][r.get("target") or "?"] += 1
     took = [float(_detail(r).get("took") or 0) for r in ok if _detail(r).get("took")]
-    kinds = Counter(r.get("kind") or "?" for r in rows)
+    kinds = Counter(r.get("kind") or "?" for r in live_rows)   # real choices only: dry-run replays are not Nick
 
     moments = read_jsonl(root / "supervisor_moments.jsonl", t0, t1)
     seen = [m for m in moments if m.get("seen")]

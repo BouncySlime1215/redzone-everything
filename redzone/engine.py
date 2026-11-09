@@ -22,6 +22,7 @@ from redzone import bets as betlib
 from redzone import buffer_rc8
 from redzone import fsm, reel, standby, trace, userstate, views
 from redzone.reel import REEL_DIR
+from redzone.cheap_labels import CheapLabels
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on, route_class
 from redzone.config import Config, ConfigError, for_league
 from redzone.governor import keep_awake_wanted
@@ -317,6 +318,7 @@ class Engine:
         # [EXP-741 E] a waiting tap's Prime score-bug clock reads, numbers only: data/tap_bug.jsonl
         from redzone.screen.tap_bug import TapBug
         self.tap_bug = TapBug(data_dir.parent / "tap_bug.jsonl" if data_dir else None)
+        self.cheap_labels = CheapLabels(self.cfg, data_dir.parent / "labels" if data_dir else None)   # labels.enabled, off
         # [time-shift buffer SHADOW, Nick 9:10 AM Nov 5] an editor decider B s behind live, logged only
         self._bug_log_path = data_dir.parent / "scorebug_reads.jsonl" if data_dir else None
         # [jump mode] every jump with its reason: ids, numbers and short codes (data/jumps.jsonl)
@@ -813,11 +815,19 @@ class Engine:
                 bias = float(self.cfg.get(f"{key}.gap_s" if burst else f"{key}.start_bias_s", 15.0))
                 bias_sd = float(self.cfg.get(f"{key}.gap_sd_s" if burst else f"{key}.bias_sd_s", 10.0))
                 z = t - w - bias
+                # feed_type for break_start rows too (it was burst-only: 26 of 52 rows had none)
                 row.update(feed_wall=round(w, 2), z=round(z, 2), feed_type=next(
-                    (p.type_text or p.kind for p in dead if p.wallclock == w), None) if burst else None)
+                    (p.type_text or p.kind for p in dead if p.wallclock == w), None))
                 if for_league(self.cfg, f"{key}.enabled", g.league.value, False):
                     row["used"] = bool(self.sync is not None and self.delays.anchor(
                         target, z, "burst" if burst else "break", t, (sd * sd + bias_sd * bias_sd) ** 0.5))
+                    row["used_why"] = "used" if row["used"] else "filter_rejected"
+                else:
+                    row["used_why"] = "flag_off"   # `used` is false by design until sync.*_anchor.enabled
+            else:
+                row["used_why"] = "no_dead_ball"
+        else:
+            row["used_why"] = "no_game" if g is None else "not_an_anchor_kind"
         try:
             self.recorder.sync_anchor(row)
         except Exception:
@@ -928,6 +938,9 @@ class Engine:
                         # [EXP-741 E shadow] every Prime bug read logged as clock numbers: lane 3 grades
                         # stopped/running against the play-by-play with no tap ever waiting
                         self.tap_bug.add(f["target"], f["t0"], bug, visible=f["visible"], why="watch")
+                    if g is not None and self.cheap_labels.enabled:   # [cheap labels] a read already made, logged
+                        self.cheap_labels.observe_bug(f["target"], f["t0"], bug, game=gid, league=g.league.value,
+                                                      live=g.phase == Phase.LIVE, visible=bool(f["visible"]))
                     if self.cfg.get("delay.scorebug_log", True) and bug is not None and g is not None:
                         # [Nick 9:25 AM Nov 5] every bug read as numbers (data/scorebug_reads.jsonl): the TNF race
                         # (bug vs espn_fastcast / summary / markets) is graded from first-seen score changes
