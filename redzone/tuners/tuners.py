@@ -162,7 +162,7 @@ class TuneResult:
     screen_changed: bool | None = None  # False: no visible command sent; True: sent; None: legacy unknown
     path: str = ""                      # "tile": a Prime multiview tile switch, not a tune
     warm: bool | None = None            # the app was already running before the link; None: can't tell
-    kept: bool = False                  # no link sent: it was still playing, uninterrupted, so its position is unchanged
+    kept: bool = False                  # nothing reloaded (no link sent, or Prime ignored it): its position is unchanged
 
 
 @dataclass
@@ -525,6 +525,7 @@ class PrimeTuner(Tuner):
         self._before_player: dict[str, str | None] = {}
         self._link_at: dict[str, float] = {}
         self._page_ocr: dict[str, str] = {}      # what _on_detail_page's OCR last read, for the purchase guard
+        self._ignored: set[str] = set()          # hosts whose link Prime ignored this tune: the same stream played on
         self._gap_after_press: dict[str, bool] = {}   # fast confirm: the player stopped or loaded after our press
 
     def _saw_page(self, host: str) -> bool:
@@ -659,6 +660,8 @@ class PrimeTuner(Tuner):
         ignored = token == self._before_player.get(host) and waited >= 6.0 and not self._saw_page(host)
         if token and (self._pressed(host) or ignored):
             watch.report = pb
+            if not self._pressed(host):
+                self._ignored.add(host)
             return True
         return False
 
@@ -692,7 +695,11 @@ class PrimeTuner(Tuner):
         if not m.to("linked", why=f"deep link {target}"):
             m.reset("linked", why=f"deep link {target}")   # a fresh link restarts the age
         self._link_at[stick.host] = time.monotonic()
-        return await super().tune(stick, ref, target, **kw)
+        self._ignored.discard(stick.host)
+        res = await super().tune(stick, ref, target, **kw)
+        if res.ok and stick.host in self._ignored:
+            res.kept = True   # Prime ignored the link: the stream never reloaded, so it is as far behind live as it was
+        return res
 
     async def _watch_for(self, stick: Stick, pkg: str, watch: NewStream, seconds: float) -> bool:
         end = time.monotonic() + seconds
@@ -717,6 +724,7 @@ class PrimeTuner(Tuner):
                         and not self._saw_page(stick.host)
                         and not await self._on_detail_page(stick)):
                     watch.report = pb
+                    self._ignored.add(stick.host)
                     return True
             if time.monotonic() >= end:
                 return False
