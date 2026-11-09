@@ -845,8 +845,8 @@ def main(argv=None) -> int:
     ap.add_argument("--mr-fail", type=float, default=MR().fail_p, help="chance a seek or prep fails and is repeated")
     ap.add_argument("--maxrate-mix", action="store_true", help="(WP-11) the app-mix table: flat, all YouTube TV, plan-file, Prime-heavy, all Prime")
     ap.add_argument("--mr-mix", default="", help="(WP-11) per-app prep on a slate mix: plan-file, prime-heavy, all-youtubetv or app=share,... (default: off)")
-    ap.add_argument("--split", choices=("all", "train", "valid", "fit", "test"), default="all",
-                    help="read dev nights only (redzone/lab/splits.py). test is the locked set and is refused. A mix run with no --split reads fit")
+    ap.add_argument("--split", choices=("all", "train", "valid", "fit", "test"), default="fit",
+                    help="read dev nights only (redzone/lab/splits.py). test is the locked set and is refused. Default fit: the locked nights are never read by accident")
     ap.add_argument("--mr-slate-max", type=int, default=0, help="only slates of at most this many games")
     ap.add_argument("--mr-policy", choices=("fifo", "edf"), default=MR().policy, help="which ready play a free stick takes")
     ap.add_argument("--json")
