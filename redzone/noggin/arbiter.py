@@ -41,6 +41,7 @@ from redzone.moments import tiers
 from redzone.noggin import legal
 
 STAY_ID = legal.STAY.id
+NOT_GAMES = frozenset({"redzone", "reel"})   # the decider's PSEUDO channels; this module can't import the decider
 NOT_FLOOR = 99        # trigger rank of anything the floor does not cover
 TD_WEIGHT = 1000.0    # plan_clips: a touchdown is worth more than any run without it
 
@@ -69,6 +70,8 @@ class Params:
                                       # Off: in the show sim a hold after a score rolled into breaks, 6 ad seconds per 10 min
     repick_max_rank: int = 0            # decide last: a parked stick moves only for this rank or better (0: a touchdown)
     last_game: bool = True            # one game left: stop whipping
+    last_game_to_live: bool = False   # [VETO-AUDIT] the rule above only while that game is on screen. OFF: with the screen on a
+                                      # finished game it also refuses the cut to the one game still live
     ceiling_per_min: int = 3          # RedZone's reported peak, a hard ceiling; 0 turns it off
     brain_margin: float = 3.0         # a brain's cut must beat stay by this many points
     flip_margin_s: float = 1.0        # seconds of slack on every route's deadline
@@ -372,7 +375,7 @@ def choose(inp: brain.BrainInput, out: brain.BrainOutput | None, baseline: str =
         return Choice(_base(baseline, pool, stay), "no_cuts")
     if p.ceiling_per_min > 0 and show.cuts_60s >= p.ceiling_per_min:
         return Choice(stay, "ceiling")
-    if p.last_game and show.live_games <= 1:
+    if p.last_game and show.live_games <= 1 and not (p.last_game_to_live and any(o.verb == "cut" and o.game_id not in NOT_GAMES for o in pool)):
         return Choice(stay, "last_game")
     musts = tuple(musts)
     l1 = lowest_l1_class(pool, show.current_class)
@@ -406,6 +409,30 @@ def _base(baseline: str, kept: Sequence[brain.Option], stay: brain.Option,
     if any(o.id == baseline for o in kept):
         return next(o for o in kept if o.id == baseline)
     return stay if full is not None and any(o.id == baseline for o in full) else None
+
+
+def refused_by(inp: brain.BrainInput, out: brain.BrainOutput | None, pick: str, *, musts: Iterable[Must] = (), show: Show = Show(),
+               p: Params = DEFAULT_PARAMS, baseline: str = STAY_ID) -> str:
+    """The name of what kept the brain's top option `pick` from being chosen, "" when it was chosen. Read only by
+    scripts/veto_audit.py: the decider never calls it. Runs `choose` itself, so it can't disagree with the real choice."""
+    musts = tuple(musts)
+    ch = choose(inp, out, baseline, musts=musts, show=show, p=p)
+    if ch.option is not None and ch.option.id == pick:
+        return ""
+    if ch.why != "brain":
+        return ch.why.split(":", 1)[0] if ch.why.startswith("floor:") else ch.why
+    me = next((o for o in inp.options if o.id == pick), None)
+    if me is None:
+        return "not_offered"
+    if p.decide_last and me.earliest_s > 0.0:
+        return "decide_last"
+    if p.late_narrow and show.late and me.game_id not in show.close:
+        return "late_narrow"
+    if p.visit_budget > 0 and me.game_id is not None:
+        room = p.visit_budget if me.game_id in show.final_two else p.visit_budget - p.visit_reserve
+        if show.visits.get(me.game_id, 0) >= room:
+            return "visit_budget"
+    return "l1_class" if me.l1_class > min([o.l1_class for o in _cuts(inp.options)] + [show.current_class]) else "outscored"
 
 
 def preload_target(musts: Iterable[Must], prep_of: Mapping[str, float], standby: str | None, now: float,

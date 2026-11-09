@@ -143,3 +143,28 @@ def legal_options(f: Facts) -> tuple[brain.Option, ...]:
         opts.append(brain.Option(id=f"{verb}:{g.game_id}", verb=verb, game_id=g.game_id, l1_class=g.l1_class,
                                  latest_s=g.latest_s, needs_prep_s=g.needs_prep_s))
     return tuple(o for o in opts if o.verb == "stay" or kind_of(o.verb))   # fails closed on a verb with no safe kind
+
+
+def refusals(f: Facts, game_id: str) -> tuple[str, ...]:
+    """Every rule that keeps a cut to `game_id` off the list right now, in legal_options' order; empty when it is on the list.
+    Read only by scripts/veto_audit.py: the decider never calls it, so no decision can depend on it."""
+    why = user_block(f.safe_mode, f.paused, f.locked_game, f.manual_until, f.now)
+    out = [f"user:{why}"] if why else []
+    if arriving(f.now, f.arrival_until):
+        out.append("arriving")
+    if f.current and dwell_left(f.since, f.dwell_min_s, kind_of("cut") or "", f.dwell_kinds, f.now) > 0:
+        out.append("dwell")
+    if too_soon(f.last_switch_at, f.min_gap_s, f.now):
+        out.append("too_soon")
+    if f.current and not f.gate_ok:
+        out.append("leave_gate")
+    if f.current and f.moment_lock:
+        out.append("moment_lock")
+    g = next((r for r in f.games if r.game_id == game_id), None)
+    if g is None:
+        return (*out, "unknown_game")
+    out += [n for n, hit in (("on_screen", game_id == f.current), ("not_tunable", not g.tunable), ("dark", g.dark),
+                             ("no_landing", not g.landable), ("banned_app", g.app.lower() in f.banned_apps),
+                             ("focus", bool(f.focus_game) and game_id != f.focus_game and not (f.focus_must_see and g.must_see)))
+            if hit]
+    return tuple(out)
