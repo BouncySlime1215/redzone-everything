@@ -42,6 +42,7 @@ from redzone.decider import buffered as bj
 from redzone.decider import cuts
 from redzone.decider.playbooks import Safety
 from redzone.decider.scenarios import Scenarios
+from redzone.noggin import legal
 from redzone.noggin.lookahead import ahead
 from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
 from redzone import config as _config
@@ -712,6 +713,45 @@ class Decider:
         self.log.append(d)
         return d
 
+    def legal_facts(self, cands: dict[str, Candidate], now: float | None = None) -> legal.Facts:
+        """[WP-16] The facts legal.legal_options reads, for WP-17's arbiter. Reads only; decide() doesn't call it, so the
+        decision can't depend on it. A game with no entry plan isn't landable, unless it's a pseudo channel."""
+        from redzone.noggin.priority import HardRules
+        now = self._clock() if now is None else now
+        u, c = self.user, self.cfg
+        cur = cands.get(self.current) if self.current else None
+        gate = self._gate(cur, now) if cur is not None else None
+        hold = c.get("decider.crunch.hold_personal", 5)
+        rows = []
+        for gid, x in cands.items():
+            s = x.scored
+            plan = None if gid in PSEUDO else self.entry_plan(gid, cands, now)
+            cost = (self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target)) if x.target else 0.0
+            resume = plan.landing.resume if plan is not None and plan.landing is not None else None
+            big = cur is not None and legal.must_see(s.score, cur.scored.score, c.get("decider.must_see_score"),
+                                                     c.get("decider.must_see_lead"))
+            rows.append(legal.GameRow(
+                game_id=gid, app=(x.target or "").split(":", 1)[0], tunable=legal.tunable(gid, x, u.muted),
+                dark=self._entry_dark(gid, x, now), landable=gid in PSEUDO or bool(plan and plan.ok), reel=gid == REEL,
+                l1_class=0 if (gid in self._yours or s.personal >= hold) else 1 if s.crunch else 2, must_see=big,
+                latest_s=max(0.0, resume - now) if resume is not None else 0.0, needs_prep_s=cost if math.isfinite(cost) else 0.0))
+        on_game = bool(self.current) and self.current not in PSEUDO
+        return legal.Facts(
+            now=now, current=self.current, safe_mode=self.safe_mode, paused=u.paused, locked_game=u.locked_game,
+            manual_until=u.manual_until, arrival_until=self._arrival_until, since=self.since,
+            dwell_min_s=float(self._lc("decider.dwell.min_s", cur, 0) or 0) if on_game else 0.0,
+            dwell_kinds=tuple(self._lc("decider.dwell.kinds", cur, None) or ()),
+            last_switch_at=self.history[-1][0] if self.history else None,
+            min_gap_s=float(c.get("noggin.pick.min_gap_s", 0.0)),
+            gate_ok=bool(gate and gate.safe), moment_lock=(cur.scored.lock or "") if cur is not None else "",
+            focus_game=u.focus_game if u.focus_mode != FocusMode.AUTOPILOT else None,
+            focus_must_see=u.focus_mode == FocusMode.FOCUS_MUST_SEE,
+            banned_apps=HardRules.from_config(c).banned_apps, games=tuple(rows))
+
+    def legal_options(self, cands: dict[str, Candidate], now: float | None = None) -> tuple:
+        """[WP-16] What the show may do right now (brain.Option), stay first."""
+        return legal.legal_options(self.legal_facts(cands, now))
+
     def forget_screen(self, why: str) -> None:
         """Nothing is known on screen any more (dry run turned off, a recorded session): current None, no replay
         footage, no tune landing. (recorded.py writes the same attributes one by one; they land here too.)"""
@@ -1310,14 +1350,15 @@ class Decider:
         if gid in PSEUDO or x is None or not x.target or not self.cfg.get("decider.entry.enabled", True):
             return False
         tl = self.timelines.get(gid)
-        return tl is None or not tl.dead.marks
+        return legal.no_dead_ball_data(tl is not None, tl.dead.marks if tl else None)
 
     def _entry_dark(self, gid: str, x: Candidate | None, now: float) -> bool:
         """[P1-REVIEW-05] This game's feed can't prove a dead ball: no marks at all, or the data has gone quiet."""
         if gid in PSEUDO or x is None or not x.target or not self.cfg.get("decider.entry.enabled", True):
             return False
         tl = self.timelines.get(gid)
-        return tl is None or not tl.dead.marks or tl.fresh_at is None or now - tl.fresh_at > STALE_DATA_S
+        return legal.feed_dark(tl is not None, tl.dead.marks if tl else None, tl.fresh_at if tl else None, now,
+                               STALE_DATA_S)
 
     def _without_dark_targets(self, cands: dict[str, Candidate], now: float) -> dict[str, Candidate]:
         """[P1-REVIEW-05] An entry waits on a dark feed (Rule #1 forbids going in blind) only for
@@ -1415,10 +1456,8 @@ class Decider:
         if d.action != "switch" or not self.current or self.current in PSEUDO:
             return d
         x = cands.get(self.current)
-        min_s = float(self._lc("decider.dwell.min_s", x, 0) or 0)
-        if min_s <= 0 or d.kind not in set(self._lc("decider.dwell.kinds", x, None) or ()):
-            return d
-        left = self.since + min_s - now
+        left = legal.dwell_left(self.since, float(self._lc("decider.dwell.min_s", x, 0) or 0), d.kind,
+                                self._lc("decider.dwell.kinds", x, None), now)
         if left <= 0:
             return d
         self._home_restore(home_before, "dwell: a stay")
@@ -1693,7 +1732,7 @@ class Decider:
             return d                       # our own big play is on its way: stay for it
         best = None
         for gid, x in cands.items():
-            if gid == self.current or gid in PSEUDO or not x.target or x.stale or gid in self.user.muted \
+            if gid == self.current or gid in PSEUDO or not legal.tunable(gid, x, self.user.muted) \
                     or not self._lookahead_on(x):
                 continue
             a = ahead(self.timelines.get(gid), self.delays.get(x.target), now, maxs)
@@ -1838,7 +1877,8 @@ class Decider:
         if target and target != self.current:
             # [switch-rate cap] PICK alone never flips again within min_gap_s of the last switch
             gap = float(self.cfg.get("noggin.pick.min_gap_s", 0.0))
-            if self.history and now - self.history[-1][0] < gap and not (d.action == "switch" and d.target == target):
+            if legal.too_soon(self.history[-1][0] if self.history else None, gap, now) \
+                    and not (d.action == "switch" and d.target == target):
                 return d if d.action == "stay" else Decision(now, "stay", self.current, "pick: too soon after a switch",
                                                              d.state, d.gate)
             # Rule #1: the app's own leave gate decides when, for whatever is on screen (also a game PICK
@@ -1846,7 +1886,7 @@ class Decider:
             on = cands.get(self.current) if self.current else None
             gate = self._gate(on, now) if on is not None else None
             why = f"pick {scores[target]:.2f} vs {scores.get(cur, 0):.2f}"
-            if self.current and not (gate and gate.safe and not on.scored.lock):
+            if self.current and not legal.may_leave(bool(gate and gate.safe), on.scored.lock if on else None):
                 return Decision(now, "stay", self.current, f"{why} — waiting: {gate.why if gate else 'no timeline'}",
                                 d.state, gate.why if gate else "", want=target)
             return Decision(now, "switch", target, why, d.state, kind="better")
@@ -1927,13 +1967,15 @@ class Decider:
                 if x.scored.raw > 0 or x.scored.moment > 0 or x.scored.is_break or gid in PSEUDO}
         cur = cands.get(self.current) if self.current else None
         watchable = {gid: x for gid, x in live.items()
-                     if x.target and not x.stale and gid not in u.muted}
+                     if legal.tunable(gid, x, u.muted)}
 
-        if self.safe_mode:
+        block = legal.user_block(self.safe_mode, u.paused, u.locked_game if u.locked_game in cands else None,
+                                 u.manual_until, now)
+        if block == "safe_mode":
             return Decision(now, "stay", self.current, "safe mode: too many errors — tap Resume", State.SAFE)
-        if u.paused:
+        if block == "paused":
             return Decision(now, "stay", self.current, "auto-switching paused", State.PAUSED)
-        if u.locked_game and u.locked_game in cands:
+        if block == "locked_game":
             if self.current != u.locked_game:
                 if self.current is None and now < self.start_retry_at:
                     return Decision(now, "stay", None, f"couldn't get to your locked game yet — trying again in "
@@ -1945,9 +1987,9 @@ class Decider:
                 return Decision(now, "switch", u.locked_game, "you locked this game", State.PAUSED, kind="user")
             self._lock_reset()
             return Decision(now, "stay", self.current, "locked here by you", State.PAUSED)
-        if now < u.manual_until:
+        if block == "manual_pause":
             return Decision(now, "stay", self.current, "you just picked this — hands off for a minute", State.PAUSED)
-        if now < self._arrival_until:
+        if legal.arriving(now, self._arrival_until):
             return Decision(now, "stay", self.current, "switch in progress", State.WATCHING)
         self._target_of.update({gid: x.target for gid, x in cands.items() if x.target})
         self._known_target.update(self._target_of)  # [mid-play guard] remembered after a game drops out
@@ -2024,7 +2066,7 @@ class Decider:
         focus = u.focus_game if u.focus_game in cands else None
         if focus and u.focus_mode != FocusMode.AUTOPILOT:
             if self.current != focus:
-                if not cands[focus].scored.is_break and gate_ok and not s_cur.lock:
+                if not cands[focus].scored.is_break and legal.may_leave(gate_ok, s_cur.lock):
                     return Decision(now, "switch", focus, "back to your focus game", state, gate_txt, kind="home")
                 return Decision(now, "stay", self.current, "away from focus game until this moment ends",
                                 state, gate_txt)
@@ -2043,11 +2085,11 @@ class Decider:
                                     state, gate_txt, kind="break_visit")
                 return Decision(now, "stay", self.current, "your game is on a break; nothing better to visit",
                                 state, gate_txt)
-            if u.focus_mode == FocusMode.FOCUS_MUST_SEE and gate_ok and not s_cur.lock:
+            if u.focus_mode == FocusMode.FOCUS_MUST_SEE and legal.may_leave(gate_ok, s_cur.lock):
                 best = self._best(watchable, exclude=focus)
                 if best:
                     b = cands[best].scored
-                    if b.score >= c.get("decider.must_see_score") and b.score >= s_cur.score + c.get("decider.must_see_lead"):
+                    if legal.must_see(b.score, s_cur.score, c.get("decider.must_see_score"), c.get("decider.must_see_lead")):
                         return Decision(now, "switch", best, self._why(cands[best], "must-see"),
                                         state, gate_txt, kind="must_see")
             return Decision(now, "stay", self.current, "focused: " + s_cur.reason, state, gate_txt)
@@ -2056,7 +2098,7 @@ class Decider:
         crunch = self._crunch_time(cands, watchable, s_cur, on_break, gate_ok, gate_txt, state, now)
         if crunch:
             return crunch
-        chase = self._chase(watchable, s_cur, now) if gate_ok and not s_cur.lock else None
+        chase = self._chase(watchable, s_cur, now) if legal.may_leave(gate_ok, s_cur.lock) else None
         if chase and self._mine_first(s_cur) and cands[chase[0]].scored.personal < s_cur.personal:
             chase = None   # [EXP-214] a big play elsewhere doesn't pull the TV off your team late and close
         # [chained visit] Already away from home on a break visit: the game we're visiting can hit its
@@ -2105,7 +2147,7 @@ class Decider:
             return self._chase_decision(chase, cands, state, gate_txt, now)
 
         # [drive in 20] A drive inside the 20 elsewhere: that's where the touchdown will be.
-        d20 = (self._rz_drive(watchable, now) if gate_ok and not s_cur.lock
+        d20 = (self._rz_drive(watchable, now) if legal.may_leave(gate_ok, s_cur.lock)
                and (self.current != REDZONE or self.cfg.get("redzone_mode.drive_in_20_from_redzone", True)) else None)
         if d20 and not self._mine_late(s_cur):
             return Decision(now, "switch", d20, self._why(cands[d20], "inside the 20 →"), state, gate_txt,
@@ -2115,7 +2157,7 @@ class Decider:
         if best is None:
             # [replay.when_alone] Nothing else live to switch to (your team's game on a break, say) is
             # no reason to skip the catch-up check below: the missed play still beats this moment.
-            if gate_ok and not s_cur.lock and self.cfg.get("replay.when_alone", False):
+            if legal.may_leave(gate_ok, s_cur.lock) and self.cfg.get("replay.when_alone", False):
                 rp = self._best_replay(cands, now, None, False, top=self._vs_replay(self.current, cands),
                                        margin=self.core.k.switch_margin, yours=self.current not in self._yours)
                 if rp and rp.mine:   # your team's missed play only: other games' wait for a real break
@@ -2126,7 +2168,7 @@ class Decider:
         cost = self._rank_cost(b.target)
 
         # Catch-up between plays: a missed big play is worth more than this ordinary moment.
-        if gate_ok and not s_cur.lock:
+        if legal.may_leave(gate_ok, s_cur.lock):
             lull = self._rw() and self._lull(watchable)
             rp = self._best_replay(cands, now, None, False,
                                    top=-1.0 if lull else max(self._vs_replay(self.current, cands),
@@ -2147,7 +2189,7 @@ class Decider:
             return Decision(now, "stay", self.current, f"your team, late and close — {s_cur.reason}", state, gate_txt)
 
         # Go back to where we were if this moment is over and that game is about as good.
-        if self.stack and not s_cur.lock and gate_ok and not self._mine_first(s_cur, late_only=True):
+        if self.stack and legal.may_leave(gate_ok, s_cur.lock) and not self._mine_first(s_cur, late_only=True):
             prev = self.stack[-1]
             if prev in watchable and not cands[prev].scored.is_break and prev not in self._screen_break:
                 st = self._cstate(cands, now)
@@ -2622,7 +2664,7 @@ class Decider:
         """Every live tunable game the rotation may visit (its leagues, a timeline, not muted or stale)."""
         u = self.user
         return {gid: x for gid, x in cands.items()
-                if gid not in PSEUDO and x.target and not x.stale and gid not in u.muted and gid in self.timelines
+                if gid not in PSEUDO and legal.tunable(gid, x, u.muted) and gid in self.timelines
                 and (x.scored.raw > 0 or x.scored.moment > 0 or x.scored.is_break) and self._jump_league(x)}
 
     def _jump_hold(self, x: Candidate) -> str | None:
@@ -3019,14 +3061,9 @@ class Decider:
         the rotation stands aside. The one place the handoff is decided: _jump runs only for 'jump' / 'buffered', and
         the rotation vetoes the normal decider's optional switches only then (_jump_owns)."""
         u = self.user
-        if self.safe_mode:
-            return "safe", "safe_mode"
-        if u.paused:
-            return "user", "paused"
-        if u.locked_game:
-            return "user", "locked_game"
-        if now < u.manual_until:
-            return "user", "manual_pause"
+        block = legal.user_block(self.safe_mode, u.paused, u.locked_game, u.manual_until, now)
+        if block:
+            return ("safe" if block == "safe_mode" else "user"), block
         if u.focus_mode != FocusMode.AUTOPILOT:
             return "user", "focus_mode"
         # A replay owns the way back to live: its after-replay switch (live / home / break_visit) is never a jump-mode
@@ -3040,7 +3077,7 @@ class Decider:
         cur = cands.get(self.current or "")
         rotation = cur is not None and self.current not in PSEUDO and self._jump_league(cur)
         rot = "buffered" if self.buffered_on() else "jump"
-        if now < self._arrival_until:
+        if legal.arriving(now, self._arrival_until):
             # the tune is still landing: the rotation waits; it still owns the optional switches of a rotation game
             return (rot if rotation else "normal"), "just_arrived"
         # [overseer Nov 7 22:40] also current None: after every restart the screen's game is unknown and jump mode held
@@ -3192,7 +3229,7 @@ class Decider:
         """[redzone mode] The hottest watchable NFL drive (heat >= redzone_mode.hot_heat) whose next
         snap isn't behind a break, on the feed or on screen."""
         hot = [(x.scored.factors.get("drive_heat", 0.0), x.scored.score, gid) for gid, x in cands.items()
-               if gid not in PSEUDO and x.target and not x.stale and gid not in self.user.muted
+               if gid not in PSEUDO and legal.tunable(gid, x, self.user.muted)
                and self._is_hot(x, heat) and not x.scored.is_break and gid not in self._screen_break]
         return max(hot)[2] if hot else None
 
@@ -3205,8 +3242,8 @@ class Decider:
             return None
         cap = float(self.cfg.get("redzone_mode.takeover_break_p", 0.5))
         hot = [(x.scored.score, gid) for gid, x in watchable.items()
-               if gid != self.current and gid not in PSEUDO and x.target and not x.stale
-               and gid not in self.user.muted and x.scored.league.base == League.NFL
+               if gid != self.current and gid not in PSEUDO and legal.tunable(gid, x, self.user.muted)
+               and x.scored.league.base == League.NFL
                and x.scored.lock == "red zone drive" and not x.scored.is_break
                and gid not in self._screen_break and x.scored.factors.get("break_p", 0.0) < cap]
         return max(hot)[1] if hot else None
@@ -3241,7 +3278,7 @@ class Decider:
         if not c.get("redzone_mode.enabled", True) or not c.get("redzone_mode.nfl_priority", True):
             return cands
         hot = [x.scored for gid, x in cands.items()
-               if gid not in PSEUDO and x.target and not x.stale and gid not in self.user.muted
+               if gid not in PSEUDO and legal.tunable(gid, x, self.user.muted)
                and not x.scored.is_break and self._is_hot(x)]
         if not hot:
             return cands
