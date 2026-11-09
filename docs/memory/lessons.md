@@ -468,3 +468,11 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
 - 2026-11-09 (SUITE-FIX): `dumpsys | grep` exits 1 on no match, so "no media session" read as a failed read, and AUDIT-4's "an unread before is no proof" (56db03e1) cost a tune from nothing its fast path: 30 s, then "video never started". Lesson: a pipe's exit code is the last command's; check what a "failed" read really was before trusting the flag. Test: tests/test_audit4_tuners.py.
 
 - 2026-11-09 (SUITE-FIX): mutant ids carried line numbers, so a 2-line import shift (2505c35a) renamed every listed equivalent. Ids now name the code they change; editing that code is what needs a re-review. Test: tests/test_mutation_gate.py.
+
+- 2026-11-09 (AUDIT-6): the delay book holds samples relative to the live edge and adds `behind` back, but every sample read off a picture is the picture's whole delay, so a hold counted twice. Lesson: a stored number needs one stated reference point, checked at each door it comes in by. Test: tests/test_audit6_delay.py.
+
+- 2026-11-09 (AUDIT-6): a stoppage was dated by `g.last_play` even when another feed's flag set it and that play was 50 s old. Lesson: two fields on one object can come from two sources; don't read one as the cause of the other. Test: tests/test_audit6_stoppage.py.
+
+- 2026-11-09 (AUDIT-6): `_lg()` folds college into the pro league for the tables, which also gave college the NBA's 24 s shot clock and baseball football's after-a-score break. Lesson: when a rule is keyed "not X", list who else falls in. Tests: tests/test_audit6_shotclock.py, tests/test_audit6_quiet.py.
+
+- 2026-11-09 (AUDIT-6): a count over plays is only a count of the plays we were given: ESPN hands over the last 8, so a mid-quarter join called the third timeout the first. A foul as the next quarter's first entry also kept the break open across the tip. Tests: tests/test_audit6_timeouts.py, tests/test_audit6_windows.py.
