@@ -22,6 +22,7 @@ time `t - mu` at wall time t, mu = live edge + label-read behind, give or take m
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from redzone.decider.cuts import DeadTracker
@@ -95,6 +96,8 @@ def next_snap_in(p: Pic, at: float) -> float:
 def lands(p: Pic, now: float, flip_fast: float, flip: float, lead_min: float, k: float) -> tuple[bool, float]:
     """Does p's picture come up on a dead ball (anywhere from the fastest to the slowest flip, plus lead_min of
     line-up before its snap), and how long after it comes up (slowest flip) does the snap show?"""
+    if not math.isfinite(flip):   # an invalid cost estimate is no evidence of a safe landing
+        return False, -1.0
     m = _m(p, k)
     x0 = now + flip_fast - p.mu - m
     x1 = now + flip + lead_min - p.mu + m
@@ -104,14 +107,15 @@ def lands(p: Pic, now: float, flip_fast: float, flip: float, lead_min: float, k:
     return ok, next_snap_in(p, now + flip)
 
 
-def cut_now(v: Pic, h: Pic, now: float, cfg=None, plays_seen: int = 0) -> Cut:
-    """The editor's call for this instant: cut from V (on screen) to H (hidden, ready, playing behind live)?"""
+def cut_now(v: Pic, h: Pic, now: float, cfg=None, plays_seen: int = 0, land_s: float = 0.0) -> Cut:
+    """The editor's call for this instant: cut from V (on screen) to H (hidden, ready, playing behind live)?
+    land_s: the slowest arrival the flip will check H with (the measured cost, when it is above flip_s)."""
     k = float(cfg_get(cfg, "margin_sigmas"))
     flip, fast = float(cfg_get(cfg, "flip_s")), float(cfg_get(cfg, "flip_fast_s"))
     lead_min, lead_max = float(cfg_get(cfg, "lead_min_s")), float(cfg_get(cfg, "lead_max_s"))
     if not dead_through(v, now, now + flip, k):
         return Cut(False, "play_on_screen")
-    ok, h_snap = lands(h, now, fast, flip, lead_min, k)
+    ok, h_snap = lands(h, now, fast, max(flip, land_s), lead_min, k)
     here = next_snap_in(v, now)
     info = {"h_snap_s": round(h_snap, 1), "here_snap_s": round(here, 1), "plays_seen": plays_seen}
     if not ok:
@@ -175,14 +179,14 @@ def frozen(h: Pic, now: float, paused_at: float) -> Pic:
     return Pic(h.dt, h.mu + max(0.0, now - paused_at), h.sigma, h.gid, h.walk)
 
 
-def cut_parked(v: Pic, h_parked: Pic, now: float, cfg=None, plays_seen: int = 0) -> Cut:
+def cut_parked(v: Pic, h_parked: Pic, now: float, cfg=None, plays_seen: int = 0, land_s: float = 0.0) -> Cut:
     """[park] Throughput: cut at every dead ball on screen (after min_plays, or in a long dead stretch) to the hidden
     stick paused just before its snap. Rule #1 both ways: V surely dead through the flip, H lands dead."""
     k = float(cfg_get(cfg, "margin_sigmas"))
     flip, fast = float(cfg_get(cfg, "flip_s")), float(cfg_get(cfg, "flip_fast_s"))
     if not dead_through(v, now, now + flip, k):
         return Cut(False, "play_on_screen")
-    ok, h_snap = lands(h_parked, now, fast, flip, float(cfg_get(cfg, "lead_min_s")), k)
+    ok, h_snap = lands(h_parked, now, fast, max(flip, land_s), float(cfg_get(cfg, "lead_min_s")), k)
     here = next_snap_in(v, now)
     info = {"h_snap_s": round(h_snap, 1), "here_snap_s": round(here, 1), "plays_seen": plays_seen, "parked": True}
     if not ok:

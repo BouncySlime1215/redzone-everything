@@ -70,6 +70,9 @@ def recover(engine: Any, why: str) -> list[str]:
         if tv is not None:
             def tv_reset():
                 tv._drop_local()
+                reset = getattr(tv, "reset_backoff", None)
+                if reset is not None:
+                    reset()                   # a backoff from before the sleep says nothing about the TV now
                 br = getattr(tv, "st_breaker", None)
                 if br is not None:
                     br.probe_now()

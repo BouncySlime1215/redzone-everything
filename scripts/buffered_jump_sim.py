@@ -28,7 +28,7 @@ from collections import defaultdict
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from redzone.decider import buffered as bj  # noqa: E402
-from redzone.decider.cuts import AFTER_PLAY_S, PLAY_S, DeadTracker, _is_action  # noqa: E402
+from redzone.decider.cuts import AFTER_PLAY_S, PLAY_S, DeadTracker, _is_action, walk_params  # noqa: E402
 from redzone.models import League  # noqa: E402
 from redzone.sources.espn import _kind, _ts, flatten_plays  # noqa: E402
 
@@ -183,6 +183,7 @@ def run_slate(games, args, rng: random.Random, cfg) -> dict:
     cut_at, mid_at = [], []   # wall times of each cut / each mid-play join or leave
     seg0 = t0
     flip = float(bj.cfg_get(cfg, "flip_s"))
+    walk = walk_params(cfg, LG)   # basketball's walk up court after a shot, like the live decider's Pic
     t = t0
     while t < t_end:
         for gid, p in plays.items():   # the play-by-play as it stands at t
@@ -193,8 +194,8 @@ def run_slate(games, args, rng: random.Random, cfg) -> dict:
                 i += 1
             cursor[gid] = i
             belief[gid].seen(t, lag[gid])
-        V = bj.Pic(belief[vis["gid"]], vis["mu"], args.sigma, vis["gid"])
-        H = bj.Pic(belief[hid["gid"]], hid["mu"], args.sigma, hid["gid"]) if t >= hid["ready_at"] else None
+        V = bj.Pic(belief[vis["gid"]], vis["mu"], args.sigma, vis["gid"], walk)
+        H = bj.Pic(belief[hid["gid"]], hid["mu"], args.sigma, hid["gid"], walk) if t >= hid["ready_at"] else None
         park = bool(bj.cfg_get(cfg, "park"))
         if H is not None and park:
             if hid["paused_at"] is None:

@@ -41,7 +41,8 @@ log = logging.getLogger(__name__)
 ADB = shutil.which("adb") or "/opt/homebrew/bin/adb"
 SESSION_ON = os.environ.get("RZ_ADB_SESSION", "1").strip().lower() not in ("0", "off", "false", "no")
 LOCK_WAIT_S = 0.15     # shell busy longer than this (a slow command) -> this one runs as its own adb process
-HANDSHAKE_S = 3.0      # a fresh shell must answer `echo ok` this fast (normally ~0.1 s), cleanly, or we don't use it
+HANDSHAKE_S = 8.0      # a fresh shell must answer `echo ok` this fast (normally ~0.1 s), cleanly, or we don't use it. Was 3 s:
+                       # [P1-ROOTCAUSE-09] a one-off stall of the swapping Mac counted as a dead shell, equally on both sticks
 MAX_REPLY = 32 << 20   # biggest reply we'll buffer (a full UI dump is ~100 KB)
 AWAKE_TTL_S = 60.0     # trust "the stick is awake" this long before asking again
 STICK_HUNG = "stick not responding"   # detail prefix while a stick's breaker is open (not the target's fault)
@@ -177,6 +178,9 @@ class Stick:
             raise
         if not r.ok and r.out.startswith("timeout/error"):
             self.breaker.hang()
+            # [P1-ROOTCAUSE-09] which command, how long: two words only (a later word can be a deep link)
+            log.warning("%s: adb '%s' hung after %.1f s (%d in a row)", self.host, " ".join(cmd.split()[:2]), r.took,
+                        self.breaker.hangs)
             if self.breaker.is_open:
                 log.warning("%s: %d adb commands hung in a row; failing fast for %.0fs",
                             self.host, self.breaker.hangs, self.breaker.retry_in())

@@ -754,13 +754,19 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
 
     async def read():
         nonlocal last_sequence
-        budget()
-        frame = await observe()
-        if not isinstance(frame, CapturedScreen) or frame.sequence <= last_sequence:
-            raise RuntimeError("screen capture is stale or out of order")
-        last_sequence = frame.sequence
-        if not frame.read_ok:
-            raise RuntimeError("screen text could not be read (screencap/OCR)")
+        for second_try in (False, True):
+            budget()
+            frame = await observe()
+            if not isinstance(frame, CapturedScreen) or frame.sequence <= last_sequence:
+                raise RuntimeError("screen capture is stale or out of order")
+            last_sequence = frame.sequence
+            if frame.read_ok:
+                break
+            # [P1-ROOTCAUSE-08] no key was sent since: one more read, and name the step that failed
+            failed = str(getattr(frame, "error", "") or "no text on screen")[:80]
+            record("read_failed", failed)
+            if second_try:
+                raise RuntimeError(f"screen text could not be read ({failed})")
         verdict = classify_screen(frame.text)
         if purchase_dialog(frame) or (verdict and verdict.stops):
             raise RuntimeError(f"account, payment or unavailable screen: {frame.text[:120]!r}")

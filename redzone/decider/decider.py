@@ -722,6 +722,17 @@ class Decider:
         adopt() or buffered_jump.restart_hold_s after it, the unknown screen counts as that game for the leave rule."""
         self._restored_screen = (gid, at, bool(high_leverage)) if gid else None
 
+    def restart_state(self, s=None) -> tuple[str, bool] | None:
+        """[P-04] What a restart would need to know: (the game on screen, is it high leverage). s: its fresh Scored."""
+        gid = self.current
+        if gid is None or gid in PSEUDO:
+            return None
+        if s is None:
+            x = self._known.get(gid)
+            s = x.scored if x is not None else None
+        lev = s is not None and bool(getattr(s, "high_leverage", False) or s.crunch or self._mine_late(s))
+        return gid, lev
+
     def _restart_hold(self, cands: dict[str, Candidate], now: float) -> bool:
         """[P-04] Don't free-cut away from an unknown screen while it is probably the close, late game we saved."""
         saved = self._restored_screen
@@ -2837,8 +2848,14 @@ class Decider:
     def _bj_lands(self, gid: str, p: bj.Pic, cands: dict[str, Candidate], now: float) -> tuple[bool, float]:
         at = self.snap_parked(cands[gid].target) if self.snap_parked is not None else None
         hp = bj.frozen(p, now, at) if at is not None else p
-        return bj.lands(hp, now, float(bj.cfg_get(self.cfg, "flip_fast_s")), float(bj.cfg_get(self.cfg, "flip_s")),
+        return bj.lands(hp, now, float(bj.cfg_get(self.cfg, "flip_fast_s")), self._bj_flip_cost(cands[gid].target),
                         float(bj.cfg_get(self.cfg, "lead_min_s")), float(bj.cfg_get(self.cfg, "margin_sigmas")))
+
+    def _bj_flip_cost(self, target: str | None) -> float:
+        """[P1-ROOTCAUSE-04] The slowest arrival a buffered landing is judged with: the same max(flip_s, cost) the flip's
+        own check (jump_lands_dead) uses, so a cut decided here isn't vetoed a second later (00:15:41, 3.2 s vs 4.1 s)."""
+        flip = float(bj.cfg_get(self.cfg, "flip_s"))
+        return max(flip, self._deadline_cost(target)) if self.deadline_cost is not None else flip
 
     def _bj_screen_gone(self, cands: dict[str, Candidate], now: float) -> Decision | None:
         """The game on screen isn't in the feed any more: jump to a ready standby that lands on a dead ball (buffered
@@ -2851,7 +2868,7 @@ class Decider:
             if p is not None:
                 ok, h_snap = self._bj_lands(gid, p, cands, now)
             else:
-                ok, h_snap = self.jump_lands_dead(gid, x, now, float(bj.cfg_get(self.cfg, "flip_s"))), -1.0
+                ok, h_snap = self.jump_lands_dead(gid, x, now, self._bj_flip_cost(x.target)), -1.0
             if not ok:
                 continue
             info = {"why": "bj_screen_gone", "buffered": p is not None, "h_snap_s": round(h_snap, 1),
@@ -2900,7 +2917,10 @@ class Decider:
             # [bootstrap, overseer Nov 8 21:47] the screen's stick was tuned at the live edge (before the flag, or a failed
             # scrub): once the hidden stick holds a buffered game, go there at the next safe dead ball (jump mode's own
             # leave gate; the landing on the buffered picture), and from then on both pictures are buffered
-            self.jump_holds["bj_screen_not_buffered"] += 1
+            # [P1-ROOTCAUSE-01] counted only when a cut is actually wanted: the old every-tick counter fell through to
+            # play_on_screen on the same ticks, so the holds read as 126 min when they were 74
+            if pics:
+                self.jump_holds["bj_bootstrap_wanted"] += 1
             g = self._jump_gate(cur, now, strict=True) if pics else None
             for gid, p in pics:
                 ok, h_snap = self._bj_lands(gid, p, cands, now)
@@ -2922,10 +2942,11 @@ class Decider:
         for gid, p in pics:
             if park:
                 at = self.snap_parked(cands[gid].target) if self.snap_parked is not None else None
-                c = bj.cut_parked(v, bj.frozen(p, now, at), now, self.cfg, plays_seen=seen) if at is not None \
+                c = bj.cut_parked(v, bj.frozen(p, now, at), now, self.cfg, plays_seen=seen,
+                                  land_s=self._bj_flip_cost(cands[gid].target)) if at is not None \
                     else bj.Cut(False, "not_parked")
             else:
-                c = bj.cut_now(v, p, now, self.cfg, plays_seen=seen)
+                c = bj.cut_now(v, p, now, self.cfg, plays_seen=seen, land_s=self._bj_flip_cost(cands[gid].target))
             if c.go and (best is None or c.info.get("h_snap_s", 99) < best[1].info.get("h_snap_s", 99)):
                 best = (gid, c)
             elif best is None:

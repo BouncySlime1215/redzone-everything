@@ -47,12 +47,20 @@ class _Cached:
     etag: str | None
     fetched_at: float
     last_modified: str | None = None   # [sync 5] for If-Modified-Since on hosts that send no ETag
+    age: float = 0.0                   # [F15] seconds the CDN had already held this copy when we got it (Age header)
 
 
 @dataclass
 class _Backoff:
     until: float = 0.0
     delay: float = 0.0
+
+
+def _age(r) -> float:
+    """[F15] The response's Age header in seconds (0 when absent or not a number). Last-Modified is not used on purpose:
+    an old date there means the file hasn't changed (a quiet game), not that our copy is stale."""
+    v = str(r.headers.get("Age") or "").strip()
+    return float(v) if v.isdigit() else 0.0
 
 
 class Fetcher:
@@ -78,7 +86,7 @@ class Fetcher:
         """When url last returned a fresh 200/304. get_json hands back the cached copy when the
         host is down or backing off, so callers check this to tell fresh data from stale."""
         c = self._cache.get(url)
-        return c.fetched_at if c else None
+        return c.fetched_at - c.age if c else None   # [F15] a CDN copy is as old as its Age, not as old as our request
 
     def is_fresh(self, url: str, max_age_s: float) -> bool:
         t = self.fetched_at(url)
@@ -118,7 +126,7 @@ class Fetcher:
                 self._bump(host)
                 return cached.body if cached else None
             if r.status_code == 304 and cached:
-                cached.fetched_at = self._clock()
+                cached.fetched_at, cached.age = self._clock(), _age(r)
                 self._reset(host, url)
                 return cached.body
             if r.status_code in (403, 404) and host.endswith(PATH_SCOPED_HOSTS):
@@ -135,7 +143,7 @@ class Fetcher:
                 body = r.json()
             except ValueError:
                 return cached.body if cached else None
-            self._cache[url] = _Cached(body, r.headers.get("ETag"), self._clock(), r.headers.get("Last-Modified"))
+            self._cache[url] = _Cached(body, r.headers.get("ETag"), self._clock(), r.headers.get("Last-Modified"), _age(r))
             self._reset(host, url)
             return body
 

@@ -124,6 +124,28 @@ def require_cut(may_cut, steps, *, mutating=False) -> bool:
     return True
 
 
+class TimedSteps(list):
+    """A tune's step list that also remembers when each step happened: .marks = [{at_s, step}]. [P1-ROOTCAUSE-07]"""
+
+    def __init__(self):
+        super().__init__()
+        self.t0 = time.monotonic()
+        self.marks: list[dict] = []
+
+    def mark(self, step: str) -> None:
+        """A timing note only: it doesn't join the steps that error messages and the tuner's own checks read."""
+        self.marks.append({"at_s": round(time.monotonic() - self.t0, 2), "step": str(step)[:100]})
+
+    def append(self, step) -> None:
+        super().append(step)
+        self.mark(step)
+
+
+def _mark(steps, step: str) -> None:
+    if isinstance(steps, TimedSteps):
+        steps.mark(step)
+
+
 @dataclass
 class TuneResult:
     ok: bool
@@ -219,7 +241,7 @@ class Tuner:
 
     async def _tune(self, stick: Stick, ref: str, target: str, may_cut=None) -> TuneResult:
         t0 = time.monotonic()
-        steps: list[str] = []
+        steps: list[str] = TimedSteps()
         pkg = stick.packages.get(self.role)
         if not pkg:
             return TuneResult(False, target, 0.0, steps, f"{self.app} app not found on {stick.name or stick.host}")
@@ -387,7 +409,7 @@ class YouTubeTVTuner(Tuner):
         tile (or its network page -> Live -> the live tile), confirmed by the media session naming
         the channel. Every key goes through the cut window like a deep link would."""
         import tempfile
-        from redzone.screen_ocr import recognize
+        from redzone.screen_ocr import OCRResult, recognize
         from redzone.tuners.prime_search import CapturedScreen
         from redzone.tuners.yttv_search import hunt_channel
         t0 = time.monotonic()
@@ -408,6 +430,8 @@ class YouTubeTVTuner(Tuner):
         async def observe():
             seq[0] += 1
             png = await stick.screencap(timeout=15)
+            if not png:   # [P1-ROOTCAUSE-08] say which half failed
+                return CapturedScreen(OCRResult("error", error="screencap returned nothing"), seq[0], time.monotonic())
             with tempfile.TemporaryDirectory(prefix="rz-yts-") as d:
                 path = f"{d}/s.png"
                 with open(path, "wb") as f:
@@ -466,7 +490,13 @@ class PrimeTuner(Tuner):
             if await self._watch_for(stick, pkg, watch, self.page_wait_s):
                 steps.append("playing")
                 return True
+            _mark(steps, "waited for the player")
+            if (await stick.playback(pkg)).get("state") in LOADING:
+                # [P1-ROOTCAUSE-07] loading already: the screen read (uiautomator, then up to 16 s of OCR) can't help
+                _mark(steps, "loading: screen read skipped")
+                break
             text = (await stick.screen_text()).lower()
+            _mark(steps, f"screen read ({getattr(stick, 'screen_source', '?')})")
             if "regional restriction" in text or "not available in your location" in text or "blackout" in text:
                 steps.append("blackout: this game isn't available in your area on Prime")
                 return False

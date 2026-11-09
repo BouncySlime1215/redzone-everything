@@ -4,7 +4,7 @@
 
 mode:
   dry_run: true            # true = show what it WOULD do, never touch the TV
-  leagues: {nfl: true, nba: true, nhl: true, mlb: true, cbb: true, cfb: true, wcbb: true}
+  leagues: {nfl: true, nba: true, nhl: true, mlb: true, cbb: true, cfb: true, wcbb: false}   # [Nick N2] women's college basketball off
 
 sunday_ticket: true        # you have NFL Sunday Ticket (+ RedZone) on YouTube TV
 market: raleigh-durham
@@ -444,6 +444,8 @@ buffered_jump:             # [overseer Nov 8 01:50Z / Nick 20:45 "play by play m
   restart_hold_s: 120      # [P-04] after a restart, the unknown screen counts as the saved game (for the leave rule) this long or until adopted
   flip_s: 3.2              # slowest input flip to the ready standby (live tonight 2.5-3.7 s)
   flip_fast_s: 2.0         # fastest
+  roll_wait_s: 1.5         # a snap-parked standby must be seen rolling again within this long after its resume
+  roll_poll_s: 0.15        # ...read this often
   margin_sigmas: 2         # delay doubt each side of a leave / landing (sim: 2 sigma at the 4 s floor = 0 mid-play)
   lead_min_s: 2            # the picture comes up at least this long before the target's snap
   lead_max_s: 8            # ...and at most this long past the delay margin (else wait for a later dead moment)
@@ -494,7 +496,7 @@ core:                      # the decision core's expected-value knobs (redzone/d
   break_risk: 0.0          # 0..1: discount a destination by the brain's chance it goes to break soon
   lock_in_step: 10.0       # friction added per reasoner lock_in level to leave a game
   reel_margin_s: 5.0       # the catch-up reel must fit its break with this much to spare
-  league_priority: [nfl, cfb, nba, cbb, wcbb, nhl, mlb]   # overlapping crunch times: first listed wins (after your team / bet)
+  league_priority: [nfl, cfb, nba, cbb, nhl, mlb]   # overlapping crunch times: first listed wins (after your team / bet)
 
 fantasy:                   # ESPN fantasy football (leave league_id empty to turn off)
   league_id: ""
@@ -635,6 +637,9 @@ two_stick:
   tv_verify_deadline_s: 2.5     # [DEV-03] a TV input readback never holds a flip longer than this
   tv_local_lock_wait_s: 3.0     # [DEV-16] a key waits this long for the shared TV socket (a keepalive or key using it)
   tv_maintain_timeout_s: 20.0   # [DEV-10] one keepalive's TV upkeep is cut after this
+  identity_check: true     # [DEV-09] each stick, once per connection, against devices.json (reads only)
+  max_safe_wait_s: 12.0    # [P1-ROOTCAUSE-04] a planned cut gives up after this and re-plans: useful waits peaked at 10.7 s, 0 of 23 full 25 s waits cut
+  tap_safe_wait_s: 25.0    # a phone tap keeps the longer wait for its dead ball [N4]
   cec_flip: true           # HOME -> HDMI-CEC Active Source as the last-resort flip (the TV's own input change,
                            # set up by scripts/tv_setup.py, goes first when it's proven)
   enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment

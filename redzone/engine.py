@@ -24,6 +24,7 @@ from redzone import fsm, reel, standby, trace, userstate, views
 from redzone.reel import REEL_DIR
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
 from redzone.config import Config, ConfigError, for_league
+from redzone.governor import keep_awake_wanted
 from redzone.control import NO_STICK, STANDBY_NOT_READY, Controller, Outcome
 from redzone.decider import buffered as bj
 from redzone.decider import whistle
@@ -31,7 +32,7 @@ from redzone.decider.decider import REDZONE, REEL, Candidate, Decider, Decision,
 from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
                                    leave_gate, leave_window, screen_evidence)
 from redzone.models import GameState, League, Phase
-from redzone.plan import Tonight
+from redzone.plan import Tonight, day_of, path_for
 from redzone.scoring import breaks
 from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal, Scored, Scorer
@@ -521,6 +522,28 @@ class Engine:
         except Exception:
             log.exception("could not restore pause/hold/focus/lock")
 
+    def _screen_state_path(self):
+        return self._user_state_path.with_name("screen_state.json") if self._user_state_path is not None else None
+
+    def _save_screen_state(self) -> None:
+        """[P-04] Every housekeeping tick (10 s): the game on screen and its leverage. A restart reads it, so the unknown
+        screen isn't a free cut away from a close, late game (decider.note_restart)."""
+        path = self._screen_state_path()
+        got = self.decider.restart_state(self.scored.get(self.decider.current or ""))
+        if path is None or self.recorded.active or got is None:
+            return
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"game": got[0], "high_leverage": got[1], "at": time.time()}))
+        tmp.replace(path)
+
+    def _restore_screen_state(self) -> None:
+        """[P-04] On boot: tell the decider what was on screen. It drops a stale one itself (buffered_jump.restart_hold_s)."""
+        path = self._screen_state_path()
+        if path is None or self.recorded.active or not path.exists():
+            return
+        saved = json.loads(path.read_text())
+        self.decider.note_restart(saved.get("game"), float(saved.get("at") or 0.0), bool(saved.get("high_leverage")))
+
     def _save_user_state(self) -> None:
         """Written when it changes (checked every decision tick, so within half a second of a tap)."""
         if self._user_state_path is None or self.recorded.active:
@@ -539,6 +562,10 @@ class Engine:
             self.control.restore_held()
         except Exception:
             log.exception("restore held offsets failed")
+        try:
+            self._restore_screen_state()
+        except Exception:
+            log.exception("restore screen game failed")
         if self.cfg.get("screen.mic_calibration", False):
             self.set_mic(True)
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
@@ -926,7 +953,7 @@ class Engine:
             live = any(g.phase == Phase.LIVE for g in self.merger.games.values())
             soon = any(g.phase == Phase.PRE and g.start_time and 0 < g.start_time - time.time() < 900
                        for g in self.merger.games.values())
-            self._keep_awake(live)
+            self._keep_awake(keep_awake_wanted(self.merger.games.values(), time.time(), planned=self._planned_soon()))
             if live:
                 interval = self._burst_s() if self._burst else self.cfg.get("polling.hot_s", 3)
             else:
@@ -1128,6 +1155,10 @@ class Engine:
     async def _house_loop(self) -> None:
         while True:
             await asyncio.sleep(10)
+            try:
+                self._save_screen_state()
+            except Exception:
+                log.exception("could not save the screen game")
             try:
                 await self._after_wake()
             except Exception:
@@ -1859,6 +1890,8 @@ class Engine:
                     and not out.detail.startswith(NOT_THE_TARGETS_FAULT)):
                 self._fail_cool[target] = time.time() + self.cfg.get("decider.fail_cooldown_s", 90)
             detail = {"took": out.took, "detail": out.detail, "path": out.path, "waited": round(out.waited, 1)}
+            if not out.ok and may_cut.veto:
+                detail["veto"] = may_cut.veto   # [P1-ROOTCAUSE-04] which check held a 'no safe moment' switch
             if d.kind == "user" and not out.ok and "no safe moment" in out.detail:
                 self.toast(f"No dead ball in time for {self._name(d.target)}: tap twice to go now", "info")
             try:
@@ -1897,18 +1930,20 @@ class Engine:
             self.broadcast()
         self._pending_done = done
 
-        def may_cut() -> bool:
+        def cut_veto() -> str:
+            """Why this switch may not cut right now ("" = it may). [P1-ROOTCAUSE-04] Named for every kind, not only jumps."""
             if self.decider.user.paused or self.cfg.get("mode.dry_run", True):
-                return False
+                return "paused_or_dry_run"
             if d.kind == "user":
                 if self._forced_go(d):
                     forced[0] = True   # the cut goes through on your second tap, not on a safe moment
-                    return True
+                    return ""
                 forced[0] = False
                 # [N4, S-4] every tap waits for a dead ball; only a second tap (_forced_go) cuts mid-play
-                return self.safe_to_leave(before, required_s=8.0) and self._tap_lands_dead(d, target)
+                return ("tap_leave" if not self.safe_to_leave(before, required_s=8.0)
+                        else "tap_landing" if not self._tap_lands_dead(d, target) else "")
             if time.time() < d.at + float(getattr(d, "defer_s", 0.0) or 0.0):
-                return False   # [EXP-803 A1] the break's tail: cut at the planned moment, not before
+                return "deferred"   # [EXP-803 A1] the break's tail: cut at the planned moment, not before
             if d.kind == "jump":
                 # [jump mode] rule #1 at the flip: the target's picture must come up on a dead ball; leaving
                 # uses the rotation's own gate (play-by-play dead windows, low-leverage leaves), not the
@@ -1916,7 +1951,7 @@ class Engine:
                 now = time.time()
                 cost = self.control.deadline_cost(target)
                 g = self.merger.games.get(d.target or "")
-                # [S-2] this polls for up to 25 s: judge on the scores of NOW (a low-leverage game can turn into a red
+                # [S-2] this polls for the whole wait: judge on the scores of NOW (a low-leverage game can turn into a red
                 # zone trip during the wait), like _entry_valid does for other switches
                 live = {gid: _replace(c, scored=self.scored[gid]) if gid in (before, d.target) and gid in self.scored
                         else c for gid, c in cands.items()}
@@ -1926,14 +1961,22 @@ class Engine:
                         else "target_moved" if getattr(self.where.get(g.game_id), "target", None) != target
                         else "landing" if not self.decider.jump_lands_dead(d.target, live.get(d.target), now, cost)
                         else "leave" if not self.decider.jump_may_leave(before, live, now, self._leave_margin()) else "")
-                if veto and (d.jump or {}).get("veto") != veto:
-                    log.info("jump to %s vetoed at the flip: %s (cost %.1f s)", d.target, veto, cost)
                 if d.jump is not None:
                     d.jump["veto"], d.jump["veto_cost_s"] = veto, round(cost, 1)
-                return not veto
-            return self._entry_valid(d, target) and (time.time() >= replay_exit if replay_exit is not None
-                                                     else self.safe_to_leave(before, required_s=8.0)) \
-                and self._flip_lands_whistle(d, target)
+                return veto
+            if not self._entry_valid(d, target):
+                return "entry_invalid"
+            if not (time.time() >= replay_exit if replay_exit is not None else self.safe_to_leave(before, required_s=8.0)):
+                return "replay_exit" if replay_exit is not None else "leave"
+            return "" if self._flip_lands_whistle(d, target) else "landing_whistle"
+
+        def may_cut() -> bool:
+            veto = cut_veto()
+            if veto and veto != may_cut.veto:
+                log.info("%s to %s vetoed at the flip: %s", d.kind or d.action, d.target, veto)
+            may_cut.veto = veto
+            return not veto
+        may_cut.veto, may_cut.tap = "", d.kind == "user"
         self.control.submit(target, back, done, may_cut=may_cut,
                             replay_id=d.replay.pid if d.replay else None,
                             entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0,
@@ -3106,8 +3149,21 @@ class Engine:
 
     # ------------------------------------------------------------------ mac
 
+    def _planned_soon(self, within_s: float = 3600.0) -> bool:
+        """[P-10] Does today's plan (data/plan_YYYYMMDD.json) have a game starting within the next hour? The merger may not
+        list it yet, and a Mac asleep at kickoff never notices the game is live."""
+        if self._user_state_path is None:
+            return False
+        now = time.time()
+        path = path_for(day_of(now), self._user_state_path.parent)
+        try:
+            games = json.loads(path.read_text()).get("games", []) if path.exists() else []
+        except (OSError, ValueError, AttributeError):
+            return False
+        return any(isinstance(e, dict) and e.get("start") and 0 < float(e["start"]) - now < within_s for e in games)
+
     def _keep_awake(self, live: bool) -> None:
-        """caffeinate only while games are live, so the Mac sleeps normally otherwise."""
+        """caffeinate only while games are live or about to start, so the Mac sleeps normally otherwise."""
         running = self._caffeinate is not None and self._caffeinate.poll() is None
         if live and not running:
             try:
