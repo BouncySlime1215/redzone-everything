@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 SCHEMA = 1
-VERBS = ("stay", "cut", "rewind", "reel", "fill")
+OPTION_VERBS = ("stay", "cut", "rewind", "reel", "fill")
 SCORE_MIN, SCORE_MAX = -100.0, 100.0   # scores are relative; values are 0..100
 
 
@@ -28,7 +28,7 @@ SCORE_MIN, SCORE_MAX = -100.0, 100.0   # scores are relative; values are 0..100
 class Option:
     """One legal choice. Built by CODE; the brain reads it."""
     id: str
-    verb: str                 # one of VERBS
+    verb: str                 # one of OPTION_VERBS
     game_id: str | None = None
     moment_id: str | None = None
     l1_class: int = 2         # 0 your team, 1 crunch, 2 open (code computes)
