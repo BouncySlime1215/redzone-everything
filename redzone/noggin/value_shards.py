@@ -24,6 +24,10 @@ not model is how far the picture runs behind the feed (a stream's delay is not i
 Published win-probability columns never enter (nflfastR's were fit across seasons), so `winprobability` is removed
 before detection and wp5 / wp10 fire on no row: public and archive rows mean the same thing.
 
+Features v3 (RZ_GV_FEATURES=v3, off by default so v2 shards and models stay comparable) add recent history at the feed head:
+points and swing over the last 3-5 plays, the current unanswered run, turnovers and fouls in the last 5 min, pace, timeouts.
+All twelve come from gamevalue.history_features, the same numpy code a live caller runs on the plays of the feed so far.
+
 Sources: only what docs/agents/data/2026-11-09-sports-data-gaps.md lists as licence-cleared, see `public_status`.
 NBA and CBB (hoopR) stay off in code unless `personal_nba=True`, because Nick has not ruled on that report's conditional row.
 """
@@ -43,8 +47,9 @@ import pandas as pd
 from redzone.context.tokens import PERSONAL_USE
 from redzone.moments.detect import Detected, clock_s, detect, football_drives, game_span, parse_ts
 from redzone.noggin import factory
+from redzone.noggin import gamevalue as G
 
-FEATURES_VERSION = "v2"
+FEATURES_VERSION, VALUE_FEATURES, VALUE_COLUMNS = "", (), ()     # set by select_features below
 HORIZON_S, TIER1_S, GRID_S, MAX_GAP_S, LAG_CAP_S = 180.0, 60.0, 30.0, 900.0, 180.0
 TIER_WEIGHTS = {1: 5.0, 2: 2.0, 3: 0.5}      # scripts/holdset.py WEIGHTS: same scale as the bar the brain must beat
 # pp_start waits on later penalties at the same game-clock tick (coincidental minors), so it is a label only.
@@ -54,13 +59,20 @@ PREFIX_ROWS = 5                              # rows per game re-derived from a c
 REGULATION_LEN = {"nfl": (4, 900.0), "cfb": (4, 900.0), "nba": (4, 720.0), "cbb": (2, 1200.0), "nhl": (3, 1200.0)}
 LAG_PROFILE = Path(__file__).resolve().parents[1] / "lab" / "feed_lag_profile.json"
 
-VALUE_FEATURES = ("period", "clock_left", "game_left", "is_ot", "late", "abs_margin", "total_points", "pts_5m", "swing_5m",
-            "lead_changes", "plays_5m", "since_head_s", "since_score_s", "since_start_s", "t1_5m", "t2_5m", "t3_5m",
-            "t1_game", "value_10m", "down", "distance", "yards_to_goal", "playoff")
 VALUE_LABELS = ("value_next_3m", "p_tier1_60s")
 VALUE_META = ("league", "season", "game_id", "game_key", "night", "source_night_id", "source", "license", "plan",
         "decision_t", "feed_cut_t", "feed_head_t", "feature_t_max", "lag_s", "label_full_window", "label_first_t")
-VALUE_COLUMNS = VALUE_META + VALUE_FEATURES + VALUE_LABELS
+
+
+def select_features(version: str) -> None:
+    """Make `version` (gamevalue.GV_FEATURE_SETS) the active list, here and in the runtime, which must always agree."""
+    global FEATURES_VERSION, VALUE_FEATURES, VALUE_COLUMNS
+    G.select_features(version)
+    FEATURES_VERSION, VALUE_FEATURES = version, G.GV_FEATURE_SETS[version]
+    VALUE_COLUMNS = VALUE_META + VALUE_FEATURES + VALUE_LABELS
+
+
+select_features(G.GV_FEATURES_VERSION)
 
 # league -> (source id, licence line, plan, url, seasons newest first). From the gaps report: Licence OK = Yes.
 _CLEARED = {"nfl": ("nflverse_pbp", "CC-BY 4.0 (nflverse data); credit nflverse", "A", factory.SOURCES["nfl"]["url"],
@@ -176,6 +188,7 @@ class GameView:
     points_t: np.ndarray
     points_cum: np.ndarray
     playoff: int
+    history: G.History | None = None
 
 
 def _value(x) -> float:
@@ -223,7 +236,8 @@ def make_view(league: str, summary: dict, det: Detected, playoff: int = 0) -> Ga
     safe = [m for m in det.moments if m.kind not in FEATURE_UNSAFE_KINDS]
     tier_t, pts_t, pts_cum = _moment_arrays(safe)
     return GameView(league, np.array([t for t, _ in plays], float), arr["period"], arr["clock"], home + away, home - away,
-                    lc, last, arr["down"], arr["distance"], arr["ytg"], tier_t, pts_t, pts_cum, int(playoff))
+                    lc, last, arr["down"], arr["distance"], arr["ytg"], tier_t, pts_t, pts_cum, int(playoff),
+                    G.history_arrays(league, plays))
 
 
 def _count_in(times: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:
@@ -254,7 +268,7 @@ def features(v: GameView, head: np.ndarray, decision_t: np.ndarray) -> dict[str,
     margin_5 = np.where(five_ago >= 0, v.margin[np.maximum(five_ago, 0)], 0.0)
     scored = v.last_score[head]
     early = wall - 300.0
-    return {
+    out = {
         "period": period, "clock_left": clock, "game_left": game_left, "is_ot": is_ot.astype(float),
         "late": (is_ot | ((period == regs) & (clock >= 0) & (clock <= 300))).astype(float),
         "abs_margin": np.abs(v.margin[head]), "total_points": v.total[head], "pts_5m": v.total[head] - total_5,
@@ -266,6 +280,9 @@ def features(v: GameView, head: np.ndarray, decision_t: np.ndarray) -> dict[str,
         "value_10m": _sum_in(v.points_t, v.points_cum, wall - 600.0, wall), "down": v.down[head],
         "distance": v.distance[head], "yards_to_goal": v.ytg[head], "playoff": np.full(len(head), float(v.playoff)),
     }
+    if FEATURES_VERSION != "v2":
+        out.update(G.history_features(v.history, head))
+    return out
 
 
 FeatureFn = Callable[[GameView, np.ndarray, np.ndarray], dict]

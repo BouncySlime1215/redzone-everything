@@ -31,6 +31,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,10 +44,14 @@ from redzone.models_rt.forest import MODEL_DIRS, Nodes, read_meta
 
 GV_SCHEMA = 1
 GV_LEAGUES = ("nfl", "nba", "cbb")
-GV_FEATURES_VERSION = "v2"
-GV_FEATURES = ("period", "clock_left", "game_left", "is_ot", "late", "abs_margin", "total_points", "pts_5m", "swing_5m",
-               "lead_changes", "plays_5m", "since_head_s", "since_score_s", "since_start_s", "t1_5m", "t2_5m", "t3_5m",
-               "t1_game", "value_10m", "down", "distance", "yards_to_goal", "playoff")
+_BASE_FEATURES = ("period", "clock_left", "game_left", "is_ot", "late", "abs_margin", "total_points", "pts_5m", "swing_5m",
+                  "lead_changes", "plays_5m", "since_head_s", "since_score_s", "since_start_s", "t1_5m", "t2_5m", "t3_5m",
+                  "t1_game", "value_10m", "down", "distance", "yards_to_goal", "playoff")
+# v3 appends; the first 23 columns stay where v2 has them, so table_key reads both.
+HISTORY_FEATURES = ("pts_last3", "pts_last5", "swing_last5", "run_pts", "run_by_trailing", "to_5m", "fouls_5m", "plays_2m",
+                    "sec_per_play_10", "timeouts_period", "since_timeout_s", "timeout_recent")
+GV_FEATURE_SETS = {"v2": _BASE_FEATURES, "v3": _BASE_FEATURES + HISTORY_FEATURES}
+GV_FEATURES_ENV = "RZ_GV_FEATURES"
 # Physical sanity, not the training range: -1 is the shards' "missing". since_head_s stops where the shards stop (a 900 s
 # feed gap plus the 180 s lag cap): a feed staler than any training row gets no estimate.
 GV_BOUNDS = {"period": (-1, 20), "clock_left": (-1, 3600), "game_left": (-1, 14400), "is_ot": (0, 1), "late": (0, 1),
@@ -54,7 +59,9 @@ GV_BOUNDS = {"period": (-1, 20), "clock_left": (-1, 3600), "game_left": (-1, 144
              "lead_changes": (0, 200), "plays_5m": (0, 2000), "since_head_s": (0, 1080), "since_score_s": (0, 86400),
              "since_start_s": (0, 86400), "t1_5m": (0, 500), "t2_5m": (0, 500), "t3_5m": (0, 500), "t1_game": (0, 1000),
              "value_10m": (0, 5000), "down": (-1, 5), "distance": (-100, 200), "yards_to_goal": (-100, 200),
-             "playoff": (0, 1)}
+             "playoff": (0, 1), "pts_last3": (-300, 300), "pts_last5": (-300, 300), "swing_last5": (0, 600), "run_pts": (0, 600),
+             "run_by_trailing": (0, 1), "to_5m": (0, 500), "fouls_5m": (0, 500), "plays_2m": (0, 2000),
+             "sec_per_play_10": (-1, 86400), "timeouts_period": (0, 100), "since_timeout_s": (-1, 86400), "timeout_recent": (0, 1)}
 GV_MAX_ROWS = 64                     # more live games than this is a broken caller, not a big slate
 GV_MAX_BYTES = 20_000_000
 GV_SCALE_POINTS = 5.0                # raw points that read 63 on the 0-100 scale: one Tier 1
@@ -64,9 +71,24 @@ GV_PERSONAL_SOURCES = ("hoopr_espn_nba", "hoopr_espn_cbb", "archive")
 GV_SHADOW_NIGHTS = 7
 GV_DIR = MODEL_DIRS["noggin"]
 
-_COL = {f: i for i, f in enumerate(GV_FEATURES)}
-_LO = np.array([GV_BOUNDS[f][0] for f in GV_FEATURES], float)
-_HI = np.array([GV_BOUNDS[f][1] for f in GV_FEATURES], float)
+GV_FEATURES_VERSION, GV_FEATURES = "", ()
+_COL: dict[str, int] = {}
+_LO, _HI = np.zeros(0), np.zeros(0)
+
+
+def select_features(version: str) -> None:
+    """Make `version` the active feature list. v2 stays the default; RZ_GV_FEATURES=v3 picks the history features for a whole
+    run (the shard builder and the trainer read it at import). An unknown name stops the import."""
+    global GV_FEATURES_VERSION, GV_FEATURES, _COL, _LO, _HI
+    if version not in GV_FEATURE_SETS:
+        raise ValueError(f"{GV_FEATURES_ENV}={version!r}: known versions are {sorted(GV_FEATURE_SETS)}")
+    GV_FEATURES_VERSION, GV_FEATURES = version, GV_FEATURE_SETS[version]
+    _COL = {f: i for i, f in enumerate(GV_FEATURES)}
+    _LO = np.array([GV_BOUNDS[f][0] for f in GV_FEATURES], float)
+    _HI = np.array([GV_BOUNDS[f][1] for f in GV_FEATURES], float)
+
+
+select_features(os.environ.get(GV_FEATURES_ENV, "v2"))
 _NODE_ARRAYS = ("feat", "thr", "left", "right", "dleft", "miss", "value", "roots")
 
 
@@ -90,6 +112,108 @@ class Batch(NamedTuple):
     value: np.ndarray
     p: np.ndarray
     ok: np.ndarray                   # False: failed closed; raw, value and p are NaN there
+
+
+# --- recent history (features v3) -----------------------------------------------------------------------------------
+# One definition for the training rows and the live feed, numpy only, so a live caller never needs pandas. Everything is
+# read from the plays up to the head: per-play arrays filled oldest first, then indexed at the head.
+
+_HOOPS_VIOLATIONS = ("traveling", "shot clock", "backcourt", "palming", "double dribble", "kicked ball", "8 second")
+
+
+def play_kind(league: str, play: Mapping) -> str:
+    """'timeout', 'turnover', 'foul' or '' from ESPN's play type (and text, for hoops turnovers). Football's foul is a penalty."""
+    kind = ((play.get("type") or {}).get("text") or "").lower()
+    if "timeout" in kind:
+        return "timeout"
+    if league in ("nfl", "cfb"):
+        if "interception" in kind or "fumble recovery (opponent)" in kind or "fumble return" in kind:
+            return "turnover"
+        return "foul" if "penalty" in kind else ""
+    text = (play.get("text") or "").lower()
+    if "turnover" in kind or "turnover" in text or any(v in kind for v in _HOOPS_VIOLATIONS):
+        return "turnover"
+    return "foul" if "foul" in kind else ""
+
+
+@dataclass(frozen=True)
+class History:
+    """Per-play arrays, oldest first, of everything the history features read."""
+    walls: np.ndarray
+    total: np.ndarray
+    margin: np.ndarray
+    run_pts: np.ndarray
+    run_trailing: np.ndarray
+    turnover_t: np.ndarray
+    foul_t: np.ndarray
+    timeout_t: np.ndarray
+    is_timeout: np.ndarray
+    timeouts_in_period: np.ndarray    # timeouts so far in this play's period, this play included
+
+
+def history_arrays(league: str, timed_plays: Sequence[tuple[float, Mapping]]) -> History:
+    """(wall, play) in wall order -> History. A run is the unanswered points of the team that scored last."""
+    n = len(timed_plays)
+    total, margin, run_pts, run_trailing, is_timeout, in_period = (np.zeros(n) for _ in range(6))
+    events: dict[str, list[float]] = {"turnover": [], "foul": [], "timeout": []}
+    home = away = 0.0
+    run, team, period, count = 0.0, 0, None, 0
+    for i, (wall, p) in enumerate(timed_plays):
+        h1, a1 = p.get("homeScore"), p.get("awayScore")
+        nh, na = (home if h1 is None else float(h1)), (away if a1 is None else float(a1))
+        dh, da = nh - home, na - away
+        if dh < 0 or da < 0:              # a score correction: the run no longer means anything
+            run, team = 0.0, 0
+        elif dh > 0 or da > 0:
+            scorer = 1 if dh >= da else -1
+            run, team = (run + dh + da, scorer) if scorer == team else (dh + da, scorer)
+        home, away = nh, na
+        total[i], margin[i], run_pts[i] = home + away, home - away, run
+        run_trailing[i] = float(team != 0 and team * (home - away) < 0)
+        kind = play_kind(league, p)
+        if kind:
+            events[kind].append(wall)
+        now = (p.get("period") or {}).get("number")
+        if now != period:
+            period, count = now, 0
+        count += kind == "timeout"
+        is_timeout[i], in_period[i] = float(kind == "timeout"), count
+    return History(np.array([w for w, _ in timed_plays], float), total, margin, run_pts, run_trailing,
+                   *(np.array(events[k], float) for k in ("turnover", "foul", "timeout")), is_timeout, in_period)
+
+
+def _back(a: np.ndarray, head: np.ndarray, n: int) -> np.ndarray:
+    """a[head - n], and 0 where the game has fewer than n earlier plays (the state before the first play)."""
+    return np.where(head >= n, a[np.maximum(head - n, 0)], 0.0)
+
+
+def _since(times: np.ndarray, wall: np.ndarray) -> np.ndarray:
+    """Seconds since the last event at or before `wall`, -1 when there has been none."""
+    i = np.searchsorted(times, wall, "right") - 1
+    return np.where(i >= 0, wall - np.concatenate((times, [0.0]))[np.maximum(i, 0)], -1.0) if len(times) else np.full(len(wall), -1.0)
+
+
+def history_features(h: History, head: np.ndarray) -> dict[str, np.ndarray]:
+    """The twelve v3 features at each head index. Reads only plays at or before the head."""
+    wall = h.walls[head]
+    count = lambda times, span: (np.searchsorted(times, wall, "right") - np.searchsorted(times, wall - span, "right")).astype(float)  # noqa: E731
+    return {
+        "pts_last3": h.total[head] - _back(h.total, head, 3), "pts_last5": h.total[head] - _back(h.total, head, 5),
+        "swing_last5": np.abs(h.margin[head] - _back(h.margin, head, 5)), "run_pts": h.run_pts[head],
+        "run_by_trailing": h.run_trailing[head], "to_5m": count(h.turnover_t, 300.0), "fouls_5m": count(h.foul_t, 300.0),
+        "plays_2m": (head - (np.searchsorted(h.walls, wall - 120.0, "right") - 1)).astype(float),
+        "sec_per_play_10": np.where(head >= 10, (wall - h.walls[np.maximum(head - 10, 0)]) / 10.0, -1.0),
+        "timeouts_period": h.timeouts_in_period[head], "since_timeout_s": _since(h.timeout_t, wall),
+        "timeout_recent": np.maximum(h.is_timeout[head], np.where(head >= 1, h.is_timeout[np.maximum(head - 1, 0)], 0.0)),
+    }
+
+
+def history_now(league: str, timed_plays: Sequence[tuple[float, Mapping]]) -> dict[str, float]:
+    """The live call: the feed's plays so far, (wall, play) in wall order -> the v3 features at the feed head. {} before any play."""
+    if not timed_plays:
+        return {}
+    got = history_features(history_arrays(league, timed_plays), np.array([len(timed_plays) - 1]))
+    return {k: float(v[0]) for k, v in got.items()}
 
 
 def to_scale(raw: np.ndarray) -> np.ndarray:
@@ -210,7 +334,7 @@ class GameValueModel:
         return raw, np.interp(p, self._cal_x, self._cal_y)
 
     def predict_matrix(self, X, max_rows: int | None = GV_MAX_ROWS) -> Batch:
-        """(n, 23) features in GV_FEATURES order. BadFeatures for a wrong shape or type; a bad row is ok=False."""
+        """(n, len(GV_FEATURES)) features in GV_FEATURES order. BadFeatures for a wrong shape or type; a bad row is ok=False."""
         X = np.asarray(X)
         if X.dtype.kind not in "fiub" or X.ndim != 2 or X.shape[1] != len(GV_FEATURES):
             raise BadFeatures(f"expected (n, {len(GV_FEATURES)}) numbers, got {X.dtype} {X.shape}")

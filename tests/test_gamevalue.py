@@ -414,7 +414,7 @@ def test_feature_list_matches_shards_and_leak_check():
 
 
 def test_bounds_cover_every_feature_and_every_shard_row(shards):
-    assert set(G.GV_BOUNDS) == set(G.GV_FEATURES)
+    assert set(G.GV_BOUNDS) == set(G.GV_FEATURE_SETS["v3"]) and set(G.GV_FEATURES) <= set(G.GV_BOUNDS)
     _, info = K.load_rows(shards, "nfl")
     assert info["out_of_bounds_rows"] == 0
 
