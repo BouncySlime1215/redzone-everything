@@ -26,7 +26,7 @@ def game_input(gid: str, cand, yours: bool, value: float | None = None) -> P.Gam
     s = cand.scored
     app = (cand.target or "").split(":", 1)[0]
     big = bool(s.lock in BIG_LOCKS or s.pre_moment or s.crunch)
-    return P.GameInput(gid, s.league.base.value if s.league.base.value in P.DEFAULT_LEAGUE_ORDER else s.league.value,
+    return P.GameInput(gid, s.league.value if s.league.value in P.DEFAULT_LEAGUE_ORDER else s.league.base.value,
                        (YOURS,) if yours else (), app=app, crunch=bool(s.crunch), big_moment=big,
                        live={"score": float(s.score if value is None else value)}, label=gid)
 
