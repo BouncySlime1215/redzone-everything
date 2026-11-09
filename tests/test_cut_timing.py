@@ -67,6 +67,7 @@ def test_plan_waits_when_it_cannot_rewind():
 
 def test_nba_restart_worked_back_from_the_clock():
     dt = DeadTracker(League.NBA)
+    dt.add("q", 1500, 1500, "jumper", "misses jumper", "Jump Shot", 700.0, 2)   # the quarter seen from its start
     dt.add("a", 2000, 2000, "jumper", "makes jumper", "Jump Shot", 300.0, 2)
     dt.add("b", 2010, 2010, "foul", "shooting foul", "Shooting Foul", 290.0, 2)
     dt.add("c", 2030, 2030, "free_throw_-_1_of_2", "makes free throw 1 of 2", "Free Throw - 1 of 2", 290.0, 2)
@@ -85,6 +86,7 @@ def test_nba_restart_worked_back_from_the_clock():
 
 def test_nba_open_window_floors_and_frozen_wallclock():
     dt = DeadTracker(League.NBA)
+    dt.add("q", 1500, 1500, "jumper", "misses jumper", "Jump Shot", 700.0, 2)   # the quarter seen from its start
     dt.add("a", 2000, 2000, "jumper", "makes jumper", "Jump Shot", 300.0, 2)
     dt.add("b", 2010, 2010, "timeout", "Full timeout", "Full Timeout", 290.0, 2)
     dt.seen(2020, 10)
@@ -124,7 +126,7 @@ def test_delaybook_behind_is_part_of_mu_until_a_fresh_tune():
     book = DelayBook({"youtubetv": 40.0}, 3.0, clock=lambda: 0.0)
     book.set_behind("youtubetv:espn", 20.0)
     assert book.get("youtubetv:espn").mu == 60.0
-    book.calibrate("youtubetv:espn", 41.0)       # a new measurement keeps the rewind on top
+    book.calibrate("youtubetv:espn", 61.0)       # a tap on this picture reads its whole delay, rewind included (AUDIT-6)
     assert book.get("youtubetv:espn").mu == 61.0
     book.set_behind("youtubetv:espn", 0.0)
     assert book.get("youtubetv:espn").mu == 41.0

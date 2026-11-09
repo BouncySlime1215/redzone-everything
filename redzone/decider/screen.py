@@ -675,7 +675,7 @@ class DelayBook:
     def boundary(self, target: str, sample_s: float, ts: float | None = None) -> Delay:
         """One delay sample measured from a show change on the quarter hour (no tap)."""
         d = self.get(target)
-        if not self._add(target, self._clock() if ts is None else ts, sample_s, self.bounds):
+        if not self._add(target, self._clock() if ts is None else ts, sample_s - d.behind, self.bounds):
             return d
         self._refresh_app(self.app(target))
         return d
@@ -683,7 +683,7 @@ class DelayBook:
     def screen(self, target: str, sample_s: float, ts: float | None = None) -> Delay:
         """One delay sample from the score bug: a new score's first frame minus its play's wallclock."""
         d = self.get(target)
-        if not self._add(target, self._clock() if ts is None else ts, sample_s, self.screens):
+        if not self._add(target, self._clock() if ts is None else ts, sample_s - d.behind, self.screens):
             return d
         self._refresh_app(self.app(target))
         return d
@@ -694,7 +694,8 @@ class DelayBook:
             if self.live.pop(target, None) is None:
                 return
         else:
-            self.live[target] = delay_s
+            # read off this picture, so any rewind is in it; the book adds `behind` back when it builds mu
+            self.live[target] = delay_s - (self.book[target].behind if target in self.book else 0.0)
         if target in self.book:
             self._refresh(target)
 
@@ -755,7 +756,7 @@ class DelayBook:
     def calibrate(self, target: str, sample_s: float) -> Delay:
         """One "I just saw it" measurement. Outliers are clipped, not trusted blindly."""
         d = self.get(target)
-        if not self._add(target, self._clock(), sample_s):
+        if not self._add(target, self._clock(), sample_s - d.behind):   # read off the picture: the rewind is in it
             return d
         self._refresh_app(self.app(target))   # every channel of this app without its own taps learns too
         return d
@@ -862,7 +863,7 @@ def _is_game_end(kind: str) -> bool:
 def _entry_label(p, league: League) -> str:
     """[quiet break] What a play-by-play entry says about the moment right after it, for a feed that
     then goes quiet: "period_end" (end of a quarter/half/period, or the clock read 0:00), "score"
-    (a scoring play in a stop-start sport: try/kickoff/ad follow), else ""."""
+    (a scoring play in football: try/kickoff/ad follow), else ""."""
     k = f"{p.kind or ''} {getattr(p, 'type_text', '') or ''}".lower().replace("_", " ")
     if "end" in k and "game" not in k and any(w in k for w in ("period", "quarter", "half", "regulation", "inning")):
         return "period_end"
@@ -871,7 +872,7 @@ def _entry_label(p, league: League) -> str:
     clock = getattr(p, "clock", None)
     if clock is not None and clock <= 0.0 and getattr(p, "period", None) is not None:
         return "period_end"
-    if p.scoring and league not in CONTINUOUS:
+    if p.scoring and league.base == League.NFL:   # baseball's next batter is up in ~20 s: no try, kickoff or ad
         return "score"
     if clock is not None and getattr(p, "period", None) is not None and league not in CONTINUOUS \
             and (p.period or 0) < 4:
@@ -1058,6 +1059,12 @@ class Timeline:
         # [mid-play guard] a break starts on screen no earlier than the LATEST it could have started.
         stop_lo, at = _bounds(lp, now, prev_fresh) if lp else (
             (prev_fresh or now) - FEED_LAG_MAX_S, now - FEED_LAG_MIN_S)
+        if lp and not first_poll and self.league in CONTINUOUS and lp.id not in {p.id for p in new}:
+            # A stoppage with no new play (the owner feed's flag laid on another feed's copy, /score's intermission):
+            # that old play doesn't date it. The ball stays live between plays here, so it began after that play,
+            # and the latest it could have begun is just before this poll.
+            stop_lo = max(at, (prev_fresh or now) - FEED_LAG_MAX_S)
+            at = max(stop_lo, now - FEED_LAG_MIN_S)
         stopped = g.stoppage not in (Stoppage.NONE, Stoppage.UNKNOWN)
         if stopped and not self._stopped:
             self.events.append(Event(at, "stop_start", g.stoppage.value,
@@ -1131,7 +1138,7 @@ QUIET_KINDS = ("period_end", "score")
 
 def quiet_break(tl: Timeline, mu: float, margin: float, now: float, tune_s: float) -> Gate | None:
     """[quiet break, Nick Nov 7 12:40] The data on this game went quiet right after an entry that
-    starts a dead spell: a period end / 0:00 clock, or a score in a stop-start sport. During the ad that
+    starts a dead spell: a period end / 0:00 clock, or a score in football. During the ad that
     follows, the feed logs nothing, so the stale-data and uncalibrated-delay rules below blocked leaving
     exactly when it was safest. Treat that entry as an official stoppage: it is on screen once it has
     surely aired (seen + mu + margin) and stays a break for floor_s[kind] after it (the same

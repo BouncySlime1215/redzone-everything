@@ -27,7 +27,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from redzone.models import League
+from redzone.models import PERIOD_S, REGULATION, ByLeague, League
+from redzone.sources.espn import OT_S
 
 # ----------------------------------------------------------------------------- dead windows
 
@@ -182,7 +183,7 @@ PLAY_S = {League.NFL: 10.0, League.MLB: 8.0}
 AFTER_PLAY_S = 3.0           # celebration / whistle after a discrete play: not a clean landing yet
 CLOCK_RESUME_MARGIN_S = 3.0  # a restart worked back from the game clock: wallclock and clock rounding
 # Basketball: after an inbound the ball can be live for a full shot clock with nothing logged.
-SILENT_S = {League.NBA: 24.0}
+SILENT_S = ByLeague({League.NBA: 24.0, League.CBB: 30.0, League.WCBB: 30.0})   # college: a 30 s shot clock
 FROZEN_HOLD_S = 300.0        # after a frozen-wallclock stretch, distrust windows this long
 LEARNED_MAX_S = 1800.0       # a learned restart further out than this is a broken reading
 # How long before play resumes the picture should come up: the line-up / set / faceoff circle.
@@ -203,6 +204,11 @@ def _lg(league: League) -> League:
     if league.base == League.NFL:
         return League.NFL
     return league
+
+
+def _period_length(league: League, period: int) -> float:
+    """Seconds on the clock at the start of this basketball period."""
+    return float(OT_S[league] if period > REGULATION[league] else PERIOD_S[league])
 
 
 def join_cfg(cfg, key: str):
@@ -307,6 +313,7 @@ class DeadTracker:
         self.fresh_at: float | None = None
         self.lag: float = 10.0
         self._timeouts: dict[int | None, int] = {}
+        self._first_clock: dict[int | None, float | None] = {}   # period -> clock of the first entry seen in it
         self._last_stamp: tuple | None = None
         self.frozen_until: float = float("-inf")
         # Brain v3's entry point for the newest event: (event wallclock, (p10, p50, p90) seconds to the
@@ -338,10 +345,12 @@ class DeadTracker:
             after = "between_batters"
         tt = (type_text or "").lower()
         lg = _lg(self.league)
+        self._first_clock.setdefault(period, clock)
         if after == "timeout" and lg == League.NBA:
             # The first two timeouts of a quarter are the long (commercial) ones, whoever calls them.
             n = self._timeouts[period] = self._timeouts.get(period, 0) + 1
-            after = "timeout_long" if n <= 2 and not self.league.college else "timeout_short"
+            # ... a count that only holds for a period we saw start: ESPN's feed hands over the last 8 plays only.
+            after = "timeout_long" if n <= 2 and not self.league.college and self._saw_start(period) else "timeout_short"
         if lo == hi and clock is not None and lg not in (League.NFL, League.MLB):
             # ESPN's wallclock sometimes freezes for a stretch (every entry stamped alike while the
             # game clock runs): real times there are unknown, so no window there is certified.
@@ -422,6 +431,9 @@ class DeadTracker:
                         cur.end, cur.exact = max(cur.start, m.lo), True
                     elif moved and lg == League.NBA:
                         cur.end, cur.exact = max(cur.start, m.lo - (c0 - m.clock) - CLOCK_RESUME_MARGIN_S), True
+                    elif lg == League.NBA and m.after is not None and (ran := self._ran_in_later_period(m, p0)) is not None:
+                        # The next period's first entry is itself a dead ball (a foul): it still dates the tip.
+                        cur.end, cur.exact = max(cur.start, m.lo - ran - CLOCK_RESUME_MARGIN_S), True
                     elif (lg == League.NBA and m.after is None and m.clock is not None and c0 is not None
                           and m.period == p0):
                         # The last free throw: a dead-ball moment itself (the clock hasn't run), but
@@ -429,7 +441,7 @@ class DeadTracker:
                         cur.end, cur.exact = max(cur.start, m.lo), True
                     elif m.after is None and not m.faceoff:
                         # live action logged, no better evidence: play resumed before it at the latest
-                        cur.end = max(cur.start, m.lo - SILENT_S.get(lg, 0.0) - 2.0)
+                        cur.end = max(cur.start, m.lo - SILENT_S.get(self.league, 0.0) - 2.0)
                     if cur.end is not None:
                         out.append(cur)
                         cur = None
@@ -444,6 +456,20 @@ class DeadTracker:
             out = [w if w.start > self.frozen_until else Window(w.start, w.start, w.kind) for w in out]
         self._windows = out
         return out
+
+    def _saw_start(self, period: int | None, within: float = 60.0) -> bool:
+        """Did the first entry we hold for this basketball period come within its first minute? Else timeouts may
+        have gone by before we joined it, and this one can't be called the period's first or second."""
+        first = self._first_clock.get(period)
+        return first is not None and period is not None and first >= _period_length(self.league, period) - within
+
+    def _ran_in_later_period(self, m: Mark, p0: int | None) -> float | None:
+        """Basketball: the game clock already run when this entry of a LATER period than the window's was logged, or
+        None when it isn't one, or the clock hasn't moved yet (a substitution before the tip)."""
+        if m.clock is None or m.period is None or p0 is None or m.period <= p0:
+            return None
+        ran = _period_length(self.league, m.period) - m.clock
+        return ran if ran > 0.05 else None
 
     def _open_until(self, w: Window) -> float:
         """A window with no restart in the data: surely dead until this real time."""
@@ -465,7 +491,7 @@ class DeadTracker:
         if self.fresh_at is None:
             return None
         lg = _lg(self.league)
-        return self.fresh_at - max(self.lag, self.lag_floor) - PLAY_S.get(lg, 0.0) - SILENT_S.get(lg, 0.0) - (
+        return self.fresh_at - max(self.lag, self.lag_floor) - PLAY_S.get(lg, 0.0) - SILENT_S.get(self.league, 0.0) - (
             0.0 if lg in (League.NFL, League.MLB) else 2.0)
 
     @staticmethod
