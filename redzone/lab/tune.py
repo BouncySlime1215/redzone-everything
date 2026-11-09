@@ -25,6 +25,8 @@ No overfitting (the user's rule, docs/architecture.md):
 Every run is a plain backtest.run on a config overlay, so nothing touches your live settings.
 The live app (two Fire TV sticks, hidden-stick standby) is not modelled by the backtest, so the
 two_stick.* knobs are not in SPACE: tuning them here would fit noise.
+
+Why: first added in 8417abfb (2026-11-04) as "Salvage #16: decider auto-tuner (CMA-ES, forward-chaining CV), holding out the pinned locked split"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

@@ -43,6 +43,8 @@ SmartThings failure handling (`hardening.smartthings`, off until a live night pr
                is the half-open probe: the cloud comes back without a real flip paying for it.
                A GET that got a fast 5xx or never connected is retried once. A POST never is: the
                command may have been applied, and the readback decides.
+
+Why: recorded in docs/memory/lessons.md (hardening.smartthings breaker); first added in 56d8adbf (2026-11-02) as "Two-stick hot standby: tune hidden stick, flip input only at a safe moment (CEC, TV remote, Smart...".
 """
 from __future__ import annotations
 

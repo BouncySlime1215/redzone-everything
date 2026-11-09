@@ -26,6 +26,8 @@ only covered via `extra_terms` (e.g. team names).  YouTube TV watch ids are NOT 
 from either feed.  Every function swallows errors and returns [] / {} instead of raising.
 
     .venv/bin/python -m redzone.sources.eventlinks [YYYY-MM-DD]
+
+Why: first added in 67a883b7 (2026-11-02) as "Pictures backend: headshots, leaders, venues, spotlight, team directory, rosters, image cache; se..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

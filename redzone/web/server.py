@@ -2,6 +2,8 @@
 
 Guardrail: requests from anything other than a private/home-network address get a 403,
 so even if a port were ever forwarded by mistake, the internet can't drive your TV.
+
+Why: first added in 9faa350e (2026-11-02) as "RedZone Everything: core engine, scorer, decider, replays, backtest lab, server"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

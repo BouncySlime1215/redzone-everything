@@ -49,6 +49,8 @@ Turn it on with `sources: {fastcast: true}` in data/config.yaml, or from the Mac
          -d '{"changes": {"sources": {"fastcast": true}}}'
 No restart needed. Health then lists espn_fastcast, and data/recordings/<day>/plays.jsonl
 logs every play once per source, so each feed's real lag can be compared.
+
+Why: first added in 634e0a01 (2026-11-02) as "Recover RedZone engine with explicit screen evidence and safe switch transactions"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

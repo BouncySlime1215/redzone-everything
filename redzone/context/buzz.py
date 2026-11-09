@@ -11,6 +11,8 @@ from signals with strict as-of rules:
   strictly before a (only covered bins count; uncovered bins are unknown, never zero).
 
 Spec + cadence + sizes: docs/datasources/context-buzz.md.
+
+Why: first added in d900f52e (2026-11-05) as "Data B: buzz pullers (Wikipedia pageviews + edits, GDELT GKG) and the context-buzz Actions job (E..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

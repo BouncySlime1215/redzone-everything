@@ -5,6 +5,8 @@ isotonic calibration table, read through the same batched numpy forest as Timing
 `features.PREDICT_FEATURES`, computed by the one shared definition (`features.context` +
 `features.game_state`). Behind `noggin.predict.leagues` (default [] = OFF): an L4 input only, never an L1
 rule (redzone/noggin/priority.py).
+
+Why: first added in ebfb9efb (2026-11-04) as "Noggin: NFL data factory + Timing v1 NFL, Predict v1 NBA (both OFF)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

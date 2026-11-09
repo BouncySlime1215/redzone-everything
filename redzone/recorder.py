@@ -9,6 +9,8 @@ the source race (who reported each score first). Small JSONL files, one per day:
                                              label "score A-H" or "stop p<period> <clock s>" (a dead ball)
 
 Finished games' full play-by-play is also saved to data/archive/<league>/ for backtesting.
+
+Why: first added in 739beccb (2026-11-02) as "1s decision loop + adaptive polling, flight recorder, event links (Prime GTIs, ESPN+), ESPN tuner"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

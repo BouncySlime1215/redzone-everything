@@ -19,6 +19,8 @@ behind-live. Anything else is "live" or "kept" on the phone, whatever the plan w
 Interface for the join watchdog (item 1): after an entry the watchdog verifies the position; if it is off target by
 more than its margin and its one re-seek didn't fix it, it calls `Controller.ladder_descend(target, "buffered",
 why)` (or `FallbackLadder.climb(..., start=next_rung("buffered"))` with its own rung callables). Owner: lane 3.
+
+Why: first added in cacb7e59 (2026-11-07) as "Fallback ladder per stick: buffered -> live -> other stick -> hold (flag off)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

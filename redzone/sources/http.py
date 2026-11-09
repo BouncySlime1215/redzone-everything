@@ -8,6 +8,8 @@ Guardrails:
   of concurrent requests dying in one Wi-Fi blip) count once.
 - A host in backoff is skipped, not hammered; callers get the last good copy.
 - Every response is size-capped so a broken feed can't eat memory.
+
+Why: first added in 9faa350e (2026-11-02) as "RedZone Everything: core engine, scorer, decider, replays, backtest lab, server"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

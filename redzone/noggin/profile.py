@@ -6,6 +6,8 @@ scores. A profile is the whole candidate: the config overrides plus the time-shi
 and every flag decision is made on those combined numbers (dev only; locked is report-only).
 
     argv("candidate", "nba") -> ["--behind-live", "90", "--set", "noggin.priority.enabled=true", ...]
+
+Why: first added in 5d800ab4 (2026-11-04) as "Noggin candidate profile + candidate column in northstar.py"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

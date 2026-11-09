@@ -17,6 +17,8 @@ Politeness: its own Fetcher (so a shadow backoff never blinds the live poll's ca
 If-Modified-Since on every request (a quiet second costs a 304), per-host backoff on 403/429/5xx
 (redzone/sources/http.py), at most fast_feeds.max_games games per league, and nothing is polled for a
 league with no live game. Nothing here reaches the merger, the decider or the TV.
+
+Why: first added in ab778d6b (2026-11-05) as "Fast league feeds in shadow: NBA liveData 1 s, NHL api-web, MLB statsapi (flag fast_feeds.enabled..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

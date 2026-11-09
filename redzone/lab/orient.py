@@ -11,6 +11,8 @@ Pre-registered bar (docs/lanes/experience.md, EXP-038), on override rates per ni
   PENDING  anything else, including too few nights. Pending never counts as passing.
 Guardrail: Right game agreement must not drop on beat nights (read from the North Star table).
 Reads the switches table only, never the feedback table (Nick's taps grade, they never train).
+
+Why: first added in 888b695a (2026-11-05) as "Graders: EXP-038 orientation beat override line (redzone/lab/orient.py, scripts/orient_line.py)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

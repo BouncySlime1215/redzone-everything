@@ -18,6 +18,8 @@ A file that isn't there yet is simply "none" in the report: the sections fill in
 In the supervisor's nightly report (data/reports/YYYY-MM-DD.md + phone push) behind
 supervisor.night_ops.enabled (default OFF). By hand, read-only, any time:
     python -m redzone.platform.night_ops [YYYY-MM-DD] [--json]
+
+Why: first added in 9d250c65 (2026-11-07) as "Mac health alerts + night ops report section (flags off)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

@@ -21,6 +21,8 @@ Nov 2 device trials (docs/device-trial-2026-11-02.md):
 The TV keeps the ground truth: what was on screen, second by second, and every cut away from a
 game, so the test can grade mid-play cuts from what the TV actually showed, not from what the
 engine believed it did.
+
+Why: first added in 71e46ec6 (2026-11-03) as "WIP: end-to-end replayed night test (fake sticks/TV, virtual clock, fault hook); not runnable yet"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

@@ -29,6 +29,8 @@ to tune, is worth holding over a YouTube TV game a few points better).
 Hysteresis (Planner): a re-tune leaves the hidden stick useless for 5-10s, so it keeps what it has
 for at least two_stick.hold_s and then only moves for a higher class or a clearly better game
 (two_stick.min_gain points). (a) and (b) can't wait: they take over at once.
+
+Why: first added in 634e0a01 (2026-11-02) as "Recover RedZone engine with explicit screen evidence and safe switch transactions"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

@@ -14,6 +14,8 @@ Glass for NBA) but made stricter where we have no lineup data:
   NHL  P2 >= 5 · P3 >= 4 · P3 <= 10:00 >= 3 · P3 <= 1:00 >= 2 with the trailing goalie still in
   MLB  5th+ >= 8 · 7th+ >= 6 · 9th >= 5
 Never garbage: overtime/extra innings, or anything before these windows.
+
+Why: first added in e5db8dba (2026-11-02) as "Garbage time (all leagues, your team included): no team boost, no locks, comeback revival with bo..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

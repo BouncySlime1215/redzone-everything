@@ -11,6 +11,8 @@ a "Still watching?" prompt, a feed outage, a TV that ignores a flip, a hung web 
 watchdog). The platform's reusable fault module (redzone/platform/faults.py, being built in its
 own thread) plugs in with `--faults module:function`, where function(world, rng) returns a list
 of faults with this shape; they run next to (or, with --no-default-faults, instead of) these.
+
+Why: first added in 71e46ec6 (2026-11-03) as "WIP: end-to-end replayed night test (fake sticks/TV, virtual clock, fault hook); not runnable yet"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

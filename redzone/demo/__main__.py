@@ -5,6 +5,8 @@
     data/venv/bin/python -m redzone.demo 20261101 --summary          # timeline + report card, no server
 
 Runs the real engine in dry run on a simulated clock. Never sends anything to the TV.
+
+Why: first added in f469a653 (2026-11-02) as "Standby planner: preload the decider's own next pick; preload hit rate on the replay"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

@@ -1,6 +1,8 @@
 """Start RedZone Everything:  .venv/bin/python -m redzone
 
 Prints the phone address and a QR code, then runs until stopped.
+
+Why: first added in 9faa350e (2026-11-02) as "RedZone Everything: core engine, scorer, decider, replays, backtest lab, server"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

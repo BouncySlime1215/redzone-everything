@@ -29,6 +29,8 @@ Checks, in order (each logged; the first failure ends the test, then the stick i
 One row per run in data/canary.jsonl (numbers, check names and channel names only: never an address, never frames).
 FAIL and WARN go to the phone (data/agent.jsonl, which the app shows, and the ntfy topic if one is set) with the
 first failed check and the runbook: docs/memory/runbooks/canary.md. A pass is journalled quietly.
+
+Why: first added in ad542e15 (2026-11-07) as "Join self-calibration per channel/stick (bounded, flag off) + daily hidden-stick canary that fail..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

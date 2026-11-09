@@ -5,6 +5,8 @@ Why: unknown (needs owner)
 This is a navigation helper, not a live-game tuner. Relative recording ages and
 the thumbnail's 'Playing' badge never establish an event date or player identity.
 Captures and device authorization belong to the caller; import has no side effects.
+
+Why: first added in f98e81ba (2026-11-02) as "TV input flip via HOME (CEC Active Source) with stick-side verification; YouTube TV codes verifie..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

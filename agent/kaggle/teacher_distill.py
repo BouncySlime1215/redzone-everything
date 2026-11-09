@@ -1,3 +1,9 @@
+"""Kaggle GPU notebook: a big teacher model labels moments, small student models are trained and graded.
+
+Why: first added in 5230b18c (2026-11-04) as "Salvage the Kaggle Mind pipeline (old draft #13 + Mind V7)
+onto integration/next"; training stays off the Mac (CLAUDE.md hard constraint), and no separate decision is
+recorded for this notebook.
+"""
 # %% [markdown]
 # # RedZone: big teacher -> small students (free Kaggle GPU)
 #

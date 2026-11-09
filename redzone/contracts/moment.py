@@ -6,6 +6,8 @@ Called by: the Scorer (redzone/scoring/engine.py) and DecisionCore. Cadence: onc
 feed update (3-10 s). Must be cheap: < 5 ms per game on the Mac, no network.
 
 Units: probabilities 0..1 over the horizon_s of FEED time; hotness 0..100.
+
+Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

@@ -6,6 +6,8 @@ the other owners need around them:
   - HARD_RULES: the rule list, in order (owned by the user, via INTEGRATION; changing it is an
     interface change),
   - traced(): run the guards and emit one Trace `guarded` event per decision that moves or is held.
+
+Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

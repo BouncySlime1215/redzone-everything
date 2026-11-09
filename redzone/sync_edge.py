@@ -33,6 +33,8 @@ K = arena - frame clock (~9.6 s) is a property of the stream, fused per target b
 Rows (lane 3's syncgrade, #279) go to data/sync_truth/edge/<night>.jsonl, a subfolder, so the v10 grader's
 data/sync_truth/*.jsonl glob never mixes them with its anchor rows. Sticks are named by HDMI input, never
 by address.
+
+Why: first added in b86b5cfc (2026-11-05) as "SYNC A+B: per-stick live-edge meter (shadow on) and re-link to live (flags off)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

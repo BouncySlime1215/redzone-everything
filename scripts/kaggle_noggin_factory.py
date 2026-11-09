@@ -1,3 +1,9 @@
+"""Kaggle CPU notebook: Noggin data factory, resumable season shards plus oracle self-play parts.
+
+Why: Reflex/Noggin training data must be built off the Mac and off GitHub Actions; first added in 50ccc727
+(2026-11-04) as "Noggin factory on Kaggle CPU: resumable season shards + oracle self-play parts". Wraps
+scripts/noggin_factory.py; locked and scorecard nights are never fetched (factory.EVAL_FIRST_NIGHT).
+"""
 # %% [markdown]
 # # RedZone Noggin data factory (free Kaggle CPU, no GPU quota)
 #

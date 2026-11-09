@@ -11,6 +11,8 @@ game that ended hours ago.
 A skip mutes its game (muted is kept 12 h), so the skip's own expiry (skipped: game -> epoch) is kept with it:
 without it a restart left the game muted all night instead of for five minutes. A focus suspended for garbage
 time (suspended_focus) is kept too, or a restart in garbage time lost your focus for good.
+
+Why: first added in 32662994 (2026-11-02) as "Keep pause, Watch this, focus and lock across service restarts (data/user_state.json); a restored..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

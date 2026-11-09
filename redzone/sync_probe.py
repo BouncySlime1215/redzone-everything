@@ -15,6 +15,8 @@ Never presses a key, launches nothing, changes no setting. Skips a tick while th
 switching, flipping or preloading, in dry run, and when the Mac is short of room (governor).
 The visible stick's UI tree is only dumped with sync.probe.visible_ui (a dump costs the stick ~1-3 s
 of CPU; unmeasured whether that can stutter the picture Nick is watching).
+
+Why: first added in 2a54cead (2026-11-04) as "SYNC probe: read-only per-tick log of what the sticks expose (auto-anchors + network features)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

@@ -18,6 +18,8 @@ text), and label it from what actually happened next on the wall clock:
 Rows carry their night (ET date of the scoreboard that lists the game) so whole nights are held
 out together: the head is cross-fitted by night (each night scored by a model that never saw it),
 and the language model's test set is nights it never trained on.
+
+Why: first added in f79f070a (2026-11-03) as "Live game reasoner: brief builder, hindsight labels from the archive, a fast lock-in head (cross-..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

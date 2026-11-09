@@ -8,6 +8,8 @@ phone.also_close on and off. Pre-registered bar (docs/lanes/experience.md, EXP-0
   PENDING  anything else
 Guardrail: "Big plays live or replayed within 3 min" must not drop on line nights (North Star table).
 Reads the switches table only.
+
+Why: first added in 1b312e87 (2026-11-05) as "Graders: EXP-039 'Also close' manual-switch share (redzone/lab/also_close.py, night_ab.py, script..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

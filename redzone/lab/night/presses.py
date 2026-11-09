@@ -26,6 +26,8 @@ so the phone resends the same id, or the same id arrives twice. grade() checks e
 once ("not_once" lists the ones that didn't).
 
     python scripts/controls_drill.py --seeds 4
+
+Why: first added in 1fce8cf5 (2026-11-04) as "Phone controls: tap ids land once, faster Go now, skips that leave, press_to_tv_p95"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

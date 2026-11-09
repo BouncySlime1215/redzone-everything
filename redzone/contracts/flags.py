@@ -8,6 +8,8 @@ gated by its OWN key: brain.enabled, reasoner.enabled, reel.enabled / reel.play,
 noggin.*, hardening.*, two_stick.*, decider.* (see default_config.yaml).  Use those to turn a part
 off.  Wiring `enabled()` into each guard is a larger change that is not scheduled; until it is, DEGRADED
 documents what each part does when it is off or missing, and the Flag names are kept for that table.
+
+Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

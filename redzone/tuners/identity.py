@@ -5,6 +5,8 @@ Why: unknown (needs owner)
 A matching title identifies the named matchup, not its date, live status, or
 video frames. A provider may retain metadata while changing playback; this does
 not replace the tuner's transition checks or verify that a switch succeeded.
+
+Why: first added in f98e81ba (2026-11-02) as "TV input flip via HOME (CEC Active Source) with stick-side verification; YouTube TV codes verifie..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

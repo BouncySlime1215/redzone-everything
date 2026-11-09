@@ -20,6 +20,8 @@ flip read at 20:17:56.017 with position 47160235 for the 20:15 boundary, earlier
 A boundary sample is weaker than a tap ("I just saw it"): networks don't switch the title to the
 second, and a show can start late. The delay book gives it a wider sigma and needs two agreeing
 samples before it narrows anything (see DelayBook.boundary).
+
+Why: first added in 5f3e0d36 (2026-11-02) as "Boundary delay: sample math from YouTube TV show changes, 'boundary' evidence in the delay book,..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

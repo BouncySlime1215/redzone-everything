@@ -6,6 +6,8 @@ North Star: none of these move a scoring line directly. They feed two of them:
     the phone page only; no training, labelling, suggestion or North Star path reads them.
 Nothing here touches the decider, the tick loop or the TV. Votes and misses only write rows to the
 existing `feedback` table (note = "switch" | "missed"), so turning the flag off leaves no trace in play.
+
+Why: first added in de443478 (2026-11-04) as "Phone v2 (flag off): reason chips + 👍/👎 per switch, 'I missed that', Priority L2 sliders"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

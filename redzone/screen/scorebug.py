@@ -20,6 +20,8 @@ didn't show the play's previous score, or when the result is outside 5..120 s.
 one sample with a slope check, instead of single reads. [bug gone] Frames say why they showed no bug: a DRM-blank
 frame is blindness (YouTube TV), a black frame on Prime is real (a break or a fade), a clean read with no bug is
 evidence of a commercial or replay. Numbers only, as everywhere here: the PNG is dropped.
+
+Why: first added in 11670ff3 (2026-11-02) as "ScoreBugWatcher: read the broadcast score bug in Prime screenshots, time score changes against th..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

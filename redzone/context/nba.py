@@ -8,6 +8,8 @@ by date + team pair (`crosswalk`). Seasons here are named by their START year (2
 
 Every fact here is pregame and leak-safe: rest/travel use only the schedule of games that tipped before this one
 (dates and venues, never results); the L2M referee tendency uses only L2M reports of games that ended before.
+
+Why: first added in 52ab4cd9 (2026-11-05) as "Data B: NBA context (stakes with play-in, rest/travel, national TV, L2M refs) + NBA injury/ref Ac..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

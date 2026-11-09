@@ -2,6 +2,8 @@
 
 Owner: INTEGRATION. Changing a shape here is an interface change: open it as its own small PR into
 integration/next, list the callers, and update tests/test_contracts.py in the same PR.
+
+Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """
 from redzone.contracts import brain
 from redzone.contracts.breaks import BreakForecast, BreakKind, BreakModel

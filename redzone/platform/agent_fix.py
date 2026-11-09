@@ -16,6 +16,8 @@ second line, with longer thresholds, for when those didn't work. Every fix is OF
 hardening.watchdog is true: then the endpoint answers {"ok": false, "message": "off: ..."} and the
 watchdog tells a person instead. Stick fixes only touch the stick the TV is showing, and only while
 its screen is already not playing, so none of them can cut a live play.
+
+Why: first added in 17f44839 (2026-11-04) as "WIP C17: 13 fault kinds, watchdog 5 -> 12 guarded actions, fix success tracking"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

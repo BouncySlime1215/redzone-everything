@@ -12,6 +12,8 @@ Fitted ONLY on nights the model never trained on, in time order: 5 forward-chain
 every earlier block, grade on the next) report the mean and the worst fold; the shipped scale is
 fitted on all of those nights; nights after the training cutoff (our own archive) are graded once,
 separately, and never used to fit.
+
+Why: first added in 8ea00b62 (2026-11-03) as "Brain v3: calibrated cautious restart bound per break type and crunch (time-ordered held-out nights)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

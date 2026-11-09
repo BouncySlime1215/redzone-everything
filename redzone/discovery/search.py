@@ -16,6 +16,8 @@ tune_by_search() can replay it (slower, ~20 s, but zero pasting).
 Guardrails: recipes may only open https://tv.youtube.com/ links and press KEYCODE_* keys; typed
 text is reduced to letters, digits and spaces; waits are capped; runs are time-boxed, resumable
 (state saved after every channel) and ask may_run() before each channel.
+
+Why: first added in 634e0a01 (2026-11-02) as "Recover RedZone engine with explicit screen evidence and safe switch transactions"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

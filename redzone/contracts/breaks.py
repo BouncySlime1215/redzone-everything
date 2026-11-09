@@ -8,6 +8,8 @@ feed update per live game.
 
 Units: seconds of SCREEN-INDEPENDENT feed time for lengths; next_restart_at is epoch s in FEED
 wallclock (add SyncEstimate.delay_s for screen time). p over the next ~60 s.
+
+Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

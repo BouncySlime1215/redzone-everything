@@ -10,6 +10,8 @@ One parquet per league-season. One row = one fact about a game (team null) or a 
 `kind` "new" = an external fact we did not hold; "derived" = computed from data we already hold. The ledger counts
 them apart and only "new" is new information (Nick 11:50 PM). B-plan rows carry the personal-use tag in `license`.
 Spec: docs/datasources/context-tokens.md.
+
+Why: first added in 33766bdf (2026-11-05) as "Data B: context fact shards (lane 1 v2 format), first landing NFL 1999-2026 + MLB 2000-2025 (EXP-..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
