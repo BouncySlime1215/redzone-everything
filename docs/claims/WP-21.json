@@ -1,0 +1,13 @@
+{
+  "card": "WP-21",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "redzone/views.py",
+    "redzone/web/static/rz-games.js",
+    "redzone/web/static/rz-now.js",
+    "tests/test_screen_time*.py"
+  ],
+  "started": 1794202059,
+  "expires": 1794374859
+}
