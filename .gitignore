@@ -18,3 +18,7 @@ data/training/
 # Results: full dev detail and the reserved locked folder never enter git (W2-LOCKED)
 results/dev/
 results/locked/
+
+# Agent data reports are documents, not data (docs/STANDARD.md).
+!docs/agents/data/
+!docs/agents/data/**
