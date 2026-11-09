@@ -15,8 +15,6 @@ from scripts import kaggle_gamevalue as K
 from scripts import value_leak_check as LC
 from tests.test_gamevalue import FakeTrainer, _raw_dir, _shards, nba_summary, nfl_summary
 
-KNOWS_V3 = "v3" in getattr(LC, "FEATURES_BY_VERSION", {})
-
 
 def _ca(p, y, game="g", gap=30.0):
     return pd.DataFrame({"p_tier1_60s": np.asarray(y, float), "game_id": game, "decision_t": np.arange(len(y)) * gap})
@@ -153,10 +151,9 @@ def test_sampling_keeps_every_night_and_repeats():
     assert a.x.tolist() == b.x.tolist() and set(a.night) == set(df.night) and 300 <= len(a) <= 440
 
 
-# --- the whole v3 path: needs scripts/value_leak_check.py to know v3 (the coordinator applies that patch) ----------------------
+# --- the whole v3 path: scripts/value_leak_check.py knows v3 now, so these always run -------------------------------------------
 
 
-@pytest.mark.skipif(not KNOWS_V3, reason="scripts/value_leak_check.py has no v3 entry yet")
 def test_v3_shards_pass_the_leak_check_and_raw_audit_and_train(tmp_path):
     V.select_features("v3")
     try:
@@ -170,7 +167,6 @@ def test_v3_shards_pass_the_leak_check_and_raw_audit_and_train(tmp_path):
         V.select_features("v2")
 
 
-@pytest.mark.skipif(not KNOWS_V3, reason="scripts/value_leak_check.py has no v3 entry yet")
 def test_a_v3_history_value_changed_after_the_build_fails_the_raw_audit(tmp_path):
     V.select_features("v3")
     try:
@@ -185,7 +181,6 @@ def test_a_v3_history_value_changed_after_the_build_fails_the_raw_audit(tmp_path
         V.select_features("v2")
 
 
-@pytest.mark.skipif(not KNOWS_V3, reason="scripts/value_leak_check.py has no v3 entry yet")
 def test_v3_nfl_shards_pass_the_raw_audit(tmp_path):
     V.select_features("v3")
     try:

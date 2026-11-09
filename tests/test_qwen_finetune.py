@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import ast
 import json
+import sys
+import types
 from pathlib import Path
 
 import numpy as np
@@ -327,15 +329,72 @@ def test_predictor_fails_closed_on_a_bad_row_and_calibrates():
     assert b.p[0] == pytest.approx(0.125) and b.value[0] == pytest.approx(float(G.to_scale(b.raw[:1])[0]))
 
 
-def test_weighted_loss_equals_plain_loss_when_weights_are_equal():
-    torch = pytest.importorskip("torch")
-    pytest.importorskip("transformers")
-    from transformers import Qwen3Config, Qwen3ForCausalLM
-    torch.manual_seed(0)
-    m = Qwen3ForCausalLM(Qwen3Config(vocab_size=300, hidden_size=32, intermediate_size=64, num_hidden_layers=2, num_attention_heads=2,
-                                     num_key_value_heads=1, head_dim=16, tie_word_embeddings=True))
-    ids, lab = torch.randint(0, 300, (2, 12)), torch.full((2, 12), -100)
-    lab[0, 8:] = ids[0, 8:]
-    att = torch.ones(2, 12, dtype=torch.long)
-    want = m(input_ids=ids, attention_mask=att, labels=lab).loss
-    assert torch.allclose(QF.weighted_answer_loss(m, ids, lab, att, torch.ones(2, 12)), want, atol=1e-5)
+class _Arr(np.ndarray):
+    """The two tensor methods weighted_answer_loss calls that ndarray lacks."""
+    def float(self):
+        return self.astype(np.float32).view(_Arr)
+
+    def to(self, dtype):
+        return self.astype(dtype).view(_Arr)
+
+
+def _fake_torch(monkeypatch):
+    def cross_entropy(logits, tgt, reduction="mean"):
+        z = logits - logits.max(axis=-1, keepdims=True)
+        nll = np.log(np.exp(z).sum(axis=-1)) - z[np.arange(len(tgt)), np.asarray(tgt)]
+        assert reduction == "none"
+        return nll.view(_Arr)
+    torch = types.SimpleNamespace(nn=types.SimpleNamespace(functional=types.SimpleNamespace(cross_entropy=cross_entropy)))
+    monkeypatch.setitem(sys.modules, "torch", torch)
+
+
+def _fake_lm(seed=0, vocab=7, dim=5, b=2, n=9):
+    rng = np.random.default_rng(seed)
+    hidden = rng.normal(size=(b, n, dim)).astype(np.float32).view(_Arr)
+    head = rng.normal(size=(dim, vocab)).astype(np.float32)
+    lm = types.SimpleNamespace(model=lambda input_ids, attention_mask: types.SimpleNamespace(last_hidden_state=hidden),
+                               lm_head=lambda h: (np.asarray(h) @ head).view(_Arr))
+    ids = rng.integers(0, vocab, size=(b, n))
+    lab = np.full((b, n), -100)
+    lab[0, 5:] = ids[0, 5:]
+    lab[1, 3:6] = ids[1, 3:6]
+    return lm, ids.view(_Arr), lab.view(_Arr), np.ones((b, n), dtype=np.int64).view(_Arr), hidden, head
+
+
+def _plain_loss(hidden, head, lab):
+    """Per answer token cross entropy by hand: position i predicts the label at i + 1."""
+    out = []
+    for r in range(lab.shape[0]):
+        for i in range(lab.shape[1] - 1):
+            if lab[r, i + 1] != -100:
+                z = np.asarray(hidden[r, i]) @ head
+                out.append(float(np.log(np.exp(z - z.max()).sum()) - (z - z.max())[lab[r, i + 1]]))
+    return np.array(out)
+
+
+def test_weighted_loss_equals_plain_loss_when_weights_are_equal(monkeypatch):
+    """Fake torch (numpy). The real-torch run of the same check is agent/kaggle/qwen_torch_check.py, run on Kaggle."""
+    _fake_torch(monkeypatch)
+    lm, ids, lab, att, hidden, head = _fake_lm()
+    ce = _plain_loss(hidden, head, lab)
+    assert len(ce) == 7                      # 4 answer tokens in row 0 and 3 in row 1: only labelled positions count
+    got = QF.weighted_answer_loss(lm, ids, lab, att, np.ones(lab.shape, dtype=np.float32).view(_Arr))
+    assert float(got) == pytest.approx(float(ce.mean()), abs=1e-5)
+
+
+def test_weighted_loss_weights_the_answer_tokens_it_is_told_to(monkeypatch):
+    _fake_torch(monkeypatch)
+    lm, ids, lab, att, hidden, head = _fake_lm()
+    wt = np.ones(lab.shape, dtype=np.float32)
+    wt[0, 8] = 5.0                           # the last answer token of row 0 counts five times
+    ce, w = _plain_loss(hidden, head, lab), np.ones(7)
+    w[3] = 5.0                               # row 0's labelled targets are the first four, in order
+    got = QF.weighted_answer_loss(lm, ids, lab, att, wt.view(_Arr))
+    assert float(got) == pytest.approx(float((ce * w).sum() / w.sum()), abs=1e-5)
+    assert float(got) != pytest.approx(float(ce.mean()), abs=1e-3)
+
+
+def test_the_torch_check_script_is_importable_without_torch_and_says_so(monkeypatch, capsys):
+    from agent.kaggle import qwen_torch_check as T
+    monkeypatch.setitem(sys.modules, "torch", None)      # `import torch` now raises ImportError
+    assert T.main() == 2 and "no torch" in capsys.readouterr().out

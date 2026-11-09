@@ -26,7 +26,7 @@ from redzone.contracts import brain as contract
 from redzone.decider import gate
 from redzone.decider.decider import REDZONE, Decider, Decision
 from redzone.grading import dead_at, lag_of
-from redzone.lab import backtest, leverage, splits
+from redzone.lab import backtest, leverage, splits, sportsgrade
 
 LEAGUES = {"nfl": ("scripts/eval.py", []), "nba": ("scripts/eval_sports.py", ["nba"]),
            "nhl": ("scripts/eval_sports.py", ["nhl"])}
@@ -42,6 +42,8 @@ class Tally:
     passed: int = 0        # ...and the gate let it go
     vetoes: Counter = field(default_factory=Counter)
     fallback_reasons: Counter = field(default_factory=Counter)
+    high_cuts: list = field(default_factory=list)   # 'matchup: what' of every graded high-leverage mid-play leave
+    mid_entries: list = field(default_factory=list)   # 'matchup kind @ switch time' of every graded mid-play entry
 
 
 class _Proposer(Decider):
@@ -149,8 +151,16 @@ def _fit_only(cap: int | None, real):
 def brain_replay(make_brain, kind="jump", raw=False, rules=None, cap=None):
     """Scorecards with `make_brain(truth)` in charge. rules=() removes the gate: the control run."""
     saved = (backtest.Decider, backtest.run, engine_mod.time, gate.GATE_RULES, gate.ENTRY_RULES, gate.redzone_on,
-             engine_mod.redzone_on, splits.nights_for)
+             engine_mod.redzone_on, splits.nights_for, sportsgrade.grade)
     box, tally, truth, real_run = {}, Tally(), Truth(), backtest.run
+    real_grade = sportsgrade.grade
+
+    def grade(*a, **kw):
+        card = real_grade(*a, **kw)
+        tally.high_cuts.extend(f"{what} @ {t:.0f}" for t, what in card.cuts_high)
+        tally.mid_entries.extend(f"{m} {k} @ {t:.0f}" for t, k, m in card.cut.mid_entries)
+        return card
+
     agent = make_brain(truth)
 
     class Host(_Host):
@@ -167,6 +177,7 @@ def brain_replay(make_brain, kind="jump", raw=False, rules=None, cap=None):
         return real_run(replays, cfg, my_teams, **kw)
 
     backtest.Decider, backtest.run = Host, run
+    sportsgrade.grade = grade
     engine_mod.time = NS(time=lambda: box["clock"](), monotonic=time.monotonic)
     gate.redzone_on = engine_mod.redzone_on = lambda games: True   # the replay only offers RedZone while it's on
     splits.nights_for = _fit_only(cap, saved[7])
@@ -176,7 +187,7 @@ def brain_replay(make_brain, kind="jump", raw=False, rules=None, cap=None):
         yield tally
     finally:
         (backtest.Decider, backtest.run, engine_mod.time, gate.GATE_RULES, gate.ENTRY_RULES, gate.redzone_on,
-         engine_mod.redzone_on, splits.nights_for) = saved
+         engine_mod.redzone_on, splits.nights_for, sportsgrade.grade) = saved
         backtest._CALS.clear()
 
 
@@ -191,7 +202,7 @@ def score(league: str, make_brain, kind="jump", raw=False, rules=None, cap=None)
             "entries_mid_play": sum(n["entries_mid_play"] for n in nights), "cuts": sum(n["cuts"] for n in nights),
             "cuts_high": sum(n["cuts_high"] for n in nights), "ticks": tally.ticks, "proposed": tally.proposed,
             "fallback": tally.fallback, "vetoes": tally.vetoes.get("vetoed", 0), "named": dict(VETOES),
-            "fallback_reasons": dict(tally.fallback_reasons)}
+            "fallback_reasons": dict(tally.fallback_reasons), "high_cuts": sorted(tally.high_cuts), "mid_entries": sorted(tally.mid_entries)}
 
 
 def cap_from_env(default: int = 2) -> int | None:
