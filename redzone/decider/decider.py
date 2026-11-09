@@ -3474,7 +3474,9 @@ class Decider:
         the rotation stands aside. The one place the handoff is decided: _jump runs only for 'jump' / 'buffered', and
         the rotation vetoes the normal decider's optional switches only then (_jump_owns)."""
         u = self.user
-        block = legal.user_block(self.safe_mode, u.paused, u.locked_game, u.manual_until, now)
+        # the same reading _decide takes: a lock on a game that has left the board holds nothing (until the supervisor clears it)
+        block = legal.user_block(self.safe_mode, u.paused, u.locked_game if u.locked_game in cands else None,
+                                 u.manual_until, now)
         if block:
             return ("safe" if block == "safe_mode" else "user"), block
         if u.focus_mode != FocusMode.AUTOPILOT:
