@@ -54,6 +54,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 
 ## Process and budget
 
+- 2026-11-09: **Kaggle fetch scripts built for the 9 passing sets plus KuaiRand-27K and KuaiRec; Aalto keystrokes and SoccerMon left out.** Aalto is 168,000 people's typing rhythm (biometric); SoccerMon is athlete health data with no anonymisation stated. Open Bandit, NHL_DB, Yambda and the other fails stay out. Why: unclear licence or identifiable people counts as no.
 - 2026-11-08: **Process gates G-02 to G-06 and G-09 built from the wave-1 reports.** A fix needs a regression test and a
   repro; a Stop hook runs fast checks (it gives up with BLOCKED on a repeat, and under the harness's cap of eight); one
   plan is checked in CI; `docs/handoff.md` targets 80 lines, ratcheted from 305 because the director edits it elsewhere.
