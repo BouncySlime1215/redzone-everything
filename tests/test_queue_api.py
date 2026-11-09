@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from redzone.web.server import build_app
 from redzone import userstate
+from redzone.commands import Commands
 
 
 class Cfg:
@@ -29,6 +30,7 @@ class FakeEngine:
         self.cfg = Cfg(on)
         self._user_state_path = tmp_path / "data" / "user_state.json"
         self.calls = []
+        self.commands = Commands()
         self.subscribers = set()
 
     def snapshot(self):
