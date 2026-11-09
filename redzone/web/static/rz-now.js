@@ -13,6 +13,7 @@ import { act } from "./rz-api.js?v=43";
 import { screenEvidence } from "./rz-evidence.js?v=40";
 import { recordedPanel } from "./rz-recorded.js?v=40";
 import { tonightCard } from "./rz-plan.js?v=40";
+import { queueCard } from "./rz-queue.js?v=40";
 import { switchExtras, missedBar } from "./rz-v2.js?v=30";
 
 const STATE_LABEL = { idle: "Idle", watching: "Watching", locked: "Locked in", break: "On a break", paused: "Paused",
@@ -44,6 +45,7 @@ export function renderNow(root) {
     dock(S),
     plan(S),
     tonightCard(S),
+    queueCard(S),
     controlPanel(S),
     S.fantasy ? `<div data-key="fantasy">${sec("Fantasy", { key: "sec-fantasy" })}${fantasyCard(S.fantasy)}</div>` : "",
     queue(S),
