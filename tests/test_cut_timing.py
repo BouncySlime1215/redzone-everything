@@ -159,6 +159,7 @@ def _feed(dec):
 
 def test_decider_rewinds_into_the_huddle_instead_of_joining_mid_play(cfg, clock):
     dec = _decider(cfg, clock)
+    cfg.update({"decider": {"entry": {"cue": "seek"}}}, record=False)   # the planner's stall model; the rewind itself always runs hidden (P1-REVIEW-03)
     _feed(dec)
     clock.t = 1070.0        # the picture would come up at real 1035: the 1030-1040 snap
     d = dec.decide(_cands("youtubetv:b"))

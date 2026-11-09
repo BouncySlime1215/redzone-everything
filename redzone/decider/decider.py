@@ -262,6 +262,9 @@ class Decider:
         self.override_m = M.OVERRIDE.new(clock=clock)    # your strongest override this tick
         self.lock_m = M.LOCK_WAIT.new(clock=clock)       # [lock wait]
         self.entry_m = M.ENTRY_WAIT.new(clock=clock)     # [cut timing] a whistle wait (was _entry_wait)
+        self._dark_since: dict[str, float] = {}      # [P1-REVIEW-05] gid -> when an entry first waited on a feed that can't prove a dead ball
+        self._dark_said: set[str] = set()            # ...and told the phone once
+        self.entry_stuck: str | None = None          # the engine toasts this once: nothing else to go to
         self._restored_screen: tuple[str, float, bool] | None = None   # [P-04] note_restart: (game, saved at, high leverage)
         self.jump_break_m = MachineMap(M.JUMP_BREAK, clock=clock)   # [jump mode] per game (was _jump_break_at)
         self._current: str | None = None
@@ -648,6 +651,7 @@ class Decider:
                 self.screen_m.to("after_replay", "the replay clip ended", now=now)
         self._override_tick(now)
         home_before = (self.home_break_visit, self.home_return_at)
+        cands = self._without_dark_targets(cands, now)
         d0 = d = self._decide(cands, now)
         d = self._scenario(d, cands, now, home_before)
         d = self._clairvoyant(d, cands, now, home_before)
@@ -675,6 +679,11 @@ class Decider:
             # The visit that switch planned waits with it, like every other filter's stay.
             self._home_restore(home_before, "jump mode owns optional switches")
             d = Decision(now, "stay", self.current, f"jump mode: {d.reason}", d.state, d.gate, want=d.target)
+        if d.action == "switch" and d.kind == "start" and self._restart_hold(cands, now):
+            # [P-04] jump mode off too: the rotation's own hold (_jump) only runs when it owns the TV
+            self._home_restore(home_before, "restart hold: a stay")
+            d = Decision(now, "stay", self.current, f"restart: holding the saved game's leverage ({d.reason})", d.state,
+                         d.gate, want=d.target)
         d = self._safe(d, cands, now, home_before)
         if d.action not in ("switch", "replay") and self._home is not None and self._home != home_before[0]:
             # [home] a filter turned a switch into a stay without putting the planned visit back: never leak it
@@ -1303,6 +1312,47 @@ class Decider:
         tl = self.timelines.get(gid)
         return tl is None or not tl.dead.marks
 
+    def _entry_dark(self, gid: str, x: Candidate | None, now: float) -> bool:
+        """[P1-REVIEW-05] This game's feed can't prove a dead ball: no marks at all, or the data has gone quiet."""
+        if gid in PSEUDO or x is None or not x.target or not self.cfg.get("decider.entry.enabled", True):
+            return False
+        tl = self.timelines.get(gid)
+        return tl is None or not tl.dead.marks or tl.fresh_at is None or now - tl.fresh_at > STALE_DATA_S
+
+    def _without_dark_targets(self, cands: dict[str, Candidate], now: float) -> dict[str, Candidate]:
+        """[P1-REVIEW-05] An entry waits on a dark feed (Rule #1 forbids going in blind) only for
+        decider.entry.no_data_wait_s: after that the game sits out this pick, so the next game with a provable landing
+        gets its turn instead of the screen freezing on a finished game. It comes back the moment its feed does. With
+        nothing else to go to the wait goes on (no last resort: Nick's phone, tapped twice, forces it) and says so once.
+        Your locked or focused game is never dropped."""
+        for gid in list(self._dark_since):
+            if gid not in cands or not self._entry_dark(gid, cands[gid], now):
+                del self._dark_since[gid]
+                self._dark_said.discard(gid)
+        wait = float(self.cfg.get("decider.entry.no_data_wait_s", 45.0))
+        dropped = {gid for gid, at in self._dark_since.items() if now - at >= wait and gid != self.current
+                   and gid not in (self.user.locked_game, self.user.focus_game)}
+        if not dropped:
+            return cands
+        kept = {gid: x for gid, x in cands.items() if gid not in dropped}
+        if any(x.target and gid != self.current and not self._entry_dark(gid, x, now) for gid, x in kept.items()):
+            return kept
+        if self.current not in cands:
+            for gid in sorted(dropped - self._dark_said):
+                self._dark_said.add(gid)
+                self.entry_stuck = gid
+        return cands
+
+    def _entry_urgent(self, d: Decision, x: Candidate | None, cands) -> bool:
+        """May this entry take the thin-margin landing? The flip's re-check (Engine._entry_valid) asks the same question."""
+        # [nhl pp] A power play or a close 3rd makes a game sticky for break visits, but is no reason
+        # to come in on a tighter margin: that only buys mid-play entries.
+        urgent = d.kind == "crunch" or (x is not None and (x.scored.crunch or
+                                                           self._sticky_home(d.target, cands, entry=True)))
+        if d.kind == "ended" and self._lc("decider.entry.ended_strict", x, False):
+            urgent = False   # [landing lag] the game on screen is over: nothing is lost by a strict landing
+        return urgent
+
     def _cut_timed(self, gid: str | None, cands) -> bool:
         """Cut timing is on for this game's league (decider.entry.leagues). Scorecards, Nov 3: NFL
         big plays live 24.5 -> 29.9% and crunch live +1.3 points, but NBA big plays seen 95.4 -> 90.8%
@@ -1385,12 +1435,7 @@ class Decider:
             return d
         if d.target == self.current and not self.after_replay:
             return d
-        # [nhl pp] A power play or a close 3rd makes a game sticky for break visits, but is no reason
-        # to come in on a tighter margin: that only buys mid-play entries.
-        urgent = d.kind == "crunch" or (x is not None and (x.scored.crunch or
-                                                           self._sticky_home(d.target, cands, entry=True)))
-        if d.kind == "ended" and self._lc("decider.entry.ended_strict", x, False):
-            urgent = False   # [landing lag] the game on screen is over: nothing is lost by a strict landing
+        urgent = self._entry_urgent(d, x, cands)
         pos = self._possession_start(x, d)
         if pos and self.possession_policy is not None:
             # [possession start] the learned jump / stay policy (lane 1); default (None) is jump
@@ -1404,6 +1449,7 @@ class Decider:
             if self._live_fallback() or not self._entry_no_data(d.target, x):
                 return d
             # [D-01] nothing proves a dead ball yet: wait for the first dead window in the data (Rule #1)
+            self._dark_since.setdefault(d.target, now)   # [P1-REVIEW-05] for no_data_wait_s, then the next game
             self._home_restore(home_before, "time_entry: a stay")
             state = State.REPLAY if self.after_replay else d.state
             return Decision(now, "stay", self.current, f"no play-by-play to time the landing: {d.reason}", state,
@@ -1448,6 +1494,8 @@ class Decider:
                 d.kind == "ended" or (x is not None and getattr(x.scored, "late", False))):
             return d
         # Not yet: whatever the switch planned (a visit's way home) waits with it.
+        if self._entry_dark(d.target, x, now):
+            self._dark_since.setdefault(d.target, now)   # [P1-REVIEW-05] a dark feed never logs the dead ball we wait for
         self._home_restore(home_before, "time_entry: a stay")
         state = State.REPLAY if self.after_replay else d.state
         return Decision(now, "stay", self.current, f"{plan.why}: {d.reason}", state, d.gate,

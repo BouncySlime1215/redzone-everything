@@ -468,15 +468,16 @@ def test_unknown_input_blocks_preload_reseek_and_sunday_ticket_scan(two):
 
 
 def test_entry_rewind_lands_the_live_switch_behind_on_purpose(two):
-    """[cut timing] A live switch planned to come up on the dead ball before the current play:
-    flip, then whole rewind presses; the game stays the live target (only its delay grows).
+    """[cut timing] A live switch planned to come up on the dead ball before the current play: whole rewind presses on
+    the hidden stick before the flip, never on the visible one (P1-REVIEW-03); the game stays the live target.
     [seek model] the planner's 18 s is one 15 s step + the 3 s mid stall: ONE press that counts,
     plus the first press YouTube TV swallows (live lab, Nov 4)."""
     c, tuner = two
+    hid = c.hidden
     out = run(c.execute("youtubetv:espn", may_cut=lambda: True, entry_rewind_s=18.0))
-    assert out.ok and "rewound 18s to the dead ball" in out.detail
-    presses = sum(cmd.count("KEYCODE_MEDIA_REWIND") for cmd in c.main.log if isinstance(cmd, str))
-    assert presses == 2 and "KEYCODE_MEDIA_PLAY" in c.main.log
+    assert out.ok and "rewound 18s to the dead ball before the flip" in out.detail
+    presses = sum(cmd.count("KEYCODE_MEDIA_REWIND") for cmd in hid.log if isinstance(cmd, str))
+    assert presses == 2 and c.main is hid
     assert c.on_target == "youtubetv:espn"
 
 

@@ -2020,10 +2020,10 @@ class Controller:
 
     def arm_entry_rewind(self, rewind_s: float) -> None:
         """[EXP-741 B] Set the running switch's entry rewind from its may_cut, i.e. at the cut, not at submit:
-        a phone tap only learns it needs one when no dead ball has come without one. With the "hidden" cue
-        the hidden stick seeks before the flip; otherwise the visible stick rewinds right after it."""
+        a phone tap only learns it needs one when no dead ball has come without one. The hidden stick seeks before
+        the flip (never the visible one); no switch running (_entry_cue cleared) arms nothing."""
         self._entry_rewind = float(rewind_s or 0.0)
-        self._hidden_entry = self._entry_rewind if getattr(self, "_entry_cue", "") == "hidden" else 0.0
+        self._hidden_entry = self._entry_rewind if getattr(self, "_entry_cue", "") else 0.0
 
     def cancel_pending(self) -> None:
         """Stop queued/tuning work on Pause or dry-run. Let an input flip settle."""
@@ -2693,13 +2693,13 @@ class Controller:
         live edge (whole seek steps), on the dead ball before the play it would otherwise join
         mid-way. The game stays the live target; only its delay grows by that much.
 
-        entry_cue "hidden" [seek model]: with two sticks the rewind runs on the hidden stick BEFORE the
-        flip (no glimpse of the live edge, and the 2-4 s seek stall passes off screen); otherwise, or if
-        that path isn't taken, the visible stick rewinds right after the flip."""
+        [seek model, P1-REVIEW-03] Nothing rewinds on the visible screen: the rewind runs on the hidden stick BEFORE the
+        flip (no glimpse of the live edge, and the 2-4 s stall passes off screen). A path with no hidden stick is
+        refused with the screen untouched, and the decider waits for a landing that needs no rewind."""
         marks = self._marks = [("started", time.time())]
-        self._hidden_entry = entry_rewind_s if (entry_cue == "hidden" and not replay_back_s) else 0.0
+        self._hidden_entry = entry_rewind_s if not replay_back_s else 0.0
         self._hidden_entry_done = False
-        self._entry_cue = entry_cue
+        self._entry_cue = entry_cue or "hidden"
         self._entry_rewind = entry_rewind_s if not replay_back_s else 0.0
         why = self._why = {}
         try:
@@ -2707,18 +2707,6 @@ class Controller:
             entry_rewind_s = self._entry_rewind   # [EXP-741 B] a tap may arm its rewind at the cut (arm_entry_rewind)
             if self._hidden_entry_done and out.ok:
                 out.detail += f"; rewound {entry_rewind_s:.0f}s to the dead ball before the flip"
-            elif entry_rewind_s and out.ok and not out.dry_run and not replay_back_s and self.main is not None:
-                if not await self._rewind(self.main, entry_rewind_s):
-                    out = Outcome(False, target, out.took, "entry rewind failed; position unknown", False,
-                                  path=out.path)
-                else:
-                    self._mark("rewind_done")
-                    out.detail += f"; rewound {entry_rewind_s:.0f}s to the dead ball"
-                    if self.seek_log_path is not None and target:
-                        pb = await self.main.playback(self._package(self.main, target))
-                        self._seek_sample(self.main, target, entry_rewind_s, pb)
-                        if playback_ready(pb):
-                            self.main.remember(target, pb)
         finally:
             # [fix] every per-switch field ends with the switch: a later arm_entry_rewind (from a may_cut that
             # outlived it) must not see this switch's cue, nor the next switch its "done"
@@ -2792,10 +2780,14 @@ class Controller:
         # HDMI attempt: the safe gap may have closed during those operations.
         self._mark("safe_start")
         pending, self._ladder_pending = self._ladder_pending, None
-        if await self._wait_safe(may_cut) is None:
+        # [P1-REVIEW-03] one stick: a rewind would run on screen. Checked after the wait too: a tap arms its rewind there.
+        no_rewind = "entry rewind needs the hidden stick (never rewound on screen)"
+        if self._entry_rewind or await self._wait_safe(may_cut) is None or self._entry_rewind:
             if pending is not None:
                 self.ladder.record(pending.host, target, "hold", False, "no safe moment for the other stick",
                                    reason="other_stick settled")
+            if self._entry_rewind:
+                return Outcome(False, target, time.time() - t0, no_rewind, False, path="single", screen_unchanged=True)
             return Outcome(False, target, time.time() - t0,
                            "no safe moment to cut — kept the current game", False, screen_unchanged=True)
         self._mark("safe_done")
@@ -2821,6 +2813,9 @@ class Controller:
             return Outcome(False, target, time.time() - t0, "no safe moment to cut — kept the current game", False,
                            path="prime_tile", waited=self._safe_gave_up_s, screen_unchanged=True)
         self._mark("safe_done")
+        if self._entry_rewind:   # [P1-REVIEW-03] a tile is on screen: no rewinding it there
+            return Outcome(False, target, time.time() - t0, "entry rewind needs the hidden stick (never rewound on screen)",
+                           False, path="prime_tile", screen_unchanged=True)
         if not self.live_control:
             return Outcome(False, target, 0.0, "TV control was disabled", True)
         self.on_target = None

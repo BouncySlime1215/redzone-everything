@@ -162,7 +162,8 @@ def park_in(h: Pic, now: float, cfg=None) -> float | None:
     if w.kind == "walk":
         # the latest pause the whole doubt band and the flip still fit inside the walk (no line-up lead to keep)
         flip, fast = float(cfg_get(cfg, "flip_s")), float(cfg_get(cfg, "flip_fast_s"))
-        pause_at = w.end - flip - m
+        # [P1-REVIEW-07] park_guard_s: key latency on the PAUSE, or it would land exactly at the walk's end and fail lands()
+        pause_at = w.end - flip - m - float(cfg_get(cfg, "park_guard_s"))
         if pause_at + fast - m < w.start:
             return None
         wait = pause_at - x

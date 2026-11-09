@@ -5,7 +5,9 @@ off). The editor (redzone/decider/buffered.py cut_now) is called every `step` se
 holds at that moment (each game's entries arrive feed_lag after their wallclock); the hidden stick re-tunes per
 rotate_due (unready prep_s). Truth: the same entries, all of them, at the TRUE screen delay (belief + a per-tune
 error of err_sd). Counts a mid-play JOIN when the true picture at the landing is inside a play (snap - 10 s ..
-whistle + 3 s), a mid-play LEAVE when a play is on screen during the flip.
+whistle + 3 s), a mid-play LEAVE when a play is on screen during the flip. Basketball: a landing inside the walk up
+court right after a made or missed shot (Nick, Nov 8; the same DeadTracker.walks the landing uses) is allowed, and is
+counted as joins_walk, not joins_mid_play (which stays the strict Rule #1 counter).
 
   python scripts/buffered_jump_sim.py                      # every Sunday slate in data/archive/nfl
   python scripts/buffered_jump_sim.py --sigma 4 --lag 30   # stated sigma (4 s floor), slower feed
@@ -112,6 +114,17 @@ def in_play(spans, a: float, b: float) -> bool:
     return any(s < b and a < e for s, e in spans)
 
 
+def walk_spans(plays, walk, lg: League | None = None) -> list[tuple[float, float]]:
+    """[Nick, Nov 8] Truth's walks after a made or missed shot: the windows a basketball landing may use."""
+    if not walk:
+        return []
+    return [(w.start, w.end) for w in truth_tracker(plays, lg).walks(walk)]
+
+
+def in_walk(walks, a: float, b: float) -> bool:
+    return any(s <= a and b <= e for s, e in walks)
+
+
 def ad_windows(plays, lg: League | None = None) -> list[tuple[float, float]]:
     """Real-time spans that are commercials on TV: a break window's inside, AD_EDGE_S in from each end."""
     out = []
@@ -177,13 +190,14 @@ def run_slate(games, args, rng: random.Random, cfg) -> dict:
     order = sorted(plays, key=lambda g: first[g])
     vis, hid = new_stick(order[0], t0), new_stick(order[1], t0)
     pair_since, landed_at, left_at = t0, t0, defaultdict(lambda: t0 - 300)
-    cuts, joins_mid, leaves_mid, rot, snap_cuts, parks, expired = 0, 0, 0, 0, 0, 0, 0
+    cuts, joins_mid, joins_walk, leaves_mid, rot, snap_cuts, parks, expired = 0, 0, 0, 0, 0, 0, 0, 0
     reasons = defaultdict(int)
     segs = []   # (gid, wall0, wall1, mu_true)
     cut_at, mid_at = [], []   # wall times of each cut / each mid-play join or leave
     seg0 = t0
     flip = float(bj.cfg_get(cfg, "flip_s"))
     walk = walk_params(cfg, LG)   # basketball's walk up court after a shot, like the live decider's Pic
+    walks = {gid: walk_spans(p, walk) for gid, p in plays.items()}
     t = t0
     while t < t_end:
         for gid, p in plays.items():   # the play-by-play as it stands at t
@@ -225,8 +239,11 @@ def run_slate(games, args, rng: random.Random, cfg) -> dict:
                     leaves_mid += 1
                     mid_at.append(t)
                 if in_play(spans[hid["gid"]], t + f - mu_h, t + f + 0.5 - mu_h):
-                    joins_mid += 1
-                    mid_at.append(t)
+                    if in_walk(walks[hid["gid"]], t + f - mu_h, t + f + 0.5 - mu_h):
+                        joins_walk += 1   # allowed: the walk up court right after a made or missed shot
+                    else:
+                        joins_mid += 1
+                        mid_at.append(t)
                 cut_at.append(t)
                 segs.append((vis["gid"], seg0, t + f, mu_v))
                 seg0 = t + f
@@ -262,7 +279,7 @@ def run_slate(games, args, rng: random.Random, cfg) -> dict:
     mins = (t_end - t0) / 60.0
     return {"games": len(plays), "minutes": round(mins, 1), "cuts": cuts, "cuts_per_min": round(cuts / mins, 2),
             "snap_cuts": snap_cuts, "plays_shown": shown, "plays_shown_per_min": round(shown / mins, 2),
-            "plays_all_games_per_min": round(total / mins, 2), "joins_mid_play": joins_mid,
+            "plays_all_games_per_min": round(total / mins, 2), "joins_mid_play": joins_mid, "joins_walk": joins_walk,
             "leaves_mid_play": leaves_mid, "rotations": rot, "parks": parks, "parks_expired": expired, "holds": dict(reasons),
             **bar}
 
@@ -301,7 +318,8 @@ def main(argv=None) -> int:
             rows.append(r)
             print(f"slate {n:3d}: {r['games']:2d} games {r['minutes']:6.1f} min  cuts/min {r['cuts_per_min']:.2f}  "
                   f"plays shown/min {r['plays_shown_per_min']:.2f} (all games {r['plays_all_games_per_min']:.2f})  "
-                  f"mid-play joins {r['joins_mid_play']} leaves {r['leaves_mid_play']}  rotations {r['rotations']}  "
+                  f"mid-play joins {r['joins_mid_play']} walk joins {r['joins_walk']} leaves {r['leaves_mid_play']}  "
+                  f"rotations {r['rotations']}  "
                   f"| 10-min PASS {r['windows_pass']}/{r['windows']} (best {r['best_window_jumps']} jumps, ads "
                   f"{r['ad_s']:.0f} s, cut-off plays {r['partial_plays']})")
     if not rows:
@@ -316,6 +334,7 @@ def main(argv=None) -> int:
             "plays_shown_per_min": round(sum(r["plays_shown"] for r in rows) / mins, 2),
             "single_game_plays_per_min": round(sum(r["plays_all_games_per_min"] * r["minutes"] / r["games"] for r in rows) / mins, 2),
             "joins_mid_play": sum(r["joins_mid_play"] for r in rows),
+            "joins_walk": sum(r["joins_walk"] for r in rows),
             "leaves_mid_play": sum(r["leaves_mid_play"] for r in rows),
             "cuts": sum(r["cuts"] for r in rows),
             "pass_bar": {"rule": f">= {PASS_JUMPS} jumps per 10 min, 0 ad seconds, 0 cut-off plays, 0 mid-play joins/leaves",
