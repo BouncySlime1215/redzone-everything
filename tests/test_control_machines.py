@@ -125,7 +125,7 @@ def test_a_real_hold_failure_still_backs_off(two, monkeypatch):
     buffered(c)
 
     async def hold(stick, target, behind_s, base_s=0.0):
-        c._last_hold = {"host": stick.host, "target": target, "end": "failed"}
+        c._last_hold = {"host": stick.host, "target": target, "end": "failed", "relinked": True}   # it reloaded at the live edge: ready again
         return False
     monkeypatch.setattr(c, "_hold", hold)
 

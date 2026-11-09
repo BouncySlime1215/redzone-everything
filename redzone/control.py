@@ -2482,6 +2482,12 @@ class Controller:
             if h is not None and h[2] is token:
                 self._holding = None
 
+    def _hold_left_ready(self, held_ok: bool) -> bool:
+        """After _hold: may its stick be called ready? Only if the stream is known to be playing. Not "displaced" (a switch may
+        have this same target mid-tune) and not a "failed" hold that wasn't reloaded (the stick is still paused)."""
+        info = self._last_hold or {}
+        return held_ok or info.get("end") == "refused" or bool(info.get("relinked"))
+
     def _seek_sample(self, stick: Stick, target: str, asked_s: float, pb: dict) -> float | None:
         """[calib.auto] How far one seek really moved the picture: the stick's clock against its position since
         the stream's anchor (as the live lab measured it by hand), with the presses sent. Appended to
@@ -4093,14 +4099,14 @@ class Controller:
             if replay_id is None and hold:
                 t_hold = time.monotonic()
                 held_ok = await self._hold(hid, target, hold)
-                ready: bool | None = True
+                ready: bool | None = self._hold_left_ready(held_ok)
                 if self._queue_on():
                     self._stage("hold", target, hid, time.monotonic() - t_hold, ok=held_ok, asked_s=hold)
                     if held_ok:
                         self._fail_tries.pop(("hold", target), None)
                     else:
                         ready = await self._queue_hold_failed(hid, target, time.monotonic() - t_hold)
-                if ready is not False and self.hidden is hid and self.hidden_target == target:
+                if ready and self.hidden is hid and self.hidden_target == target:
                     self._set_hidden(target, True)
                 if self.ladder.enabled:
                     await self._ladder_note_pause(hid, target, held_ok)
@@ -4582,7 +4588,8 @@ class Controller:
                     # never marked live-ready
                     self._set_hidden(None, False, why="pause-hold cancelled: position unknown")
                 else:
-                    self._set_hidden(target, queue_ready is not False, why="pause-hold " + ("held" if ok else end or "failed"))
+                    self._set_hidden(target, self._hold_left_ready(ok) if queue_ready is None else queue_ready,
+                                     why="pause-hold " + ("held" if ok else end or "failed"))
         if displaced:
             self._buffer_log("hold_displaced", target, hid.host, self.held.get(target, 0.0), None, took=round(ask, 1),
                              why="a switch took the stick")
@@ -5143,7 +5150,7 @@ class Controller:
     async def _rebuild_buffer(self, hid: Stick, target: str, now_s: float, err: float) -> None:
         cal = float(self.cfg.get("timing.behind_live_s.hold_cal_s", -1.5))
         since = self._buffer_bad.get(target, time.time())
-        ok = False
+        ok = held_it = False
         try:
             if self._scrub_wanted(target):
                 # [scrub entry] a pause doesn't hold on YouTube TV: rebuild by the overlay scrub (it re-tunes at
@@ -5158,6 +5165,7 @@ class Controller:
                         self._set_hidden(target, True)   # no buffer wanted now: the live-edge stream is the standby
                 return
             if err < 0:
+                held_it = True
                 ok = await self._hold(hid, target, max(0.5, -err + cal), base_s=now_s)
             else:
                 async with self._lock:
@@ -5168,8 +5176,9 @@ class Controller:
                         self._set_hidden(None, False)
                         return
                 hold = 0.0 if res.kept else self._buffer_for(hid, target, res)   # kept: no reload, so no second hold on top
-                ok = bool(hold) and await self._hold(hid, target, max(0.5, hold + cal))
-            if self.hidden is hid and self.hidden_target == target:
+                held_it = bool(hold)
+                ok = held_it and await self._hold(hid, target, max(0.5, hold + cal))
+            if self.hidden is hid and self.hidden_target == target and (not held_it or self._hold_left_ready(ok)):
                 self._set_hidden(target, True)
         except asyncio.CancelledError:
             self._set_hidden(None, False)
