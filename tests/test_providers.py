@@ -839,3 +839,59 @@ async def test_app_tuner_never_stops_or_presses_on_the_launcher():
     res = await tuner(PeacockLike, Clock()).tune(st, OKC_CLE_MAIN, "peacock:x")
     assert not res.ok and prov.parse_verdict(res.error) is None and not st.keys[1:]
     assert any("not in front" in s for s in res.steps)
+
+
+# --- [WP-01] route truth: a flagged pick says so; an NFL Sunday game waits for its Sunday Ticket slot -------
+
+def nfl_sunday(home="KC", away="NYJ"):
+    # Sun 2026-11-08 13:00 ET
+    return GameState(league=League.NFL, game_id="nfl1", home=Team(home), away=Team(away), phase=Phase.PRE,
+                     broadcasts=["CBS"], start_time=1794160800)
+
+
+def test_a_pick_made_only_of_flagged_routes_carries_the_flag():
+    g = game()
+    p = prov.best_source(g, [src("prime", "prime:a", geo_ok=False, confidence="sure")])
+    assert p.risky is True
+    assert prov.best_source(g, [src("espn", "espn:b", geo_ok=True)]).risky is False
+
+
+def test_unmatched_ticket_slot_loses_to_a_flagged_prime_route_when_the_flag_is_off():
+    g = nfl_sunday()
+    cands = [src("youtubetv", "youtubetv:st", tunable=False, kind="channel"),
+             src("prime", "prime:amzn1.dv.gti.x", geo_ok=False)]
+    p = prov.best_source(g, cands)
+    assert p.target == "prime:amzn1.dv.gti.x" and p.risky          # today's behaviour, unchanged
+
+
+def test_st_wait_keeps_an_nfl_game_on_its_unmatched_ticket_slot():
+    g = nfl_sunday()
+    cands = [src("youtubetv", "youtubetv:st", tunable=False, kind="channel"),
+             src("prime", "prime:amzn1.dv.gti.x", geo_ok=False)]
+    p = prov.best_source(g, cands, st_wait=True)
+    assert p.target == "youtubetv:st" and not p.tunable and not p.risky
+    assert "Waiting for its Sunday Ticket slot" in p.reasons[0]
+
+
+def test_st_wait_keeps_a_local_game_on_its_local_route_and_matched_slots_tune():
+    g = nfl_sunday(home="CAR", away="DEN")
+    local = src("youtubetv", "youtubetv:cbs", kind="channel")
+    assert prov.best_source(g, [local, src("prime", "prime:p", geo_ok=False)], st_wait=True).target == "youtubetv:cbs"
+    matched = src("youtubetv", "youtubetv:st:ABCDEFGHIJK", kind="channel")
+    assert prov.best_source(nfl_sunday(), [matched], st_wait=True).target == "youtubetv:st:ABCDEFGHIJK"
+    nba = game()
+    assert prov.best_source(nba, [src("youtubetv", "youtubetv:st", tunable=False)], st_wait=True).target == "youtubetv:st"
+
+
+def test_st_wait_does_not_override_a_choice_made_on_the_phone():
+    g = nfl_sunday()
+    mine = src("prime", "prime:mine", confidence="you set it")
+    cands = [src("youtubetv", "youtubetv:st", tunable=False, kind="channel"), mine]
+    assert prov.best_source(g, cands, st_wait=True).target == "prime:mine"
+
+
+def test_channel_map_gives_a_local_carolina_game_its_local_route_and_others_the_pending_slot(tmp_path):
+    cm = ChannelMap(tmp_path / "c.json")
+    cm.codes["cbs"] = "AAAAAAAAAAA"
+    assert cm.where(nfl_sunday(home="CAR", away="DEN")).target == "youtubetv:cbs"
+    assert cm.where(nfl_sunday()).target == "youtubetv:st"

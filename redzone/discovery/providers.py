@@ -273,6 +273,7 @@ class Pick(Where):
     provider: str = ""
     reasons: list[str] = field(default_factory=list)
     alternates: list[Source] = field(default_factory=list)
+    risky: bool = False   # [WP-01] flagged: Apple geo flag or League Pass during national TV; never reported "ready"
 
     @property
     def why(self) -> str:
@@ -405,8 +406,19 @@ def _why_pick(s: Source, side: str | None) -> str:
     return f"{_name(s.provider)} carries this channel"
 
 
+ST_PENDING = "youtubetv:st"   # a Sunday Ticket game whose slot the scan has not matched yet
+
+
+def _hold_for_ticket(keep: list[Source]) -> list[Source]:
+    """[discovery.st_wait] An NFL Sunday game whose Sunday Ticket slot is not matched yet waits for it
+    instead of falling to a flagged or wrong-game route. Only the unmatched slot candidate exists for
+    non-local games (ChannelMap.where gives a local CBS/FOX game its local route, never this one)."""
+    held = [c for c in keep if c.target == ST_PENDING and not c.tunable]
+    return held[:1] or keep
+
+
 def best_source(game: GameState, candidates: Iterable[Source], available=None,
-                my_teams=None) -> Pick:
+                my_teams=None, st_wait: bool = False) -> Pick:
     """Pick the best way to watch `game` from `candidates`, with reasons.
 
     available: ProviderBook.states() (or a set of usable provider keys; None = assume all).
@@ -417,6 +429,7 @@ def best_source(game: GameState, candidates: Iterable[Source], available=None,
     provider (YouTube TV, Prime Video, ESPN, Fubo, others; never Peacock) > exact event link.
     Never picks a source marked blacked out, or an app that isn't installed/subscribed.
     A choice you made on the phone ("you set it") always wins untouched.
+    st_wait (flag discovery.st_wait): an NFL game waiting for its Sunday Ticket slot stays on it.
     """
     cands = [c for c in candidates or () if isinstance(c, Source) and not is_banned(c)]
     for c in cands:
@@ -436,8 +449,17 @@ def best_source(game: GameState, candidates: Iterable[Source], available=None,
             keep.append(c)
     if not keep:
         return _nothing(skipped)
+    held = False
+    if st_wait and game.league == League.NFL:
+        kept = _hold_for_ticket(keep)
+        held = kept is not keep and bool(kept)
+        keep = kept
     ranked = sorted(keep, key=lambda c: _rank_key(c, game, side))
-    return _pick(ranked, skipped, game, side)
+    got = _pick(ranked, skipped, game, side)
+    if held:
+        got.reasons.insert(0, "Waiting for its Sunday Ticket slot; the scan matches it before kickoff.")
+        got.reasons[:] = got.reasons[:5]
+    return got
 
 
 def _nothing(skipped: list[tuple[Source, str]]) -> Pick:
@@ -466,7 +488,7 @@ def _pick(ranked: list[Source], skipped, game: GameState, side: str | None) -> P
             better.discard(c.provider)
     alts = [c for c in ranked[1:] if c.target != best.target][:5]
     return Pick(best.target, label, conf, best.tunable, provider=best.provider,
-                reasons=reasons[:5], alternates=alts)
+                reasons=reasons[:5], alternates=alts, risky=risky)
 
 
 # --- building candidates ----------------------------------------------------------------
@@ -1025,10 +1047,12 @@ class ProviderBook:
         return gather_sources(g, base, rec.get("providers") or {}, self.active_skips(), channel_map, sunday_ticket)
 
     def choose(self, g: GameState, base: Where | None = None, my_teams=None,
-               channel_map: ChannelMap | None = None, sunday_ticket: bool = True) -> Pick:
+               channel_map: ChannelMap | None = None, sunday_ticket: bool = True,
+               st_wait: bool = False) -> Pick:
         """The one call per game: ChannelMap's answer + every event link + fallbacks, ranked."""
         try:
-            return best_source(g, self.sources(g, base, channel_map, sunday_ticket), self.states(), my_teams)
+            return best_source(g, self.sources(g, base, channel_map, sunday_ticket), self.states(), my_teams,
+                               st_wait=st_wait)
         except Exception:  # a bad record must never cost us the game: fall back to ChannelMap
             log.exception("choose failed for %s", g.game_id)
             if base is None:

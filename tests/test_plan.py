@@ -312,3 +312,141 @@ async def test_warmup_preloads_the_hidden_stick_and_holds_it_against_checks(eng)
     e.control.standby, e.control.hidden_ready = (None, None), False
     await e.tonight.step()
     assert pre == ["prime:amzn1.dv.gti.wiz"] and e.tonight.plan["warmup"]["state"] == "waiting"
+
+
+# --- [WP-01] route truth ------------------------------------------------------------------------------
+
+from pathlib import Path   # noqa: E402
+
+from redzone.channels import Where, route_class   # noqa: E402
+from redzone.discovery import providers as prov   # noqa: E402
+
+NOV8 = json.loads((Path(__file__).parent / "fixtures" / "plan_20261108_sanitized.json").read_text())
+NOV8_DAY = date(2026, 11, 8)
+
+
+def nov8(st_wait=False):
+    """The sanitized Nov 8 slate through the real source ranking: (games, choose)."""
+    rows = {r["game_id"]: r for r in NOV8["games"]}
+    games = [GameState(league=League(r["league"]), game_id=r["game_id"], home=Team(r["home"]), away=Team(r["away"]),
+                       phase=Phase(r["phase"]), start_time=r["start"]) for r in rows.values()]
+
+    def choose(g):
+        r = rows[g.game_id]
+        cands = [prov.Source(s["provider"], s["target"], s["label"], s["tunable"], s["kind"], geo_ok=s["geo_ok"])
+                 for s in r["sources"]]
+        return prov.best_source(g, cands, st_wait=st_wait)
+    return games, choose
+
+
+def nov8_plan(st_wait=False):
+    games, choose = nov8(st_wait)
+    return P.build_plan(games, choose, my_teams={"nfl": ["WSH"]}, day=NOV8_DAY, now=at(8, d=NOV8_DAY))
+
+
+def flagged(e):
+    s = e["source"]
+    return bool(s) and s["tunable"] and ("black" in s["label"].lower() or s["risky"])
+
+
+def test_repro_unmatched_slot_plus_flagged_prime_is_not_ready():
+    """Nov 8: an unmatched Sunday Ticket slot and a geo_ok=False Prime link gave prime:..., 'may be blacked
+    out', status ready. Cause: _status ignored the risk. It reads 'at risk' now."""
+    g = game("x", "NYJ", "KC", at(13, d=NOV8_DAY), league=League.NFL, nets=["CBS"])
+    pick = prov.best_source(g, [prov.Source("youtubetv", "youtubetv:st", "Sunday Ticket", False, "channel"),
+                                prov.Source("prime", "prime:amzn1.dv.gti.x", "Prime Video", True, geo_ok=False)])
+    e = P.build_plan([g], lambda _: pick, day=NOV8_DAY, now=at(8, d=NOV8_DAY))["games"][0]
+    assert e["source"]["target"].startswith("prime:") and "may be blacked out" in e["source"]["label"]
+    assert e["status"] == "at risk" and e["status"] != "ready" and e["route_class"] == "prime"
+
+
+def test_fixture_flagged_routes_are_never_ready():
+    plan = nov8_plan()
+    bad = [e for e in plan["games"] if flagged(e)]
+    assert len(bad) >= 10                                                     # the fixture carries the Nov 8 flags
+    assert [e["game_id"] for e in bad if e["status"] == "ready"] == []        # 0 flagged-ready (was 11)
+    assert {e["status"] for e in bad} == {"at risk"}
+    assert all(e["status"] == "ready" for e in plan["games"] if e["source"] and e["source"]["tunable"]
+               and not flagged(e))
+
+
+def test_fixture_st_wait_makes_nfl_sunday_games_wait_and_keeps_the_local_route():
+    plan = by_id(nov8_plan(st_wait=True))
+    nfl_pm = [e for e in plan.values() if e["league"] == "nfl" and e["start_et"] != "9:30 AM" and e["game_id"] != "401873050"]
+    waiting = [e for e in nfl_pm if e["game_id"] != "401873041"]               # all but DEN at CAR (local CBS)
+    assert waiting and all(e["source"]["target"] == "youtubetv:st" and e["status"] == "needs setup" for e in waiting)
+    assert plan["401873041"]["source"]["target"] == "youtubetv:cbs" and plan["401873041"]["route_class"] == "local"
+    assert not [e for e in plan.values() if flagged(e) and e["league"] == "nfl"]
+    assert all(r["league"] != "nfl" or r["game_id"] == "401873041" or r["route_class"] != "ticket"
+               for r in nov8_plan(st_wait=True)["cant_reach"])                # waiting games are not 'can't reach'
+
+
+def test_route_classes_and_the_cant_reach_list():
+    assert [route_class(t) for t in ("youtubetv:cbs", "youtubetv:espn", "youtubetv:st", "youtubetv:st:ABC",
+                                     "youtubetv:ev:XYZ", "prime:amzn1.x", "prime:leaguepass", "espn:1", "fubo:1", None)] \
+        == ["local", "cable", "ticket", "ticket", "event", "prime", "prime", "espn", "other", "none"]
+    plan = nov8_plan()
+    assert {e["route_class"] for e in plan["games"]} >= {"cable", "local", "prime", "ticket"}
+    cr = plan["cant_reach"]
+    ids = {r["game_id"] for r in cr}
+    assert ids == {e["game_id"] for e in plan["games"] if e["status"] != "ready" and e["route_class"] != "ticket"}
+    assert not any(r["route_class"] == "ticket" for r in cr)                  # waiting for the slot is not lost
+    assert [r["mine"] for r in cr] == sorted((r["mine"] for r in cr), reverse=True)
+    assert all(r["why"] for r in cr)
+
+
+def test_a_check_settles_a_flagged_route_and_a_failed_check_unreadies_a_ready_one():
+    games, choose = nov8()
+    plan = P.build_plan(games, choose, day=NOV8_DAY, now=at(8, d=NOV8_DAY))
+    e = next(x for x in plan["games"] if x["status"] == "at risk")
+    t = e["source"]["target"]
+    assert P.record_check(plan, t, True, "played in 5s", at(12, d=NOV8_DAY)) >= 1 and e["status"] == "ready"
+    assert e["game_id"] not in {r["game_id"] for r in plan["cant_reach"]}
+    ok = next(x for x in plan["games"] if x["status"] == "ready" and x["check"]["state"] == "pending")
+    P.record_check(plan, ok["source"]["target"], False, "video never started", at(12, d=NOV8_DAY))
+    assert ok["status"] == "at risk" and ok["game_id"] in {r["game_id"] for r in plan["cant_reach"]}
+    again = P.carry_checks(P.build_plan(games, choose, day=NOV8_DAY, now=at(13, d=NOV8_DAY)), plan)
+    assert next(x for x in again["games"] if x["game_id"] == ok["game_id"])["status"] == "at risk"
+
+
+# --- plan.sweep: earlier, every route, idle gaps (fake clock) ------------------------------------------------
+
+def test_sweep_due_starts_30_minutes_before_the_first_window_and_covers_every_route(ch):
+    plan = build(ch)
+    now0 = at(18, 29)                                                          # first window 19:00
+    assert P.sweep_due(plan, now0) == []
+    got = P.sweep_due(plan, at(18, 31))
+    assert got[0] == "prime:amzn1.dv.gti.wiz"                                  # your team first
+    assert "youtubetv:espn" in got                                             # the 19:30 game rides along (not due until 19:10 before)
+    assert P.due(plan, at(18, 31), 20 * 60) == []                              # the old rule: nothing until 18:40
+
+
+async def test_sweep_flag_checks_earlier_and_in_idle_gaps_while_games_are_on(eng):
+    e, clock = eng
+    clock[0] = at(18, 25)
+    e.cfg.update({"plan": {"sweep": True}})
+    await e.tonight.step()
+    assert e.control.calls == []                                               # 35 min ahead: too early
+    clock[0] = at(18, 31)                                                      # old rule would wait until 18:40
+    await e.tonight.step()
+    assert e.control.calls == ["prime:amzn1.dv.gti.wiz"]
+    clock[0] = at(18, 31) + P.GAP_S + 1
+    e.merger.update("espn_scoreboard", game("live", "SEA", "POR", at(18), phase=Phase.LIVE))
+    e.control.standby = ("youtubetv:espn", None)                               # autopilot holds the hidden stick
+    await e.tonight.step()
+    assert len(e.control.calls) == 1 and "games are on" in e.tonight.plan["note"]
+    e.control.standby = None                                                   # a game is on, but the hidden stick is idle
+    await e.tonight.step()
+    assert e.control.calls == ["prime:amzn1.dv.gti.wiz", "youtubetv:espn"]
+    assert by_id(e.tonight.plan)["wiz"]["check"]["state"] == "verified"
+
+
+async def test_sweep_off_keeps_todays_schedule_and_refusals(eng):
+    e, clock = eng
+    clock[0] = at(18, 31)
+    await e.tonight.step()
+    assert e.control.calls == []                                               # flag off: nothing before T-20
+    clock[0] = at(18, 41)
+    e.merger.update("espn_scoreboard", game("live", "SEA", "POR", at(18), phase=Phase.LIVE))
+    await e.tonight.step()
+    assert e.control.calls == [] and "games are on" in e.tonight.plan["note"]   # still refused
