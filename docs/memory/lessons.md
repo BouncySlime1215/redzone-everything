@@ -478,3 +478,10 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
 - 2026-11-09 (AUDIT-6): a count over plays is only a count of the plays we were given: ESPN hands over the last 8, so a mid-quarter join called the third timeout the first. A foul as the next quarter's first entry also kept the break open across the tip. Tests: tests/test_audit6_timeouts.py, tests/test_audit6_windows.py.
 
 - 2026-11-09 (data reports): `.gitignore`'s `data/` matched `docs/agents/data/` too, so every data report looked committed but wasn't; `git add` skipped them silently and CI's index check caught it. Lesson: after adding reports, check them in a clean checkout.
+- 2026-11-09 (AUDIT-8): NHL dead windows never read the game clock, only NBA's did, so a faceoff the live feed dropped left live hockey looking dead. Lesson: a rule keyed on one league needs a reason in the code, or it is an accident. Test: tests/test_audit8_clock.py.
+
+- 2026-11-09 (AUDIT-8): a visit's return time outlived its visit and its home game outlived arriving there by another switch kind. Lesson: state set by a plan has to be cleared by every way the plan can end. Test: tests/test_audit8_home.py.
+
+- 2026-11-09 (AUDIT-8): the decider re-proposed a home trip the flip keeps vetoing (seed-2 night: 16 x 12 s of held lock at halftime). Lesson: a veto at the last gate must feed the planner, or the plan repeats until the world changes. Test: tests/test_audit8_home.py.
+
+- 2026-11-09 (AUDIT-8): MEDIAN_S was keyed "timeout" while the tracker produces timeout_long / media_timeout, so every NBA-base lookup fell back to 30 s. Lesson: a table's keys are a contract with what fills them; test the kinds, not just the table. Test: tests/test_audit8_median.py.

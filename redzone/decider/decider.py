@@ -478,7 +478,9 @@ class Decider:
 
     def _home_set(self, gid: str | None, at: float | None, why: str) -> None:
         """The one way a break visit changes: home_m follows (none / visit / visit_timed)."""
-        self._home, self._home_at = gid, at   # (a return time without a visit is kept, as before: inert)
+        if gid is None:
+            at = None   # [AUDIT-8] a return time dies with its visit: kept, the next visit started out overdue
+        self._home, self._home_at = gid, at
         self.home_m.to("none" if gid is None else "visit_timed" if at is not None else "visit", why)
 
     def _home_restore(self, home_before: tuple, why: str) -> None:
@@ -849,11 +851,25 @@ class Decider:
         """The TV didn't take d. backoff=False: it was superseded by a newer switch (not a failed start)."""
         if self._proposal_home and self._proposal_home[0] is d:
             self._proposal_home = None
+        if backoff and d.kind == "home" and d.target == self._home and self._home_at is not None \
+                and self._home_still_in_break(d.target):
+            # [AUDIT-8] the flip keeps a home trip out of a break it would land in (Engine._entry_valid: seed-2 night,
+            # 16 refusals in a row at 12 s each with the control lock held): the planned time has passed, so go back
+            # on the data, when the break has aired, instead of re-proposing the same refused switch
+            self._home_set(self._home, None, "the flip won't land in its break: back when the break has aired")
         if backoff and d.kind in ("start", "user") and self.current is None:   # a first pick, or a lock/hold restored at start
             self.start_fails += 1
             wait = min(START_RETRY_MAX_S, START_RETRY_S * 2 ** (self.start_fails - 1))
             self._start_retry_at = self._clock() + wait
             self.start_m.to("backoff", f"start pick #{self.start_fails} didn't land: next in {wait:.0f}s")
+
+    def _home_still_in_break(self, home: str) -> bool:
+        """Would a return to the game we left for its break land in that break (the flip's check)?"""
+        tl, x = self.timelines.get(home), self._known.get(home)
+        if tl is None or x is None:
+            return False
+        now = self._clock()
+        return break_on_arrival(tl, self.delays.get(x.target or "unknown"), now, now + self._deadline_cost(x.target))
 
     def lock_failed(self, d: Decision, why: str) -> None:
         """[lock wait] A switch to your locked game failed for a reason that is the target's
@@ -4374,8 +4390,8 @@ class Decider:
             self.stack.append(self.current)
         if kind == "home" and self.stack and self.stack[-1] == target:
             self.stack.pop()
-        if kind == "home" and target == self.home_break_visit:
-            self._home_set(None, None, "back home")
+        if target == self.home_break_visit:
+            self._home_set(None, None, "back home")   # [AUDIT-8] by any switch: a stale home pulls the next game back here
         if kind == "user":
             self._home_set(None, self._home_at, "you picked a game")
         if self.current and self.current != target:

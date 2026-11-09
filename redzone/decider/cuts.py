@@ -172,7 +172,8 @@ MEDIAN_S = {
     League.NFL: {"halftime": 850.0, "end_period": 196.0, "tv_timeout": 147.0, "two_minute": 160.0, "review": 217.0,
                  "score": 187.0, "kickoff": 41.0, "punt": 172.0, "turnover": 75.0, "penalty": 50.0,
                  "team_timeout": 43.0, "huddle": 34.0, "injury": 80.0},
-    League.NBA: {"timeout": 184.0, "end_period": 185.0, "halftime": 933.0, "review": 153.0, "free_throw": 25.0,
+    # timeout_long / media_timeout: the kinds DeadTracker now produces; the old "timeout" key would never be read (AUDIT-8)
+    League.NBA: {"timeout": 184.0, "timeout_long": 184.0, "media_timeout": 184.0, "end_period": 185.0, "halftime": 933.0, "review": 153.0, "free_throw": 25.0,
                  "foul": 40.0, "out_of_bounds": 15.0, "violation": 14.0, "substitution": 10.0},
     League.NHL: {"tv_timeout": 149.0, "goal": 48.0, "icing": 30.0, "whistle": 37.0, "penalty": 56.0,
                  "review": 200.0, "timeout": 99.0, "intermission": 1129.0},
@@ -429,10 +430,11 @@ class DeadTracker:
                     moved = (m.clock is not None and c0 is not None and m.period == p0 and m.clock < c0 - 0.05)
                     if lg == League.NHL and m.faceoff:
                         cur.end, cur.exact = max(cur.start, m.lo), True
-                    elif moved and lg == League.NBA:
+                    elif moved and lg in (League.NBA, League.NHL):
+                        # [AUDIT-8] hockey too: a faceoff the feed missed must not leave live hockey looking dead
                         cur.end, cur.exact = max(cur.start, m.lo - (c0 - m.clock) - CLOCK_RESUME_MARGIN_S), True
-                    elif lg == League.NBA and m.after is not None and (ran := self._ran_in_later_period(m, p0)) is not None:
-                        # The next period's first entry is itself a dead ball (a foul): it still dates the tip.
+                    elif lg in (League.NBA, League.NHL) and (ran := self._ran_in_later_period(m, p0)) is not None:
+                        # The next period's first entry we hold, a dead ball or a live action: its clock dates the restart.
                         cur.end, cur.exact = max(cur.start, m.lo - ran - CLOCK_RESUME_MARGIN_S), True
                     elif (lg == League.NBA and m.after is None and m.clock is not None and c0 is not None
                           and m.period == p0):
@@ -464,7 +466,7 @@ class DeadTracker:
         return first is not None and period is not None and first >= _period_length(self.league, period) - within
 
     def _ran_in_later_period(self, m: Mark, p0: int | None) -> float | None:
-        """Basketball: the game clock already run when this entry of a LATER period than the window's was logged, or
+        """Basketball and hockey: the game clock already run when this entry of a LATER period than the window's was logged, or
         None when it isn't one, or the clock hasn't moved yet (a substitution before the tip)."""
         if m.clock is None or m.period is None or p0 is None or m.period <= p0:
             return None
