@@ -19,10 +19,12 @@ from functools import cached_property
 from typing import Any, Callable
 
 from redzone.channels import redzone_on
-from redzone.decider.decider import ENTRY_FASTEST_S, PSEUDO, REDZONE, REEL, Candidate
+from redzone.decider import cuts
+from redzone.decider.decider import ENTRY_FASTEST_S, ENTRY_URGENT_S, PSEUDO, REDZONE, REEL, Candidate
 from redzone.decider.screen import break_on_arrival, catchable
 from redzone.decider.whistle import WHISTLE_LEAGUES
 from redzone.models import Phase
+from redzone.moments import slate as slate_mod
 from redzone.reel import REEL_DIR
 
 
@@ -150,7 +152,7 @@ def _landing(f: Flip) -> bool:
         timed, plan = f.replan
         if timed and plan is not None and not plan.ok:
             return True
-    return _lands_with_clock_running(f)
+    return _lands_with_clock_running(f) or _walk_landing_too_late(f)
 
 
 def _landing_unproven(f: Flip) -> bool:
@@ -318,6 +320,34 @@ def _lands_with_clock_running(f: Flip) -> bool:
     mu = d.mu - getattr(d, "behind", 0.0) + float(getattr(f.d, "rewind_s", 0.0) or 0.0)
     fastest = min(f.cost, float(f.host.cfg.get("decider.entry.fastest_s", ENTRY_FASTEST_S)))
     return _clock_ran(events, f.now + fastest - mu, f.now + f.cost - mu)
+
+
+def _walk_landing_too_late(f: Flip) -> bool:
+    """[NBA-JOIN, slate.enabled] A join in the walk up court after a shot must be up before the next live action can start:
+    the measured safe time after the shot (slate.walk_safe_s), else wait for a safer dead ball. The walk windows run to
+    14 s, past where a make's next action starts (5th percentile 7 s, rebound 5 s, 9 fit nights). A real dead ball is
+    untouched; a transition never had a walk (DeadTracker.walks). Only the arrival's late end matters, with the plan's
+    thinnest doubt on top. Nothing else about the landing is judged here: _landing's other checks still run."""
+    g, tl = f.game, f.timeline
+    if g is None or tl is None or _own_frame(f) or not f.host.cfg.get("slate.enabled", False):
+        return False
+    walk = cuts.walk_params(f.host.cfg, g.league)
+    if walk is None or (f.jump and f.host.decider._bj_pic(f.d.target, f.live.get(f.d.target), f.now) is not None):
+        return False
+    d = f.delay
+    mu = d.mu - getattr(d, "behind", 0.0) + float(getattr(f.d, "rewind_s", 0.0) or 0.0)
+    fastest = min(f.cost, float(f.host.cfg.get("decider.entry.fastest_s", ENTRY_FASTEST_S)))
+    x0, x1 = f.now + fastest - mu, f.now + f.cost - mu
+    if f.jump:
+        x1 += float(f.host.cfg.get("jump_mode.land_dead_s", 2.0))
+    if tl.dead.landing(x0, x1).state == "dead":
+        return False
+    win = next((w for w in reversed(tl.dead.walks(walk)) if w.start <= x0 and x1 <= w.end), None)
+    if win is None:
+        return False
+    at = win.start - walk[2]
+    shot = next((m.shot for m in tl.dead.marks.values() if abs(m.hi - at) < 0.01 and m.shot), "")
+    return x1 + ENTRY_URGENT_S > at + slate_mod.walk_safe_s(shot, slate_mod.Params.from_config(f.host.cfg.get))
 
 
 def _leaves_high_leverage_play(f: Flip) -> bool:

@@ -50,6 +50,8 @@ class Params:
     return_gap_s: float = 60.0       # no return to a game this soon without something new; 0 turns it off
     payoff: bool = True              # a cut needs a snap coming, a big moment, a break to fill, or a must-show
     leave_after_shot: bool = True    # basketball may leave in the walk after a shot, low leverage only
+    walk_safe_made_s: float = 6.0    # a join after a make is up 4 s after it with 2 s of doubt: the frozen grader's 4 s dead ball, inside the measured 7 s (5th percentile of the next live action, fit nights, n=4,403)
+    walk_safe_rebound_s: float = 5.0  # the same after a defensive rebound (n=3,633); a transition has no walk at all
 
     @classmethod
     def from_config(cls, get: Callable[..., object]) -> Params:
@@ -203,6 +205,12 @@ def returns_too_soon(left_at: Mapping[str, float], gid: str, now: float, in_play
         return False
     t = left_at.get(gid)
     return t is not None and now - t < p.return_gap_s
+
+
+def walk_safe_s(shot: str, p: Params) -> float:
+    """How long after this shot a join in the walk up court is still ahead of the next live action. A make gives more
+    than a rebound: the inbound has to happen first."""
+    return p.walk_safe_made_s if shot == "made" else p.walk_safe_rebound_s
 
 
 def pays_off(snap: bool, big: bool, on_break: bool, owed: bool, p: Params) -> bool:
