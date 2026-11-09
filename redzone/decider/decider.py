@@ -42,8 +42,10 @@ from redzone.decider import buffered as bj
 from redzone.decider import cuts
 from redzone.decider.playbooks import Safety
 from redzone.decider.scenarios import Scenarios
-from redzone.noggin import legal
+from redzone.contracts import brain
+from redzone.noggin import arbiter, legal
 from redzone.noggin.lookahead import ahead
+from redzone.noggin.priority import NO_MOMENT as P_NO_MOMENT
 from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
 from redzone import config as _config
 from redzone.decider import core
@@ -114,6 +116,7 @@ START_RETRY_MAX_S = 60.0
 ENTRY_EXEMPT = {"user", "resume", "skip"}   # resume/skip land on a planned frame of the same tune
 PICK_KEEPS = {"user", "crunch", "home", "must_see", "live"}
 # [jump mode] switches the normal decider makes that the rotation never overrides (they already go at once)
+ARBITER_KEEPS = {"user", "crunch", "ended", "start", "chase", "must_see", "drive", "home", "live", "resume", "skip"}   # [arbiter] never its call
 JUMP_KEEPS = {"user", "crunch", "ended", "start", "chase", "must_see", "drive", "replay", "resume", "skip"}   # [noggin PICK] app-only switch kinds
 ENTRY_SLACK_S = 2.0       # the tune's own timing doubt, on top of the delay's 2 sigma
 # Once the delay's doubt grows (sigma drifts up between calibrations) no landing fits a 30 s huddle
@@ -309,6 +312,8 @@ class Decider:
         self.stack: deque[str] = deque(maxlen=3)   # where we came from, for "go back"
         # home_break_visit (game we left only for its break) / home_return_at (long break: head back by then): home_m
         self.history: deque[tuple[float, str, str]] = deque(maxlen=50)
+        self.arbiter_brain: brain.Brain = arbiter.NullBrain()   # [arbiter] no brain yet; read only with arbiter.enabled on
+        self.arbiter_log: Counter = Counter()                   # [arbiter] why each tick's choice went that way
         self.frozen_until = 0.0
         self.margin_bump_until = 0.0
         self.errors: deque[float] = deque(maxlen=10)
@@ -658,6 +663,7 @@ class Decider:
         d = self._clairvoyant(d, cands, now, home_before)
         d = self._crunch_guard(d, cands, now, home_before)
         d = self._pick(d, cands, now)
+        d = self._arbiter(d, cands, now, home_before)
         d = self._hold_for_big(d, cands, now, home_before)
         d = self._time_entry(d, cands, now, home_before)
         d = self._dwell(d, cands, now, home_before)
@@ -1894,6 +1900,140 @@ class Decider:
             return Decision(now, "stay", cur, f"pick stays ({scores.get(cur, 0):.2f})", d.state)
         return d
 
+    # ----- [arbiter, WP-17] flag arbiter.enabled; redzone/noggin/arbiter.py is the choice, these only gather its facts --
+
+    def _arbiter_on(self) -> bool:
+        return bool(self.cfg.get("arbiter.enabled", False))
+
+    def _arbiter_params(self) -> arbiter.Params:
+        return arbiter.Params.from_config(self.cfg.get)
+
+    def _arbiter_musts(self, cands: dict[str, Candidate], now: float, p: arbiter.Params) -> tuple[arbiter.Must, ...]:
+        """Every must-show in the feed that hasn't started airing on its game's picture yet. Facts only."""
+        out = []
+        for gid, x in cands.items():
+            tl = self.timelines.get(gid)
+            if gid in PSEUDO or tl is None or not x.target:
+                continue
+            dl = self.delays.get(x.target)
+            play_len = PLAY_LEN_S.get(tl.league, 8.0) or 8.0
+            for e in reversed(tl.events):
+                if e.kind != "play":
+                    continue
+                air_at = e.lo + dl.mu - play_len
+                if air_at < now:
+                    break
+                m = arbiter.must_of(tl.league.value, arbiter.timeline_word(tl.league.base.value, e.play_kind, e.big),
+                                    gid, air_at, f"{gid}:{e.pid or e.label}", p)
+                if m is not None:
+                    out.append(m)
+        return tuple(out)
+
+    def _arbiter_class(self, gid: str | None, x: Candidate) -> int:
+        """L1 class, the same one legal_facts gives an option: 0 your team, 1 crunch, 2 open."""
+        hold = self.cfg.get("decider.crunch.hold_personal", 5)
+        return 0 if (gid in self._yours or x.scored.personal >= hold) else 1 if x.scored.crunch else 2
+
+    def _arbiter_show(self, cands: dict[str, Candidate], now: float, p: arbiter.Params) -> arbiter.Show:
+        """The screen and the slate as the arbiter reads them. The visit count is the switch history, which is capped."""
+        live = {gid: x for gid, x in cands.items() if gid not in PSEUDO and x.target}
+        cur = cands.get(self.current or "")
+        cls = self._arbiter_class(self.current, cur) if cur is not None else 2
+        replay_rank = arbiter.NOT_FLOOR
+        tl = self.timelines.get(self.current or "")
+        if tl is not None and cur is not None and p.stay_replay_s > 0:
+            dl = self.delays.get(cur.target or "unknown")
+            for e in reversed(tl.events):
+                if e.kind != "play":
+                    continue
+                aired = e.seen + dl.mu
+                if aired > now:
+                    continue
+                if now - aired <= p.stay_replay_s:
+                    word = arbiter.timeline_word(tl.league.base.value, e.play_kind, e.big)
+                    if word in arbiter.SCORE_KINDS:
+                        replay_rank = arbiter.trigger_rank(tl.league.value, word, p)
+                break
+        close = frozenset(g for g, x in live.items() if x.scored.crunch or x.scored.high_leverage)
+        visits: Counter = Counter(g for t, g, kind in self.history if now - t <= p.visit_window_s
+                                  and kind not in ("break_visit", "home", "replay"))   # a filled break isn't a visit
+        return arbiter.Show(current=self.current, current_class=cls, live_games=len(live),
+                            cuts_60s=sum(1 for t, _, _ in self.history if now - t < 60.0), replay_rank=replay_rank,
+                            late=bool(close) and any(x.scored.late for x in live.values()), close=close, visits=visits,
+                            final_two=frozenset(g for g, x in live.items() if x.scored.lock == "final two minutes"))
+
+    def _arbiter_think(self, inp: brain.BrainInput) -> brain.BrainOutput | None:
+        """The brain's scores for this tick. One that raises counts as no opinion; the tick goes on without it."""
+        try:
+            return self.arbiter_brain.think(inp)
+        except Exception:  # noqa: BLE001 - a brain's bug must never stop the TV
+            log.exception("arbiter brain")
+            return None
+
+    def _arbiter(self, d: Decision, cands: dict[str, Candidate], now: float, home_before) -> Decision:
+        """The must-show floor and the copied RedZone rules over the tick's decision. A Null brain with nothing owed
+        leaves d alone. Every switch made here is an ordinary 'better' switch: the later stages and the commit gate
+        all still run on it. Your tap, crunch, a finished game and the other hard kinds are never touched."""
+        if not self._arbiter_on() or self.replaying or self.after_replay or d.action == "replay" or self.safe_mode \
+                or self.user.paused or (d.action == "switch" and d.kind in ARBITER_KEEPS):
+            return d
+        p = self._arbiter_params()
+        opts = legal.legal_options(self.legal_facts(cands, now))
+        inp = brain.BrainInput(tick=len(self.log), now=now, options=opts)
+        base = arbiter.STAY_ID if d.action != "switch" else f"cut:{d.target}"
+        ch = arbiter.choose(inp, self._arbiter_think(inp), base, musts=self._arbiter_musts(cands, now, p),
+                            show=self._arbiter_show(cands, now, p), p=p)
+        self.arbiter_log[ch.why] += 1
+        o = ch.option
+        if o is None or o.id == base or (ch.why == "thinned" and d.kind == "break_visit"):
+            return d        # the budget trims whipping, never a break visit: that one fills dead air
+        if o.verb == "stay":
+            self._home_restore(home_before, f"arbiter: {ch.why}")
+            return Decision(now, "stay", self.current, f"arbiter: {ch.why} ({d.reason})", d.state, d.gate, want=d.target)
+        if o.game_id is None or legal.kind_of(o.verb) is None:
+            return d
+        self._home_restore(home_before, f"arbiter: {ch.why}")
+        return Decision(now, "switch", o.game_id, f"arbiter: {ch.why}", d.state, kind=legal.kind_of(o.verb))
+
+    def _arbiter_rotation(self, rows: list, baseline: str, cands: dict[str, Candidate], now: float) -> tuple[str, dict] | None:
+        """[jump mode] The floor and the copied rules over the rotation's pick, among games already proven to land on
+        a dead ball (`rows`). None: hold this tick. The rotation's own switch and the commit gate still follow."""
+        p = self._arbiter_params()
+        infos = {gid: info for _, gid, info in rows}
+        opts = (legal.STAY, *(brain.Option(id=f"cut:{g}", verb="cut", game_id=g, l1_class=self._arbiter_class(g, cands[g])) for g in infos))
+        inp = brain.BrainInput(tick=len(self.log), now=now, options=opts)
+        musts = self._arbiter_musts(cands, now, p)
+        ch = arbiter.choose(inp, self._arbiter_think(inp), f"cut:{baseline}", musts=musts,
+                            show=self._arbiter_show(cands, now, p), p=p)
+        self.arbiter_log[ch.why] += 1
+        if ch.option is None or ch.option.game_id is None:
+            self.jump_holds[f"arbiter_{ch.why}"] += 1
+            return None
+        return ch.option.game_id, infos[ch.option.game_id]
+
+    def _arbiter_preload(self, pool: dict[str, Candidate], keep: str | None, now: float) -> str | None:
+        """[jump mode] The game the hidden stick should take for the floor, when a route's deadline is still ahead."""
+        p = self._arbiter_params()
+        prep = {g: float(self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target))
+                for g, x in pool.items()}
+        return arbiter.preload_target(self._arbiter_musts(pool, now, p), prep, keep, now, p)
+
+    def _arbiter_moment_tiers(self, watchable: dict[str, Candidate], now: float) -> dict[str, int]:
+        """gid -> the highest moment tier owed there (lower is better), for Ranked.key."""
+        tier_of: dict[str, int] = {}
+        for m in self._arbiter_musts(watchable, now, self._arbiter_params()):
+            tier_of[m.game_id] = min(tier_of.get(m.game_id, P_NO_MOMENT), m.tier)
+        return tier_of
+
+    def _arbiter_rank(self, watchable: dict[str, Candidate], ids: list[str], yours: set[str], values: dict,
+                      tier_of: dict[str, int]) -> str | None:
+        """wire.pick with the moment tier filled in: L1 still comes first, the tier orders inside it."""
+        from redzone.noggin import priority as P, wire
+        ins = [replace(wire.game_input(g, watchable[g], g in yours, values.get(g)), moment_tier=tier_of.get(g, P_NO_MOMENT))
+               for g in ids]
+        ranked = P.rank(ins, wire.rules(self.cfg, {i.league for i in ins}), P.Preferences.from_config(self.cfg))
+        return ranked[0].game_id if ranked else None
+
     def _hold_for_big(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[cut timing] A big play is in the data but hasn't finished airing here yet: stay for it.
         The data runs a stream delay ahead of the screen (more after a rewind on entry), so "the
@@ -2873,6 +3013,11 @@ class Decider:
                             if ready_only and ready else "no_game_at_dead_ball"] += 1
             return None
         _, gid, info = max(rows, key=lambda z: z[0])
+        if self._arbiter_on():
+            picked = self._arbiter_rotation(rows, gid, cands, now)
+            if picked is None:
+                return None     # counted in jump_holds with the arbiter's reason
+            gid, info = picked
         return gid, info
 
     def jump_next(self, cands: dict[str, Candidate], standby: str | None = None,
@@ -2900,6 +3045,10 @@ class Decider:
                 - (100.0 if gid in self._screen_break else 0.0)
         best = max(pool, key=val)
         keep = next((gid for gid, x in pool.items() if standby and x.target == standby), None)
+        if self._arbiter_on():
+            floor = self._arbiter_preload(pool, keep, now)
+            if floor is not None:
+                return floor
         if keep is not None and self.buffered_on():
             # [buffered jump] a scrubbed standby is ~60 s of tune + scrub: keep it (ping-pong with the screen) until
             # its game goes to a long stoppage or the pair has been on rotate_every_s
@@ -3517,7 +3666,9 @@ class Decider:
             values = {o.id: core.rate(o, self.core.k) for o in opts}
             for g in values:
                 values[g] += self._predict_points(g, watchable[g])
-            best = wire.pick(self.cfg, watchable, [o.id for o in opts], yours, values)
+            tier_of = self._arbiter_moment_tiers(watchable, self._clock()) if self._arbiter_on() else None
+            best = wire.pick(self.cfg, watchable, [o.id for o in opts], yours, values) if tier_of is None \
+                else self._arbiter_rank(watchable, [o.id for o in opts], yours, values, tier_of)
             if best is None:
                 return None   # every option on a banned app (never Peacock)
             # [nhl pp] the live guard below holds here too: the priority tiers rank a power play

@@ -28,6 +28,7 @@ TIER_YOUR_TEAM = 0   # your team in a big moment or crunch time
 TIER_CRUNCH = 1      # anyone else's crunch time
 TIER_OPEN = 2        # everything else: ranked by score only
 TIER_NAMES = {TIER_YOUR_TEAM: "your team", TIER_CRUNCH: "crunch", TIER_OPEN: "open"}
+NO_MOMENT = 9        # moment tier of a game with no must-show, setup or highlight pending (sorts after 1, 2, 3)
 
 
 # ---------------------------------------------------------------- inputs
@@ -100,6 +101,7 @@ class GameInput:
     live: Mapping[str, float] = field(default_factory=dict)   # L4 terms in points, e.g. {"red_zone": 30}
     bet: float = 0.0                    # L2 bet stake term in points (your over/under is live)
     label: str = ""                     # short name for reasons, e.g. "UNC"
+    moment_tier: int = NO_MOMENT        # [arbiter, WP-17] 1 must show, 2 setup, 3 highlight (moments/tiers); code only
 
 
 # ---------------------------------------------------------------- output
@@ -112,12 +114,14 @@ class Ranked:
     score: float
     terms: tuple[tuple[str, float], ...]     # every contribution, largest |points| first
     reason: str
+    moment_tier: int = NO_MOMENT
 
     @property
     def key(self) -> tuple:
-        """Sort key: lower is better. L1 fields come first, so L2-L4 can never cross a tier."""
+        """Sort key: lower is better. L1 fields come first, so L2-L4 can never cross a tier. The moment tier sits after
+        L1 and before the score: a must-show beats a better score inside its class, and never crosses a class."""
         crunch_rank = self.league_rank if self.tier <= TIER_CRUNCH else 0
-        return (self.tier, crunch_rank, -self.score, self.game_id)
+        return (self.tier, crunch_rank, self.moment_tier, -self.score, self.game_id)
 
 
 # ---------------------------------------------------------------- the four layers
@@ -200,7 +204,7 @@ def rank(games: Iterable[GameInput], rules: HardRules, prefs: Preferences,
         score = sum(terms.values())
         ordered = tuple(sorted(terms.items(), key=lambda kv: (-abs(kv[1]), kv[0])))
         out.append(Ranked(g.game_id, tier, rules.league_rank(g.league), round(score, 6), ordered,
-                          _reason(g, tier, terms)))
+                          _reason(g, tier, terms), g.moment_tier))
     return sorted(out, key=lambda r: r.key)
 
 
