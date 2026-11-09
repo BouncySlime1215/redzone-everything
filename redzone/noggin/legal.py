@@ -70,6 +70,11 @@ def too_soon(last_switch_at: float | None, gap_s: float, now: float) -> bool:
     return last_switch_at is not None and now - last_switch_at < gap_s
 
 
+def may_leave(gate_ok: bool, lock) -> bool:
+    """Rule #1 and the moment lock: the leave gate proves a gap on screen and no LOCKED moment holds this game."""
+    return bool(gate_ok) and not lock
+
+
 @dataclass(frozen=True)
 class Facts:
     """What the rules read for one tick. Built by `Decider.legal_facts`; epoch s."""
@@ -85,6 +90,8 @@ class Facts:
     dwell_kinds: tuple[str, ...] = ()
     last_switch_at: float | None = None
     min_gap_s: float = 0.0
+    gate_ok: bool = True
+    moment_lock: str = ""
     #F
 
 
@@ -100,6 +107,8 @@ def legal_options(f: Facts) -> tuple[brain.Option, ...]:
     if f.current and dwell_left(f.since, f.dwell_min_s, kind_of("cut") or "", f.dwell_kinds, f.now) > 0:
         return (STAY,)
     if too_soon(f.last_switch_at, f.min_gap_s, f.now):
+        return (STAY,)
+    if f.current and not may_leave(f.gate_ok, f.moment_lock):
         return (STAY,)
     #B
     return (STAY,)

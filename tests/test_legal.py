@@ -62,3 +62,10 @@ def test_too_soon():
     assert legal.too_soon(90.0, 60.0, 100.0) and not legal.too_soon(40.0, 60.0, 100.0)
     assert not legal.too_soon(None, 60.0, 100.0) and not legal.too_soon(99.0, 0.0, 100.0)
     assert legal.legal_options(legal.Facts(now=100.0, last_switch_at=90.0, min_gap_s=60.0)) == (legal.STAY,)
+
+
+def test_may_leave():
+    assert legal.may_leave(True, "") and legal.may_leave(True, None)
+    assert not legal.may_leave(False, "") and not legal.may_leave(True, "red zone drive")
+    assert legal.legal_options(legal.Facts(now=1.0, current="a", gate_ok=False)) == (legal.STAY,)
+    assert legal.legal_options(legal.Facts(now=1.0, current="a", moment_lock="crunch time")) == (legal.STAY,)

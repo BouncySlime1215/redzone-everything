@@ -1847,7 +1847,7 @@ class Decider:
             on = cands.get(self.current) if self.current else None
             gate = self._gate(on, now) if on is not None else None
             why = f"pick {scores[target]:.2f} vs {scores.get(cur, 0):.2f}"
-            if self.current and not (gate and gate.safe and not on.scored.lock):
+            if self.current and not legal.may_leave(bool(gate and gate.safe), on.scored.lock if on else None):
                 return Decision(now, "stay", self.current, f"{why} — waiting: {gate.why if gate else 'no timeline'}",
                                 d.state, gate.why if gate else "", want=target)
             return Decision(now, "switch", target, why, d.state, kind="better")
@@ -2027,7 +2027,7 @@ class Decider:
         focus = u.focus_game if u.focus_game in cands else None
         if focus and u.focus_mode != FocusMode.AUTOPILOT:
             if self.current != focus:
-                if not cands[focus].scored.is_break and gate_ok and not s_cur.lock:
+                if not cands[focus].scored.is_break and legal.may_leave(gate_ok, s_cur.lock):
                     return Decision(now, "switch", focus, "back to your focus game", state, gate_txt, kind="home")
                 return Decision(now, "stay", self.current, "away from focus game until this moment ends",
                                 state, gate_txt)
@@ -2046,7 +2046,7 @@ class Decider:
                                     state, gate_txt, kind="break_visit")
                 return Decision(now, "stay", self.current, "your game is on a break; nothing better to visit",
                                 state, gate_txt)
-            if u.focus_mode == FocusMode.FOCUS_MUST_SEE and gate_ok and not s_cur.lock:
+            if u.focus_mode == FocusMode.FOCUS_MUST_SEE and legal.may_leave(gate_ok, s_cur.lock):
                 best = self._best(watchable, exclude=focus)
                 if best:
                     b = cands[best].scored
@@ -2059,7 +2059,7 @@ class Decider:
         crunch = self._crunch_time(cands, watchable, s_cur, on_break, gate_ok, gate_txt, state, now)
         if crunch:
             return crunch
-        chase = self._chase(watchable, s_cur, now) if gate_ok and not s_cur.lock else None
+        chase = self._chase(watchable, s_cur, now) if legal.may_leave(gate_ok, s_cur.lock) else None
         if chase and self._mine_first(s_cur) and cands[chase[0]].scored.personal < s_cur.personal:
             chase = None   # [EXP-214] a big play elsewhere doesn't pull the TV off your team late and close
         # [chained visit] Already away from home on a break visit: the game we're visiting can hit its
@@ -2108,7 +2108,7 @@ class Decider:
             return self._chase_decision(chase, cands, state, gate_txt, now)
 
         # [drive in 20] A drive inside the 20 elsewhere: that's where the touchdown will be.
-        d20 = (self._rz_drive(watchable, now) if gate_ok and not s_cur.lock
+        d20 = (self._rz_drive(watchable, now) if legal.may_leave(gate_ok, s_cur.lock)
                and (self.current != REDZONE or self.cfg.get("redzone_mode.drive_in_20_from_redzone", True)) else None)
         if d20 and not self._mine_late(s_cur):
             return Decision(now, "switch", d20, self._why(cands[d20], "inside the 20 →"), state, gate_txt,
@@ -2118,7 +2118,7 @@ class Decider:
         if best is None:
             # [replay.when_alone] Nothing else live to switch to (your team's game on a break, say) is
             # no reason to skip the catch-up check below: the missed play still beats this moment.
-            if gate_ok and not s_cur.lock and self.cfg.get("replay.when_alone", False):
+            if legal.may_leave(gate_ok, s_cur.lock) and self.cfg.get("replay.when_alone", False):
                 rp = self._best_replay(cands, now, None, False, top=self._vs_replay(self.current, cands),
                                        margin=self.core.k.switch_margin, yours=self.current not in self._yours)
                 if rp and rp.mine:   # your team's missed play only: other games' wait for a real break
@@ -2129,7 +2129,7 @@ class Decider:
         cost = self._rank_cost(b.target)
 
         # Catch-up between plays: a missed big play is worth more than this ordinary moment.
-        if gate_ok and not s_cur.lock:
+        if legal.may_leave(gate_ok, s_cur.lock):
             lull = self._rw() and self._lull(watchable)
             rp = self._best_replay(cands, now, None, False,
                                    top=-1.0 if lull else max(self._vs_replay(self.current, cands),
@@ -2150,7 +2150,7 @@ class Decider:
             return Decision(now, "stay", self.current, f"your team, late and close — {s_cur.reason}", state, gate_txt)
 
         # Go back to where we were if this moment is over and that game is about as good.
-        if self.stack and not s_cur.lock and gate_ok and not self._mine_first(s_cur, late_only=True):
+        if self.stack and legal.may_leave(gate_ok, s_cur.lock) and not self._mine_first(s_cur, late_only=True):
             prev = self.stack[-1]
             if prev in watchable and not cands[prev].scored.is_break and prev not in self._screen_break:
                 st = self._cstate(cands, now)
