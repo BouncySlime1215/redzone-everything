@@ -44,7 +44,7 @@ def shards(tmp_path):
     root = tmp_path / "shards"
     (root / "nfl").mkdir(parents=True)
     frame(TRAIN + CALIB + TEST).to_parquet(root / "nfl" / "2023.parquet")
-    (root / "nfl" / "2023.json").write_text(json.dumps({"rows_sha256": "abc"}))
+    (root / "nfl" / "2023.json").write_text(json.dumps({"rows_sha256": "abc", "features_version": V.FEATURES_VERSION}))
     (root / "splits.json").write_text(json.dumps({"nfl": {"train": TRAIN, "calib": CALIB, "test": TEST}}))
     return root
 
@@ -161,7 +161,7 @@ def test_personal_use_rows_tag_the_whole_model(shards, tmp_path, leak_ok, monkey
 
 def test_a_row_outside_the_splits_is_refused(shards, tmp_path, leak_ok):
     frame(["20240101"]).to_parquet(shards / "nfl" / "2024.parquet")
-    (shards / "nfl" / "2024.json").write_text(json.dumps({"rows_sha256": "def"}))
+    (shards / "nfl" / "2024.json").write_text(json.dumps({"rows_sha256": "def", "features_version": V.FEATURES_VERSION}))
     assert go(shards, tmp_path / "o")[0] == QF.EXIT_REFUSED
 
 
@@ -187,7 +187,7 @@ def _whole_pass(shards, tmp_path):
 def test_a_checkpoint_from_other_data_is_not_resumed(shards, tmp_path, leak_ok):
     out = tmp_path / "o"
     go(shards, out, Fake(), "--save-every", "1")
-    (shards / "nfl" / "2023.json").write_text(json.dumps({"rows_sha256": "changed"}))
+    (shards / "nfl" / "2023.json").write_text(json.dumps({"rows_sha256": "changed", "features_version": V.FEATURES_VERSION}))
     second = Fake()
     assert go(shards, out, second)[0] == 0 and second.restored is None
 
