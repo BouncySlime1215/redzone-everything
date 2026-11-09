@@ -32,7 +32,7 @@ PERSONAL_TAG = "personal-use, not for commercial release"
 UA = "redzone-personal-research/1.0"
 # First locked night per league. MUST equal redzone.noggin.factory.EVAL_FIRST_NIGHT (tests/test_fetch_sports.py checks).
 # Nothing on or after it is written; the repo's own split rules (redzone/lab/splits.py) cut the rest by whole night.
-EVAL_FIRST_NIGHT = {"nba": "20261020", "cbb": "20261020", "wcbb": "20261020", "nfl": "20250905", "cfb": "20250801",
+EVAL_FIRST_NIGHT = {"nba": "20261020", "cbb": "20261020", "wcbb": "20261020", "wnba": "20261020", "nfl": "20250905", "cfb": "20250801",
                     "nhl": "20261019", "mlb": "20250301"}
 ET = ZoneInfo("America/New_York")
 UTC = dt.timezone.utc

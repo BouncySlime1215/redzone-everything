@@ -16,7 +16,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from agent.kaggle import data_fetch as df
-from agent.kaggle import fetch_sports_cfb, fetch_sports_mlb, fetch_sports_nfl, fetch_sports_nhl
+from agent.kaggle import fetch_sports_cfb, fetch_sports_mlb, fetch_sports_nfl, fetch_sports_nhl, fetch_sports_wnba
 from agent.kaggle import sports_common as sc
 
 
@@ -482,9 +482,114 @@ def test_no_fetch_script_requests_a_github_release_download_url(tmp_path):
     jsons = {NFL_TAG: listing(NFL_REPO, {y: y for y in range(1999, 2025)}),
              CFB_TAG: listing(CFB_REPO, {y: y for y in range(2022, 2025)}),
              "https://api.github.com/repos/sportsdataverse/sportsdataverse-data/releases/tags/espn_nba_pbp": {"assets": []}}
-    for mod in (fetch_sports_nfl, fetch_sports_cfb, fetch_sports_nba, fetch_sports_ncaam):
+    for mod in (fetch_sports_nfl, fetch_sports_cfb, fetch_sports_nba, fetch_sports_ncaam, fetch_sports_wnba):
         f = BlobFetcher({}, jsons)
         args = df.parser(mod.SPEC).parse_args([])
         urls = [u for i in mod.SPEC.list_items(f, args) for u in i.urls] + f.json_calls
         assert urls and all(u.startswith(("https://api.github.com/", "https://raw.githubusercontent.com/")) for u in urls), mod.__name__
         assert not any("github.com/" in u and "releases/download" in u for u in urls)
+
+
+def test_wnba_uses_raw_githubusercontent_in_repo_parquet_with_the_personal_tag_and_its_own_cut(tmp_path):
+    base = "https://raw.githubusercontent.com/sportsdataverse/wehoop-wnba-data/main/wnba/pbp/parquet/play_by_play_{y}.parquet"
+    t = pa.table({"game_id": ["a", "b"], "game_date": ["2024-07-10", "2026-11-01"], "season": [2024, 2024]})
+    f = BlobFetcher({base.format(y=2024): parquet_bytes(t)})
+    row = run(fetch_sports_wnba.SPEC, f, tmp_path, "--first-season", "2024", "--last-season", "2024")
+    assert f.calls == [base.format(y=2024)] and row["tag"] == sc.PERSONAL_TAG and row["rows"] == 1
+    assert rows_of(tmp_path, fetch_sports_wnba.SPEC.name).column("source_night_id").to_pylist() == ["wnba:20240710"]
+    assert sc.EVAL_FIRST_NIGHT["wnba"] == "20261020" and fetch_sports_wnba.SPEC.name == "sports_wehoop_espn_wnba"
+
+
+# --- Statcast: why the first run kept only part of the pitches ------------------------------------------------
+
+import http.client  # noqa: E402
+
+
+class FlakyDays(fetch_sports_mlb.SavantDays):
+    """SavantDays whose network layer (the parent download) fails on a script: an exception, or a body to write."""
+
+    def __init__(self, script):
+        super().__init__("game_date", min_interval=0, sleep=lambda s: None)
+        self.script, self.tries = script, {}
+
+    def _parent(self, url, dest):
+        day = url.split("game_date_gt=")[1][:10]
+        self.tries[day] = self.tries.get(day, 0) + 1
+        step = self.script.get(day, ["game_date,pitch_type\n" + day + ",FF\n"])
+        step = step[min(self.tries[day], len(step)) - 1]
+        if isinstance(step, Exception):
+            raise step
+        Path(dest).write_text(step)
+
+
+@pytest.fixture
+def flaky(monkeypatch):
+    def download(self, url, dest, start):
+        self._parent(url, dest)
+    monkeypatch.setattr(sc.CsvDayFetcher, "download", download)
+
+
+def _day_url(day):
+    return fetch_sports_mlb.BASE.format(y=day[:4], d=day)
+
+
+GOOD = "game_date,pitch_type\n2024-07-04,FF\n"
+
+
+def test_statcast_items_are_weeks_newest_first_and_never_include_the_held_out_year():
+    args = df.parser(fetch_sports_mlb.SPEC).parse_args(["--first-season", "2024", "--last-season", "2025"])
+    items = fetch_sports_mlb.SPEC.list_items(None, args)
+    names = [i.name for i in items]
+    assert names[0] == "statcast-2024-11-w2" and "statcast-2024-07-w1" in names and "statcast-2024-03-w3" in names
+    assert not any("2025" in n for n in names) and max(len(i.urls) for i in items) <= 7
+    assert sum(len(i.urls) for i in items) == 241                    # Mar 15 - Nov 10, every day once
+
+
+def test_a_short_read_is_retried_for_that_day_only(flaky, tmp_path):
+    f = FlakyDays({"2024-07-04": [http.client.IncompleteRead(b"x", 100), GOOD]})
+    f.download(_day_url("2024-07-04"), tmp_path / "d", 0)
+    assert f.tries == {"2024-07-04": 2}
+
+
+def test_an_html_page_is_not_taken_for_a_csv(flaky, tmp_path):
+    f = FlakyDays({"2024-07-04": ["<html>busy</html>", "  <!doctype html>", GOOD]})
+    f.download(_day_url("2024-07-04"), tmp_path / "d", 0)
+    assert f.tries["2024-07-04"] == 3
+
+
+def test_a_day_that_keeps_failing_raises_and_is_never_an_empty_file(flaky, tmp_path):
+    f = FlakyDays({"2024-07-04": [TimeoutError("slow")] * 3})
+    with pytest.raises(fetch_sports_mlb.DayFailed, match="2024-07-04 failed 3 times"):
+        f.download(_day_url("2024-07-04"), tmp_path / "d", 0)
+    assert not (tmp_path / "d").exists()
+
+
+def test_a_block_or_a_404_is_not_retried(flaky, tmp_path):
+    f = FlakyDays({"2024-07-04": [sc.Blocked("robots")]})
+    with pytest.raises(sc.Blocked):
+        f.download(_day_url("2024-07-04"), tmp_path / "d", 0)
+    f = FlakyDays({"2024-07-04": [urllib.error.HTTPError("u", 404, "nope", None, None)]})
+    with pytest.raises(urllib.error.HTTPError):
+        f.download(_day_url("2024-07-04"), tmp_path / "d", 0)
+    assert f.tries == {"2024-07-04": 1}
+
+
+def test_one_failed_week_loses_only_that_week_and_a_rerun_fetches_just_it(flaky, tmp_path):
+    first = FlakyDays({"2024-07-04": [TimeoutError("slow")] * 9})
+    row = run(fetch_sports_mlb.SPEC, first, tmp_path, "--first-season", "2024", "--last-season", "2024")
+    state = json.loads((tmp_path / "sports_statcast" / "state.json").read_text())
+    assert list(state["failed"]) == ["statcast-2024-07-w1"] and "statcast-2024-07-w2" in state["items"]
+    assert row["rows"] > 0 and str(row["status"]).startswith("partial")
+    again = FlakyDays({})
+    run(fetch_sports_mlb.SPEC, again, tmp_path, "--first-season", "2024", "--last-season", "2024")
+    assert {d for d in again.tries} == {f"2024-07-0{d}" for d in range(1, 8)}      # only the failed week was asked for again
+    assert not json.loads((tmp_path / "sports_statcast" / "state.json").read_text())["failed"]
+
+
+def test_months_a_previous_run_finished_are_not_requested_again(tmp_path):
+    prev = tmp_path / "prev" / "sports_statcast"
+    prev.mkdir(parents=True)
+    (prev / "state.json").write_text(json.dumps({"items": {"statcast-2024-07": {}}, "failed": {}, "skipped": {}}))
+    args = df.parser(fetch_sports_mlb.SPEC).parse_args(["--first-season", "2024", "--last-season", "2024", "--resume-from", str(tmp_path / "prev")])
+    names = [i.name for i in fetch_sports_mlb.SPEC.list_items(None, args)]
+    assert not any(n.startswith("statcast-2024-07") for n in names) and "statcast-2024-08-w1" in names

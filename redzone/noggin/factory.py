@@ -57,7 +57,7 @@ SOURCES = {
 }
 # First night of the pinned scorecard window (data/eval_pin.json, eval-data-v1). Nothing on or after it
 # is ever written by the factory. College has no scorecard yet; it uses the NBA date as a safe cut.
-EVAL_FIRST_NIGHT = {"nba": "20261020", "cbb": "20261020", "wcbb": "20261020", "nfl": "20250905", "cfb": "20250801",
+EVAL_FIRST_NIGHT = {"nba": "20261020", "cbb": "20261020", "wcbb": "20261020", "wnba": "20261020", "nfl": "20250905", "cfb": "20250801",
                     "nhl": "20261019", "mlb": "20250301"}   # MLB: no scorecard yet; all of 2025 is held out for one
 
 def night_of(epoch: float) -> str:

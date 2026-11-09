@@ -152,7 +152,7 @@ def hockey(l,gid,d,E,J):
             if per==3 and left is not None and left<=120 and m<=1: ev(E,gid,t,2,'late_1goal'); fired.add(per)
             if per>=4: ev(E,gid,t,2,'ot_start'); fired.add(per)
     return ts_all
-FN = {'nfl': football, 'nba': hoops, 'cbb': hoops, 'nhl': hockey}   # hoops() reads the two college halves when l == 'cbb'
+FN = {'nfl': football, 'cfb': football, 'nba': hoops, 'wnba': hoops, 'cbb': hoops, 'nhl': hockey}   # hoops() reads the two college halves when l == 'cbb'
 
 def games(l, only=None):
     """(night, game id, summary) for dev-night games only; locked and fresh files are never opened.
@@ -171,7 +171,7 @@ H = 180.0
 def states(l, d):
     """(wall, period, clock_s, margin, fieldpos) for each play in order."""
     out = []
-    if l == 'nfl':
+    if l in ('nfl', 'cfb'):
         for dr in (d.get('drives') or {}).get('previous') or []:
             for p in dr.get('plays') or []:
                 t = ts(p.get('wallclock'))
@@ -193,7 +193,7 @@ def key(l, st, t0, t1, t):
     cb = 3 if c is None else (0 if c <= 120 else 1 if c <= 300 else 2)
     mb = 0 if m <= 3 else 1 if m <= 8 else 2 if m <= 16 else 3
     if l == 'nhl': mb = min(m, 3)
-    if l == 'nfl':
+    if l in ('nfl', 'cfb'):
         fb = 3 if y is None else (0 if y <= 20 else 1 if y <= 40 else 2)
         return (late, cb, mb, fb)
     return (late, cb, mb, 0)

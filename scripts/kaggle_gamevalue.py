@@ -66,7 +66,8 @@ PARITY_TOL, PARITY_ROWS, MAX_BAD_ROWS, SCORE_BATCH = 1e-4, 2000, 0.01, 200_000
 KS = (2, 4)
 CAL_ISOTONIC_MIN_EVENTS = 10_000   # independent Tier 1 bursts on the calibration nights; below this a 2-parameter Platt fit (research log)
 PLATT_KNOTS, PLATT_EPS = 513, 1e-6
-GARBAGE_TIME = {"nfl": (17.0, 360.0), "nba": (20.0, 360.0), "cbb": (20.0, 300.0)}   # margin at least, game seconds left at most
+GARBAGE_TIME = {"nfl": (17.0, 360.0), "nba": (20.0, 360.0), "cbb": (20.0, 300.0),
+                "cfb": (21.0, 360.0), "wnba": (18.0, 300.0)}   # margin at least, game seconds left at most
 CHALLENGER_ROWS, CHALLENGER_BATCH = 20_000, 5_000
 
 

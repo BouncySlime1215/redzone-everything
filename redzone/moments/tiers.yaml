@@ -23,4 +23,4 @@ baseball:
   tier2: [big_pa, wp5]
   tier3: [risp_pa]
   must_show: [hr, run_scored]
-leagues: {nfl: football, cfb: football, nba: hoops, cbb: hoops, nhl: hockey, mlb: baseball}
+leagues: {nfl: football, cfb: football, nba: hoops, wnba: hoops, cbb: hoops, nhl: hockey, mlb: baseball}
