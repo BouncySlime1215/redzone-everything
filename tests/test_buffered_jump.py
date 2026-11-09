@@ -159,7 +159,7 @@ def test_sim_runs_on_a_tiny_slate(tmp_path):
     for gid, off in (("9001", 0), ("9002", 13), ("9003", 27)):
         (tmp_path / f"summary_{gid}.json").write_text(json.dumps(game(gid, 1_700_000_000 + off)))
     out = tmp_path / "o.json"
-    assert sim.main(["--archive", str(tmp_path), "--json", str(out)]) == 0
+    assert sim.main(["--archive", str(tmp_path), "--split", "all", "--json", str(out)]) == 0
     s = json.loads(out.read_text())["summary"]
     assert s["joins_mid_play"] == 0 and s["leaves_mid_play"] == 0
     assert s["plays_shown_per_min"] >= s["single_game_plays_per_min"] * 0.9
