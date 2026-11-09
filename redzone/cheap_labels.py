@@ -86,6 +86,9 @@ class CheapLabels:
             self.reads.pop(next(iter(self.reads)))
         self.reads.setdefault(target, deque(maxlen=RING_LEN)).append((float(t), clock, period))
         gap = self._gap.get(target)
+        if gap is not None and (float(t) - gap["last"] > knob(self.cfg, "max_read_gap_s", 30.0) or not live):
+            self._close_gap(target, gap, gap["last"])   # the reads stopped, or the game ended: the stretch ends at the last read
+            gap = None
         if bug is None:
             if live and gap is None:
                 self._gap[target] = {"start": float(t), "last": float(t), "game": game, "league": league,
@@ -94,12 +97,16 @@ class CheapLabels:
                 gap["last"] = float(t)
             return
         if gap is not None:
-            self._gap.pop(target, None)
-            if gap["last"] - gap["start"] >= knob(self.cfg, "break_min_s", 20.0) and self.root is not None:
-                _append(self.root / "break_on_picture.jsonl", {
-                    "type": "break_on_picture", "start": round(gap["start"], 2), "end": round(float(t), 2),
-                    "dur_s": round(float(t) - gap["start"], 1), "game": gap["game"], "league": gap["league"],
-                    "app": app_of(target), "visible": gap["visible"], "bug": False})
+            self._close_gap(target, gap, float(t))
+
+    def _close_gap(self, target: str, gap: dict, end: float) -> None:
+        """A no-bug stretch is over at `end`: one row if it ran long enough to be a break."""
+        self._gap.pop(target, None)
+        if gap["last"] - gap["start"] >= knob(self.cfg, "break_min_s", 20.0) and self.root is not None:
+            _append(self.root / "break_on_picture.jsonl", {
+                "type": "break_on_picture", "start": round(gap["start"], 2), "end": round(end, 2),
+                "dur_s": round(end - gap["start"], 1), "game": gap["game"], "league": gap["league"],
+                "app": app_of(target), "visible": gap["visible"], "bug": False})
 
     def bug_state(self, target: str | None, at: float) -> dict:
         """What the picture said about the clock at `at`: {bug_clock_running: bool | None, bug_read_age_s}."""
