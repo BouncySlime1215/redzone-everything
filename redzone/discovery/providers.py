@@ -737,8 +737,9 @@ class ProviderBook:
         try:
             d = json.loads(self.path.read_text()) if self.path.exists() else {}
         except (OSError, ValueError):
-            log.warning("providers.json unreadable; starting fresh")
+            log.warning("providers.json unreadable; setting it aside and starting fresh")
             d = {}
+            self._set_aside()
         d = d if isinstance(d, dict) else {}
         self.installed = _dict(d.get("installed"))
         self.scanned = _dict(d.get("scanned"))
@@ -748,6 +749,14 @@ class ProviderBook:
         self.stick_subs = {h: _dict(v) for h, v in _dict(d.get("stick_subs")).items()}
         self.stick_skips = {h: _dict(v) for h, v in _dict(d.get("stick_skips")).items()}
         self.worked = {k: _dict(v) for k, v in _dict(d.get("worked")).items()}
+
+    def _set_aside(self) -> None:
+        """Keep a corrupt file as providers.corrupt-<time>.json: the next save must not erase the owner's overrides."""
+        try:
+            if self.path.exists():
+                self.path.replace(self.path.with_name(f"{self.path.stem}.corrupt-{int(self._now())}{self.path.suffix}"))
+        except OSError as e:
+            log.warning("couldn't set providers.json aside: %s", e)
 
     def save(self) -> None:
         """Atomic write; a full disk or permissions problem is logged, never raised."""
