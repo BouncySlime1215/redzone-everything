@@ -302,3 +302,19 @@ def test_brought_to_the_front_means_it_was_warm():
     stick.view = view
     res = asyncio.run(yt(False).tune(stick, "abc", "youtubetv:abc"))
     assert res.warm is True
+
+
+def test_controller_start_copies_the_flags_onto_the_tuners():
+    """Why: until Controller called apply_flags, both tuner flags did nothing (WP-04 review)."""
+    import redzone.tuners.tuners as tn
+
+    prime, espn = tn.TUNERS["prime"], tn.TUNERS["espn"]
+    values = {"tuners.prime_fast_confirm": True, "tuners.espn_link_form": True}
+    try:
+        tn.apply_flags(type("C", (), {"get": staticmethod(lambda k, d=None: values.get(k, d))}))
+        assert prime.fast_confirm and espn.link_form
+    finally:
+        tn.apply_flags(type("C", (), {"get": staticmethod(lambda k, d=None: d)}))
+    assert not prime.fast_confirm and not espn.link_form
+    src = open(tn.__file__.replace("tuners/tuners.py", "control.py")).read()
+    assert "apply_flags(cfg)" in src

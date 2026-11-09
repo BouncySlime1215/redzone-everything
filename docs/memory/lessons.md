@@ -415,3 +415,5 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
 - 2026-11-08: A check at decision time isn't a check at the flip: the flip can come 25 s later, so `_entry_valid` re-plans every timed league, not only football (P1-REVIEW-01). And a wait with no end is a freeze: every "wait for data" needs a timer that hands the pick to the next choice, not a go-live cap (P1-REVIEW-05).
 
 - 2026-11-09 (WP-01): the plan's status only asked "is it tunable", so 11 Prime routes with a geo flag read "ready" on Nov 8 and 0 games were verified in 7 plans. A route is "at risk" until a hidden-stick check plays it. Lesson: a status that a person trusts must come from the same evidence the action needs.
+
+- 2026-11-09 (WP-04): Prime's tune loop stopped at a rent or buy prompt, and then the "focused button" path pressed OK anyway. A second press path needs the same purchase guard as the first; "More purchase options" alone is on every Prime page and is not a purchase screen.

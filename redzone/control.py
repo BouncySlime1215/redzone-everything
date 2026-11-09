@@ -68,7 +68,7 @@ from redzone.fallback_ladder import FallbackLadder, Step as LadderStep
 from redzone.tuners.adb import STICK_HUNG, Stick, adb_available, playback_ready, same_stream
 from redzone.tuners import join_watchdog as jw
 from redzone.tuners import prime_multiview as pmv
-from redzone.tuners.tuners import TUNERS, PrimeMultiviewTuner, TuneResult, channel_matcher
+from redzone.tuners.tuners import TUNERS, PrimeMultiviewTuner, TuneResult, apply_flags, channel_matcher
 from redzone.tv import SamsungTV
 
 log = logging.getLogger(__name__)
@@ -320,6 +320,7 @@ class LatencyBook:
 
 class Controller:
     def __init__(self, cfg, channels: ChannelMap, latency_path: Path | None = None):
+        apply_flags(cfg)   # [WP-04] tuners.prime_fast_confirm, tuners.espn_link_form (both off)
         # The explicit state machines (redzone/machines/control.py). Created first: the attributes below that
         # are views of them (hidden_target, hidden_ready, parked, _snap_park, _holding, _left, _stuck_since,
         # _preloading, _refreshing, ...) write through to them.
