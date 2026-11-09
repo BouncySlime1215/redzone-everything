@@ -27,6 +27,7 @@ from redzone.config import Config, ConfigError, for_league
 from redzone.governor import keep_awake_wanted
 from redzone.control import NO_STICK, STANDBY_NOT_READY, Controller, Outcome
 from redzone.decider import buffered as bj
+from redzone.decider import gate
 from redzone.decider import whistle
 from redzone.decider.decider import ENTRY_EXEMPT, REDZONE, REEL, Candidate, Decider, Decision, FocusMode, Missed, State
 from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
@@ -1956,6 +1957,8 @@ class Engine:
 
         def cut_veto() -> str:
             """Why this switch may not cut right now ("" = it may). [P1-ROOTCAUSE-04] Named for every kind, not only jumps."""
+            if d.kind != "user" and self.cfg.get("commit_gate.enabled", False):
+                return gate.commit_gate(self, d, before, target, cands, replay_exit)   # [WP-05] one gate, every non-tap kind
             if self.decider.user.paused or self.cfg.get("mode.dry_run", True):
                 return "paused_or_dry_run"
             if d.kind == "user":
@@ -2076,6 +2079,8 @@ class Engine:
 
     def _entry_valid(self, d: Decision, target: str | None) -> bool:
         """Refresh the destination just before any visible mutation, not just at planning time."""
+        if self.cfg.get("commit_gate.enabled", False):
+            return not gate.entry_veto(self, d, target)   # [WP-05] the same named rules the flip uses
         if d.action == "replay":
             return bool(d.replay and not d.replay.replayed)
         if d.target == REDZONE:
