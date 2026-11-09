@@ -79,3 +79,21 @@ def test_tape_trims_old_rows():
         t.record("g1", _g(1, 900 - i), T0 + i * 10)
     assert len(t.rows["g1"]) < 12
     assert t.at("g1", T0 + 290 - 40) is not None
+
+
+def test_engine_card_goes_through_the_tape_only_with_the_flag_on():
+    """Why: the views side did nothing until the Engine called it (WP-21 review)."""
+    from types import SimpleNamespace as NS
+
+    from redzone.engine import Engine
+
+    class Tape:
+        calls = 0
+
+        def record(self, gid, g):
+            Tape.calls += 1
+
+    item = {"clock": "8:10", "period": 1}
+    off = NS(cfg=NS(get=lambda k, d=None: d), clock_tape=Tape(), delays=None)
+    assert Engine._screen_item(off, item, "g", object(), None) is item and Tape.calls == 0
+

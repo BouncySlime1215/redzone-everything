@@ -413,6 +413,7 @@ class Engine:
         self._queue_off: dict[str, float] = {}   # [queue] target -> until: walled, refused or blacked out (_on_queue_move)
         self._queue_cands: dict | None = None    # [queue] the last tick's candidates, for a re-plan after a failure
         self._game_queue: dict | None = None   # [queue] snapshot['game_queue'], from the last tick
+        self.clock_tape = views.ClockTape()    # [views.screen_clock] each game's clock, to read it back at the screen's delay
         from redzone.recorded import RecordedPlayback
         self.recorded = RecordedPlayback(self)
         from redzone.discovery.runtime import DiscoveryRuntime
@@ -3218,7 +3219,7 @@ class Engine:
         s = self.scored.get(gid)
         w = self.where.get(gid)
         live = g.phase == Phase.LIVE
-        return {
+        item = {
             "id": gid, "league": g.league.value, "league_logo": views.league_logo(g.league.value),
             "matchup": g.matchup, "phase": g.phase.value,
             "status_text": g.status_text or _status(g), "home": views.team(g.home), "away": views.team(g.away),
@@ -3238,6 +3239,15 @@ class Engine:
             "brain": (s.brain or None) if s and live else None,
             "reasoner": (s.reasoner or None) if s and live else None,
         }
+        return self._screen_item(item, gid, g, w)
+
+    def _screen_item(self, item: dict, gid: str, g, w) -> dict:
+        """[views.screen_clock, off] The card's clock as of what the screen shows, not the feed that runs ahead of it."""
+        if not views.screen_clock_on(self.cfg):
+            return item
+        self.clock_tape.record(gid, g)
+        return views.screen_item(item, gid, enabled=True, tape=self.clock_tape,
+                                 delay_s=views.known_delay_s(self.delays, getattr(w, "target", None)))
 
     async def game_detail(self, gid: str) -> dict | None:
         g = self.merger.games.get(gid)
