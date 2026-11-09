@@ -64,3 +64,40 @@ def test_landing_elsewhere_keeps_the_visit(cfg, clock):
     dec._home_set("a", None, "a break visit")
     dec._commit("c", kind="better")
     assert dec.home_break_visit == "a"
+
+
+def _halftime(dec, clock):
+    tl = dec.timelines["a"]
+    tl.events.append(Event(clock.t - 300, "stop_start", "halftime"))
+    tl.final_at = None
+    return tl
+
+
+def test_a_refused_trip_home_stops_being_proposed_while_the_break_airs(cfg, clock):
+    """Seed-2 night, 17:56: halftime visit, home_return_at due, the flip vetoed 'home' (entry_invalid: break_on_arrival) 16
+    times in a row, 12 s each, holding the control lock for 3 minutes. Refused once, the visit goes back on the data."""
+    dec = setup(cfg, clock)
+    _halftime(dec, clock)
+    dec._home_set("a", clock.t - 1, "long-break visit")
+    home = cand("a")
+    home.scored.is_break = True
+    assert dec._home_due("a", home, clock.t)                         # the planned time
+    dec.reject(Decision(clock.t, "switch", "a", "back to your game", State.WATCHING, kind="home"))
+    assert dec.home_break_visit == "a" and dec.home_return_at is None
+    assert not dec._home_due("a", home, clock.t)                     # waits for the break to end in the data
+    assert dec.home_m.is_("visit")
+
+
+def test_a_refusal_with_the_break_over_keeps_the_time(cfg, clock):
+    dec = setup(cfg, clock)                                          # no stoppage in the data: nothing to wait out
+    dec._home_set("a", clock.t - 1, "long-break visit")
+    dec.reject(Decision(clock.t, "switch", "a", "back to your game", State.WATCHING, kind="home"))
+    assert dec.home_return_at == clock.t - 1
+
+
+def test_a_superseded_trip_home_keeps_the_time(cfg, clock):
+    dec = setup(cfg, clock)
+    _halftime(dec, clock)
+    dec._home_set("a", clock.t - 1, "long-break visit")
+    dec.reject(Decision(clock.t, "switch", "a", "back to your game", State.WATCHING, kind="home"), backoff=False)
+    assert dec.home_return_at == clock.t - 1
