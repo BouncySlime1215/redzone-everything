@@ -34,7 +34,8 @@ def progress_key(g: GameState) -> tuple:
     phase_rank = {Phase.PRE: 0, Phase.UNKNOWN: 0, Phase.LIVE: 1, Phase.POST: 2}[g.phase]
     period = g.period or 0
     half = 1 if g.half == "bottom" else 0
-    clock = -(g.clock_s if g.clock_s is not None else 0.0)
+    # No clock is "don't know", never "end of period" (-0.0 outranked every real reading): it ranks last.
+    clock = -g.clock_s if g.clock_s is not None else float("-inf")
     total = (g.home.score or 0) + (g.away.score or 0)
     plays = len(g.recent_plays)
     return (phase_rank, period, half, clock, total, plays)
@@ -149,6 +150,9 @@ class Merger:
         correction = False
         if prev_same is not None:
             kg, kp = progress_key(g), progress_key(prev_same)
+            if g.clock_s is None or prev_same.clock_s is None:
+                # One side has no clock: it says nothing about direction, so it is neither a jump back nor ahead.
+                kg, kp = kg[:3] + (0.0,) + kg[4:], kp[:3] + (0.0,) + kp[4:]
             if _position(kg) < _position(kp):
                 h.regressions += 1
                 hits = [t for t in self._regress_at[bkey] if now - t < REGRESSION_WINDOW_S]
@@ -159,6 +163,7 @@ class Merger:
                     if not feed.is_("benched"):
                         feed.to("benched", f"{len(hits)} backward jumps in {REGRESSION_WINDOW_S:.0f}s", now)
                         self._bench_end[bkey] = now + BENCH_S   # set once: a jump while benched must not extend it
+                        self._drop_benched_leader(source, g.game_id, now)
                     h.benched = True
                 elif not feed.is_("benched"):   # a benched feed stays benched until its bench ends
                     feed.to("regressing", f"{len(hits)} backward jump(s)", now)
@@ -198,6 +203,25 @@ class Merger:
         _fill_gaps(cur, g, moment=not _sees_strength(cur))
         cur.sources[source] = now
         return cur
+
+    def _drop_benched_leader(self, source: str, game_id: str, now: float) -> None:
+        """A source just benched for this game may be what put the merged game where it is (a glitched period
+        or clock that nothing could overtake). If the merged copy came from it, rebuild from the best copy
+        another unbenched source holds; with no one else the merged copy stays (nothing to check it against)."""
+        cur = self.games.get(game_id)
+        if cur is None or cur.sources.get(source) != cur.updated_at:
+            return
+        rivals = [(progress_key(c), s, c) for s, per in self._per_source.items()
+                  if s != source and (c := per.get(game_id)) is not None and not self._benched((s, game_id))]
+        if not rivals:
+            return
+        _, best_src, best = max(rivals, key=lambda r: r[0])
+        merged = copy.copy(best)
+        merged.sources = {s: t for s, t in cur.sources.items() if s != source}
+        merged.sources[best_src] = now
+        merged.updated_at = now
+        _fill_gaps(merged, cur, moment=not _sees_strength(merged))
+        self.games[game_id] = merged
 
     def _owned_stoppage(self, source: str, g: GameState, now: float) -> GameState:
         order = self.stoppage_owner.get(g.league)

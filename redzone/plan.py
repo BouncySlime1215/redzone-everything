@@ -38,6 +38,7 @@ DATA = Path(__file__).resolve().parent.parent / "data"
 
 LEAD_S = 20 * 60          # checks start this long before a start window
 STOP_S = 2 * 60           # ...and no new check starts this close to the start
+CHECK_CRASH_LIMIT = 3     # a check that crashes this many times for one target is given up on for the night
 WINDOW_S = 15 * 60        # games starting within 15 minutes of the first form one window
 GAP_S = 20.0              # breathing room between two checks
 REBUILD_S = 60.0          # the plan follows the slate (new links, your corrections) every minute
@@ -348,6 +349,7 @@ class Tonight:
         self._built_at = 0.0
         self._last_check = 0.0
         self._checking: str | None = None
+        self._crashes: dict[str, int] = {}
         self._saved = ""
 
     # building
@@ -473,6 +475,13 @@ class Tonight:
             return
         if task.exception() is not None:
             plan["note"] = f"the check crashed: {task.exception()}"
+            n = self._crashes[target] = self._crashes.get(target, 0) + 1
+            if n >= CHECK_CRASH_LIMIT:   # not "failed" (the route may be fine), but no more tuning for it
+                for e in plan["games"]:
+                    if e["check"]["state"] == "pending" and _target(e) == target:
+                        e["check"] = {"state": "not checked", "target": target, "at": self.clock(),
+                                      "detail": f"the check crashed {n} times: {task.exception()}"[:200]}
+                plan["cant_reach"] = cant_reach(plan)
             return
         res = task.result()
         if res is None:

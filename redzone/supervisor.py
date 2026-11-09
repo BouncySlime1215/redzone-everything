@@ -80,6 +80,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 NIGHT_STARTS_H = 6          # a "night" runs 6:00 AM ET to 6:00 AM ET the next day, named by its first date
 REPORT_AFTER_S = 300.0      # ...and its report is written 5 minutes after it ends
+REPORT_RETRY_S = 2 * REPORT_AFTER_S   # a report that crashed is tried again this much later...
+REPORT_TRIES = 4            # ...up to this many times
 CUT_JUDGE_AFTER_S = 90.0    # a cut is graded this long after it happened (the feed has caught up by then)
 CUT_LOOKBACK_S = 900.0      # switch rows this recent are looked at (a switch's row lands when it finishes)
 NTFY_TOPIC_RX = re.compile(r"^[-_A-Za-z0-9]{1,64}$")
@@ -355,6 +357,8 @@ class Supervisor:
         self._limited: set[str] = set()                  # fixes whose rate limit we already logged
         self._observed: dict[str, str] = {}              # condition -> last logged observation
         self._report_checked: date | None = None
+        self._report_failed = 0                          # crashes building this night's report
+        self._report_retry_at = 0.0
         self._cut_floor = clock()                        # switches before start were graded last run
         self._cuts_judged: OrderedDict[str, None] = OrderedDict()
         self.safe_episode = SUPERVISOR_SAFE_EPISODE.new(clock=clock)   # safe mode as recorded episodes
@@ -1204,15 +1208,26 @@ class Supervisor:
             return
         if now < night_window(prev)[1] + REPORT_AFTER_S:
             return
+        if now < self._report_retry_at:
+            return
         self._report_checked = prev
         self.collect_live_night(prev)
         path = self.reports / f"{prev.isoformat()}.md"
         if path.exists():
             return
-        rep = night_report(prev, getattr(self.e, "store", None), self.root, now=now,
-                           budget_cfg=self.opt("budget"), ops_cfg=self.opt("night_ops"))
-        write_report(path, rep["text"])
-        write_metrics(path.with_suffix(".json"), rep["metrics"])
+        try:
+            rep = night_report(prev, getattr(self.e, "store", None), self.root, now=now,
+                               budget_cfg=self.opt("budget"), ops_cfg=self.opt("night_ops"))
+            write_report(path, rep["text"])
+            write_metrics(path.with_suffix(".json"), rep["metrics"])
+        except Exception:
+            # A crash must not cost the night its report: look again later, a few times, then give up.
+            self._report_failed += 1
+            if self._report_failed < REPORT_TRIES:
+                self._report_checked = None
+                self._report_retry_at = now + REPORT_RETRY_S
+            raise
+        self._report_failed, self._report_retry_at = 0, 0.0
         self._record({"kind": "report", "rule": "report", "key": prev.isoformat(), "path": str(path)})
         spent = rep["budget"]["spent"]
         await self.send_push(f"RedZone night of {prev.isoformat()}", rep["phone"],
