@@ -39,7 +39,7 @@ export function renderNow(root) {
   const ghost = before && n && before.dataset.gid !== n.game_id ? before.cloneNode(true) : null;
   const html = [
     modeRow(S),
-    n ? `<div class="hero-wrap" data-key="hero-wrap">${heroCard(n, g, S)}</div>` : idle(S),
+    n ? `<div class="hero-wrap" data-key="hero-wrap">${heroCard(n, g, S)}</div>${screenClockNote(g)}` : idle(S),
     screenEvidence(S),
     calibrate(S),
     dock(S),
@@ -53,6 +53,13 @@ export function renderNow(root) {
   ].join("");
   patch(root, html);
   if (ghost) heroSwitch(root, ghost);
+}
+
+/* Screen-time clock: the card's clock is as of the TV, not the feed (server flag views.screen_clock; absent = off). */
+function screenClockNote(g) {
+  if (!g || !g.screen_clock) return "";
+  const t = g.screen_clock === "ok" ? `Clock is as of your screen (${Math.round(num(g.screen_delay_s))} s behind live)` : "Clock hidden until your screen's delay is known";
+  return `<div class="t2" data-key="screen-clock-note" style="padding:4px 4px 0">${esc(t)}</div>`;
 }
 
 function modeRow(S) {

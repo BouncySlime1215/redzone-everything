@@ -48,11 +48,18 @@ function scores(all) {
   }
   const out = [];
   const head = (k, title, n, extra = "") => out.push(`<div class="sec" data-key="h:${k}"><h2>${k === "live" ? '<i class="live-dot"></i>' : ""}${esc(title)}<span class="n">${n}</span></h2>${extra}</div>`);
-  if (live.length) { head("live", "Live", live.length, `<span class="aside">Hottest first</span>`); live.forEach((g) => out.push(gameCard(g))); }
+  if (live.length) { head("live", "Live", live.length, `<span class="aside">${screenNote(live) || "Hottest first"}</span>`); live.forEach((g) => out.push(gameCard(g))); }
   else if (pre.length) out.push(`<div class="card idle-lite" data-key="nolive"><div class="row" style="gap:12px">${icon("clock", "ico--lg")}<div><b>Nothing live yet</b><div class="t2">Next up: ${esc(pre[0].matchup)} · ${esc(pre[0].start_time ? fmtTime(pre[0].start_time) : "soon")}</div></div></div></div>`);
   if (pre.length) { head("pre", "Up next", pre.length); pre.forEach((g) => out.push(gameCard(g))); }
   if (post.length) { head("post", "Final", post.length); post.forEach((g) => out.push(gameCard(g))); }
   return `<div class="list" data-key="glist" data-flip>${out.join("")}</div>`;
+}
+
+/* Screen-time clock (server flag views.screen_clock): a card's clock is what the TV shows, or blank when the
+   delay is unknown. Absent field = flag off = nothing said. */
+function screenNote(live) {
+  if (!live.some((g) => g.screen_clock)) return "";
+  return live.some((g) => g.screen_clock === "unknown") ? "Clocks match your screen · blank = not synced" : "Clocks match your screen";
 }
 
 /* ---------- teams ---------- */
