@@ -144,6 +144,7 @@ def test_crunch_run_up_waits_for_a_whistle_but_the_last_two_minutes_do_not(dec):
     now.crunch_now = True
     assert dec._entry_only(Candidate(run_up, "youtubetv:b"), d)
     dec.cfg.update({"decider": {"entry": {"crunch_now": "live"}}}, record=False)
+    dec.cfg.data["decider"]["entry"]["allow_live_fallback"] = True   # D-01: going in live now needs the explicit opt-in
     assert not dec._entry_only(Candidate(now, "youtubetv:b"), d)
 
 

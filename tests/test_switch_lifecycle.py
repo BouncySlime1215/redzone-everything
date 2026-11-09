@@ -153,8 +153,7 @@ async def test_prime_prompt_rechecks_gap_after_reading_slow_detail_page():
 
 
 async def test_provider_launch_rechecks_after_power_read():
-    from test_providers import FakeStick, Clock, tuner
-    from redzone.tuners.providers import PeacockTuner
+    from test_providers import FakeStick, Clock, PeacockLike, tuner   # a generic AppTuner double (the real one was removed: never Peacock)
     allowed = True
     class ClosingRead(FakeStick):
         async def shell(self, cmd, timeout=8):
@@ -164,6 +163,6 @@ async def test_provider_launch_rechecks_after_power_read():
                 allowed = False
             return result
     stick = ClosingRead(packages={"peacock": "com.peacock.peacockfiretv"})
-    result = await tuner(PeacockTuner, Clock()).tune(stick, "123", "peacock:123", may_cut=lambda: allowed)
+    result = await tuner(PeacockLike, Clock()).tune(stick, "123", "peacock:123", may_cut=lambda: allowed)
     assert not result.ok and result.screen_changed is False
     assert not stick.launches and not stick.keys

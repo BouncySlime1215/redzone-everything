@@ -47,9 +47,10 @@ Bars (Nick, 2026-11-08):
 - Basketball: may join mid-possession only right after a made or missed shot (the walk/transition up court). If the
   moment is a transition play, divert to the prior safest point (previous possession's bucket, transition or dead
   ball, whichever is soonest).
-- Pace like RedZone: several switches and clips per minute when the action is there (measured: median 5 per
-  10 min, 9 busy, 14 max on NFL Sundays, [redzone-numbers](research/2026-11-08/redzone-numbers.md)), 60-90 s
-  behind live, 0 commercials on screen, 0 late joins.
+- Pace (Nick, 2026-11-08): stay on a few games (2-4) for a few minutes at a time and match live what the simulator
+  achieves on those games (today's sim: 0.6-0.9 cuts/min, best 10-min window 12), 60-90 s behind live, 0 commercials on
+  screen, 0 late joins. Rotating and catching up across many games (every play of an 8-game slate is about 59 per
+  10 min, 4 games about 31) is brain-phase work (section 4). Reference: [redzone-numbers](research/2026-11-08/redzone-numbers.md).
 - Works on both HDMI inputs and on both Prime Video and YouTube TV.
 
 Steps: (1) instrument every stage of a switch (decision, tune, scrub/hold, flip, picture) and measure on recorded
