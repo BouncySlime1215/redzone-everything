@@ -3520,8 +3520,9 @@ class Decider:
             return d
         self.fill_choice = pick
         self.fill_log[pick.action] += 1
+        kind = "jump" if pick.action == "join" else "break_visit"
         g = self._jump_gate(cur, now)
-        if g is None or not g.safe:
+        if g is None or not g.safe or self._fill_must_wait(cur, kind, now):
             return d
         if pick.action == "join" and pick.game_id in cands:
             x = cands[pick.game_id]
@@ -3534,6 +3535,19 @@ class Decider:
             self._home_set(self.current, None, "a fill reel")
             return Decision(now, "switch", REEL, f"fill: {pick.reason}", State.WATCHING, g.why, kind="break_visit")
         return d
+
+    def _fill_must_wait(self, cur: Candidate, kind: str, now: float) -> bool:
+        """The rules any optional switch obeys that the stages before _fill can't apply to it: it runs after them."""
+        last = self.history[-1][0] if self.history else None
+        if legal.arriving(now, self._arrival_until) or legal.too_soon(last, float(self.cfg.get("noggin.pick.min_gap_s", 0.0)), now):
+            return True
+        if legal.dwell_left(self.since, float(self._lc("decider.dwell.min_s", cur, 0) or 0), kind,
+                            self._lc("decider.dwell.kinds", cur, None), now) > 0:
+            return True
+        if not self._arbiter_on():
+            return False
+        cap = self._arbiter_params().ceiling_per_min
+        return cap > 0 and sum(1 for t, _, _ in self.history if now - t < 60.0) >= cap
 
     def _fill_seen(self, moments: list) -> set:
         """Moments already seen on the screen, by the ladder's key."""
