@@ -24,7 +24,7 @@ def _ok(p: Path) -> bool:
 
 def notebook(src: Path) -> dict:
     """'# %%' cells -> a Jupyter notebook ('# %% [markdown]' cells become markdown)."""
-    cells, cur, md = [], [], False
+    cells, cur, md, started = [], [], False, False
 
     def flush():
         if cur and any(x.strip() for x in cur):
@@ -38,8 +38,9 @@ def notebook(src: Path) -> dict:
 
     for line in src.read_text().split("\n"):
         if line.startswith("# %%"):
-            flush()
-            cur, md = [], "[markdown]" in line
+            if started:   # what comes before the first cell is the module docstring, not a notebook cell
+                flush()
+            cur, md, started = [], "[markdown]" in line, True
         else:
             cur.append(line)
     flush()
