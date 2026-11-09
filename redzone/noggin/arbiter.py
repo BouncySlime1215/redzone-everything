@@ -22,6 +22,10 @@ The RedZone rules (trigger order, decide last, late narrowing, a visit budget th
 stay for one replay, stop whipping when one game is left) come from reporting about the show, not from measurement:
 docs/agents/data/2026-11-09-redzone-viewers-production.md. That is why each is its own parameter.
 
+`clip_key` and `pick_clip` order the clips a free hidden stick could prepare (MUST-SHOW-2: live picks first, then the
+catch-up replays Nick accepted, and never parked waiting while a clip that can air first expires). The max-rate sim
+(scripts/buffered_jump_sim.py policy="arbiter") measures them; the live decider does not call them yet.
+
 Pure: no clock, no I/O, no decider import. `now` is passed in, so a replay gives the same choice.
 """
 from __future__ import annotations
@@ -136,6 +140,39 @@ def trigger_rank(league: str, kind: str, p: Params = DEFAULT_PARAMS) -> int:
     if p.trigger_order and kind in TRIGGER_ORDER:
         return TRIGGER_ORDER.index(kind)
     return (tiers.tier_of(league, kind) or tiers.TIER_HIGHLIGHT) * 100   # after the named triggers, by tier
+
+
+def clip_key(rank: int, late: bool, show: float, deadline: float, order: str = "rank", catchup: bool = False) -> tuple:
+    """Sort key of a clip a free hidden stick could prepare; the lowest wins. `late` is True once it can only air as a
+    catch-up, past the live window. Without catch-up, the trigger order rules and then the earliest air time. With it,
+    every live clip goes first (Nick: stay on a few games, then catch up) and catch-up clips are next, in trigger order.
+    order "edf": TDs first, then whichever must-show expires first."""
+    if not catchup and order == "rank":
+        return (rank, late, show, deadline)
+    prefix = (rank == NOT_FLOOR, late) if catchup else (rank == NOT_FLOOR,)
+    if order == "edf":
+        return prefix + (0 if rank == 0 else 1, deadline, show)
+    if order == "show":
+        return (rank == NOT_FLOOR, show, rank, deadline)
+    return prefix + (rank, show, deadline)
+
+
+def pick_clip(cands: Sequence[tuple], now: float, flip_s: float, prep_worst_s: float, order: str = "rank", catchup: bool = False,
+              max_wait_s: float = 8.0, protect_rank: int = -1):
+    """The clip a free hidden stick should take: the first by `clip_key`, unless it can't air yet. Then the nearest clip that
+    fits in front of it and still leaves the first its own window (the stick that clip frees needs up to prep_worst_s to set
+    the first up). Why: a stick parked on a clip it must wait a minute for leaves the screen idle while a clip it could
+    air first expires. A first clip of rank <= protect_rank always keeps the stick (nothing goes in front of it). Each cand is
+    (id, rank, late, show, deadline, seconds, last legal flip of the live or deep window)."""
+    if not cands:
+        return None
+    key = lambda c: clip_key(c[1], c[2], c[3], c[4], order, catchup)   # noqa: E731
+    first = min(cands, key=key)
+    if first[3] - now <= max_wait_s or first[1] <= protect_rank:
+        return first[0]
+    fits = [c for c in cands if c is not first and c[3] <= first[3] and (c[1] != NOT_FLOOR or first[1] == NOT_FLOOR)
+            and c[3] + max(flip_s + c[5], prep_worst_s) + flip_s <= first[6]]
+    return min(fits, key=lambda c: (c[3], key(c)))[0] if fits else first[0]
 
 
 def must_of(league: str, kind: str, game_id: str, air_at: float, moment_id: str = "", p: Params = DEFAULT_PARAMS) -> Must | None:
