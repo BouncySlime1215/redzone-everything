@@ -42,7 +42,7 @@ from redzone.context.tokens import PERSONAL_USE
 from redzone.models_rt.forest import MODEL_DIRS, Nodes, read_meta
 
 GV_SCHEMA = 1
-GV_LEAGUES = ("nfl", "nba")
+GV_LEAGUES = ("nfl", "nba", "cbb")
 GV_FEATURES_VERSION = "v2"
 GV_FEATURES = ("period", "clock_left", "game_left", "is_ot", "late", "abs_margin", "total_points", "pts_5m", "swing_5m",
                "lead_changes", "plays_5m", "since_head_s", "since_score_s", "since_start_s", "t1_5m", "t2_5m", "t3_5m",
@@ -60,7 +60,7 @@ GV_MAX_BYTES = 20_000_000
 GV_SCALE_POINTS = 5.0                # raw points that read 63 on the 0-100 scale: one Tier 1
 GV_TABLE_SHAPE = (6, 4, 4, 4)        # period, clock band, margin band, field-position band (scripts/holdset.py key)
 GV_STATUS = "shadow_only"
-GV_PERSONAL_SOURCES = ("hoopr_espn_nba", "archive")
+GV_PERSONAL_SOURCES = ("hoopr_espn_nba", "hoopr_espn_cbb", "archive")
 GV_SHADOW_NIGHTS = 7
 GV_DIR = MODEL_DIRS["noggin"]
 
