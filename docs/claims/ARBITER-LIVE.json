@@ -1,0 +1,11 @@
+{
+  "card": "ARBITER-LIVE",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "redzone/decider/decider.py",
+    "tests/test_arbiter_live*.py"
+  ],
+  "started": 1794216258,
+  "expires": 1794389058
+}
