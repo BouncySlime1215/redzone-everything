@@ -1207,6 +1207,25 @@ slate:                     # [build plan WP-18] blocks of a few games, then catc
 fill:                      # [build plan WP-19] what the show does when nothing must be shown
   enabled: false
 
+threads:                   # [D-ADDICT M1] each live game's open question; holds and bonus stay off until judged on real nights (decisions.md)
+  enabled: false           # keep the ledger (no effect on any decision)
+  closure_first: false     # let it act: optional cuts wait for an open question, a thread about to close ranks a bit higher
+  max_hold_nfl_s: 150      # longest one thread may hold the screen, per sport; a judgment, not fitted
+  max_hold_cfb_s: 150
+  max_hold_nba_s: 75
+  max_hold_cbb_s: 75
+  max_hold_nhl_s: 120
+  max_hold_mlb_s: 180
+  about_to_close_s: 60     # a thread only earns the bonus this close to its expected end
+  bonus_pts: 12            # most points a thread adds to a game's score
+  cut_after_s: 20          # after the answer airs on screen, the game reads lower this long
+  cut_penalty_pts: 8
+  feed_lag_s: 8            # the feed runs this far behind real time; the picture is later still
+  reopen_guard_s: 25       # no new thread in a game this soon after one closed
+  flicker_s: 8             # a power play or pulled goalie must be gone this long to count as over
+  chain_gap_s: 30          # holds this close together count as one chain, capped at twice the reach
+  run_pts: 8               # unanswered points that make a close_run (a fact only; never holds or ranks)
+
 labels:                    # [own-data job 17] extra logging only, for data no public source has
   enabled: false
 
