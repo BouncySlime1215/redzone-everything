@@ -23,6 +23,15 @@ Fails closed: a row with a NaN, an infinity, a non-number, a missing or extra fe
 range gets no estimate; the others in the batch are unaffected. A model file that is corrupt, altered, for another
 league or feature list, missing its personal-use tag, or marked anything but shadow-only does not load.
 
+Features v4 (RZ_GV_FEATURES=v4) fix what the fair test showed. Training rows come from nflverse and the fair test reads ESPN, and the two
+disagree after a possession ends (ESPN's punt ends at the receiver's field position, the nflverse adapter at the punter's) and on rows only
+one has (official timeouts, quarter ends, the two-minute warning), so v4 drops those rows and hides yards_to_goal once the ball has changed
+hands. It adds the state after the head play (next down, drive so far, red zone already reached), the closeness and crunch signals, and
+league-relative numbers so one pooled model reads a score the same way in every sport. value_link "rank" marks a LambdaRank head: its
+scores become points through strictly increasing knots, so the order the ranker learned is exactly the order the brain sees.
+
+A pooled model (league "all", meta "leagues") loads for any league it was trained on and has no state table.
+
 Promotion is not a flag here: `promotion` needs the real Planner, measured on the same nights, beaten on the hold-set test nights, then 7 of 7 shadow
 nights, and the file status stays "shadow_only" until WP-28 changes this module on purpose.
 """
@@ -40,6 +49,7 @@ from typing import Mapping, NamedTuple, Sequence
 import numpy as np
 
 from redzone.context.tokens import PERSONAL_USE
+from redzone.moments.detect import clock_s
 from redzone.models_rt.forest import MODEL_DIRS, Nodes, read_meta
 
 GV_SCHEMA = 1
@@ -50,7 +60,12 @@ _BASE_FEATURES = ("period", "clock_left", "game_left", "is_ot", "late", "abs_mar
 # v3 appends; the first 23 columns stay where v2 has them, so table_key reads both.
 HISTORY_FEATURES = ("pts_last3", "pts_last5", "swing_last5", "run_pts", "run_by_trailing", "to_5m", "fouls_5m", "plays_2m",
                     "sec_per_play_10", "timeouts_period", "since_timeout_s", "timeout_recent")
-GV_FEATURE_SETS = {"v2": _BASE_FEATURES, "v3": _BASE_FEATURES + HISTORY_FEATURES}
+DRIVE_FEATURES = ("drive_plays", "drive_yards", "drive_clock_s", "drive_start_ytg", "rz_reached", "next_down", "next_distance", "poss_flip",
+                  "half_left", "two_minute", "timeouts_half")
+DERIVED_FEATURES = ("margin_class", "closeness", "crunch_eta_s")
+RELATIVE_FEATURES = ("league_id", "game_frac_left", "margin_scores", "margin_z", "pace_rel")
+V4_FEATURES = DRIVE_FEATURES + DERIVED_FEATURES + RELATIVE_FEATURES
+GV_FEATURE_SETS = {"v2": _BASE_FEATURES, "v3": _BASE_FEATURES + HISTORY_FEATURES, "v4": _BASE_FEATURES + HISTORY_FEATURES + V4_FEATURES}
 GV_FEATURES_ENV = "RZ_GV_FEATURES"
 # Physical sanity, not the training range: -1 is the shards' "missing". since_head_s stops where the shards stop (a 900 s
 # feed gap plus the 180 s lag cap): a feed staler than any training row gets no estimate.
@@ -61,12 +76,19 @@ GV_BOUNDS = {"period": (-1, 20), "clock_left": (-1, 3600), "game_left": (-1, 144
              "value_10m": (0, 5000), "down": (-1, 5), "distance": (-100, 200), "yards_to_goal": (-100, 200),
              "playoff": (0, 1), "pts_last3": (-300, 300), "pts_last5": (-300, 300), "swing_last5": (0, 600), "run_pts": (0, 600),
              "run_by_trailing": (0, 1), "to_5m": (0, 500), "fouls_5m": (0, 500), "plays_2m": (0, 2000),
-             "sec_per_play_10": (-1, 86400), "timeouts_period": (0, 100), "since_timeout_s": (-1, 86400), "timeout_recent": (0, 1)}
+             "sec_per_play_10": (-1, 86400), "timeouts_period": (0, 100), "since_timeout_s": (-1, 86400), "timeout_recent": (0, 1),
+             "drive_plays": (-1, 200), "drive_yards": (-1, 300), "drive_clock_s": (-1, 7200), "drive_start_ytg": (-1, 200), "rz_reached": (0, 1),
+             "next_down": (-1, 4), "next_distance": (-1, 200), "poss_flip": (0, 1), "half_left": (-1, 3600), "two_minute": (0, 1),
+             "timeouts_half": (0, 100), "margin_class": (0, 5), "closeness": (-1, 100), "crunch_eta_s": (-1, 86400), "league_id": (0, 9),
+             "game_frac_left": (-1, 1), "margin_scores": (0, 300), "margin_z": (-1, 300), "pace_rel": (-300, 300)}
 GV_MAX_ROWS = 64                     # more live games than this is a broken caller, not a big slate
 GV_MAX_BYTES = 20_000_000
 GV_SCALE_POINTS = 5.0                # raw points that read 63 on the 0-100 scale: one Tier 1
 GV_TABLE_SHAPE = (6, 4, 4, 4)        # period, clock band, margin band, field-position band (scripts/holdset.py key)
 GV_STATUS = "shadow_only"
+GV_POOLED = "all"                    # the league field of one model trained on every attached league
+GV_LINKS = ("log", "rank")
+GV_RANK_TIE = 1e-6                   # points per unit of ranker score outside the knots, so the order never ties
 GV_PERSONAL_SOURCES = ("hoopr_espn_nba", "hoopr_espn_cbb", "espn_cfb", "wehoop_espn_wnba", "archive")
 GV_SHADOW_NIGHTS = 7
 GV_DIR = MODEL_DIRS["noggin"]
@@ -216,6 +238,131 @@ def history_now(league: str, timed_plays: Sequence[tuple[float, Mapping]]) -> di
     return {k: float(v[0]) for k, v in got.items()}
 
 
+# --- drive state and league-relative numbers (features v4) -------------------------------------------------------------
+# league -> (points in one score, final-margin sd, points per 5 min, regulation seconds). Fixed by hand from the sports' scoring, fit on no
+# rows, so they cannot leak; they only have to put a margin in the same units across sports. scripts/value_leak_check.py restates them.
+GV_LEAGUE_SCALE = {"nfl": (7.0, 13.5, 3.75, 3600.0), "cfb": (7.0, 16.0, 5.0, 3600.0), "nba": (2.5, 12.0, 24.0, 2880.0), "cbb": (2.5, 11.0, 18.0, 2400.0),
+                   "nhl": (1.0, 2.3, 0.5, 3600.0)}
+GV_LEAGUE_IDS = {"nfl": 0.0, "cfb": 1.0, "nba": 2.0, "cbb": 3.0, "nhl": 4.0}
+CRUNCH_LEFT_S, CRUNCH_ETA_CAP_S = 300.0, 21600.0     # a pace read off the first few plays can be wild, so the estimate stops at six hours
+_FOOTBALL = ("nfl", "cfb")
+_NOT_A_SNAP = ("official timeout", "end period", "end of half", "end of game", "end game", "two-minute warning")
+_FOOTBALL_LEN = GV_LEAGUE_SCALE["nfl"][3] / 4          # one football quarter, from the league table
+
+
+def feed_row(league: str, play: Mapping) -> bool:
+    """False for a football row that one source has and the other lacks, so a v4 feed head never lands on one."""
+    if league not in _FOOTBALL:
+        return True
+    kind = ((play.get("type") or {}).get("text") or "").lower()
+    return not (any(k in kind for k in _NOT_A_SNAP) or ("timeout" in kind and "official" in (play.get("text") or "").lower()))
+
+
+@dataclass(frozen=True)
+class State:
+    """Per-play arrays of the v4 drive features, plus yards to goal with a possession change hidden."""
+    arrays: dict[str, np.ndarray]
+    ytg_live: np.ndarray
+
+
+def _num(x, missing: float = -1.0) -> float:
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return missing
+    return missing if v != v else v
+
+
+def state_arrays(league: str, timed_plays: Sequence[tuple[float, Mapping]]) -> State:
+    """(wall, play), oldest first, already through feed_row -> the drive state after each play. A drive is what lies between two possession
+    changes, read from play types alone: ESPN and nflverse cut drives differently around kickoffs, and the drive's summary fields know its end."""
+    n = len(timed_plays)
+    out = {f: np.full(n, -1.0) for f in DRIVE_FEATURES}
+    for f in ("rz_reached", "poss_flip", "two_minute", "timeouts_half"):
+        out[f] = np.zeros(n)
+    ytg_live = np.full(n, -1.0)
+    if league not in _FOOTBALL:
+        return State(out, ytg_live)
+    new_drive, plays, start, first_left, rz = True, 0, -1.0, -1.0, False
+    ytg, next_down, next_dist, half, used = -1.0, -1.0, -1.0, None, 0
+    for i, (_, p) in enumerate(timed_plays):
+        kind, text = ((p.get("type") or {}).get("text") or "").lower(), (p.get("text") or "").lower()
+        st, en = p.get("start") or {}, p.get("end") or {}
+        down, dist, y0, y1 = _num(st.get("down"), 0.0), _num(st.get("distance"), 0.0), _num(st.get("yardsToEndzone")), _num(en.get("yardsToEndzone"))
+        gain, per, clock = _num(p.get("statYardage"), 0.0), _num((p.get("period") or {}).get("number")), _num(clock_s(p))
+        now = (per + 1) // 2 if 1 <= per <= 4 else per
+        if now != half:
+            half, used = now, 0
+        timeout, no_play, kick = "timeout" in kind, "no play" in text, "kickoff" in kind
+        used += timeout
+        left = -1.0 if clock < 0 else clock if per > 4 else (4 - per) * _FOOTBALL_LEN + clock
+        out["half_left"][i] = -1.0 if clock < 0 else clock if per > 4 else ((1 - (per - 1) % 2) * _FOOTBALL_LEN + clock)
+        out["two_minute"][i] = float(per in (2, 4) and 0 <= clock <= 120)
+        out["timeouts_half"][i] = used
+        flip = False
+        if kick:
+            new_drive, flip, ytg, next_down, next_dist = True, True, -1.0, -1.0, -1.0
+            plays, start, first_left, rz = 0, -1.0, -1.0, False
+        elif not timeout:
+            if new_drive:
+                plays, start, first_left, rz, new_drive = 0, -1.0, -1.0, False, False
+            plays += 1
+            if start < 0 and y0 >= 0:
+                start, first_left = y0, left
+            punt, fg, penalty = "punt" in kind, "field goal" in kind, "penalty" in kind
+            if not no_play and "punt" not in kind and down and y0 > 0 and y0 <= 20:
+                rz = True
+            td = "touchdown" in kind or bool(p.get("scoringPlay") and "touchdown" in text and not no_play)
+            lost = not no_play and (play_kind(league, p) == "turnover" or "blocked" in kind or kind == "safety" or "muffed" in kind or "opp fumble recovery" in kind)
+            snap = bool(down) and not (punt or fg or no_play or penalty)
+            flip = punt or fg or td or lost or (snap and down == 4 and gain < dist)
+            if flip:
+                ytg, next_down, next_dist, new_drive = -1.0, -1.0, -1.0, True
+            elif snap:
+                ytg = y1
+                next_down, next_dist = (1.0, min(10.0, y1) if y1 > 0 else 10.0) if gain >= dist else (down + 1, dist - gain)
+        out["poss_flip"][i], ytg_live[i] = float(flip), ytg
+        out["next_down"][i], out["next_distance"][i], out["rz_reached"][i] = next_down, next_dist, float(rz)
+        out["drive_plays"][i] = float(plays) if plays else -1.0
+        out["drive_start_ytg"][i] = start
+        out["drive_yards"][i] = max(start - ytg, 0.0) if start >= 0 and ytg >= 0 else -1.0
+        out["drive_clock_s"][i] = max(first_left - left, 0.0) if first_left >= 0 and left >= 0 and plays else -1.0
+    return State(out, ytg_live)
+
+
+def state_features(s: State, head: np.ndarray) -> dict[str, np.ndarray]:
+    """The drive features at each head index, plus `yards_to_goal` with a possession change hidden. Reads only the head play's own row."""
+    return {**{f: s.arrays[f][head] for f in DRIVE_FEATURES}, "yards_to_goal": s.ytg_live[head]}
+
+
+def derived_features(league: str, base: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """The closeness, crunch and league-relative numbers, computed from base features the row already has, so they cannot see further than those."""
+    unit, sd, rate, total = GV_LEAGUE_SCALE.get(league, (1.0, 1.0, 1.0, 1.0))
+    margin, left, since, pts = (np.asarray(base[k], float) for k in ("abs_margin", "game_left", "since_start_s", "pts_5m"))
+    known = left >= 0
+    frac = np.minimum(np.maximum(left, 0.0) / total, 1.0)
+    pace = since / np.maximum(total - left, 60.0)
+    return {
+        "margin_class": np.select([margin == 0, margin <= 3, margin <= 8, margin <= 16, margin <= 24], [0.0, 1.0, 2.0, 3.0, 4.0], 5.0),
+        "closeness": np.where(known, margin / np.sqrt(np.maximum(left, 30.0)), -1.0),
+        "crunch_eta_s": np.where(known, np.minimum(np.maximum(left - CRUNCH_LEFT_S, 0.0) * pace, CRUNCH_ETA_CAP_S), -1.0),
+        "league_id": np.full(len(margin), GV_LEAGUE_IDS.get(league, 9.0)),
+        "game_frac_left": np.where(known, frac, -1.0),
+        "margin_scores": margin / unit,
+        "margin_z": np.where(known, margin / (sd * np.sqrt(np.maximum(frac, 0.02))), -1.0),
+        "pace_rel": pts / rate,
+    }
+
+
+def state_now(league: str, timed_plays: Sequence[tuple[float, Mapping]]) -> dict[str, float]:
+    """The live call: the feed's plays so far -> the drive features at the feed head (feed_row is applied here). {} before any play."""
+    kept = [x for x in timed_plays if feed_row(league, x[1])]
+    if not kept:
+        return {}
+    got = state_features(state_arrays(league, kept), np.array([len(kept) - 1]))
+    return {k: float(v[0]) for k, v in got.items()}
+
+
 def to_scale(raw: np.ndarray) -> np.ndarray:
     """Raw tier points -> the brain contract's 0-100."""
     return 100.0 * (1.0 - np.exp(-np.maximum(raw, 0.0) / GV_SCALE_POINTS))
@@ -252,8 +399,16 @@ def content_sha(arrays: Mapping[str, np.ndarray], meta: Mapping) -> str:
 def _check_meta(meta: Mapping, league: str | None) -> None:
     if meta.get("schema") != GV_SCHEMA or meta.get("kind") not in ("table", "trees"):
         raise ModelRejected(f"unknown model format: schema {meta.get('schema')}, kind {meta.get('kind')}")
-    if meta.get("league") not in GV_LEAGUES or (league is not None and meta["league"] != league):
+    if meta.get("league") == GV_POOLED:
+        trained = meta.get("leagues") or []
+        if meta.get("kind") != "trees" or not trained or not set(trained) <= set(GV_LEAGUES):
+            raise ModelRejected(f"pooled model with leagues {trained!r}, kind {meta.get('kind')}")
+        if league not in (None, GV_POOLED) and league not in trained:
+            raise ModelRejected(f"pooled model is for {trained}, asked for {league}")
+    elif meta.get("league") not in GV_LEAGUES or (league is not None and meta["league"] != league):
         raise ModelRejected(f"model is for {meta.get('league')}, asked for {league}")
+    if meta.get("value_link", "log") not in GV_LINKS:
+        raise ModelRejected(f"unknown value link {meta.get('value_link')!r}")
     if tuple(meta.get("features") or ()) != GV_FEATURES or meta.get("features_version") != GV_FEATURES_VERSION:
         raise ModelRejected("feature list or feature version differs from this runtime")
     if meta.get("status") != GV_STATUS:
@@ -303,6 +458,19 @@ def _knots(arrays: Mapping[str, np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
     return x, y
 
 
+def _rank_knots(arrays: Mapping[str, np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
+    """A rank head's score -> points. Strictly increasing both ways, because two different scores that read the same points would tie the order."""
+    try:
+        x, y = np.asarray(arrays["value_cal_x"], float), np.asarray(arrays["value_cal_y"], float)
+    except (KeyError, TypeError, ValueError) as e:
+        raise ModelRejected(f"bad rank knots: {e}") from e
+    if x.ndim != 1 or x.shape != y.shape or x.size < 2 or not (np.isfinite(x).all() and np.isfinite(y).all()):
+        raise ModelRejected("bad rank knots")
+    if np.any(np.diff(x) <= 0) or np.any(np.diff(y) <= 0) or y.min() < 0:
+        raise ModelRejected("rank knots are not strictly increasing")
+    return x, y
+
+
 def _table(arrays: Mapping[str, np.ndarray], name: str, top: float) -> np.ndarray:
     t = np.asarray(arrays.get(name, np.zeros(0)), float)
     if t.shape != GV_TABLE_SHAPE or not np.isfinite(t).all() or t.min() < 0 or t.max() > top:
@@ -321,6 +489,9 @@ class GameValueModel:
         else:
             self._value, self._p1 = _head(arrays, "value", meta.get("value_depth")), _head(arrays, "p1", meta.get("p1_depth"))
             self._cal_x, self._cal_y = _knots(arrays)
+            self._link = meta.get("value_link", "log")
+            if self._link == "rank":
+                self._rank_x, self._rank_y = _rank_knots(arrays)
 
     def _predict(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Already validated float32 rows -> (raw points, probability)."""
@@ -328,10 +499,16 @@ class GameValueModel:
             cell = np.ravel_multi_index(table_key(X, self.league).T, GV_TABLE_SHAPE)
             return self._value_table[cell], self._p_table[cell]
         with np.errstate(over="ignore"):
-            raw = np.exp(self._value.value[self._value.leaves_batch(X)].sum(axis=1))
+            score = self._value.value[self._value.leaves_batch(X)].sum(axis=1)
+            raw = np.exp(score) if self._link == "log" else self._points(score)
             margin = self._p1.value[self._p1.leaves_batch(X)].sum(axis=1)
             p = 1.0 / (1.0 + np.exp(-margin))
         return raw, np.interp(p, self._cal_x, self._cal_y)
+
+    def _points(self, score: np.ndarray) -> np.ndarray:
+        """Ranker score -> expected points: the knots, and a sliver of slope past either end so the order never ties."""
+        inside = np.clip(score, self._rank_x[0], self._rank_x[-1])
+        return np.maximum(np.interp(score, self._rank_x, self._rank_y) + GV_RANK_TIE * (score - inside), 0.0)
 
     def predict_matrix(self, X, max_rows: int | None = GV_MAX_ROWS) -> Batch:
         """(n, len(GV_FEATURES)) features in GV_FEATURES order. BadFeatures for a wrong shape or type; a bad row is ok=False."""
