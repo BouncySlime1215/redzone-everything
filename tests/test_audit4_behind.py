@@ -4,12 +4,15 @@ Why: a same-channel deep link doesn't bring a YouTube TV stick back to live (#39
 stops the next tune from booking a picture still behind live as the live edge.
 """
 import asyncio
+import json
 import time
 
 import pytest
 
+from redzone import control as ctl
+from redzone.channels import ChannelMap
 from redzone.tuners import replay_park, yttv_seek
-from tests.test_control import two  # noqa: F401  (fixture)
+from tests.test_control import FakeStick, two  # noqa: F401  (fixture)
 
 FOX = "youtubetv:fox"
 
@@ -101,3 +104,16 @@ async def test_a_hold_that_did_not_resume_reloads_through_another_channel(two): 
     c._set_hidden(FOX, False)
     assert await c._hold(hid, FOX, 0.01) is False
     assert [t for _, t in tuner.calls] == ["youtubetv:espn", FOX]
+
+
+def test_a_restart_keeps_behind_on_even_when_the_offsets_are_too_old(cfg, tmp_path):
+    """Repro: restore_held returned early on an old file, dropping behind_on with it. The offsets age out; a stick that
+    is behind live stays behind until something re-tunes it, however long the app was down."""
+    cfg.update({"mode": {"dry_run": False}})
+    c = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    c.buffer_log_path = tmp_path / "buffer.jsonl"
+    c.sticks = [FakeStick("a:5555"), FakeStick("b:5555")]
+    (tmp_path / "held.json").write_text(json.dumps({"ts": time.time() - 7200, "held": {FOX: 75.0},
+                                                    "behind_on": {"b:5555": FOX}}))
+    assert c.restore_held() == {}                      # the offsets are still too old to trust
+    assert c.sticks[1].behind_on == FOX and c.sticks[0].behind_on is None

@@ -2368,15 +2368,17 @@ class Controller:
             d = json.loads(p.read_text()) if p is not None and p.exists() else {}
         except (OSError, ValueError):
             return {}
+        behind = (d.get("behind_on") or {}) if isinstance(d, dict) else {}
+        for s in self.sticks:
+            if isinstance(behind.get(s.host), str):
+                # [S-6] the next tune of that target resets first. Before the age check: an offset ages out, but a stick
+                # stays behind live until it is re-tuned, however long the app was down
+                s.behind_on = behind[s.host]
         if not d or now - float(d.get("ts") or 0.0) > float(self.cfg.get("timing.behind_live_s.held_max_age_s", 600)):
             return {}
         got = {t: float(v) for t, v in (d.get("held") or {}).items() if v and float(v) > 0}
         for t, v in got.items():
             self._set_held(t, v, how="restored")
-        behind = d.get("behind_on") or {}
-        for s in self.sticks:
-            if isinstance(behind.get(s.host), str):
-                s.behind_on = behind[s.host]   # [S-6] the next tune of that target resets first
         if got:
             log.info("restored held offsets after a restart: %s", {t: round(v, 1) for t, v in got.items()})
         return got
