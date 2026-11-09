@@ -1,6 +1,9 @@
 """Resource governor: keep the Mac cool, quiet and with free disk while RedZone runs.
 
 Why: the app shares an 8 GB MacBook Air that also goes to school, so extra work must keep it cool, quiet and with free disk (docstring; CLAUDE.md).
+Why (footprint log, WP-10 / P5): the app's memory was sampled every 30 s and never saved, so "did it grow
+over the night?" had no answer; one line every 5 minutes in data/footprint.jsonl answers it (the log never
+changes a level or a default).
 
 The Mac is an 8 GB MacBook Air with ~5 GB of free disk that also goes to school. RedZone shares
 it with everything else, so the extra work (catch-up reel downloads and trims, the lab, the
@@ -19,6 +22,10 @@ Levels (computed from one Sample every `every_s` seconds):
             polling at 1/4. Only critical may touch OCR.
 A swap TOTAL is not a signal (some swap use is normal on an 8 GB Mac, P-07): growth while pressure
 is at least "warn", and a share of the total for critical, are.
+Footprint log: with a path (Governor.from_config gives data/footprint.jsonl; governor.footprint_log: false
+turns it off) one JSON line goes out every FOOTPRINT_EVERY seconds: app RSS and footprint, models, swap,
+memory pressure, disk, battery and level. It is trimmed to its newest lines past FOOTPRINT_LOG_MAX_BYTES and
+a write error is swallowed.
 A level goes up at once and comes down only after `calm_s` seconds below it (no flapping).
 
 Memory caps (macOS has no enforced RSS limit for launchd user agents, so they are enforced here):
@@ -33,6 +40,7 @@ imports it. The level is the explicit machine governor.level (redzone/machines/p
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -49,6 +57,8 @@ from redzone.machines.platform import GOVERNOR_LEVEL
 log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
+FOOTPRINT_EVERY = 300.0            # one footprint line this often (seconds)
+FOOTPRINT_LOG_MAX_BYTES = 512_000  # past this the oldest half is dropped
 LEVELS = ("normal", "eco", "critical")
 
 DEFAULTS: dict = {
@@ -328,8 +338,11 @@ class Governor:
     governor can slow optional work down, never break the app."""
 
     def __init__(self, opts: dict | None = None, *, root: Path = ROOT,
-                 probe: Callable[[], Sample] | None = None, clock: Callable[[], float] = time.time):
+                 probe: Callable[[], Sample] | None = None, clock: Callable[[], float] = time.time,
+                 footprint_log: Path | None = None):
         self.opts = options(opts)
+        self.footprint_log = footprint_log        # None = no log (the default for tests and the watchdog)
+        self._footprint_at = -1e18
         self.root = root
         self._probe = probe or (lambda: sample(root, clock=clock))
         self._clock = clock
@@ -350,6 +363,13 @@ class Governor:
             except Exception:
                 over = {}
             return over if isinstance(over, dict) else {}
+        if "footprint_log" not in kw:
+            try:
+                wanted = cfg.get("governor.footprint_log", True)
+            except Exception:
+                wanted = True
+            if wanted is not False:
+                kw["footprint_log"] = Path(kw.get("root", ROOT)) / "data" / "footprint.jsonl"
         g = cls(read(), **kw)
         g._source = read   # settings changed on the phone apply at the next look
         return g
@@ -435,7 +455,46 @@ class Governor:
         except Exception:
             log.exception("governor: probe failed")
             return self.level
-        return self.update(s)
+        level = self.update(s)
+        self.log_footprint()
+        return level
+
+    def footprint_line(self) -> dict | None:
+        """What one footprint log line holds, from the last sample (None before the first look)."""
+        s = self.last
+        if s is None:
+            return None
+        return {"at": round(s.at or self._clock(), 1), "level": self.level, "service_mb": self.service_mb(),
+                "service_rss_mb": s.procs.get("service"), "service_footprint_mb": s.footprint.get("service"),
+                "models_mb": round(self.models_mb(), 1), "swap_used_mb": s.swap_used_mb,
+                "swap_growth_mb": s.swap_growth_mb, "mem_pressure": s.mem_pressure,
+                "disk_free_mb": s.disk_free_mb, "on_battery": s.on_battery, "battery_pct": s.battery_pct}
+
+    def log_footprint(self, force: bool = False) -> bool:
+        """Append one line to the footprint log if a path is set and FOOTPRINT_EVERY has passed. Never
+        raises; True when a line was written."""
+        path = self.footprint_log
+        if path is None:
+            return False
+        now = self._clock()
+        if not force and now - self._footprint_at < FOOTPRINT_EVERY:
+            return False
+        line = self.footprint_line()
+        if line is None:
+            return False
+        self._footprint_at = now
+        try:
+            path = Path(path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.exists() and path.stat().st_size > FOOTPRINT_LOG_MAX_BYTES:
+                rows = path.read_text().splitlines()
+                path.write_text("\n".join(rows[len(rows) // 2:]) + "\n")
+            with path.open("a") as f:
+                f.write(json.dumps(line, separators=(",", ":")) + "\n")
+            return True
+        except Exception:
+            log.debug("governor: footprint log write failed", exc_info=True)
+            return False
 
     async def run(self) -> None:
         while True:

@@ -12,6 +12,11 @@ scenario reports:
     python scripts/fault_drill.py              # table
     python scripts/fault_drill.py --json       # machine-readable, for the PR before/after table
 Why: Runs the real Controller, Fetcher and Engine against injected faults (docstring, errors commit).
+Why (WP-10 / Q14): adds the faults a long night hits and the drill missed: on the stick on screen a "still
+watching" prompt, an app crash and an app update (visible_*), and on the hidden stick a tune that never
+starts, a refused link, a purchase wall, a blackout, a failed scrub, a hung stick and no route left (queue_*).
+The queue_* scenarios follow redzone/noggin/gamequeue.on_failure against fakes; none flips except at a dead
+ball, and the table's "cuts" column must stay 0.
 """
 from __future__ import annotations
 
@@ -29,7 +34,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from redzone import control as ctl  # noqa: E402
 from redzone.channels import ChannelMap  # noqa: E402
 from redzone.config import Config  # noqa: E402
-from redzone.platform.faults import FaultStick, FaultTuner, FaultTV, SkewClock, World, failing_transport  # noqa: E402
+from redzone.platform.faults import (  # noqa: E402
+    FaultStick, FaultTuner, FaultTV, QueueTuner, SkewClock, World, drive_queue, failing_transport)
 
 # A play runs from 0.3 s to 1.5 s into every scenario: a switch that is ready early must wait.
 PLAY = (0.3, 1.5)
@@ -232,6 +238,17 @@ SCENARIOS = {
     "feed_5xx":            _feed_5xx,
     "reboot_visible":      lambda: _visible_fault("reboot"),
     "stuck_buffering":     lambda: _visible_fault("buffering"),
+    "visible_prompt":      lambda: _visible_fault("prompt"),
+    "visible_app_crash":   lambda: _visible_fault("app_crash"),
+    "visible_app_update":  lambda: _visible_fault("app_update"),
+    "queue_never_started": lambda: _queue_fault("never_started"),
+    "queue_link_refused":  lambda: _queue_fault("link_refused"),
+    "queue_walled":        lambda: _queue_fault("walled"),
+    "queue_blackout":      lambda: _queue_fault("blackout"),
+    "queue_scrub_failed":  lambda: _queue_fault("scrub_failed"),
+    "queue_scrub_banner":  lambda: _queue_fault("scrub_banner_miss"),
+    "queue_stick_hung":    lambda: _queue_fault("hung"),
+    "queue_no_route":      lambda: _queue_fault("no_route"),
     "st_outage":           lambda: _st_fault("outage"),
     "st_429":              lambda: _st_fault("429"),
     "st_auth":             lambda: _st_fault("auth"),
@@ -245,6 +262,9 @@ async def _visible_fault(kind: str) -> dict:
       reboot     its adb link drops and comes back (keepalive's reconnect -> _forget) on the Fire TV
                  home screen;
       buffering  its player spins on "buffering" forever (a dead stream).
+      prompt     a "still watching?" page sits over the player (state paused, only a fresh link clears it);
+      app_crash  the app falls back to the Fire TV home (state none) without an adb drop;
+      app_update the app is being updated: its first two deep links fail, then it plays.
     Compared with hardening.sticks off and on: seconds until the game plays again (None = never in
     the 60 s), re-links sent, and whether the other stick or the TV input was touched."""
     res = {}
@@ -257,7 +277,8 @@ async def _visible_fault(kind: str) -> dict:
             plain = tuner.tune
 
             async def tune(stick, ref, target, may_cut=None, plain=plain):
-                stick.playing = "playing"        # a fresh deep link plays (the app itself is fine)
+                if not stick.launch_fail_left:
+                    stick.playing = "playing"    # a fresh deep link plays (the app itself is fine)
                 return await plain(stick, ref, target, may_cut)
             tuner.tune = tune
             ctl.TUNERS["youtubetv"] = tuner
@@ -268,11 +289,13 @@ async def _visible_fault(kind: str) -> dict:
             ctl.time.time = lambda: clock[0]
             fixed_at = None
             try:
-                a.playing = "none" if kind == "reboot" else "buffering"
+                a.playing = {"buffering": "buffering", "prompt": "paused"}.get(kind, "none")
+                if kind == "app_update":
+                    a.launch_fail_left = 2
                 if kind == "reboot":
                     c._forget(a)                 # what _reconnect does when the stick comes back
                 tv.calls = 0
-                for tick in range(7):            # t = 0, 10, ... 60 s
+                for tick in range(13 if kind == "app_update" else 7):   # t = 0, 10, ... 60 s (120 s for an update)
                     await c._watch_visible()
                     if c._resume_task:
                         await asyncio.gather(c._resume_task, return_exceptions=True)
@@ -288,8 +311,40 @@ async def _visible_fault(kind: str) -> dict:
                                           "other_stick_touched": any("am start" in x for x in b.log),
                                           "tv_input_changes": tv.calls}
     return {"ok": res["on"]["restored_after_s"] is not None and not res["on"]["other_stick_touched"],
-            "wall_s": None, "mid_play_cuts": 0, "stuck": False, "flagged": True,
+            "wall_s": None, "mid_play_cuts": world.mid_play_cuts, "stuck": False, "flagged": True,
             "detail": f"{kind}: visible stick not playing for 60 s, off vs on", "off": res["off"], "on": res["on"]}
+
+
+async def _queue_fault(kind: str) -> dict:
+    """A hidden-stick tune, scrub or route fails while a play runs on screen. The queue (gamequeue) moves
+    on by its typed answer. ok = the typed move was the safe one: the screen stayed on the visible stick
+    unless a ready entry was flipped to at a dead ball, a walled route got no further key, and nothing
+    was flipped to a stick that never started."""
+    from redzone.noggin import gamequeue as gq
+    routes = (gq.Route("youtubetv", "youtubetv:espn"), gq.Route("youtubetv", "youtubetv:cbs"))
+    modes = {"never_started": {"youtubetv:espn": "never_started"},
+             "link_refused": {"youtubetv:espn": "link_refused"},
+             "walled": {"youtubetv:espn": "walled"}, "blackout": {"youtubetv:espn": "blackout"},
+             "hung": {"youtubetv:espn": "hung"},
+             "no_route": {r.ref: "link_refused" for r in routes}}.get(kind, {})
+    with tempfile.TemporaryDirectory() as d:
+        world = World(safe=_safe)
+        c, a, b, tv = _controller(Path(d), world)
+        world.t0 = time.monotonic() - 0.31          # the visible game is mid-play: a flip must wait
+        entry = gq.Entry("g1", routes=routes, level=gq.Level.R1)
+        tuner = QueueTuner(modes)
+        t0 = time.monotonic()
+        run = await drive_queue(entry, tuner, b, world, scrub=kind if kind.startswith("scrub") else None)
+        wall = time.monotonic() - t0
+        flipped_safely = run.flipped is None or world.mid_play_cuts == 0
+        want_flip = kind in ("never_started", "link_refused", "blackout")        # the second route is clean
+        ok = (flipped_safely and run.keys_after_wall == 0 and (run.flipped is not None) == want_flip
+              and (kind != "walled" or run.tuned.count("youtubetv:espn") == 1)
+              and (kind != "hung" or run.flipped is None))
+        return {"ok": ok, "wall_s": round(wall, 2), "mid_play_cuts": world.mid_play_cuts, "stuck": _stuck(c),
+                "flagged": True, "detail": f"{kind}: moves {run.steps}, tuned {len(run.tuned)}, "
+                f"level R{run.level}, flipped {run.flipped is not None}",
+                "keys_after_wall": run.keys_after_wall}
 
 
 async def _st_fault(kind: str) -> dict:
