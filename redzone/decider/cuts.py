@@ -172,7 +172,8 @@ MEDIAN_S = {
     League.NFL: {"halftime": 850.0, "end_period": 196.0, "tv_timeout": 147.0, "two_minute": 160.0, "review": 217.0,
                  "score": 187.0, "kickoff": 41.0, "punt": 172.0, "turnover": 75.0, "penalty": 50.0,
                  "team_timeout": 43.0, "huddle": 34.0, "injury": 80.0},
-    League.NBA: {"timeout": 184.0, "end_period": 185.0, "halftime": 933.0, "review": 153.0, "free_throw": 25.0,
+    # timeout_long / media_timeout: the kinds DeadTracker now produces; the old "timeout" key would never be read (AUDIT-8)
+    League.NBA: {"timeout": 184.0, "timeout_long": 184.0, "media_timeout": 184.0, "end_period": 185.0, "halftime": 933.0, "review": 153.0, "free_throw": 25.0,
                  "foul": 40.0, "out_of_bounds": 15.0, "violation": 14.0, "substitution": 10.0},
     League.NHL: {"tv_timeout": 149.0, "goal": 48.0, "icing": 30.0, "whistle": 37.0, "penalty": 56.0,
                  "review": 200.0, "timeout": 99.0, "intermission": 1129.0},
