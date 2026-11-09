@@ -312,7 +312,7 @@ def features(v: GameView, head: np.ndarray, decision_t: np.ndarray) -> dict[str,
         out.update(G.state_features(v.state, head))
         out.update(G.derived_features(v.league, out))
     if FEATURES_VERSION == "v5":
-        out.update(W.features(v.wide, head, _wide_columns()))       # head only: no decision time, no cut, no label reaches these columns
+        out.update(W.features(v.wide, head, _wide_columns(), G.GV_V5_OWN.get(v.league, frozenset())))       # head only: no decision time, no cut, no label reaches these columns
     return out
 
 
@@ -381,7 +381,13 @@ def prefix_check(league: str, game_id: str, summary: dict, rows: pd.DataFrame, n
 
 def _kept_sha() -> str:
     """Hash of the active v5 columns, not the file: what a shard was built with."""
-    return hashlib.sha256(json.dumps(sorted(_wide_columns())).encode()).hexdigest()
+    return hashlib.sha256(json.dumps({"columns": sorted(_wide_columns()), "own": {lg: sorted(c) for lg, c in sorted(G.GV_V5_OWN.items())}}).encode()).hexdigest()
+
+
+def shards_id(out: Path) -> str:
+    """Short id of a finished shards dir (its manifest and splits): the kept list records which build picked it."""
+    out = Path(out)
+    return hashlib.sha256((out / "manifest.json").read_bytes() + (out / "splits.json").read_bytes()).hexdigest()[:16]
 
 
 def shard_paths(out: Path, league: str, shard: str) -> tuple[Path, Path]:
@@ -413,7 +419,7 @@ def write_shard(out: Path, league: str, shard: str, rows: pd.DataFrame, info: di
     frame.to_parquet(tmp, compression="zstd", index=False)
     os.replace(tmp, pq)
     if FEATURES_VERSION == "v5":
-        info = {**info, "v5_kept_sha": _kept_sha(), "v5_columns": list(_wide_columns())}
+        info = {**info, "v5_kept_sha": _kept_sha(), "v5_columns": list(_wide_columns()), "v5_own": sorted(G.GV_V5_OWN.get(league, ()))}
     meta = {**info, "league": league, "shard": shard, "rows": int(len(rows)), "complete": True,
             "features_version": FEATURES_VERSION, "rows_sha256": rows_sha(frame),
             "nights": sorted(rows["night"].unique().tolist()) if len(rows) else [],

@@ -32,7 +32,8 @@ scores become points through strictly increasing knots, so the order the ranker 
 
 Features v5 (RZ_GV_FEATURES=v5, off by default) are v4 plus the kept columns of redzone/noggin/wide_features.py, listed in a file RZ_GV_V5_KEPT names and
 written by scripts/kaggle_gamevalue_select.py. The generator makes 100,000+ candidates; a model reads only the kept ones, so quote the kept count as what it uses.
-No kept list stops the import: a v5 run with no list has no meaning.
+No kept list stops the import: a v5 run with no list has no meaning. The file schema is one union across leagues, but each league computes only its own columns (GV_V5_OWN) and reads 0 for the rest, so a league's
+model is exactly what its forward check validated.
 
 A pooled model (league "all", meta "leagues") loads for any league it was trained on and has no state table.
 
@@ -99,6 +100,7 @@ GV_SHADOW_NIGHTS = 7
 GV_DIR = MODEL_DIRS["noggin"]
 
 GV_FEATURES_VERSION, GV_FEATURES = "", ()
+GV_V5_OWN: dict[str, frozenset] = {}  # v5 only: league -> the columns its forward check validated. Every other wide column reads 0 for that league.
 _COL: dict[str, int] = {}
 _LO, _HI = np.zeros(0), np.zeros(0)
 
@@ -106,13 +108,16 @@ _LO, _HI = np.zeros(0), np.zeros(0)
 def select_features(version: str) -> None:
     """Make `version` the active feature list. v2 stays the default; RZ_GV_FEATURES=v3 picks the history features for a whole
     run (the shard builder and the trainer read it at import). An unknown name stops the import."""
-    global GV_FEATURES_VERSION, GV_FEATURES, _COL, _LO, _HI
+    global GV_FEATURES_VERSION, GV_FEATURES, GV_V5_OWN, _COL, _LO, _HI
+    own: dict[str, frozenset] = {}
     if version == "v5":                # the only version whose columns live in a file: no kept list, no v5 (wide_features says where)
         from redzone.noggin import wide_features
-        GV_FEATURE_SETS["v5"] = GV_FEATURE_SETS["v4"] + wide_features.load_kept()
+        kept = wide_features.read_kept()
+        GV_FEATURE_SETS["v5"] = GV_FEATURE_SETS["v4"] + tuple(kept["columns"])
+        own = {lg: frozenset(info["kept_columns"]) for lg, info in kept["leagues"].items()}
     if version not in GV_FEATURE_SETS:
         raise ValueError(f"{GV_FEATURES_ENV}={version!r}: known versions are {sorted(GV_FEATURE_SETS)}")
-    GV_FEATURES_VERSION, GV_FEATURES = version, GV_FEATURE_SETS[version]
+    GV_FEATURES_VERSION, GV_FEATURES, GV_V5_OWN = version, GV_FEATURE_SETS[version], own
     _COL = {f: i for i, f in enumerate(GV_FEATURES)}
     _LO = np.array([GV_BOUNDS.get(f, GV_WIDE_BOUNDS)[0] for f in GV_FEATURES], float)
     _HI = np.array([GV_BOUNDS.get(f, GV_WIDE_BOUNDS)[1] for f in GV_FEATURES], float)

@@ -17,9 +17,13 @@ gv5__pts__trail__p10__sum__raw__late is the points the trailing team (trailing a
             ESPN is a known risk the fair test (ESPN feeds) measures.
     window  pN = last N plays, sT = last T seconds of wall clock before the head play; game = whole-game registers (cum, per, since_s, since_p, streak).
     agg     sum, mean, rate (per minute), nz (plays where it was nonzero), max, std, slope (second half minus first half of the window).
-    norm    raw, lg (divided by a hand-set league unit), log (signed log1p).
-    cross   none, or a game-state number multiplied in: close, late, crunch, last (last regulation period or later), margin, left, lead; football adds
+    norm    raw, lg (divided by a hand-set league unit), log (signed log1p). Only under the numeric crosses (margin, left): under a 0/1/-1 cross all three order every row the same, so a tree sees one column.
+            lg is a constant multiple of raw inside one league (the two differ only across leagues); drop_duplicates removes it before boosting.
+    cross   none, or a game-state number multiplied in: close, late, crunch, last (last regulation period or later), lead, margin, left; football adds
             down3, rz, short.
+
+Football scoring: nflverse rows (extra points and two-point tries dropped, holdset_public.nfl_summary) show a touchdown as +6 and leave the conversion to the next row, while ESPN's touchdown row is usually +7
+(checked on six dev-night archive games, 2026-11-09). Tracker therefore counts every touchdown as 7 and a lone +1 or +2 without a safety as nothing, so `pts` and `scoring` read the same from either source.
 
 Causal by construction: every number is computed from plays at or before the head (never the decision time, the cut, the label or a later play), by one
 incremental Tracker, whether offline or live, and windows are bounded by RING plays either way, so offline equals online. League units are constants
@@ -27,6 +31,7 @@ fit on no rows, so they cannot leak. No pandas here: the live process imports th
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -52,6 +57,7 @@ GAME_AGGS = ("cum", "per", "since_s", "since_p", "streak")
 NORMS = ("raw", "lg", "log")
 _CROSS_ALL = ("none", "close", "late", "crunch", "last", "margin", "left", "lead")
 _CROSS_FOOTBALL = _CROSS_ALL + ("down3", "rz", "short")
+NUMERIC_CROSSES = ("margin", "left")      # the only crosses where the norm changes the order of a column's rows
 TEAM_SIDES = ("all", "home", "away", "lead", "trail")
 _SCORE_HOOPS = ("pts", "scoring", "made2", "made3", "ft")
 _OTHER_HOOPS = ("plays", "turnover", "foul", "timeout", "miss", "reb_off", "reb_def", "dunk", "layup", "jump", "three_att", "ft_att", "lead_change", "tie")
@@ -74,12 +80,26 @@ DEFAULT_KEPT = Path(__file__).resolve().parent / "gv_v5_kept.json"
 KEPT_SCHEMA = 1
 
 
-def _grid_sha() -> str:
-    spec = (RING, WINDOWS, GAME_WINDOW, WINDOW_AGGS, GAME_AGGS, NORMS, _CROSS_FOOTBALL, TEAM_SIDES, _SCORE_HOOPS, _OTHER_HOOPS, _SCORE_FOOTBALL, _OTHER_FOOTBALL)
-    return hashlib.sha256(json.dumps(spec).encode()).hexdigest()[:16]
+def _logic(source: str, only: frozenset | None = None) -> str:
+    """The code of `source` without docstrings or comments, or just the top-level names in `only`. A reworded comment is the same generator; a changed line is not."""
+    tree = ast.parse(source)
+    nodes = tree.body if only is None else [n for n in tree.body if getattr(n, "name", None) in only or (isinstance(n, ast.Assign) and any(getattr(t, "id", None) in only for t in n.targets))]
+    kept = ast.Module(body=nodes, type_ignores=[])
+    for node in ast.walk(kept):
+        body = getattr(node, "body", None)
+        if isinstance(body, list) and body and isinstance(body[0], ast.Expr) and isinstance(getattr(body[0], "value", None), ast.Constant) and isinstance(body[0].value.value, str):
+            node.body = body[1:] or [ast.Pass()]
+    return ast.dump(kept)
 
 
-GENERATOR = f"gv5-{_grid_sha()}"         # changes whenever the grid changes, so a kept list from another grid will not load
+def logic_digest(wide_source: str, gamevalue_source: str, detect_source: str) -> str:
+    """Sha of this module's logic and constants and of what it borrows: the play kinds, the feed-row rule, the league scales, the clock parser."""
+    parts = (_logic(wide_source), _logic(gamevalue_source, frozenset({"play_kind", "feed_row", "_num", "GV_LEAGUE_SCALE", "_HOOPS_VIOLATIONS", "_NOT_A_SNAP", "_FOOTBALL"})),
+             _logic(detect_source, frozenset({"clock_s"})))
+    return hashlib.sha256("\n".join(parts).encode()).hexdigest()[:16]
+
+
+GENERATOR = f"gv5-{logic_digest(Path(__file__).read_text(), Path(G.__file__).read_text(), Path(clock_s.__code__.co_filename).read_text())}"     # a kept list from other logic will not load
 
 
 def _check_league(league: str) -> None:
@@ -122,13 +142,14 @@ class Block(NamedTuple):
 def blocks(league: str) -> tuple[Block, ...]:
     """Every candidate, grouped, in the one fixed order."""
     team, other = stats_of(league)
-    crosses = crosses_of(league)
+    plain = tuple(c for c in crosses_of(league) if c not in NUMERIC_CROSSES)
+    numeric = tuple(c for c in crosses_of(league) if c in NUMERIC_CROSSES)
     out = []
     for stat in tuple(team) + tuple(other):
         sides = TEAM_SIDES if stat in team else ("all",)
-        for w in WINDOWS:
-            out.append(Block(stat, w, sides, WINDOW_AGGS, NORMS, crosses))
-        out.append(Block(stat, GAME_WINDOW, sides, GAME_AGGS, NORMS, crosses))
+        for w, aggs in tuple((x, WINDOW_AGGS) for x in WINDOWS) + ((GAME_WINDOW, GAME_AGGS),):
+            out.append(Block(stat, w, sides, aggs, ("raw",), plain))
+            out.append(Block(stat, w, sides, aggs, NORMS, numeric))
     return tuple(out)
 
 
@@ -171,6 +192,8 @@ def parse(name: str) -> Spec:
         raise ValueError(f"not a wide column: {name!r}")
     if spec.side != "all" and spec.stat not in _SCORE_HOOPS + _SCORE_FOOTBALL:
         raise ValueError(f"not a wide column (no team split for {spec.stat}): {name!r}")
+    if spec.norm != "raw" and spec.cross not in NUMERIC_CROSSES:
+        raise ValueError(f"not a wide column (norm {spec.norm} under cross {spec.cross} is a clone of raw): {name!r}")
     return spec
 
 
@@ -215,6 +238,15 @@ def _play_stats(league: str, kind: str, text: str, p: Mapping, dh: float, da: fl
     return out
 
 
+def _football_points(points: float, kind: str) -> float:
+    """One team's points on one football play, the same from either source (see the module docstring): a touchdown is 7, a stray +1 or +2 (a conversion arriving a row late) is 0, a safety stays 2."""
+    if points >= 6.0:
+        return 7.0
+    if 0.0 < points < 3.0 and "safety" not in kind:
+        return 0.0
+    return points
+
+
 class Tracker:
     """Walks one game play by play, oldest first, with O(1) state: the one definition of every per-play number, offline and live."""
 
@@ -237,13 +269,15 @@ class Tracker:
         nh = self.home if h1 is None else float(h1)
         na = self.away if a1 is None else float(a1)
         dh, da = max(nh - self.home, 0.0), max(na - self.away, 0.0)       # a downward correction is not a score
+        kind, text = ((play.get("type") or {}).get("text") or "").lower(), (play.get("text") or "").lower()
+        if self.league in FOOTBALL:
+            dh, da = _football_points(dh, kind), _football_points(da, kind)
         self.home, self.away = nh, na
         margin = self.home - self.away
         sign = (margin > 0) - (margin < 0)
         change = bool(sign and self.sign and sign != self.sign)
         tie = bool(not sign and (self.home + self.away) > 0 and (dh + da) > 0)
         self.sign = sign or self.sign
-        kind, text = ((play.get("type") or {}).get("text") or "").lower(), (play.get("text") or "").lower()
         vec = np.zeros(len(self.names))
         for stat, (h, a) in _play_stats(self.league, kind, text, play, dh, da, change, tie).items():
             if stat in self.team:
@@ -435,13 +469,16 @@ class Plan:
 
 
 @lru_cache(maxsize=32)
-def compile_plan(league: str, names: tuple[str, ...]) -> Plan:
-    """`names` may hold columns this league does not have (a kept list spans leagues): they read 0 here."""
+def compile_plan(league: str, names: tuple[str, ...], own: frozenset | None = None) -> Plan:
+    """`names` may hold columns this league does not have (a kept list spans leagues): they read 0 here. With `own`, so does every column outside this league's kept list,
+    so a league's model can only ever split on the columns its own forward check validated."""
     team, other = stats_of(league)
     crosses = set(crosses_of(league))
     grouped: dict[tuple[str, str], list[tuple[int, Spec]]] = {}
     for pos, name in enumerate(names):
         spec = parse(name)
+        if own is not None and name not in own:
+            continue
         if spec.stat not in team and spec.stat not in other:
             continue
         if spec.cross not in crosses or (spec.side != "all" and spec.stat not in team):
@@ -469,11 +506,11 @@ def run_plan(s: Series, head: np.ndarray, plan: Plan) -> np.ndarray:
     return out
 
 
-def features(s: Series, head: np.ndarray, names: tuple[str, ...]) -> dict[str, np.ndarray]:
-    """{name: value per head}: value_shards.features' entry."""
+def features(s: Series, head: np.ndarray, names: tuple[str, ...], own: frozenset | None = None) -> dict[str, np.ndarray]:
+    """{name: value per head}: value_shards.features' entry. `own` is this league's kept list."""
     if not names:
         return {}
-    X = run_plan(s, head, compile_plan(s.league, names))
+    X = run_plan(s, head, compile_plan(s.league, names, own))
     return {n: X[:, j] for j, n in enumerate(names)}
 
 
@@ -501,6 +538,11 @@ def read_kept(path: Path | str | None = None) -> dict:
         raise ValueError(f"{target}: columns must be a sorted list without repeats")
     for n in names:
         parse(n)
+    leagues = data.get("leagues")
+    if not isinstance(leagues, dict) or not all(isinstance(v, dict) and isinstance(v.get("kept_columns"), list) for v in leagues.values()):
+        raise ValueError(f"{target}: every league needs its own kept_columns")
+    if sorted({c for v in leagues.values() for c in v["kept_columns"]}) != names:
+        raise ValueError(f"{target}: columns is not the union of the leagues' kept_columns")
     return data
 
 
@@ -513,9 +555,10 @@ def kept_sha(path: Path | str | None = None) -> str:
     return hashlib.sha256(json.dumps(sorted(load_kept(path))).encode()).hexdigest()
 
 
-def write_kept(path: Path, leagues: Mapping[str, Mapping], columns: Iterable[str]) -> dict:
-    """Atomic, no timestamps: the same run gives the same bytes."""
-    data = {"schema": KEPT_SCHEMA, "generator": GENERATOR, "complete": True, "leagues": leagues, "columns": sorted(set(columns))}
+def write_kept(path: Path, leagues: Mapping[str, Mapping], *, complete: bool, shard_id: str) -> dict:
+    """Atomic, no timestamps: the same run gives the same bytes. Only a finished run sets complete, and only a complete file loads; a partial one stays readable for the record."""
+    columns = sorted({c for v in leagues.values() for c in v.get("kept_columns", [])})
+    data = {"schema": KEPT_SCHEMA, "generator": GENERATOR, "complete": bool(complete), "shard_id": shard_id, "leagues": leagues, "columns": columns}
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(".tmp")
@@ -527,12 +570,18 @@ def write_kept(path: Path, leagues: Mapping[str, Mapping], columns: Iterable[str
 # --- the live call ----------------------------------------------------------------------------------------------------------------
 
 
+def game_for(league: str) -> "WideGame":
+    """A WideGame for the active v5 feature set, this league's own columns live and the rest 0, exactly as the shards were built."""
+    names = tuple(f for f in G.GV_FEATURES if f.startswith(PREFIX + SEP))
+    return WideGame(league, names, G.GV_V5_OWN.get(league, frozenset()))
+
+
 class WideGame:
     """One live game: fixed-size history (RING plays), kept columns on demand. Everything it holds is bounded, whatever the game's length."""
 
-    def __init__(self, league: str, names: Sequence[str]):
+    def __init__(self, league: str, names: Sequence[str], own: frozenset | None = None):
         self.league, self.names = league, tuple(names)
-        self.plan = compile_plan(league, self.names)
+        self.plan = compile_plan(league, self.names, own)
         self._reset()
 
     def _reset(self) -> None:

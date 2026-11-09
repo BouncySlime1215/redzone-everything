@@ -11,7 +11,7 @@
     RZ_GV_FEATURES=v5 RZ_GV_V5_KEPT=/kaggle/working/v5_kept.json python scripts/kaggle_gamevalue.py --shards <v5 dir> --out <dir> --raw <raw dir> --leagues nfl,nba,cbb --personal-nba --trials base,deep,rank,rank_deep --budget-hours 10
 
 v5 is off by default and opt-in: the first line above generates 100,000+ candidates per league on training nights and writes the few it keeps. A v5 model reads only those kept
-columns; quote their count as what it uses, never the candidates. v5 uses the same forward folds, test nights and capture as v4, and promotion stays the same: beat the real Planner on the same nights, then 7 of 7 shadow nights.
+columns; quote their count as what it uses, never the candidates. v5 uses the same forward folds, test nights and capture as v4, and promotion stays the same: beat the real Planner on the same nights, then 7 of 7 shadow nights. Whether v5 replaces v4 at all is scripts/gamevalue_v5_report.py on the v4 and v5 manifests: per-night paired capture deltas and a bootstrap interval over nights, which must exclude 0.
 
 The raw seasons are never downloaded here (github.com release paths are disallowed by its robots file): the NFL ones come
 from the staged output of agent/kaggle/fetch_sports_nfl.py (api.github.com), the NBA/CBB ones from fetch_sports_nba.py /
@@ -366,6 +366,19 @@ class SharedClock:
     def __init__(self, league: str, rows: dict, games: dict):
         self.league, self.rows, self.games = league, rows, games
 
+    def by_night(self, model: G.GameValueModel, nights: list[str], k: int = 4) -> dict:
+        """{night: value the model's top K held, value available, decisions} on holdset's capture: the input of the paired v5 vs v4 report."""
+        ranker = HOLD.ModelRanker(model, games=lambda _league, night: self.games.get(night, []))
+        out = {}
+        for night in nights:
+            rows = self.rows.get(night)
+            if not rows:
+                continue
+            got, total, _, n = holdset.capture(holdset.decisions(self.league, rows, ranker(self.league, night, rows)), lambda x: x[5], k, random.Random(0))
+            if n:
+                out[night] = {"got": float(got), "total": float(total), "decisions": int(n)}
+        return out
+
     def report(self, model: G.GameValueModel, fit_nights: list[str], test_nights: list[str]) -> dict:
         """holdset's capture on these nights: the model beside table, closest score, random and hindsight. {} when nothing scores."""
         ranker = HOLD.ModelRanker(model, games=lambda _league, night: self.games.get(night, []))
@@ -653,7 +666,8 @@ def train_league(shards: Path, out: Path, league: str, trainer, folds: int, leak
             path.unlink(missing_ok=True)
             raise Refused(f"{league} {version}: no K=4 decision on the test nights, so there is nothing to compare")
         report["models"][version] = {"file": path.name, "sha256": stamped["sha256"], "bytes": path.stat().st_size, "license_tag": meta["license_tag"],
-                                     "p1_calibration": meta.get("p1_calibration"), "cv": {"folds": rows_cv[version], **summarize(rows_cv[version])}, "test": scored}
+                                     "p1_calibration": meta.get("p1_calibration"), "cv": {"folds": rows_cv[version], **summarize(rows_cv[version])}, "test": scored,
+                                     "test_by_night": clock.by_night(again, test)}
         log(json.dumps({"league": league, "version": version, "cv": summarize(rows_cv[version]), "test": report["models"][version]["test"]}), flush=True)
     if challenger is not None:
         entry = {"name": getattr(challenger, "name", type(challenger).__name__), "license": getattr(challenger, "license", ""),
@@ -874,6 +888,9 @@ def main(argv=None, trainer=None) -> int:
         if status != "ok":
             print(f"REFUSED: {lg}: {why}", flush=True)
             return EXIT_REFUSED
+    if G.GV_FEATURES_VERSION == "v5" and (a.pooled or a.pooled_only):
+        print("REFUSED: --pooled is not validated for v5: each league's kept columns passed only that league's forward check", flush=True)
+        return EXIT_REFUSED
     if G.GV_FEATURES_VERSION == "v5":
         try:
             check_kept_list(a.shards, leagues)
