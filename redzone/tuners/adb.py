@@ -482,7 +482,9 @@ class Stick:
             # before that read may have closed. Waking can steal HDMI via CEC.
             if may_cut is not None and not may_cut():
                 return False
-            await self.key("KEYCODE_WAKEUP")
+            pressed = await self.key("KEYCODE_WAKEUP")
+            if pressed is not None and not pressed.ok:   # None: a test double's key(), which reports nothing
+                return True            # pressed, or tried to: don't trust "awake" until a press has worked
         self.mark_awake()
         return asleep
 

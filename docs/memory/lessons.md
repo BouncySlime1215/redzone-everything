@@ -439,3 +439,5 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
 - 2026-11-09 (AUDIT-OLD): the stick breaker only guarded `shell()`. `screen_text`, `screencap` and the raw `exec-out` reads start their own adb process, so a hung stick still cost 12 to 15 s each. Lesson: a guard on the common path doesn't cover the paths written to avoid it; check each door. Test: tests/test_audit_old_adb.py.
 
 - 2026-11-09 (AUDIT-OLD): `adb._adb` killed its process on timeout but not on cancel, unlike `Stick.run`, so a cancelled `adb connect` or `disconnect` outlived its caller. Lesson: two copies of the same subprocess wrapper drift; when one gets a cleanup, grep for the other. Test: tests/test_audit_old_adb.py.
+
+- 2026-11-09 (AUDIT-OLD): `ensure_awake` marked a stick awake even when the WAKEUP key was refused (breaker open, shell failure), so for 60 s nothing tried to wake it again. Lesson: record the state you confirmed, not the one you asked for. Test: tests/test_audit_old_adb.py.

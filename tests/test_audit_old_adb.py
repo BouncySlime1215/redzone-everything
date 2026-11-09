@@ -64,3 +64,32 @@ async def test_a_cancelled_adb_call_leaves_no_process_behind(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         await task
     assert proc.killed
+
+
+async def test_a_refused_wake_up_is_not_remembered_as_awake(monkeypatch):
+    """Repro: ensure_awake marked the stick awake even when the WAKEUP key failed, so for 60 s nothing woke it."""
+    s = Stick("10.0.0.9:5555")
+    seen = []
+
+    async def shell(cmd, timeout=8.0):
+        seen.append(cmd)
+        if cmd.startswith("dumpsys power"):
+            return RunResult(True, "mWakefulness=Asleep", 0.0)
+        return RunResult(False, "stick not responding", 0.0)
+    monkeypatch.setattr(s, "shell", shell)
+    await s.ensure_awake()
+    await s.ensure_awake()
+    assert sum("WAKEUP" in c for c in seen) == 2
+
+
+async def test_a_wake_up_that_worked_is_trusted_for_a_while(monkeypatch):
+    s = Stick("10.0.0.9:5555")
+    seen = []
+
+    async def shell(cmd, timeout=8.0):
+        seen.append(cmd)
+        return RunResult(True, "mWakefulness=Asleep" if cmd.startswith("dumpsys") else "", 0.0)
+    monkeypatch.setattr(s, "shell", shell)
+    assert await s.ensure_awake() is True
+    assert await s.ensure_awake() is False
+    assert sum("WAKEUP" in c for c in seen) == 1
