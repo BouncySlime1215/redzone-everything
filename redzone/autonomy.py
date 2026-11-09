@@ -301,7 +301,15 @@ class Scheduler:
                 st.last_run, st.ok = rec.get("t"), rec.get("ok")
             st.message = rec.get("message", st.message)
             if rec.get("slot"):
-                st.done_slot = max(st.done_slot or 0.0, float(rec["slot"]))
+                slot = float(rec["slot"])
+                if rec.get("outcome") in ("failed", "timeout", "crashed"):
+                    # a failed try ends the slot only once its tries are used up
+                    if st.slot != slot:
+                        st.slot, st.tries = slot, 0
+                    st.tries += 1
+                    if st.tries < self.jobs[rec["job"]].attempts:
+                        continue
+                st.done_slot = max(st.done_slot or 0.0, slot)
 
     async def tick(self) -> list[asyncio.Task]:
         """Start whatever is due and safe. Returns the tasks it started (tests await them)."""
