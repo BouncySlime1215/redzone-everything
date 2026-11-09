@@ -3037,7 +3037,7 @@ class Controller:
                            False, path="prime_tile", screen_unchanged=True)
         if not self.live_control:
             return Outcome(False, target, 0.0, "TV control was disabled", True)
-        self.on_target = None
+        was_on, self.on_target = self.on_target, None
         self._mark("tune_start")
         res = await mv.switch(main, target, may_cut)
         self._mark("tune_done")
@@ -3048,6 +3048,7 @@ class Controller:
             return Outcome(True, target, res.took, "; ".join(res.steps[-2:]), False, time.time(), path="prime_tile",
                            waited=waited, stick=main.host)
         if res.screen_changed is False:
+            self.on_target = was_on   # nothing was pressed: the screen is what it was
             return None
         # Keys were pressed and the main tile isn't the one we wanted (or can't be read). The session is
         # forgotten, so the next decision takes a normal path; never chain a 30 s tune into this cut.
@@ -3058,11 +3059,14 @@ class Controller:
         if await self._still_on_visible(target):
             return Outcome(True, target, 0.0, "already on it", False, time.time(), path="already")
         main = self.main
+        was_on = self.on_target
         self.on_target = None   # unknown until this tune is confirmed (a cancelled tune leaves it unknown)
         self._mark("tune_start")
         res = await self._tune(main, target, self._exit_check)
         self._mark("tune_done")
         if not res.ok:
+            if res.screen_changed is False:
+                self.on_target = was_on   # no key went out (the cut window closed, a hung stick): it still shows that game
             self._blackout_check(target, res)
             return Outcome(False, target, time.time() - t0, res.error + " | " + "; ".join(res.steps[-3:]), False,
                            path="single", screen_unchanged=getattr(res, "screen_changed", None) is False)
