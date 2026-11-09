@@ -110,7 +110,6 @@ Also update the P1 row in section 1 to read "Queue and switching", with "Section
 
 ## 8. Log (coordinator, newest first)
 - 2026-11-09 overnight: build plan waves 0, 1, 1b, 2 and most of 3 merged one at a time on PR 423: route truth, queue core and wiring, queue feed, typed failures, scrub speed, app tuners and the purchase guard, commit gate and its adversarial fixes, Ticket scan, moments, brain contract, legal options, arbiter, slate and fill, phone queue, screen clock, Mac preflight and drills, sim mix, audits, show scorecard. Brain data: 17 jobs, reports in docs/agents/data/, ledger D-LEDGER. All new features are OFF. Full suite 5,619 passed, 0 failed before WP-26 merged. None of it has run on the real TV. Open: backup-route flip, NBA 8-11 s after-shot joins against the frozen grader, Nick launches the Kaggle runs.
-
 - 2026-11-09: five planners (docs/agents/planner/) and the build plan (P-BUILD) done; sections 3-5 replaced with the build plan.
   Wave 1 launched: route truth, queue core, scrub speed, app tuners, commit gate, Sunday Ticket scan. TV off.
 
