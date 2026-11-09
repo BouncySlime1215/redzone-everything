@@ -1,0 +1,12 @@
+{
+  "card": "WP-26D",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "scripts/kaggle_gamevalue.py",
+    "redzone/noggin/gamevalue.py",
+    "tests/test_gamevalue*.py"
+  ],
+  "started": 1794220274,
+  "expires": 1794393074
+}
