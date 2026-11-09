@@ -28,6 +28,10 @@ Features v3 (RZ_GV_FEATURES=v3, off by default so v2 shards and models stay comp
 points and swing over the last 3-5 plays, the current unanswered run, turnovers and fouls in the last 5 min, pace, timeouts.
 All twelve come from gamevalue.history_features, the same numpy code a live caller runs on the plays of the feed so far.
 
+Features v4 (RZ_GV_FEATURES=v4) are v3 plus the drive state, closeness and league-relative numbers of gamevalue.py. Under v4 a football feed drops
+rows only one source has (gamevalue.feed_row), and yards_to_goal reads -1 once the ball has changed hands, because ESPN and nflverse put that
+field in different places then. Rows and labels are the same plays either way; only the features change.
+
 Sources: only what docs/agents/data/2026-11-09-sports-data-gaps.md lists as licence-cleared, see `public_status`.
 NBA and CBB (hoopR) stay off in code unless `personal_nba=True`, because Nick has not ruled on that report's conditional row.
 """
@@ -189,6 +193,7 @@ class GameView:
     points_cum: np.ndarray
     playoff: int
     history: G.History | None = None
+    state: G.State | None = None
 
 
 def _value(x) -> float:
@@ -209,6 +214,8 @@ def _moment_arrays(moments) -> tuple[dict[int, np.ndarray], np.ndarray, np.ndarr
 
 def make_view(league: str, summary: dict, det: Detected, playoff: int = 0) -> GameView:
     plays = flat_plays(league, summary)
+    if FEATURES_VERSION == "v4":
+        plays = [x for x in plays if G.feed_row(league, x[1])]
     n = len(plays)
     arr = {k: np.full(n, -1.0) for k in ("period", "clock", "down", "distance", "ytg")}
     home, away, lc, last = np.zeros(n), np.zeros(n), np.zeros(n), np.full(n, -1.0)
@@ -237,7 +244,7 @@ def make_view(league: str, summary: dict, det: Detected, playoff: int = 0) -> Ga
     tier_t, pts_t, pts_cum = _moment_arrays(safe)
     return GameView(league, np.array([t for t, _ in plays], float), arr["period"], arr["clock"], home + away, home - away,
                     lc, last, arr["down"], arr["distance"], arr["ytg"], tier_t, pts_t, pts_cum, int(playoff),
-                    G.history_arrays(league, plays))
+                    G.history_arrays(league, plays), G.state_arrays(league, plays) if FEATURES_VERSION == "v4" else None)
 
 
 def _count_in(times: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:
@@ -282,6 +289,9 @@ def features(v: GameView, head: np.ndarray, decision_t: np.ndarray) -> dict[str,
     }
     if FEATURES_VERSION != "v2":
         out.update(G.history_features(v.history, head))
+    if FEATURES_VERSION == "v4":
+        out.update(G.state_features(v.state, head))
+        out.update(G.derived_features(v.league, out))
     return out
 
 

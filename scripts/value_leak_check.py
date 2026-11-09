@@ -11,6 +11,9 @@ in step. Night truth comes from redzone/noggin/factory.py (public cut) and scrip
 Fails closed: no shards, a missing sidecar, a missing splits file, or an archive row without an archive to check
 it against are all FAIL. Archive files for locked games are never opened: only scoreboards are read, to know the split.
 
+Features v4 get their own raw recomputation below (_raw_state): the drive state from nflverse's columns with this file's rules, and the
+league-relative numbers from this file's own constants, so a slip in gamevalue.state_arrays or a planted future shows up as a difference.
+
 Stamps and the prefix rebuild only see what the shard builder and its adapter wrote, so a future fact an adapter put into a
 per-play field passes them. `--raw` is the check that catches it: for a sample of rows per game it reads the head play's
 fields straight from the raw source (not through the adapter) and recomputes the label from holdset's separate detector
@@ -43,7 +46,13 @@ LABELS = ("value_next_3m", "p_tier1_60s")
 FEATURES_VERSION = "v2"  # value_shards' default FEATURES_VERSION: older shards anchor the label on the feed head
 HISTORY = ("pts_last3", "pts_last5", "swing_last5", "run_pts", "run_by_trailing", "to_5m", "fouls_5m", "plays_2m",
            "sec_per_play_10", "timeouts_period", "since_timeout_s", "timeout_recent")
-FEATURES_BY_VERSION = {"v2": FEATURES, "v3": FEATURES + HISTORY}
+DRIVE = ("drive_plays", "drive_yards", "drive_clock_s", "drive_start_ytg", "rz_reached", "next_down", "next_distance", "poss_flip",
+         "half_left", "two_minute", "timeouts_half")
+DERIVED = ("margin_class", "closeness", "crunch_eta_s", "league_id", "game_frac_left", "margin_scores", "margin_z", "pace_rel")
+FEATURES_BY_VERSION = {"v2": FEATURES, "v3": FEATURES + HISTORY, "v4": FEATURES + HISTORY + DRIVE + DERIVED}
+# league -> (points in one score, final-margin sd, points per 5 min, regulation seconds, league id): restated, and a test keeps it in step.
+SCALE = {"nfl": (7.0, 13.5, 3.75, 3600.0, 0.0), "nba": (2.5, 12.0, 24.0, 2880.0, 2.0), "cbb": (2.5, 11.0, 18.0, 2400.0, 3.0)}
+PERIODS = {"nfl": (4, 900.0), "nba": (4, 720.0), "cbb": (2, 1200.0)}
 META = ("league", "season", "game_id", "game_key", "night", "source_night_id", "source", "license", "plan",
         "decision_t", "feed_cut_t", "feed_head_t", "feature_t_max", "lag_s", "label_full_window", "label_first_t")
 ALLOWED = frozenset(META + FEATURES + LABELS)
@@ -200,7 +209,13 @@ def _raw_kind(league: str, type_text: str, text: str) -> str:
     return "foul" if "foul" in t else ""
 
 
-def _raw_history(league: str, g: pd.DataFrame) -> dict[float, list[dict]]:
+def _one_source_only(kind_text: str, text: str) -> bool:
+    """v4: a football row only one feed has (official timeouts, quarter ends, the two-minute warning): this file's list of them."""
+    k = kind_text.lower()
+    return any(w in k for w in ("official timeout", "end period", "end of half", "end of game", "end game", "two-minute warning")) or ("timeout" in k and "official" in text.lower())
+
+
+def _raw_history(league: str, g: pd.DataFrame, version: str = FEATURES_VERSION) -> dict[float, list[dict]]:
     """{wall: [v3 history features]} recomputed from the raw rows in wall order. The score, run and event logic is this file's own.
     NFL rows the shards never see (extra points and two-point tries fold into the touchdown; a row with no ESPN type) are skipped."""
     plays = []
@@ -210,7 +225,7 @@ def _raw_history(league: str, g: pd.DataFrame) -> dict[float, list[dict]]:
             if r.play_type == "extra_point" or r.two_point_attempt == 1:
                 continue
             kind_text = factory._nfl_type(r)
-            if not kind_text or not wall:
+            if not kind_text or not wall or (version == "v4" and _one_source_only(kind_text, r.desc if isinstance(r.desc, str) else "")):
                 continue
             plays.append((wall, _n(r.total_home_score), _n(r.total_away_score), _raw_kind(league, kind_text, ""), r.qtr))
         else:
@@ -254,6 +269,109 @@ def _raw_history(league: str, g: pd.DataFrame) -> dict[float, list[dict]]:
     return out
 
 
+def _raw_nfl_state(g: pd.DataFrame) -> list[tuple[float, dict]]:
+    """(wall, drive state after the play) from nflverse's columns, walked here with this file's own rules."""
+    rows = []
+    for r in g.itertuples(index=False):
+        kind = factory._nfl_type(r).lower()
+        wall = holdset.ts(r.time_of_day) if isinstance(r.time_of_day, str) else None
+        desc = (r.desc if isinstance(r.desc, str) else "").lower()
+        if r.play_type == "extra_point" or r.two_point_attempt == 1 or not kind or not wall or _one_source_only(kind, desc):
+            continue
+        rows.append((wall, kind, desc, r))
+    rows.sort(key=lambda x: x[0])
+    out, fresh, snaps, begin, begin_left, reached = [], True, 0, -1.0, -1.0, False
+    ytg, nd, nx, half, tos = -1.0, -1.0, -1.0, None, 0.0
+    for wall, kind, desc, r in rows:
+        q, clock = _n(r.qtr, -1.0), _raw_clock(r.time)
+        down, togo, yl, gained = _n(r.down), _n(r.ydstogo), _n(r.yardline_100, -1.0), _n(r.yards_gained)
+        this_half = (q + 1) // 2 if 1 <= q <= 4 else q
+        if this_half != half:
+            half, tos = this_half, 0.0
+        timeout = "timeout" in kind
+        tos += timeout
+        left = -1.0 if clock < 0 else (clock if q > 4 else (4 - q) * 900.0 + clock)
+        half_left = -1.0 if clock < 0 else (clock if q > 4 else clock + (900.0 if q in (1, 3) else 0.0))
+        gone = False
+        if "kickoff" in kind:
+            fresh, gone, ytg, nd, nx, snaps, begin, begin_left, reached = True, True, -1.0, -1.0, -1.0, 0, -1.0, -1.0, False
+        elif not timeout:
+            if fresh:
+                fresh, snaps, begin, begin_left, reached = False, 0, -1.0, -1.0, False
+            snaps += 1
+            if begin < 0 and yl >= 0:
+                begin, begin_left = yl, left
+            dead_play = "no play" in desc
+            if not dead_play and "punt" not in kind and down and 0 < yl <= 20:
+                reached = True
+            kicked = "punt" in kind or "field goal" in kind
+            flag = "penalty" in kind
+            scored = "touchdown" in kind or (r.sp == 1 and "touchdown" in desc and not dead_play)
+            lost = not dead_play and any(w in kind for w in ("interception", "fumble recovery (opponent)", "fumble return", "blocked", "muffed", "opp fumble recovery")) or (not dead_play and kind == "safety")
+            scrimmage = bool(down) and not kicked and not dead_play and not flag
+            gone = kicked or scored or lost or (scrimmage and down == 4 and gained < togo)
+            if gone:
+                ytg, nd, nx, fresh = -1.0, -1.0, -1.0, True
+            elif scrimmage:
+                after = -1.0 if yl < 0 else max(0.0, yl - gained)
+                ytg = after
+                nd, nx = (1.0, min(10.0, after) if after > 0 else 10.0) if gained >= togo else (down + 1, togo - gained)
+        out.append((wall, {"yards_to_goal": ytg, "drive_plays": float(snaps) if snaps else -1.0, "drive_start_ytg": begin,
+                           "drive_yards": max(begin - ytg, 0.0) if begin >= 0 and ytg >= 0 else -1.0,
+                           "drive_clock_s": max(begin_left - left, 0.0) if begin_left >= 0 and left >= 0 and snaps else -1.0,
+                           "rz_reached": float(reached), "next_down": nd, "next_distance": nx, "poss_flip": float(gone), "half_left": half_left,
+                           "two_minute": float(q in (2.0, 4.0) and 0 <= clock <= 120), "timeouts_half": tos}))
+    return out
+
+
+def _raw_state(league: str, g: pd.DataFrame) -> dict[float, list[dict]]:
+    """{wall: [v4 features]} from the raw rows: football's drive state and every league's closeness and league-relative numbers."""
+    unit, sd, rate, total, lid = SCALE[league]
+    regs, length = PERIODS[league]
+    timed = []
+    for r in g.itertuples(index=False):
+        wall = holdset.ts(r.time_of_day if league == "nfl" else r.wallclock) if isinstance(r.time_of_day if league == "nfl" else r.wallclock, str) else None
+        if not wall:
+            continue
+        if league == "nfl":
+            kind = factory._nfl_type(r)
+            if r.play_type == "extra_point" or r.two_point_attempt == 1 or not kind or _one_source_only(kind, r.desc if isinstance(r.desc, str) else ""):
+                continue
+            timed.append((wall, _n(r.qtr, -1.0), _raw_clock(r.time), _n(r.total_home_score), _n(r.total_away_score)))
+        else:
+            timed.append((wall, _n(r.period_number, -1.0), _raw_clock(r.clock_display_value), _n(r.home_score), _n(r.away_score)))
+    timed.sort(key=lambda x: x[0])
+    drive_by: dict[float, list[dict]] = {}
+    if league == "nfl":
+        for w, d in _raw_nfl_state(g):
+            drive_by.setdefault(w, []).append(d)
+    walls = np.array([t[0] for t in timed], float)
+    total_now = np.array([t[3] + t[4] for t in timed], float)
+    out: dict[float, list[dict]] = {}
+    seen: dict[float, int] = {}
+    for i, (wall, per, clock, h, a) in enumerate(timed):
+        margin = abs(h - a)
+        before = int(np.searchsorted(walls, wall - 300.0, "right")) - 1
+        pts = total_now[i] - (total_now[before] if before >= 0 else 0.0)
+        left = -1.0 if clock < 0 else (clock if per > regs else (regs - per) * length + clock)
+        since = wall - walls[0]
+        cls = 0.0 if margin == 0 else 1.0 if margin <= 3 else 2.0 if margin <= 8 else 3.0 if margin <= 16 else 4.0 if margin <= 24 else 5.0
+        frac = min(max(left, 0.0) / total, 1.0)
+        row = {"margin_class": cls, "league_id": lid, "margin_scores": margin / unit, "pace_rel": pts / rate,
+               "closeness": margin / max(left, 30.0) ** 0.5 if left >= 0 else -1.0,
+               "crunch_eta_s": min(max(left - 300.0, 0.0) * since / max(total - left, 60.0), 21600.0) if left >= 0 else -1.0,
+               "game_frac_left": frac if left >= 0 else -1.0,
+               "margin_z": margin / (sd * max(frac, 0.02) ** 0.5) if left >= 0 else -1.0}
+        if league == "nfl":
+            nth = seen.get(wall, 0)
+            seen[wall] = nth + 1
+            row.update(drive_by[wall][nth])
+        else:
+            row.update({f: 0.0 if f in ("rz_reached", "poss_flip", "two_minute", "timeouts_half") else -1.0 for f in DRIVE})
+        out.setdefault(wall, []).append(row)
+    return out
+
+
 def _same(a, b) -> bool:
     """Close enough for float32. A NaN in the shard is no number at all: the trainer drops that row."""
     if a != a:
@@ -269,7 +387,10 @@ def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name
         rep.fail("raw_audit", f"{name}: game {gid} has shard rows but is not a whole game in the raw source")
         return
     plays, events = _raw_plays(league, g), built[4]
-    history = _raw_history(league, g) if version != "v2" else {}
+    history = _raw_history(league, g, version) if version != "v2" else {}
+    state = _raw_state(league, g) if version == "v4" else {}
+    head_fields = tuple(f for f in RAW_FIELDS if not (version == "v4" and league == "nfl" and f == "yards_to_goal"))
+    state_fields = DRIVE + DERIVED + (("yards_to_goal",) if league == "nfl" else ())
     picks = np.unique(np.linspace(0, len(rows) - 1, min(RAW_ROWS, len(rows))).astype(int))
     for r in rows.iloc[picks].itertuples(index=False):
         rep.checked["raw_rows"] += 1
@@ -277,8 +398,8 @@ def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name
         if not candidates:
             rep.fail("raw_audit", f"{name}: game {gid} has a feed head at {r.feed_head_t} that no raw play has")
             continue
-        if not any(all(_same(getattr(r, f), c[f]) for f in RAW_FIELDS) for c in candidates):
-            diff = [f"{f} {getattr(r, f)} vs raw {candidates[-1][f]}" for f in RAW_FIELDS if not _same(getattr(r, f), candidates[-1][f])]
+        if not any(all(_same(getattr(r, f), c[f]) for f in head_fields) for c in candidates):
+            diff = [f"{f} {getattr(r, f)} vs raw {candidates[-1][f]}" for f in head_fields if not _same(getattr(r, f), candidates[-1][f])]
             rep.fail("raw_audit", f"{name}: game {gid} feature differs from the raw source: {', '.join(diff[:3])} "
                             f"(raw clock text {candidates[-1]['clock_text']!r})")
         if version != "v2":
@@ -286,6 +407,11 @@ def _audit_game(league: str, gid: str, g: pd.DataFrame, rows: pd.DataFrame, name
             if not any(all(_same(getattr(r, f), c[f]) for f in HISTORY) for c in found):
                 wrong = [f"{f} {getattr(r, f)} vs raw {found[-1][f]}" for f in HISTORY if found and not _same(getattr(r, f), found[-1][f])]
                 rep.fail("raw_audit", f"{name}: game {gid} history differs from the raw source: {', '.join(wrong[:3]) or 'no raw play at the head'}")
+        if version == "v4":
+            found = state.get(float(r.feed_head_t)) or []
+            if not any(all(_same(getattr(r, f), c[f]) for f in state_fields) for c in found):
+                wrong = [f"{f} {getattr(r, f)} vs raw {found[-1][f]}" for f in state_fields if found and not _same(getattr(r, f), found[-1][f])]
+                rep.fail("raw_audit", f"{name}: game {gid} v4 feature differs from the raw source: {', '.join(wrong[:3]) or 'no raw play at the head'}")
         window = [(w, tier) for w, tier in events if r.decision_t < w <= r.decision_t + HORIZON_S]
         value = sum(holdset.WEIGHTS[tier] for _, tier in window)
         tier1 = float(any(tier == 1 and w <= r.decision_t + TIER1_S for w, tier in window))
