@@ -432,8 +432,8 @@ class DeadTracker:
                     elif moved and lg in (League.NBA, League.NHL):
                         # [AUDIT-8] hockey too: a faceoff the feed missed must not leave live hockey looking dead
                         cur.end, cur.exact = max(cur.start, m.lo - (c0 - m.clock) - CLOCK_RESUME_MARGIN_S), True
-                    elif lg in (League.NBA, League.NHL) and m.after is not None and (ran := self._ran_in_later_period(m, p0)) is not None:
-                        # The next period's first entry is itself a dead ball (a foul): it still dates the tip.
+                    elif lg in (League.NBA, League.NHL) and (ran := self._ran_in_later_period(m, p0)) is not None:
+                        # The next period's first entry we hold, a dead ball or a live action: its clock dates the restart.
                         cur.end, cur.exact = max(cur.start, m.lo - ran - CLOCK_RESUME_MARGIN_S), True
                     elif (lg == League.NBA and m.after is None and m.clock is not None and c0 is not None
                           and m.period == p0):

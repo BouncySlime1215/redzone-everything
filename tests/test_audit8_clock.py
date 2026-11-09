@@ -52,3 +52,15 @@ def test_the_next_period_dates_the_faceoff_from_its_clock_when_the_faceoff_is_mi
     _add(dt, "w2", T0 + 1100, "Stoppage", 1140.0, 2, text="Offside")     # 60 s into the 2nd
     ws = dt.windows()
     assert ws[0].end == pytest.approx(T0 + 1100 - 60 - 3) and ws[1].start == T0 + 1100
+
+
+@pytest.mark.parametrize("league,period,clock,ttext,text", [
+    (League.NBA, 2, 680.0, "Jump Shot", "A makes 24-foot jumper"),                     # 40 s of Q2 already gone
+    (League.NHL, 2, 1160.0, "Shot", "A wrist shot saved"),
+])
+def test_a_live_action_first_in_the_next_period_dates_the_restart_from_its_clock(league, period, clock, ttext, text):
+    """The break's end used to be read off that entry's stamp, 26 s back at most, however much clock had run."""
+    dt = DeadTracker(league)
+    _add(dt, "end", T0, "End Period" if league == League.NBA else "Period End", 0.0, period - 1)
+    _add(dt, "act", T0 + 400, ttext, clock, period, text=text)
+    assert dt.windows()[0].end == pytest.approx(T0 + 400 - 40 - 3)
