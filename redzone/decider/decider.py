@@ -42,6 +42,7 @@ from redzone.decider import buffered as bj
 from redzone.decider import cuts
 from redzone.decider.playbooks import Safety
 from redzone.decider.scenarios import Scenarios
+from redzone.noggin import legal
 from redzone.noggin.lookahead import ahead
 from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
 from redzone import config as _config
@@ -1929,11 +1930,13 @@ class Decider:
         watchable = {gid: x for gid, x in live.items()
                      if x.target and not x.stale and gid not in u.muted}
 
-        if self.safe_mode:
+        block = legal.user_block(self.safe_mode, u.paused, u.locked_game if u.locked_game in cands else None,
+                                 u.manual_until, now)
+        if block == "safe_mode":
             return Decision(now, "stay", self.current, "safe mode: too many errors — tap Resume", State.SAFE)
-        if u.paused:
+        if block == "paused":
             return Decision(now, "stay", self.current, "auto-switching paused", State.PAUSED)
-        if u.locked_game and u.locked_game in cands:
+        if block == "locked_game":
             if self.current != u.locked_game:
                 if self.current is None and now < self.start_retry_at:
                     return Decision(now, "stay", None, f"couldn't get to your locked game yet — trying again in "
@@ -1945,7 +1948,7 @@ class Decider:
                 return Decision(now, "switch", u.locked_game, "you locked this game", State.PAUSED, kind="user")
             self._lock_reset()
             return Decision(now, "stay", self.current, "locked here by you", State.PAUSED)
-        if now < u.manual_until:
+        if block == "manual_pause":
             return Decision(now, "stay", self.current, "you just picked this — hands off for a minute", State.PAUSED)
         if now < self._arrival_until:
             return Decision(now, "stay", self.current, "switch in progress", State.WATCHING)
@@ -3019,14 +3022,9 @@ class Decider:
         the rotation stands aside. The one place the handoff is decided: _jump runs only for 'jump' / 'buffered', and
         the rotation vetoes the normal decider's optional switches only then (_jump_owns)."""
         u = self.user
-        if self.safe_mode:
-            return "safe", "safe_mode"
-        if u.paused:
-            return "user", "paused"
-        if u.locked_game:
-            return "user", "locked_game"
-        if now < u.manual_until:
-            return "user", "manual_pause"
+        block = legal.user_block(self.safe_mode, u.paused, u.locked_game, u.manual_until, now)
+        if block:
+            return ("safe" if block == "safe_mode" else "user"), block
         if u.focus_mode != FocusMode.AUTOPILOT:
             return "user", "focus_mode"
         # A replay owns the way back to live: its after-replay switch (live / home / break_visit) is never a jump-mode
