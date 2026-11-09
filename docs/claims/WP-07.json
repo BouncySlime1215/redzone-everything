@@ -1,0 +1,12 @@
+{
+  "card": "WP-07",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "redzone/moments/*",
+    "scripts/moment_rates.py",
+    "tests/test_moments.py"
+  ],
+  "started": 1794200702,
+  "expires": 1794373502
+}

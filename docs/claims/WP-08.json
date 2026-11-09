@@ -1,0 +1,13 @@
+{
+  "card": "WP-08",
+  "session": "coordinator",
+  "branch": "claude/state-machines-coordination",
+  "files": [
+    "redzone/contracts/brain.py",
+    "redzone/contracts/__init__.py",
+    "tests/brains.py",
+    "tests/test_brain_contract*.py"
+  ],
+  "started": 1794200702,
+  "expires": 1794373502
+}
