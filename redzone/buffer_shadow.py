@@ -6,6 +6,8 @@ real life (timing.behind_live_s.by_league, capped at max_s): what the show would
 It never touches a stick or the screen. Every change of its decision is a row in data/buffer_shadow.jsonl
 next to what the live decider has on screen, so lane 3 can grade buffered vs live on the same night
 (mid-play entries, big plays shown from the start, dead air, switches/h) before RC8 turns it on.
+
+Why: recorded in docs/memory/decisions.md 2026-11-05 (buffer is the main architecture, item A); first added in 5353b0ba (2026-11-05) as "Buffer SHADOW editor (stay/leave + adaptive-buffer terms logged), nba_cdn primary at 1 s, TNF sco...".
 """
 from __future__ import annotations
 

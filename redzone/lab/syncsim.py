@@ -17,6 +17,8 @@ the broadcast give the signals the real code reads, with their real limits:
 Graded every second while a game is on screen, after the first `settle_s` of each tune:
 error of the delay used, the share under 2 s, how often the stated interval (+-2 sigma) misses
 (a miss is what cuts plays mid-play), how long each tune took to sync, and the uncertain flags.
+
+Why: first added in 84e73039 (2026-11-03) as "Per-channel delay predictor and automatic Kalman sync"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

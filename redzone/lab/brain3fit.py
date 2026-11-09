@@ -6,6 +6,8 @@ nights (``redzone.lab.brain3data.night_splits``, the time split of ``redzone.lab
 brain (v2) runs through the live code path on our own ESPN archive (``live_eval3``), which neither
 brain trained on (NHL's stoppage-length and entry heads are the exception: the public NHL feed has no
 wall clock, so those two train on the archive's train nights and are graded on its other nights).
+
+Why: first added in afd3508e (2026-11-03) as "Brain v3 (WIP): one compact model per league, numpy runtime, calibrated stoppage odds/type/length..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

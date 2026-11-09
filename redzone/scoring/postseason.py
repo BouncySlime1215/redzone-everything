@@ -17,6 +17,8 @@ scoring (engine.py) and the Noggin are:
 
 Idea from ArenaSwap (github.com/hiteacheryouare/arenaswap): grade a playoff game by distance from the
 trophy, and add series state. Ideas only; this code, the round table and the weights are our own.
+
+Why: recorded in docs/memory/decisions.md 2026-11-04 (score.postseason ships OFF); first added in 66a4f113 (2026-11-04) as "Postseason stakes hooks (off) + ArenaSwap comparison".
 """
 from __future__ import annotations
 

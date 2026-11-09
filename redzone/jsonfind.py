@@ -6,6 +6,8 @@ fences, scans for brace-balanced candidates (string- and escape-aware) and retur
 that parses as a JSON object (and that the caller's `accept` likes: a schema echoed before the
 answer is skipped). One repair: trailing commas ({"a": 1,}), the slip small models make most.
 Never raises.
+
+Why: first added in d741c8e2 (2026-11-04) as "Eval honesty: night-level gate, leak checks, no locked games in the e2e night (research B9-B10, C18)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

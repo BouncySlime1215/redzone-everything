@@ -8,6 +8,8 @@ as soon as the controller and screen evidence permit it.
 
 Random search, then a local polish around the best. Writes the winner and a
 leaderboard to data/lab/. Nothing changes in your live settings until you apply it.
+
+Why: first added in 9faa350e (2026-11-02) as "RedZone Everything: core engine, scorer, decider, replays, backtest lab, server"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

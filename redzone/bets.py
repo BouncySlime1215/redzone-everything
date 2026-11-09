@@ -5,6 +5,8 @@
     sweat     = exp(-|m| / u) x lateness, and ~0 once it's out of reach
 
 Kinds: moneyline, spread, total (over/under), prop (no live stat: flat medium sweat).
+
+Why: first added in 9faa350e (2026-11-02) as "RedZone Everything: core engine, scorer, decider, replays, backtest lab, server"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

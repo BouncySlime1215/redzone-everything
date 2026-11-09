@@ -14,6 +14,8 @@ the espn_<league> training table (``scripts/build_training.py espn_<league>``).
 The blend is logistic stacking in log-odds where the rules have evidence (rules p > 0):
     logit q = a + b * logit(p_brain) + c * logit(p_rules)
 and the brain alone where they don't. (0, 1, 0) is "the brain alone everywhere".
+
+Why: recorded in docs/memory/lessons.md (ship a break blend only if it beats the brain alone on mean and worst fold); first added in 64a410ff (2026-11-04) as "jsonfind: accept() per caller, trailing-comma repair, cut-off think tag; malformed/nested tests".
 """
 from __future__ import annotations
 

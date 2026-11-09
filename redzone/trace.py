@@ -36,6 +36,8 @@ reports back. switch_id is trace.switch_id(submitted_at), the same `id` the stor
     failed    anything else that didn't end on a confirmed picture (incl. ok-but-unconfirmed)
 
     .venv/bin/python -m redzone.trace [N]      the last N traces, one line each
+
+Why: first added in ce7a571b (2026-11-03) as "Trace every switch and send a nightly report with an error budget"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

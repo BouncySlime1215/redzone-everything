@@ -14,6 +14,8 @@ part's own timeouts and backoffs:
     is re-verified;
   - the FastCast socket is restarted, and HTTP backoffs left from the old network are cleared.
 Nothing here presses a key or changes the TV's input.
+
+Why: first added in 9cfabbd1 (2026-11-04) as "hardening.mac: reconnect everything at once after the Mac sleeps or changes network"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

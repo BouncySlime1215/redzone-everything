@@ -1,3 +1,9 @@
+"""Kaggle CPU notebook: builds the shared play-by-play table for Data Division A (EXP-1000 / EXP-097).
+
+Why: Data Division A needs real event tokens for world-model pretraining off the Mac; first added in b717ee65
+(2026-11-05) as "Data Division A: shared play table + crew converters ... pre-register EXP-1000". Output shards
+are read by lane 1's tokenizer v2 (scripts/pbp/schema.py is the table schema).
+"""
 # %% [markdown]
 # # RedZone Data Division A: play-by-play crew (free Kaggle CPU, no GPU quota)
 #

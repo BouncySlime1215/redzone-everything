@@ -2,6 +2,8 @@
 
 Owner: PLATFORM (observability). Every component that touches a switch appends to its trace by
 switch_id; nothing reads traces on the decision path. Sink: data/traces.jsonl (one line per event).
+
+Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

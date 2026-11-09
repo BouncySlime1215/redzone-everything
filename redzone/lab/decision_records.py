@@ -22,6 +22,8 @@ Sources are objective only: the `decisions`, `switches` and `snapshots` tables, 
 to `SNAP_MAX_AGE_S` old); the Teacher joins records to archived pbp by (game, ts) for anything finer.
 
 Read-only and offline: nothing here writes to the store, uploads, or changes switching.
+
+Why: first added in e3b687c2 (2026-11-04) as "Decision-record export for the Teacher's nightly review (no taps, read-only)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

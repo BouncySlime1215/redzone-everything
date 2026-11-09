@@ -2,6 +2,8 @@
 
 Dry run may fetch public game links, but never probes or drives a device. First-run
 pairing stays with the setup checker so the owner selects the intended TV/sticks.
+
+Why: first added in 634e0a01 (2026-11-02) as "Recover RedZone engine with explicit screen evidence and safe switch transactions"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

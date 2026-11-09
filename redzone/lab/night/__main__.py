@@ -1,4 +1,7 @@
-"""python -m redzone.lab.night [--hours H] [--start HH:MM] [--json out.json] ... (see run.py)."""
+"""python -m redzone.lab.night [--hours H] [--start HH:MM] [--json out.json] ... (see run.py).
+
+Why: first added in 71e46ec6 (2026-11-03) as "WIP: end-to-end replayed night test (fake sticks/TV, virtual clock, fault hook); not runnable yet"; no separate decision is recorded for this module.
+"""
 from redzone.lab.night import vclock
 
 CLOCK = vclock.install(1_793_570_000.0)   # replaced by the night's own start in Night.prepare

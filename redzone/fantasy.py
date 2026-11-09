@@ -6,6 +6,8 @@ Setup (one time, ~5 minutes):
      into .env as ESPN_S2=... and ESPN_SWID={...}. They never leave your Mac.
 
 Uses ESPN's unofficial fantasy API (the same one the espn-api project uses). Read-only.
+
+Why: first added in b56e3411 (2026-11-02) as "ESPN fantasy: red-zone boosts for your and your opponent's starters, live matchup score; requirem..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

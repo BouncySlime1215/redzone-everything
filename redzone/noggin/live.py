@@ -7,6 +7,8 @@ The expected restart (`resume_eta`) uses the model's median the same way, in pla
 
 Readings are cached per (window, 5 s elapsed bin), so each tick costs at most one ~72-bin forest walk per
 open window (measured < 2 ms, see tests/test_noggin_timing.py).
+
+Why: first added in 95874796 (2026-11-04) as "Noggin Phase 1: data factory (NBA, 1.09M windows) + Timing v1 hazard with conformal bounds (OFF)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

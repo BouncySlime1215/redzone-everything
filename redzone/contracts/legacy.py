@@ -2,6 +2,8 @@
 
 Owner: INTEGRATION. Each owner replaces its adapter with a native implementation; the contract
 tests (tests/test_contracts.py) run against both.
+
+Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

@@ -7,6 +7,8 @@ MLB  statsapi.mlb.com   leverage index, runners, outs (fed in when the season is
 Each enrich_* takes the merged ESPN game and a league payload and returns a GameState
 copy with what the league feed knows, ready to go through the Merger like any source.
 Field names verified against tests/fixtures (Nov 2026).
+
+Why: first added in 9faa350e (2026-11-02) as "RedZone Everything: core engine, scorer, decider, replays, backtest lab, server"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

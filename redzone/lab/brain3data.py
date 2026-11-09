@@ -19,6 +19,8 @@ Labels (NaN where not defined):
     hotness         v2's 0-100 game flow (kept: the momentum graph and the scorer read it)
 
 Split: by NIGHT (``night``, YYYYMMDD ET). Every game of one evening lands in the same split.
+
+Why: first added in afd3508e (2026-11-03) as "Brain v3 (WIP): one compact model per league, numpy runtime, calibrated stoppage odds/type/length..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

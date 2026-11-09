@@ -9,6 +9,8 @@ Guardrail: a source that jumps *backwards* (period or clock goes back) is ignore
 for that update, and repeated regressions bench it for that game for a few minutes.
 A score that drops at the same period and clock is a correction (overturned goal,
 a 3 rescored as a 2, a reversed TD), not a regression: it is accepted.
+
+Why: first added in 9faa350e (2026-11-02) as "RedZone Everything: core engine, scorer, decider, replays, backtest lab, server"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

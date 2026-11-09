@@ -6,6 +6,8 @@ Uses a device-observed search entry path and re-reads visible focus before any
 selection. It does not silently fall back to blind Play presses or other dates.
 The six-column keyboard traversal is a tested-layout hypothesis, not a universal
 Prime API. Changed layouts stop at the focus check. No hardware is used at import.
+
+Why: first added in f98e81ba (2026-11-02) as "TV input flip via HOME (CEC Active Source) with stick-side verification; YouTube TV codes verifie..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

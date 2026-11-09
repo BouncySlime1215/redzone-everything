@@ -14,6 +14,8 @@ draws a `uiautomator dump` from its state:
 Knobs make the rehearsal fail the way a real night can: `readable=False` (DRM player gives an empty
 tree), `offered` (games the picker lists), `after` (tile order model), `drop_every` (every Nth
 promote is ignored, so a timed round misses).
+
+Why: first added in 8aca6bcc (2026-11-04) as "Prime multiview: stick-free rehearsal of the probe + grade, fix 0.0 s switches graded slow"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

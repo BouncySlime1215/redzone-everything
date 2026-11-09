@@ -1,6 +1,8 @@
 """Fetch one day's finished games (scoreboard + play-by-play) into data/demo/<day>/<league>/.
 
 Same ESPN site API calls as scripts/download_recent.py, but into the demo folder (never the archive).
+
+Why: first added in f469a653 (2026-11-02) as "Standby planner: preload the decider's own next pick; preload hit rate on the replay"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

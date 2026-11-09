@@ -19,6 +19,8 @@ Invariants (code: what must always hold):
 
 Each condition must hold for its grace period before it is a fault (`since` = first seen), so a
 switch in its first seconds or a one-tick race never shows up.
+
+Why: first added in 7a7232ff (2026-11-03) as "Health: runtime invariant checker + contracts.health Health.report from the supervisor"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

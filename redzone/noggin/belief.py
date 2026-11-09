@@ -31,6 +31,8 @@ What it does differently from the Kalman sync (sync.py):
 
 Pure python, ~300 particles per channel, a few thousand multiply-adds per anchor (anchors come a few
 times a quarter): nothing here costs the Mac anything.
+
+Why: first added in 290c5f3f (2026-11-04) as "EXP-023: pre-registration + belief tracker (flag noggin.belief.enabled, OFF) and dev-night harness"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

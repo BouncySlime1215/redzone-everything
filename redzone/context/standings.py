@@ -21,6 +21,8 @@ Playoff rule per season: `per_div` auto bids per division (the top teams by reco
 conference/league (best remaining records). Ties are broken at random per sim (no league tiebreak rules: cheap,
 and the odds error that causes is small next to Elo's). `clinch_status` is mathematical and conservative:
 "clinched" / "eliminated" only when no outcome of the remaining schedule can change it, else "alive".
+
+Why: first added in 51db66ed (2026-11-05) as "Data B: stakes (standings, Elo, playoff-odds swing) landed NFL+MLB; Open-Meteo weather and CFBD c..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

@@ -4,6 +4,8 @@ Splits are the factory's whole-night, time-ordered splits. Forward-chaining CV r
 by season (train on every earlier season, validate on the next); the final model trains on `train`,
 calibrates (isotonic) on `calib` and is graded once on the FULL `test` split.
 Baseline = base rate x game state: the train-night rate per (period, 2-minute clock bucket, margin bucket).
+
+Why: first added in ebfb9efb (2026-11-04) as "Noggin: NFL data factory + Timing v1 NFL, Predict v1 NBA (both OFF)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

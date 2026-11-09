@@ -14,6 +14,8 @@ Limits: autofix.enabled (kill switch), autofix.max_per_day issues per day, and o
 signature per autofix.refile_days. Every secret-looking value is redacted before anything leaves
 the Mac (redact()). Without GitHub credentials the issue is written to data/autofix/outbox/ and
 the phone is told; nothing is lost.
+
+Why: first added in 3f8f9c71 (2026-11-03) as "Auto-fix (BRAIN tier): watchdog files an issue, Claude fixes it in a draft PR"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

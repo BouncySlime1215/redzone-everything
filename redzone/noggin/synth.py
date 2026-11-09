@@ -18,6 +18,8 @@ Three products, all tagged synthetic and "personal-use, not for commercial relea
   commentary (`agent/kaggle/commentary_queue.py`, mode 2) saw only the brief at that play, so it may be context.
 
 Only nights before `train_before` are ever augmented, so no valid, test, scorecard or locked night gets a copy.
+
+Why: first added in f7b687b5 (2026-11-05) as "Data planner E: synthetic + teacher tokens inside the 3x cap (EXP-1400, EXP-1401)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

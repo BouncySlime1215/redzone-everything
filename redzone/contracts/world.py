@@ -9,6 +9,8 @@ Build order inside a tick (each step only reads what earlier steps produced):
   1 clock + feeds   2 moments, breaks (per live game)   3 sync (per target)   4 paths (per target)
   5 scored (Scorer, reads 1-2)   6 reasoner views (cached)   7 reel offer   8 health
 Then the Decider builds core.CoreState via contracts/views.py and runs core.DecisionCore + guards.
+
+Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

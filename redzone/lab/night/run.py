@@ -8,6 +8,8 @@ Tuners, standby Planner, Supervisor, Tonight's plan, discovery, and agent/watchd
 
 Instance-level stand-ins on the Engine (no class is patched): poll (the replayed feed instead of
 ESPN), refresh_links (no Prime/ESPN+ link lookups offline), _keep_awake (no caffeinate).
+
+Why: first added in 71e46ec6 (2026-11-03) as "WIP: end-to-end replayed night test (fake sticks/TV, virtual clock, fault hook); not runnable yet"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

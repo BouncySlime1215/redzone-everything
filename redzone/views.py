@@ -7,6 +7,8 @@ delay shows no clock (never the live one) so the phone cannot give a play away.
 
 Pictures (logos, headshots, stadium photos) are ESPN CDN URLs; the phone loads them
 through /img/ on the Mac, which caches them on disk.
+
+Why: first added in 67a883b7 (2026-11-02) as "Pictures backend: headshots, leaders, venues, spotlight, team directory, rosters, image cache; se..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

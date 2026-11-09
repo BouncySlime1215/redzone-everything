@@ -18,6 +18,8 @@ Outlier guard: a value further than GUARD_MADS median absolute deviations from t
 the last HISTORY nights is written with accepted=false and never read back. With fewer than MIN_HISTORY
 nights there is nothing to judge against and the value is accepted. `latest` returns the newest accepted
 value per key: what the planner reads at the next start (when calib.auto is on).
+
+Why: first added in 8ba60ace (2026-11-04) as "Self-calibration, timing half (calib.auto, off): nightly flip and press-to-TV, 3-MAD guard"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

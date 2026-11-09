@@ -12,6 +12,8 @@ Three pure pieces, shared by the runtime, tonight's shadow log, the gate report 
 
 The flag is ``timing.behind_live_s.rc8_on`` (false everywhere in the shipped defaults). It is separate from
 ``timing.behind_live_s.enabled`` (the hidden-stick hold already in RC6.2 for NBA/NFL), which RC8 leaves alone.
+
+Why: first added in a98ea40a (2026-11-05) as "RC8: buffer ON per league behind timing.behind_live_s.rc8_on (OFF), adaptive B, gate report, flip..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

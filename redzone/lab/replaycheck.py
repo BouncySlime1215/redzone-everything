@@ -2,6 +2,8 @@
 
 The archive is a timing proxy, not video ground truth. Audit every archived game's
 counterfactual exit permission, rather than rewarding a policy for never switching.
+
+Why: first added in f98e81ba (2026-11-02) as "TV input flip via HOME (CEC Active Source) with stick-side verification; YouTube TV codes verifie..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

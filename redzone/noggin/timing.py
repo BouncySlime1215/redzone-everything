@@ -11,6 +11,8 @@ late in a break) makes P(restart before q_lo) <= alpha on unseen nights.
 
 Runtime is numpy only: the forest is flattened like Brain v3 (`redzone.scoring.brain3.flatten`) and every
 bin of the horizon is scored in one batched walk (< 1 ms per window on a laptop CPU).
+
+Why: first added in 95874796 (2026-11-04) as "Noggin Phase 1: data factory (NBA, 1.09M windows) + Timing v1 hazard with conformal bounds (OFF)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

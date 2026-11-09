@@ -24,6 +24,8 @@ Guardrails:
 - Every network call has a timeout and never raises; one broken piece never stops the others.
 
 On the real devices (read-only):   .venv/bin/python -m redzone.autonomy check
+
+Why: first added in 634e0a01 (2026-11-02) as "Recover RedZone engine with explicit screen evidence and safe switch transactions"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

@@ -5,6 +5,8 @@ Owner: DECISION (redzone/reel.py; it was ported with drive priority work). Calle
 as a break filler candidate. Cadence: refreshed from the poll loop; ready() per decision tick.
 
 Units: seconds of video, value 0..100 on the Scorer's scale.
+
+Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
