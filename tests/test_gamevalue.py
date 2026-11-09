@@ -748,9 +748,9 @@ def test_reach_with_every_game_entered_at_once_is_fc_lag():
     ranks = {t: {"a": 1.0, "b": 1.0, "c": 1.0, "d": 1.0} for t in times}       # ties, so the shuffle has to match capture's
     by_night = {"n": holdset.decisions("nfl", rows, ranks)}
     entries = {"n": {g: ([x for x in times], [x for x in times]) for g in "abcd"}}
-    for K in (1, 2, 3):
-        got, tot, n = H.reach_capture(by_night, {"n": rows}, entries, K, random.Random(0))
-        g2, t2, _, n2 = holdset.capture(by_night["n"], lambda x: x[5], K, random.Random(0))
+    for k_ in (1, 2, 3):
+        got, tot, n = H.reach_capture(by_night, {"n": rows}, entries, k_, random.Random(0))
+        g2, t2, _, n2 = holdset.capture(by_night["n"], lambda x: x[5], k_, random.Random(0))
         assert (got, tot, n) == (g2, t2, n2)
 
 
@@ -871,11 +871,11 @@ def test_fair_capture_keeps_every_existing_column_and_its_fc_is_the_report(run, 
     fair = on["fair_capture"]["nfl"]
     assert fair["lag_table"]["source"] == "espn_summary" and fair["lag_table"]["n"] == 150 and fair["lag_seed"] == 0
     for name in ("model", "planner"):
-        for K in ("K2", "K4", "K8"):
-            cell, res = fair[name][K], on[name]["nfl"][K]
+        for k_ in ("K2", "K4", "K8"):
+            cell, res = fair[name][k_], on[name]["nfl"][k_]
             assert cell["fc_pct"] == res["planner_pct"]
             assert cell["decisions"] == res["decisions"] and cell["nights"] == res["nights"]
-            assert cell["fc_reach_pct"] in (0.0, None)                                    # the gate allowed no entry (None: K has no decisions)
+            assert cell["fc_reach_pct"] in (0.0, None)                                    # the gate allowed no entry (None: k_ has no decisions)
 
 
 def test_fair_report_says_so_when_there_is_no_measured_table(monkeypatch):
