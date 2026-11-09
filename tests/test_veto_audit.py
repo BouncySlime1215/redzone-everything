@@ -7,13 +7,16 @@ from __future__ import annotations
 
 import dataclasses
 import itertools
+import json
 import sys
 from collections import Counter
+from types import SimpleNamespace as NS
 
 import pytest
 
 from redzone.contracts import brain
 from redzone.decider import gate
+from redzone.models import League
 from redzone.noggin import arbiter, legal
 from scripts import veto_audit as va
 
@@ -199,3 +202,82 @@ def test_the_screens_own_class_is_named_as_l1():
     inp = _inp(ALL)
     out = _out(inp, stay=0.0, cut__b=50.0, cut__c=40.0)
     assert arbiter.refused_by(inp, out, "cut:b", show=arbiter.Show(current_class=0)) == "l1_class"
+
+
+NO_LAG = 0.0
+
+
+def _route_truth(monkeypatch, moments, dead=(True, False, 100.0)):
+    t = _truth(moments)
+    t.lag = NO_LAG
+    t.replays = {"a": NS(league=League.NFL, wall=[0.0], plays=[{}], gid="a")}
+    monkeypatch.setattr(va, "dead_at", lambda *a: dead)
+    return t
+
+
+def test_catchup_reach_decides_what_is_still_in_range(monkeypatch):
+    air = va.Air(1000.0, "b", "td", 5.0)
+    tally = va.Tally(route=[(1100.0, "a")])
+    t = _route_truth(monkeypatch, {"b": [air]})
+    assert va.catchup_shown([air], tally, t, 95) == set()        # 1083 was the last flip at 95 s
+    assert va.catchup_shown([air], tally, t, 180) == {air}
+
+
+def test_catchup_never_starts_180_s_or_more_after_the_play(monkeypatch):
+    air = va.Air(1000.0, "b", "td", 5.0)
+    t = _route_truth(monkeypatch, {"b": [air]})
+    assert va.last_flip(air, 400, t.tune_s) == 1000.0 - va.PLAY_LEN_S + 180.0 - 5.0
+    assert va.catchup_shown([air], va.Tally(route=[(1169.0, "a")]), t, 400) == set()
+
+
+def test_catchup_needs_a_dead_ball_long_enough_to_come_back(monkeypatch):
+    air = va.Air(1000.0, "b", "td", 5.0)
+    tally = va.Tally(route=[(1050.0, "a")])
+    assert va.catchup_shown([air], tally, _route_truth(monkeypatch, {"b": [air]}, (False, False, 0.0)), 180) == set()   # mid-play
+    assert va.catchup_shown([air], tally, _route_truth(monkeypatch, {"b": [air]}, (True, False, 39.0)), 180) == set()   # play back first
+    assert va.catchup_shown([air], tally, _route_truth(monkeypatch, {"b": [air]}, (True, False, 40.0)), 180) == {air}
+
+
+def test_catchup_needs_the_stick_ready_and_the_route_open(monkeypatch):
+    air = va.Air(1000.0, "b", "td", 5.0)
+    t = _route_truth(monkeypatch, {"b": [air]})
+    assert va.catchup_shown([air], va.Tally(route=[(1000.0 + va.PREP_S - 1.0, "a")]), t, 180) == set()
+    assert va.catchup_shown([air], va.Tally(route=[]), t, 180) == set()
+
+
+def test_a_catchup_cannot_overlap_a_real_cut(monkeypatch):
+    air = va.Air(1000.0, "b", "td", 5.0)
+    t = _route_truth(monkeypatch, {"b": [air]})
+    assert va.catchup_shown([air], va.Tally(route=[(1050.0, "a")], screen=[(1075.0, "c")]), t, 180) == set()
+    assert va.catchup_shown([air], va.Tally(route=[(1050.0, "a")], screen=[(1100.0, "c")]), t, 180) == {air}
+
+
+def test_one_screen_shows_one_clip_at_a_time_the_better_one_first(monkeypatch):
+    td, trip = va.Air(1000.0, "b", "td", 5.0), va.Air(1000.0, "c", "rz_trip", 3.0)
+    t = _route_truth(monkeypatch, {"b": [td], "c": [trip]})
+    assert va.catchup_shown([td, trip], va.Tally(route=[(1020.0, "a")]), t, 95) == {td}
+    assert va.catchup_shown([td, trip], va.Tally(route=[(1020.0, "a"), (1040.0, "a")]), t, 95) == {td}    # still on the first clip
+    assert va.catchup_shown([td, trip], va.Tally(route=[(1020.0, "a"), (1060.0, "a")]), t, 95) == {td, trip}
+
+
+def test_lost_after_catchup_and_avoidable_keep_lost_itself_unchanged(monkeypatch):
+    saved, gone, kept = va.Air(1000.0, "b", "td", 5.0), va.Air(3000.0, "c", "td", 5.0), va.Air(5000.0, "d", "turnover", 3.0)
+    t = _route_truth(monkeypatch, {"b": [saved], "c": [gone], "d": [kept]})
+    tally = va.Tally(route=[(1050.0, "a")], log={"b": [(950.0, "gate:leave", True, False)], "c": [(2950.0, "arbiter:margin", True, False)],
+                                                  "d": [(4950.0, "legal:leave_gate", True, True)]})
+    row = va.new_row()
+    va.charge_night(tally, t, row)
+    assert row["lost"] == Counter({"gate:leave": 5.0, "arbiter:margin": 5.0, "legal:leave_gate": 3.0})     # the old column, untouched
+    for reach in ("95", "180"):
+        assert row["lost_after_catchup"][reach] == Counter({"arbiter:margin": 5.0, "legal:leave_gate": 3.0})     # the catch-up saved one
+        assert row["avoidable_lost"][reach] == 5.0                                                               # protected and unroutable: excluded
+
+
+def test_the_table_labels_catchup_simulated_and_prints_both_reaches():
+    row = va.new_row()
+    row.update(league="nfl", brain="hindsight", card={"entries_mid_play": 0, "entries": 0, "cuts_high": 0, "mid_play_leaves": 0})
+    row["lost"]["gate:leave"] = 5.0
+    row["lost_after_catchup"]["95"]["gate:leave"] = 5.0
+    row["avoidable_lost"]["95"] = 5.0
+    text = va.table([json.loads(json.dumps(row))])
+    assert "SIMULATED" in text and "reach 95s" in text and "reach 180s" in text and "avoidable lost, simulated reach 95 s: 5.0" in text
