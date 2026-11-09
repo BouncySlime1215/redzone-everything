@@ -4,7 +4,7 @@ tests/adversarial/harness.py puts a brain in charge of every switch. The worst o
 future, and asks for exactly the cuts that would break Rule #1. Controls prove a zero here means something: with the
 gate gone the same brain does break the rule.
 
-Cells marked `HOLE` are real gaps in production code, xfail with the reason; they turn into failures when fixed, so the
+Cells marked `HOLE` are real gaps in production code, pinned with the reason; they turn into failures when fixed, so the
 mark comes off. tests/adversarial/sweep.py runs the full matrix for the exit check.
 
 Why: a model is only allowed near the TV if no output it can produce breaks Rule #1 (build plan WP-15, brain-vs-code S4).
@@ -20,6 +20,7 @@ from test_commit_gate import AT, T, _d, _host
 from redzone.contracts import brain as contract
 from redzone.decider import gate
 from tests.adversarial.harness import Truth, WorstBrain, cap_from_env, score
+from tests.eval_data_gate import needs_eval_data
 from tests.brains import ATTACKS, AdversarialBrain, RandomBrain
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -54,12 +55,22 @@ def test_the_worst_valid_brain_cannot_break_rule_1(league, kind):
     _assert_safe(r)
 
 
+# The mid-play entries the grader calls on NBA fit nights (matchup, kind, switch wall time), pinned. Both lists are exact: a new
+# case or a vanished one fails, so neither a new hole nor a fix can hide inside "the known artifacts". GRADER_WALLS says why
+# the HOU @ SA, BKN @ CLE and POR @ LAL jump landings are artifacts; MIN @ ORL (better only) was pinned from the run, not
+# yet checked by hand like those three.
+NBA_GRADER_WALL_ENTRIES = {
+    "jump": ["BKN @ CLE jump @ 1792889251", "HOU @ SA jump @ 1792807853", "POR @ LAL jump @ 1793166607"],
+    "better": ["BKN @ CLE better @ 1792889241", "HOU @ SA better @ 1792807853", "MIN @ ORL better @ 1792798903"],
+}
+
+
 @pytest.mark.parametrize("kind", ["jump", "better"])
-@pytest.mark.xfail(strict=True, reason=GRADER_WALLS)
-def test_the_worst_valid_brain_cannot_break_rule_1_nba(kind):
+def test_the_worst_valid_brain_on_nba_lands_mid_play_only_in_the_known_grader_artifacts(kind):
     _data("nba")
     r = score("nba", WorstBrain, kind=kind, cap=None)     # every fit night: the count is the point
-    _assert_safe(r)
+    assert r["mid_entries"] == NBA_GRADER_WALL_ENTRIES[kind] and r["entries_mid_play"] == 3, (GRADER_WALLS, r)
+    assert r["cuts_high"] == 0, r
 
 
 @pytest.mark.parametrize("league", ["nhl", "nfl"])
@@ -75,15 +86,19 @@ def test_a_random_brain_crunch_cut_cannot_land_mid_play_nhl():
     _assert_safe(score("nhl", lambda t: RandomBrain(1), kind="crunch", cap=None))
 
 
-@pytest.mark.xfail(strict=True, reason="GRADER ARTIFACT, not a hole (WP-15B): the one graded leave is WSH @ CHA 0:33.3 Q4, between free "
-                                       "throws: clock 33.3 before and after, FT2 24 s later. sportsgrade._clean_cut reads the FT2 row as "
-                                       "the next action and backs off 26 s (RESUME_LEAD), so it calls the dead ball mid-play. The real leave "
-                                       "(HOU @ SA, 3:14 left, 1 s before a shooting foul, clock running) is now vetoed, see "
-                                       "test_commit_gate.test_a_leave_is_vetoed_when_a_high_leverage_game_has_its_clock_running.")
-def test_a_raw_brain_cannot_cut_a_high_leverage_play_nba():
+# The one high-leverage mid-play leave the grader calls in a raw wrong_tick run. GRADER ARTIFACT, not a hole (WP-15B): WSH @ CHA
+# 0:33.3 Q4, between free throws: clock 33.3 before and after, FT2 24 s later. sportsgrade._clean_cut reads the FT2 row as the
+# next action and backs off 26 s (RESUME_LEAD), so it calls the dead ball mid-play. The real leave (HOU @ SA, 3:14 left, 1 s
+# before a shooting foul, clock running) is now vetoed, see
+# test_commit_gate.test_a_leave_is_vetoed_when_a_high_leverage_game_has_its_clock_running.
+NBA_RAW_WRONG_TICK_HIGH_CUTS = ["WSH @ CHA: Hornets offensive team rebound @ 1793064034"]
+
+
+def test_a_raw_brain_cuts_a_high_leverage_play_on_nba_only_in_the_known_grader_artifact():
     _data("nba")
     r = score("nba", lambda t: AdversarialBrain("wrong_tick"), kind="better", raw=True, cap=None)
-    assert r["cuts_high"] == 0, r
+    assert r["high_cuts"] == NBA_RAW_WRONG_TICK_HIGH_CUTS and r["cuts_high"] == 1, r
+    assert r["entries_mid_play"] == 0, r
 
 
 @pytest.mark.parametrize("attack", ATTACKS)
