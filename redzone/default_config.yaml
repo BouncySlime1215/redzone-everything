@@ -1183,6 +1183,7 @@ commit_gate:               # [build plan WP-05] one named-veto gate at the flip 
   enabled: false
 
 discovery:                 # [build plan WP-01]
+  espn_on_yttv: false      # [build plan WP-22] ESPN events through YouTube TV; unproven until a TV night answers its unknowns
   st_wait: false           # an NFL Sunday game waits for its Sunday Ticket slot; local CBS and FOX games keep their local route
 
 arbiter:                   # [build plan WP-17] picks among legal options, with a must-show floor; every cut still goes through the commit gate
