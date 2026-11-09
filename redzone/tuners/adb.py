@@ -392,7 +392,8 @@ class Stick:
         score bug's lower third) read off the stick; the rows above are black. The stick sends raw pixels
         (no PNG encode there: a 1080p `screencap -p` takes ~6.5 s on the 4K (2023) stick), only the band's
         bytes cross Wi-Fi, and the PNG is rebuilt here at full size so OCR boxes keep their positions.
-        b'' when the frame isn't 8-bit RGBA or anything fails (the caller falls back to screencap)."""
+        b'' when the frame isn't 8-bit RGBA or the command fails (the caller falls back to screencap). A timeout is
+        NOT swallowed: it raises asyncio.TimeoutError, as screencap does (yttv_seek counts it as a failed read)."""
         if self._raw_geom is None:
             head = await self._exec_out("screencap | head -c 12", timeout)
             if len(head) < 12:
