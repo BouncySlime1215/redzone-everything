@@ -33,7 +33,6 @@ if str(ROOT) not in sys.path:
 
 import numpy as np  # noqa: E402
 
-from redzone.moments.detect import detect  # noqa: E402
 from redzone.noggin import gamevalue as G  # noqa: E402
 from redzone.noggin import value_shards as V  # noqa: E402
 from scripts import holdset  # noqa: E402
@@ -97,7 +96,7 @@ class ModelRanker:
                 continue
             clean = V.strip_published_wp(summary)
             playoff = int(((summary.get("header") or {}).get("season") or {}).get("type") == 3)
-            view = V.make_view(league, clean, detect(league, clean, gid), playoff)
+            view = V.make_view(league, clean, V.feature_detect(league, clean, gid), playoff)
             arrive = view.walls if self.feed is None else self.feed.arrivals(gid, view.walls)
             head = np.searchsorted(arrive, times, "right") - 1
             seen = head >= 0
