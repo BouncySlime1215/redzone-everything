@@ -334,6 +334,9 @@ class Stick:
         """All visible text in the current UI (menus, buttons, prompts). Video itself isn't text.
         Slow (1-3 s), so it runs as its own adb process: the always-open shell stays free for the
         quick "playing yet?" checks that run alongside it."""
+        if self.breaker.is_open:
+            self.screen_source = "ui"
+            return ""                  # a hung stick: this bypasses shell(), so it must check the breaker itself
         # Remove the previous dump first: a failed dump (common while video plays: "could not get
         # idle state") must never hand back an earlier screen's text.
         r = await self.run("shell", "rm -f /sdcard/rz_ui.xml && uiautomator dump /sdcard/rz_ui.xml >/dev/null 2>&1"
@@ -357,6 +360,8 @@ class Stick:
 
     async def screencap(self, timeout: float = 8.0) -> bytes:
         """A fresh PNG screenshot (no key pressed, nothing changes on screen). b'' if it failed."""
+        if self.breaker.is_open:
+            return b""
         proc = await asyncio.create_subprocess_exec(
             ADB, "-s", self.host, "exec-out", "screencap", "-p",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
@@ -370,6 +375,8 @@ class Stick:
         return png
 
     async def _exec_out(self, cmd: str, timeout: float) -> bytes:
+        if self.breaker.is_open:
+            return b""
         proc = await asyncio.create_subprocess_exec(
             ADB, "-s", self.host, "exec-out", cmd,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)

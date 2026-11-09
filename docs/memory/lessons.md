@@ -435,3 +435,5 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
 - 2026-11-09 (AUDIT-OLD): `rule_stuck_switch` returned early while a switch was in flight, so its "controller command running" clock never saw the gap and a brand-new command could be cancelled as stuck the moment the switch ended. Lesson: a "held since" clock only means "without a break" if every path through the rule updates it. Test: tests/test_audit_old_supervisor.py.
 
 - 2026-11-09 (AUDIT-OLD): a TV key that timed out waiting for the socket was reported "maybe delivered" whenever an older timed-out `warm()` had left `_drop_pending` set, so a key that never ran blocked the fallback. Lesson: tell two kinds of timeout apart at the place that knows which one it is, not later from shared state. Test: tests/test_audit_old_tv.py.
+
+- 2026-11-09 (AUDIT-OLD): the stick breaker only guarded `shell()`. `screen_text`, `screencap` and the raw `exec-out` reads start their own adb process, so a hung stick still cost 12 to 15 s each. Lesson: a guard on the common path doesn't cover the paths written to avoid it; check each door. Test: tests/test_audit_old_adb.py.
