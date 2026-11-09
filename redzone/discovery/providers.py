@@ -700,6 +700,7 @@ def _game_skip(g: GameState, s: Source, skips: Mapping[str, dict] | None) -> Sou
 
 # --- the book: installed apps, subscriptions, learned skips, per-game links ------------
 
+SCAN_RETRY_S = 300.0           # a scan that found nothing is retried after 5 minutes, not on every 15 s step
 SCAN_EVERY_S = 1800.0          # re-list each stick's apps every 30 minutes
 LINKS_KEEP_S = 36 * 3600.0     # forget a game's links 36 h after it started
 RECHECK_S = {"signin": 6 * 3600.0, "upsell": 3 * 86400.0}   # auto marks expire: try again later
@@ -729,6 +730,7 @@ class ProviderBook:
         self.stick_skips: dict[str, dict] = {}            # host -> {target: {kind, why, at, game}}
         self.worked: dict[str, dict] = {}                 # provider -> {host: last time video played}
         self._fails: dict[str, list[float]] = {}
+        self._scan_failed: dict[str, float] = {}          # host -> when its last scan found nothing
         self.load()
 
     # -- file --------------------------------------------------------------------------
@@ -783,7 +785,8 @@ class ProviderBook:
         return changed
 
     def due(self, host: str) -> bool:
-        return self._now() - float(self.scanned.get(host) or 0) >= SCAN_EVERY_S
+        t = self._now()
+        return t - float(self.scanned.get(host) or 0) >= SCAN_EVERY_S and t - self._scan_failed.get(host, -1e18) >= SCAN_RETRY_S
 
     async def refresh_sticks(self, sticks: Iterable, force: bool = False) -> dict[str, list[str]]:
         """Scan due sticks' apps (at most every 30 min each), add new roles to stick.packages
@@ -802,7 +805,9 @@ class ProviderBook:
                 continue
             found = await scan_apps(st)
             if not found:
-                continue  # scan failed: keep what we knew
+                self._scan_failed[host] = self._now()
+                continue  # scan failed: keep what we knew, retry in SCAN_RETRY_S
+            self._scan_failed.pop(host, None)
             added[host] = added.get(host, []) + merge_roles(st.packages, found)
             changed |= self.saw_apps(host, found)
         if changed:
