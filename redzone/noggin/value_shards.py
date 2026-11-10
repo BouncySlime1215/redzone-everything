@@ -34,6 +34,13 @@ field in different places then. Rows and labels are the same plays either way; o
 
 Features v5 (RZ_GV_FEATURES=v5) are v4 plus the kept columns of wide_features.py. Those read only plays at or before the feed head and never the decision.
 
+Label v2 (RZ_GV_LABEL=v2, off by default so every existing shard, model and grade stays comparable) adds one column beside the two above:
+
+    value2_next_3m  sum of redzone.moments.value2 values (base x leverage x stakes) in (decision_t, +180 s]
+
+It reads the same stripped summary, so published win probability cannot reach it, and its only stake is the playoff flag, the one
+stake every source carries (a pre-game spread exists only in archive summaries). No feature reads it: value_10m and t1-t3 stay v1.
+
 Sources: only what docs/agents/data/2026-11-09-sports-data-gaps.md lists as licence-cleared, see `public_status`.
 NBA and CBB (hoopR) stay off in code unless `personal_nba=True`, because Nick has not ruled on that report's conditional row.
 """
@@ -51,6 +58,7 @@ import numpy as np
 import pandas as pd
 
 from redzone.context.tokens import PERSONAL_USE
+from redzone.moments import value2
 from redzone.moments.detect import Detected, clock_s, detect, football_drives, game_span, parse_ts
 from redzone.noggin import factory
 from redzone.noggin import gamevalue as G
@@ -68,7 +76,10 @@ REGULATION_LEN = {"nfl": (4, 900.0), "cfb": (4, 900.0), "nba": (4, 720.0), "wnba
                   "nhl": (3, 1200.0)}
 LAG_PROFILE = Path(__file__).resolve().parents[1] / "lab" / "feed_lag_profile.json"
 
-VALUE_LABELS = ("value_next_3m", "p_tier1_60s")
+_LABELS_V1 = ("value_next_3m", "p_tier1_60s")
+VALUE2_LABEL = "value2_next_3m"
+LABEL_ENV, LABEL_VERSIONS = "RZ_GV_LABEL", ("v1", "v2")
+LABEL_VERSION, VALUE_LABELS = "v1", _LABELS_V1
 VALUE_META = ("league", "season", "game_id", "game_key", "night", "source_night_id", "source", "license", "plan",
         "decision_t", "feed_cut_t", "feed_head_t", "feature_t_max", "lag_s", "label_full_window", "label_first_t")
 
@@ -81,7 +92,19 @@ def select_features(version: str) -> None:
     VALUE_COLUMNS = VALUE_META + VALUE_FEATURES + VALUE_LABELS
 
 
+def select_label(version: str) -> None:
+    """Make `version` the active label set: v1 (the default) is the two labels every shard has; v2 adds value2_next_3m.
+    The shard builder reads RZ_GV_LABEL at import, the same way the feature version is picked. An unknown name stops the import."""
+    global LABEL_VERSION, VALUE_LABELS, VALUE_COLUMNS
+    if version not in LABEL_VERSIONS:
+        raise ValueError(f"{LABEL_ENV}={version!r}: known versions are {list(LABEL_VERSIONS)}")
+    LABEL_VERSION = version
+    VALUE_LABELS = _LABELS_V1 + ((VALUE2_LABEL,) if version == "v2" else ())
+    VALUE_COLUMNS = VALUE_META + VALUE_FEATURES + VALUE_LABELS
+
+
 select_features(G.GV_FEATURES_VERSION)
+select_label(os.environ.get(LABEL_ENV) or "v1")
 
 # league -> (source id, licence line, plan, url, seasons newest first). From the gaps report: Licence OK = Yes.
 _CLEARED = {"nfl": ("nflverse_pbp", "CC-BY 4.0 (nflverse data); credit nflverse", "A", factory.SOURCES["nfl"]["url"],
@@ -336,6 +359,16 @@ def _wide_columns() -> tuple[str, ...]:
 FeatureFn = Callable[[GameView, np.ndarray, np.ndarray], dict]
 
 
+def value2_label(league: str, clean: dict, game_id: str, decision: np.ndarray, playoff: int = 0) -> np.ndarray:
+    """Sum of value-v2 moment values in (decision, +180 s] for each decision. `clean` is the stripped, wall-ordered summary
+    the v1 label reads. Dead value is negative, so this label can be below zero."""
+    stake = float(value2.config()["stakes"]["postseason"]) if playoff else 1.0
+    graded = sorted(value2.grade(league, clean, game_id, fixed_stakes=stake), key=lambda g: g.t)
+    t = np.array([g.t for g in graded], float)
+    cum = np.cumsum([g.value for g in graded]) if graded else np.zeros(0)
+    return _sum_in(t, cum, decision, decision + HORIZON_S).astype(np.float32)
+
+
 def build_rows(league: str, game_id: str, summary: dict, *, night: str, season: int, source: str, license_line: str,
                plan: str, playoff: int = 0, game_key: str = "", feature_fn: FeatureFn = features) -> pd.DataFrame:
     """All decision rows of one game; empty when the feed is not a whole game (30+ timed plays, 1.2-7 h)."""
@@ -360,6 +393,8 @@ def build_rows(league: str, game_id: str, summary: dict, *, night: str, season: 
         data[k] = np.asarray(val, dtype=np.float32)
     data["value_next_3m"] = _sum_in(t_all, cum_all, decision, decision + HORIZON_S).astype(np.float32)
     data["p_tier1_60s"] = (_count_in(tier_all[1], decision, decision + TIER1_S) > 0).astype(np.float32)
+    if LABEL_VERSION == "v2":
+        data[VALUE2_LABEL] = value2_label(league, clean, game_id, decision, playoff)
     df = pd.DataFrame(data)
     for k, val in (("league", league), ("season", int(season)), ("game_id", str(game_id)), ("game_key", game_key),
                    ("night", night), ("source_night_id", f"{league}:{night}"), ("source", source),
@@ -415,7 +450,8 @@ def shard_done(out: Path, league: str, shard: str) -> bool:
     info = json.loads(side.read_text())
     if FEATURES_VERSION == "v5" and info.get("v5_kept_sha") != _kept_sha():
         return False
-    return bool(info.get("complete")) and info.get("features_version") == FEATURES_VERSION
+    return (bool(info.get("complete")) and info.get("features_version") == FEATURES_VERSION
+            and info.get("label_version", "v1") == LABEL_VERSION)
 
 
 def rows_sha(df: pd.DataFrame) -> str:
@@ -432,6 +468,8 @@ def write_shard(out: Path, league: str, shard: str, rows: pd.DataFrame, info: di
     os.replace(tmp, pq)
     if FEATURES_VERSION == "v5":
         info = {**info, "v5_kept_sha": _kept_sha(), "v5_columns": list(_wide_columns()), "v5_own": sorted(G.GV_V5_OWN.get(league, ()))}
+    if LABEL_VERSION != "v1":         # written only when it is on, so a default sidecar keeps its bytes
+        info = {**info, "label_version": LABEL_VERSION}
     meta = {**info, "league": league, "shard": shard, "rows": int(len(rows)), "complete": True,
             "features_version": FEATURES_VERSION, "rows_sha256": rows_sha(frame),
             "nights": sorted(rows["night"].unique().tolist()) if len(rows) else [],
@@ -447,6 +485,8 @@ def finalize(out: Path) -> dict:
     factory's train | calib | test fractions). Rebuilt from sidecars, so resuming never rewrites a finished shard."""
     out = Path(out)
     man: dict = {"features_version": FEATURES_VERSION, "leagues": {}}
+    if LABEL_VERSION != "v1":
+        man["label_version"] = LABEL_VERSION
     nights: dict[str, set] = {}
     for side in sorted(out.glob("*/*.json")):
         i = json.loads(side.read_text())

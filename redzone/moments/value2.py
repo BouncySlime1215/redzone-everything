@@ -29,7 +29,7 @@ from redzone.moments.detect import clock_s, football_drives, parse_ts
 _PATH = Path(__file__).with_name("value2.yaml")
 _TEXT_KEEP = 170
 _TD_YARDS = re.compile(r"for (-?\d+) yards?,? touchdown")
-_RETURN_YARDS = re.compile(r"(?:intercepted by|recovered by)[^.]*\.[^.]*? for (\d+) yards?")
+_RETURN_YARDS = re.compile(r"(?:intercepted by|recovered by).*? for (\d+) yards?")
 _FG_YARDS = re.compile(r"(\d+) yard field goal")
 _DPI_YARDS = re.compile(r"defensive pass interference, (\d+) yards?")
 _KICK_FROM = re.compile(r"from ([a-z]+) \d+")

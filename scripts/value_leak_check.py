@@ -46,6 +46,8 @@ FEATURES = ("period", "clock_left", "game_left", "is_ot", "late", "abs_margin", 
             "lead_changes", "plays_5m", "since_head_s", "since_score_s", "since_start_s", "t1_5m", "t2_5m", "t3_5m",
             "t1_game", "value_10m", "down", "distance", "yards_to_goal", "playoff")
 LABELS = ("value_next_3m", "p_tier1_60s")
+LABELS_V2 = LABELS + ("value2_next_3m",)   # value_shards with RZ_GV_LABEL=v2; the sidecar says label_version v2
+LABELS_BY_VERSION = {"v1": LABELS, "v2": LABELS_V2}
 FEATURES_VERSION = "v2"  # value_shards' default FEATURES_VERSION: older shards anchor the label on the feed head
 HISTORY = ("pts_last3", "pts_last5", "swing_last5", "run_pts", "run_by_trailing", "to_5m", "fouls_5m", "plays_2m",
            "sec_per_play_10", "timeouts_period", "since_timeout_s", "timeout_recent")
@@ -67,8 +69,8 @@ META = ("league", "season", "game_id", "game_key", "night", "source_night_id", "
 ALLOWED = frozenset(META + FEATURES + LABELS)
 
 
-def allowed_for(version: str, wide: tuple = ()) -> frozenset:
-    return frozenset(META + FEATURES_BY_VERSION[version] + tuple(wide) + LABELS)
+def allowed_for(version: str, wide: tuple = (), labels: tuple = LABELS) -> frozenset:
+    return frozenset(META + FEATURES_BY_VERSION[version] + tuple(wide) + tuple(labels))
 
 
 PUBLIC_SOURCES = {"nflverse_pbp": "nfl"}
@@ -512,10 +514,10 @@ def audit_raw(df: pd.DataFrame, league: str, shard: str, name: str, raw: Path, r
         _audit_game(league, str(gid), games[str(gid)], rows, name, rep, version, wide)
 
 
-def check_label_copy(df: pd.DataFrame, name: str, rep: Report, features: tuple = FEATURES):
+def check_label_copy(df: pd.DataFrame, name: str, rep: Report, features: tuple = FEATURES, labels: tuple = LABELS):
     if len(df) < MIN_ROWS_COPY:
         return
-    for label in LABELS:
+    for label in labels:
         y = df[label].to_numpy(float)
         if y.std() == 0:
             continue
@@ -584,7 +586,12 @@ def check_dir(out: Path, archive: Path | None = None, allow_personal_nba: bool =
         bad_names = [n for n in wide if not WIDE_RE.match(n)]
         if bad_names:
             rep.fail("columns", f"{name}: v5 columns that are not generated names: {bad_names[:5]}")
-        allowed = allowed_for(version, wide)
+        label_version = info.get("label_version", "v1")
+        if label_version not in LABELS_BY_VERSION:
+            rep.fail("sidecar", f"{name}: labels {label_version}, this check knows {sorted(LABELS_BY_VERSION)}")
+            label_version = "v1"
+        labels = LABELS_BY_VERSION[label_version]
+        allowed = allowed_for(version, wide, labels)
         df = pd.read_parquet(f)
         rep.checked["shards"] += 1
         rep.checked["rows"] += len(df)
@@ -608,7 +615,9 @@ def check_dir(out: Path, archive: Path | None = None, allow_personal_nba: bool =
         rep.checked["prefix_rows"] += int(info.get("prefix_checked") or 0)
         check_times(df, name, rep)
         check_nights(df, league, name, archive, cache, allow_personal_nba, rep)
-        check_label_copy(df, name, rep, FEATURES_BY_VERSION[version] + wide)
+        check_label_copy(df, name, rep, FEATURES_BY_VERSION[version] + wide, labels)
+        if label_version == "v2" and not np.isfinite(df[LABELS_V2[-1]].to_numpy(float)).all():
+            rep.fail("label_window", f"{name}: a value2 label is not a number")
         masked = sorted(set(wide) - set(own))
         if masked and (df[masked].to_numpy(float) != 0).any():
             rep.fail("columns", f"{name}: a wide column outside this league's own list is not zero")
