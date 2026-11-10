@@ -9,6 +9,9 @@
     --dead floor  size every catch-up piece with the dead time the live code could count on in advance (scoring/dead_left.guaranteed_left,
                   q10 of the stoppage's measured length less what already ran), not the real length known afterwards. Default `hindsight`
     --delay-error 3   the TRUE picture delay is 3 s more, then 3 s less, than the app believes (two whole runs); the table is the worse arm's
+    --sigma 1.5   the timing doubt the replayed app STATES for its delay estimate at the night's start (default 3: backtest.run's own, today's
+                  output). The replay's doubt then grows 1 s per 15 minutes, up to 6 s more (Delay.current_sigma): --sigma-hold keeps it at S all
+                  night, a TV that re-measures its delay on every tune. With --delay-error S it is the honest arm: sure to S, wrong by S
 
 `yes-rate` (new lines after the tables): of the ticks the brain wanted another game, the share where that game's picture was up
 within 20 s, and the share that instead got a finished catch-up clip of that game within 60 s (the route at the 180 s reach, SIMULATED).
@@ -103,6 +106,9 @@ TIMING, DEAD = TIMINGS[0], DEADS[0]   # this run's --timing and --dead (defaults
 PAST_CAP_S = 600.0   # `past_cap`: how long after the 180 s cap a later opening is still looked for (info only)
 YES_S, CLIP_YES_S = 20.0, 60.0   # yes-rate: the wanted game's picture up this soon after the tick; else a catch-up clip of it this soon
 DELAY_ERROR_KEY = "audit.delay_error_s"   # --delay-error: rides on the job's sets (no product flag); the true delay is the believed one plus this
+SIGMA_KEY = "audit.sigma_s"               # --sigma: rides on the job's sets (no product flag); the doubt the replayed app states for its delay estimate
+SIGMA_HOLD_KEY = "audit.sigma_hold"       # --sigma-hold: rides on the job's sets (no product flag); that doubt does not grow through the night
+DEFAULT_SIGMA_S = 3.0                     # backtest.run's own `sigma`: what every audit before --sigma ran with
 
 # Why the catch-up route did not air a lost moment: the furthest step any tick got inside the moment's window, in this order.
 CAUSES = ("no_stay_tick",        # no tick in the window at all: the replay was cutting, or the night ended
@@ -290,6 +296,7 @@ class Tally:
     held_ticks: int = 0      # ticks a remembered pick waited
     over: Counter = field(default_factory=Counter)        # why a remembered pick was let go
     wants: list = field(default_factory=list)             # (t, game) for every tick the top pick was a cut: the yes-rate's denominator
+    bucket: int = 0          # [basketball.join_after_bucket] cuts that went on a made-basket landing (the plan's landing kind "bucket")
     leave_sub: dict = field(default_factory=lambda: {k: Counter() for k in LEAVE_SUB_KEYS})   # gate:leave split by gate.leave_cause
 
 
@@ -332,6 +339,7 @@ class AuditDecider(Decider):
     """decide() throws the decider's own proposal away and walks the brain's top pick down the real chain."""
     brain, tally, truth, sets, base_state, base_owner, pick_scores = None, None, None, {}, None, None, {}
     leave_sub = ""      # gate.leave_cause of the last flip judged, when its leave rule said no
+    land_kind = ""      # the landing kind of the last flip _flip_vetoes judged ("bucket": right after a made basket)
 
     def __init__(self, cfg, delays, clock=None):
         super().__init__(Overlay(cfg, self.sets), delays, clock=clock)
@@ -361,12 +369,14 @@ class AuditDecider(Decider):
         timed, plan = f.replan
         if timed and plan is not None and plan.ok:
             d.rewind_s = plan.rewind_s
+        self.land_kind = plan.landing.kind if timed and plan is not None and plan.ok and plan.landing is not None else ""
         names = [n for n, rule in gate.GATE_RULES if rule(f)]
         self.leave_sub = gate.leave_cause(f) if "leave" in names else ""
         return names
 
     def _go(self, d: Decision, now: float) -> Decision:
         self.tally.went += 1
+        self.tally.bucket += int(self.land_kind == "bucket")
         self._commit(d.target, kind=d.kind)
         self._land_behind(d.target, d.rewind_s)
         self.tally.screen.append((now + self.truth.tune_s, d.target))
@@ -431,7 +441,16 @@ class AuditDecider(Decider):
             return stay
         return self._go(d, now)
 
+    def _hold_sigma(self, cands: dict) -> None:
+        """[--sigma-hold] The stated doubt stays what the night began with: the replay's 1 s per 15 minutes of drift is switched off for
+        every game's delay estimate. The estimate itself and the true delay are untouched."""
+        for x in cands.values():
+            if getattr(x, "target", None):
+                self.delays.get(x.target).drift_cap = 0.0
+
     def decide(self, cands, redzone=None, *, commit=True, reel=None):
+        if self.sets.get(SIGMA_HOLD_KEY):
+            self._hold_sigma(cands)
         base = super().decide(cands, redzone, commit=False, reel=reel)
         now, t = self._clock(), self.tally
         t.ticks += 1
@@ -797,11 +816,17 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
 
 def new_row() -> dict:
     return {"must_total": 0.0, "must_seen": 0.0, "not_asked": 0.0, "lost": Counter(), "lost_alone": Counter(), "moments": Counter(),
-            "ticks": 0, "wanted": 0, "went": 0, "held": 0, "released": 0, "held_ticks": 0, "over": Counter(), "refused": Counter(), "alone": Counter(), "any_rule": Counter(), "protected": Counter(), "high": Counter(),
+            "ticks": 0, "wanted": 0, "went": 0, "held": 0, "released": 0, "held_ticks": 0, "bucket": 0, "over": Counter(), "refused": Counter(), "alone": Counter(), "any_rule": Counter(), "protected": Counter(), "high": Counter(),
             "lost_after_catchup": {str(r): Counter() for r in REACHES}, "route": {str(r): Counter() for r in REACHES}, "avoidable_lost": {str(r): 0.0 for r in REACHES},
             "residual": {str(r): Counter() for r in REACHES}, "residual_by_rule": {str(r): Counter() for r in REACHES},
             "past_cap": {str(r): Counter() for r in REACHES},
             "yes": Counter(), "leave_sub": {k: Counter() for k in LEAVE_SUB_KEYS}}
+
+
+class Graded(list):
+    """What the replay's grader said, night by night: the high-leverage mid-play leaves (the list), and the entries its made-basket
+    window made clean (grader v49's entries_after_bucket: the strict count is entries_mid_play plus these)."""
+    after_bucket = 0
 
 
 def card(script: str, *args: str) -> dict:
@@ -823,7 +848,7 @@ def replay(brain_name: str, sets: dict, row: dict, cap: int | None):
     saved = (backtest.Decider, backtest.run, engine_mod.time, gate.redzone_on, engine_mod.redzone_on, splits.nights_for, sportsgrade.grade)
     box, truth, real_run, real_nights, real_grade = {}, Truth(), backtest.run, splits.nights_for, sportsgrade.grade
     agent = BRAINS[brain_name](truth)
-    high = []
+    high = Graded()
     current: list[Tally] = []
 
     class Host(AuditDecider):
@@ -838,13 +863,15 @@ def replay(brain_name: str, sets: dict, row: dict, cap: int | None):
         err = float(sets.get(DELAY_ERROR_KEY, 0.0) or 0.0)
         if err:     # [--delay-error] the picture really runs this much later (or earlier) than the app believes; the app is not told
             kw["true_delay"] = (kw.get("delay", 35.0) if kw.get("true_delay") is None else kw["true_delay"]) + err
+        if SIGMA_KEY in sets:   # [--sigma] the doubt the app states for its delay estimate; the delay it believes and the true one are untouched
+            kw["sigma"] = float(sets[SIGMA_KEY])
         lag = kw.get("feed_lag", 8.0) + (kw.get("delay", 35.0) if kw.get("true_delay") is None else kw["true_delay"])
         truth.bind(replays, lag, kw.get("tune_s", 5.0))
         t = Tally()
         current.append(t)
         rep = real_run(replays, cfg, my_teams, **kw)
         charge_night(t, truth, row)
-        for k in ("ticks", "wanted", "went", "held", "released", "held_ticks"):
+        for k in ("ticks", "wanted", "went", "held", "released", "held_ticks", "bucket"):
             row[k] += getattr(t, k)
         row["over"].update(t.over)
         for k in ("refused", "alone", "any_rule", "protected", "high"):
@@ -865,6 +892,7 @@ def replay(brain_name: str, sets: dict, row: dict, cap: int | None):
     def grade(*a, **kw):
         c = real_grade(*a, **kw)
         high.extend(c.cuts_high)
+        high.after_bucket += getattr(c.cut, "entries_after_bucket", 0)
         return c
 
     backtest.Decider, backtest.run, splits.nights_for, sportsgrade.grade = Host, run, nights_for, grade
@@ -893,6 +921,11 @@ def run_one(job: tuple) -> dict:
                    "cuts_high": len(high), "mid_play_leaves": sum(n.get("cuts", 0) for n in nights), "dead_air_pct": c.get("dead_air_pct"),
                    "plays_missed_entry": c.get("plays_missed_entry", sum(n.get("plays_missed_entry", 0) for n in nights)),
                    "switches_per_hour": c.get("switches_per_hour"), "hours": c.get("hours", sum(n.get("hours", 0.0) for n in nights))}
+    if row["bucket"] or getattr(high, "after_bucket", 0):      # only with basketball.join_after_bucket: the default row stays as it was
+        row["card"]["entries_after_bucket"] = getattr(high, "after_bucket", 0)
+        row["card"]["entries_mid_play_strict"] = row["card"]["entries_mid_play"] + row["card"]["entries_after_bucket"]
+    else:
+        del row["bucket"]
     row["league"], row["brain"] = league, brain_name
     return json.loads(json.dumps(row))
 
@@ -927,7 +960,9 @@ def table(rows: list[dict], *, top: int = 25) -> str:
     for r in rows:
         c, pct = r["card"], 100.0 * r["must_seen"] / r["must_total"] if r["must_total"] else 0.0
         lines.append(f"{r['league']}/{r['brain']}: must-see seen {pct:.1f}% of {r['must_total']:.0f}, not asked {r['not_asked']:.0f}, "
-                     f"wanted {r['wanted']} went {r['went']}, mid-play {c['entries_mid_play']}/{c['entries']}, high-lev leaves {c['cuts_high']}, all mid-play leaves {c['mid_play_leaves']}")
+                     f"wanted {r['wanted']} went {r['went']}, mid-play {c['entries_mid_play']}/{c['entries']}, high-lev leaves {c['cuts_high']}, all mid-play leaves {c['mid_play_leaves']}"
+                     + (f", bucket joins {r.get('bucket', 0)} (grader: {c['entries_after_bucket']} entries right after a made basket, strict mid-play {c['entries_mid_play_strict']})"
+                        if "entries_after_bucket" in c else ""))
     return "\n".join(lines + catchup_lines(rows) + residual_lines(rows) + leave_lines(rows) + yes_lines(rows))
 
 
@@ -1064,18 +1099,25 @@ def main() -> int:
                                                                    "the live code could know (floor)")
     ap.add_argument("--delay-error", type=float, default=0.0, metavar="S",
                     help="run twice, with the TRUE picture delay S s more and S s less than the app believes; print the worse arm (default 0: one run)")
+    ap.add_argument("--sigma", type=float, default=DEFAULT_SIGMA_S, metavar="S",
+                    help="the timing doubt the replayed app states for its delay estimate at the night's start (default 3: today's output)")
+    ap.add_argument("--sigma-hold", action="store_true",
+                    help="the stated doubt stays at --sigma all night (default: the replay's grows 1 s per 15 minutes, up to 6 s more)")
     ap.add_argument("--json", type=Path, default=None)
     a = ap.parse_args()
     if a.prep_s is not None and a.prep_s < 0:
         ap.error("--prep-s must be 0 or more")
     if a.delay_error < 0:
         ap.error("--delay-error must be 0 or more")
+    if a.sigma <= 0:
+        ap.error("--sigma must be more than 0")
     sets = parse_sets(a.set)
     if a.timing == "measured":
         sets.setdefault(measured_timing.TIMING_FLAG, True)      # the replayed decider reads the same timings
     use_timing(a.timing, a.dead, a.prep_s, sets)
     a.prep_s = PREP_S
-    jobs = [(lg, b, sets, a.cap, a.prep_s) + ((a.timing, a.dead) if (a.timing, a.dead) != (TIMINGS[0], DEADS[0]) else ())
+    doubt = ({SIGMA_KEY: a.sigma} if a.sigma != DEFAULT_SIGMA_S else {}) | ({SIGMA_HOLD_KEY: True} if a.sigma_hold else {})
+    jobs = [(lg, b, {**sets, **doubt} if doubt else sets, a.cap, a.prep_s) + ((a.timing, a.dead) if (a.timing, a.dead) != (TIMINGS[0], DEADS[0]) else ())
             for lg in a.leagues for b in a.brains]
     def run_all(todo: list[tuple]) -> list[dict]:
         if a.workers == 1 or len(todo) == 1:
@@ -1086,7 +1128,7 @@ def main() -> int:
     arms: dict[str, list[dict]] = {}
     if a.delay_error:
         for err in (a.delay_error, -a.delay_error):
-            arms[f"{err:+g}"] = run_all([(j[0], j[1], {**sets, DELAY_ERROR_KEY: err}, *j[3:]) for j in jobs])
+            arms[f"{err:+g}"] = run_all([(j[0], j[1], {**j[2], DELAY_ERROR_KEY: err}, *j[3:]) for j in jobs])
         worse = max(arms, key=lambda k: worse_key(arms[k]))
         rows = arms[worse]
     else:
@@ -1098,6 +1140,9 @@ def main() -> int:
             c, y = rule1_counters(arm), yes_rate(arm)
             print(f"  true delay {name} s: entries_mid_play {c['entries_mid_play']}, mid_play_leaves {c['mid_play_leaves']}, high-leverage leaves {c['cuts_high']}, "
                   f"yes {y['yes_pct']:.1f}%, clip {y['clip_pct']:.1f}%, went {sum(r['went'] for r in arm)} of {sum(r['wanted'] for r in arm)}")
+    if doubt:
+        print(f"stated timing doubt {a.sigma:g} s at the night's start (default {DEFAULT_SIGMA_S:g} s), "
+              + ("held all night" if a.sigma_hold else "growing 1 s per 15 minutes, up to 6 s more (the replay's own drift)"))
     if a.prep_s != DEFAULT_PREP_S:
         print(f"what-if: hidden stick load time {a.prep_s:g} s (default {DEFAULT_PREP_S:g} s)")
     if a.timing != TIMINGS[0]:
@@ -1106,6 +1151,8 @@ def main() -> int:
         print(f"dead {a.dead}: catch-up pieces sized by the q10 dead time the live code could know in advance, not the real length")
     if a.json:
         out = {"sets": sets, "rows": rows, "rules": merge(rows), "avoidable_lost": {str(r): avoidable(rows, r) for r in REACHES}}
+        if doubt:                           # the default run's file stays byte-identical
+            out["sigma_s"], out["sigma_hold"] = a.sigma, bool(a.sigma_hold)
         if a.prep_s != DEFAULT_PREP_S:      # the default run's file stays byte-identical
             out["prep_s"] = a.prep_s
         if a.timing != TIMINGS[0]:
