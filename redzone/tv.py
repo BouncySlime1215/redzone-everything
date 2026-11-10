@@ -17,11 +17,11 @@ off (scripts/stick_cec.py). Two ways to send it; scripts/tv_setup.py proves whic
                  ID, never the first TV in the account. Its input READBACK is the strongest
                  evidence we have of what the viewer sees, so it also verifies local keys.
 
-SmartThings is DROPPED by policy (Nick N1, 2026-11-08: free access ends 2026-12-15 and the $0 rule
-forbids a paid plan). `two_stick.smartthings_cloud: false` (default) puts the cloud in the state
-"disabled by policy": no request, no probe, no OAuth file read, no Health alert, and the planner
-(cloud_ready / ready()) stops counting it. Local key + CEC are the paths. The code below stays for a
-test or for turning it back on; the OAuth file is neither read nor deleted while it is off.
+SmartThings is ON again (Nick, 2026-11-10: "use smart things"; on Nov 9 it was the only flip that worked on his
+TV, 9 of 9 against 0 of 3 for the local key). It was dropped on 2026-11-08 because free access ends 2026-12-15
+and the $0 rule forbids a paid plan, so another flip path is needed by then. `two_stick.smartthings_cloud: false`
+puts the cloud in the state "disabled by policy": no request, no probe, no OAuth file read, no Health alert, and
+the planner (cloud_ready / ready()) stops counting it; the OAuth file is neither read nor deleted while it is off.
 
 Every call has a timeout. False means unconfirmed, not necessarily unchanged: an ambiguous
 delivery (a timeout) never triggers a second TV method (the first one may already have switched);
@@ -350,7 +350,7 @@ class SamsungTV:
     st_fault: str = ""                   # "" | "auth" | "rate_limited" | "cloud_down" (machine tv.smartthings: st_m)
     st_fault_detail: str = ""
     st_breaker: Breaker | None = None
-    # Policy (Nick N1): SmartThings is dropped. from_devices() reads two_stick.smartthings_cloud (default off);
+    # Policy: from_devices() reads two_stick.smartthings_cloud (on again since 2026-11-10, Nick; false = dropped);
     # a plain SamsungTV(...) keeps the cloud so the fake-cloud tests and tv_setup.py still work.
     cloud_enabled: bool = True
     _tv: object = None

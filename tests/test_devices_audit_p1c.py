@@ -150,9 +150,14 @@ async def test_dev04_disabled_cloud_is_never_a_flip_path_even_when_asked(tmp_pat
     assert "disabled by policy" in tv.last_error
 
 
-def test_dev04_from_devices_reads_the_policy_default_off(tmp_path):
+def test_dev04_from_devices_reads_the_policy_default(tmp_path, monkeypatch):
+    """Nick, 2026-11-10 ("use smart things"): the shipped default is on again (the only flip that worked on his TV on
+    Nov 9). `two_stick.smartthings_cloud: false` still means disabled by policy."""
     f = tmp_path / "devices.json"
     f.write_text('{"tv": {"ip": "10.0.0.5", "smartthings_device_id": "x"}}')
+    assert not tvmod.SamsungTV.from_devices(f).cloud_disabled
+    real = tvmod._config.default
+    monkeypatch.setattr(tvmod._config, "default", lambda key, d=None: False if key == "two_stick.smartthings_cloud" else real(key, d))
     assert tvmod.SamsungTV.from_devices(f).cloud_disabled
 
 

@@ -647,8 +647,9 @@ two_stick:
   unavailable_backoff_s: 0  # [Nick live test Nov 7] a standby tune that stopped at an account/payment/UNAVAILABLE screen keeps
                             # that game off the standby this long (0 = the usual 120 s retry). Suggested 900
   standby_repause_s: 600     # [APP-04] the same standby pausing again within this long is a blocked app (a forced update)
-  smartthings_cloud: false # [Nick N1, 2026-11-08] SmartThings is DROPPED ($0 rule; free access ends 2026-12-15): off = "disabled by
-                           # policy": no cloud call, no probe, no alert, the planner stops counting it. Local key + CEC only
+  smartthings_cloud: true  # [Nick, 2026-11-10: "use smart things"] back ON: on Nov 9 it was the only flip that worked on his TV
+                           # (9 of 9; local key 0 of 3). Free access ends 2026-12-15 and the $0 rule forbids a paid plan, so a
+                           # second flip path is needed by then. false = "disabled by policy": no cloud call, probe or alert
   tv_verify_deadline_s: 2.5     # [DEV-03] a TV input readback never holds a flip longer than this
   tv_local_lock_wait_s: 3.0     # [DEV-16] a key waits this long for the shared TV socket (a keepalive or key using it)
   tv_maintain_timeout_s: 20.0   # [DEV-10] one keepalive's TV upkeep is cut after this
