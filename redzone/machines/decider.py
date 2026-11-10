@@ -138,6 +138,17 @@ CATCHUP_ROUTE = Spec(
     edges={"idle": ("airing",), "airing": ("between", "idle"), "between": ("airing", "idle")},
     initial="idle")
 
+ANCHOR = Spec(
+    "decider.anchor", owner="decider.Decider.anchor_m",
+    doc="[anchor.enabled] the crunch or overtime game the screen stick holds, and whether a gap fill is on screen",
+    states={
+        "off": "no anchor: the normal show",
+        "holding": "the anchor is on (or on its way to) the screen stick; its live plays are never left",
+        "filling": "a clip of the gap plan is on the hidden stick; the screen flips back before the anchor's guaranteed restart",
+    },
+    edges={"off": ("holding",), "holding": ("filling", "off"), "filling": ("holding", "off")},
+    initial="off")
+
 JUMP_BREAK = Spec(
     "decider.jump_break", owner="decider.Decider.jump_break_m", keyed=True,
     doc="[jump mode] per game: since when the feed has said 'break' (the break counts as on screen a delay later)",

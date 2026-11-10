@@ -44,7 +44,9 @@ from redzone.decider.playbooks import Safety
 from redzone.decider.scenarios import Scenarios
 from redzone.contracts import brain
 from redzone.moments import fill as fill_ladder
+from redzone.moments import value2
 from redzone.moments import slate as slate_mod
+from redzone.noggin import anchor as anchor_mod
 from redzone.noggin import arbiter, catchup, legal
 from redzone.noggin.lookahead import ahead
 from redzone.noggin.priority import NO_MOMENT as P_NO_MOMENT
@@ -418,11 +420,14 @@ class Decider:
     _leave_pick: LeaveHold | None = None
     _route_doing: tuple[Missed, float] | None = None   # [arbiter.catchup_route] the clip in pieces: (the play, seconds of it already aired)
     _route_clip: tuple[Missed, float] | None = None    # [arbiter.catchup_route_short] (the play, its clip's own length) of the piece last offered
+    _anchor: str | None = None               # [anchor.enabled] the game the screen stick holds (redzone/noggin/anchor.py)
+    _anchor_clip: Missed | None = None       # ...the gap plan's clip on the hidden stick now
+    _anchor_back: tuple[float, float] | None = None   # ...(the anchor's guaranteed restart on screen, the clip's seconds) of that clip
     _route_stick_at: float = float("-inf")   # [arbiter.catchup_route] when the hidden stick's last job began (a cut, a replay or piece that
                                              # ended): it is loading until this + the route's prep_s. Read only by the route
     _LAZY = {"owner_m": M.OWNER, "screen_m": M.DECIDER_SCREEN, "start_m": M.START, "gone_m": M.SCREEN_GONE, "home_m": M.DECIDER_HOME,
              "safe_m": M.SAFE, "override_m": M.OVERRIDE, "lock_m": M.LOCK_WAIT, "entry_m": M.ENTRY_WAIT, "leave_m": M.LEAVE_WAIT,
-             "catchup_m": M.CATCHUP_ROUTE}
+             "catchup_m": M.CATCHUP_ROUTE, "anchor_m": M.ANCHOR}
 
     def __getattr__(self, name: str):
         spec = Decider._LAZY.get(name)
@@ -688,6 +693,8 @@ class Decider:
         cands = self._nfl_priority(cands)
         self._learn_entries(cands)
         self._scan_missed(cands, now)
+        if anchor_mod.on(self.cfg):
+            self._anchor_tick(cands, now)
         self._screen_tick(now)
         if self.replaying:
             if self.safe_mode or self.user.paused or self.on_screen_at(now) != "replay":
@@ -1755,7 +1762,7 @@ class Decider:
         """[crunch guard, with noggin.lookahead.enabled] A catch-up replay of another game never takes the
         screen off a game inside its crunch window: the replay waits (it stays catchable for 10 min).
         Under tighter sync (the 3 s what-if) these replays cost NHL crunch live 80.2 -> 77.6."""
-        if d.action != "replay" or not self._lookahead_on() or self.current is None:
+        if d.action != "replay" or not self._lookahead_on() or self.current is None or self._anchor_owns(d):
             return d
         cur = cands.get(self.current)
         if cur is None or not self._lookahead_on(cur) or not cur.scored.crunch_now or (d.replay and d.replay.game_id == self.current):
@@ -1774,7 +1781,7 @@ class Decider:
             watch value: at 50 on today's score it cost locked NFL crunch live, Nov 4). An ad-break round trip (kind break_visit) and your own press are not leaves.
         Off only with decider.crunch.floor: false."""
         if not self.cfg.get("decider.crunch.floor", True) or d.action not in ("switch", "replay") \
-                or d.kind in ("user", "break_visit") or self.replaying or not self.current:
+                or d.kind in ("user", "break_visit") or self.replaying or not self.current or self._anchor_owns(d):
             return d
         cur = cands.get(self.current)
         if cur is None or not cur.scored.crunch_now or getattr(cur.scored, "garbage", False):
@@ -2204,6 +2211,8 @@ class Decider:
         queue, so everything that keeps a replay off the screen still applies (_parkable: YouTube TV reaches about 95 s
         back), and the commit gate judges it at the flip like any other replay. Not with buffered jump: its hidden stick is
         the next cut and the engine parks no replay on it (_scan_missed keeps no queue then)."""
+        if self._anchor_active():
+            return None              # [anchor.enabled] the anchor's gap plan owns every clip while an anchor holds the screen
         if p.catchup_route:
             return self._catchup_route(cands, now, p)
         queue = getattr(self, "queue", ())       # empty on every tick without a missed play
@@ -2224,6 +2233,8 @@ class Decider:
         """(the route may run at all, it may also run at a plain dead ball). Anything of Nick's stops it. A commercial is open whatever
         is on screen; a plain dead ball keeps the old route's checks: not a held moment, a crunch or a high-leverage game."""
         u = self.user
+        if self._anchor_active():
+            return False, False      # [anchor.enabled] the anchor's gap plan owns every clip while an anchor holds the screen
         if cur is None or not self.cfg.get("replay.enabled", True) or self._home is not None or self.safe_mode or u.paused or u.locked_game \
                 or (u.manual_until or 0.0) > now or u.focus_mode != FocusMode.AUTOPILOT or self.buffered_on():
             return False, False
@@ -2983,7 +2994,7 @@ class Decider:
         if back is not None:
             return back
         home = self.home_break_visit
-        hot = self._crunch_pick(watchable)
+        hot = self._anchor if self._anchor_active() and self._anchor in watchable else self._crunch_pick(watchable)
         if hot and (home not in watchable or not self._crunch_outranks(cands[home].scored, cands[hot].scored)):
             home = hot   # leaving a replay needs no gap: get to crunch time
             self._home_set(home, self._home_at, "after a replay: crunch time first")
@@ -2991,7 +3002,7 @@ class Decider:
         if d20 and not (home and home in watchable and cands[home].scored.crunch):
             return Decision(now, "switch", d20, self._why(cands[d20], "inside the 20 →"), State.WATCHING,
                             "replay finished", kind="live")
-        if home and home in watchable and cands[home].scored.crunch:
+        if home and home in watchable and (cands[home].scored.crunch or (home == self._anchor and self._anchor_active())):
             # Crunch time at home: another replay only if it surely ends before the next snap, never a visit.
             rp = self._crunch_replay(cands, now, home)
             if rp:
@@ -3172,6 +3183,8 @@ class Decider:
         """Final 2:00 of a one-score game, or OT: get there before the first crunch snap, stay
         through its stoppages, and hop between overlapping crunches only at safe gaps.
         None = crunch time has nothing to say; the usual rules apply."""
+        if self._anchor_active() and self._anchor in watchable:
+            return self._anchor_time(cands, s_cur, on_break, gate_ok, gate_txt, state, now)
         pick = self._crunch_pick(watchable, exclude=self.current)
         if pick and self._crunch_go(cands, pick, s_cur, on_break, now):
             if gate_ok:
@@ -3203,6 +3216,8 @@ class Decider:
         the two-minute warning, a score, a review, the end of regulation."""
         if not self.cfg.get("decider.crunch.replays", True) or not self.cfg.get("replay.enabled", True):
             return None
+        if self._anchor_active() and gid == self._anchor:
+            return self._anchor_fill(cands, now, gid)
         # Back on screen before the snap, even if this poll is the last one before it.
         back = self._deadline_cost(self._target_of.get(gid)) + 6 + self.cfg.get("polling.live_s", 10)
         # decider.crunch.instant_replays=false: a crunch stoppage only takes a play you MISSED, never an
@@ -3235,6 +3250,190 @@ class Decider:
                 sure = self.cfg.get(f"decider.crunch.shortest_break_s.{start.label}", 0)
                 nxt = max(nxt, start.lo + sure)
         return nxt + to_snap_air - now
+
+    # ----- [anchor.enabled] anchor mode: hold the biggest crunch game, fill its sure dead time (redzone/noggin/anchor.py) ----------
+    # docs/plans/2026-11-09-anchor-mode.md. The screen stick never leaves the anchor; a gap clip airs on the hidden stick and the
+    # screen flips back before the anchor's guaranteed restart. Every crunch rule that refuses clips in crunch (_crunch_guard,
+    # _crunch_floor, the route's catchup_gates, the arbiter's catch-up) defers to the gap plan while an anchor holds; the plan
+    # itself comes through _crunch_time / _crunch_replay, the existing hold-and-fill path.
+
+    def _anchor_active(self) -> bool:
+        return self._anchor is not None and anchor_mod.on(self.cfg)
+
+    def _anchor_owns(self, d: Decision) -> bool:
+        """This tick's replay is the anchor's planned gap clip."""
+        return d.action == "replay" and d.replay is not None and d.replay is self._anchor_clip and self._anchor_active()
+
+    def _anchor_game(self, gid: str, x: Candidate) -> anchor_mod.Game:
+        """The anchor's view of one live game: margin and clock from its timeline, crunch from its score."""
+        s, tl = x.scored, self.timelines.get(gid)
+        lg = s.league.value.lower()
+        sc = next((e.score for e in reversed(tl.scores) if e.score), None) if tl is not None else None
+        margin = abs(sc[0] - sc[1]) if sc else 0
+        left, ot = -1.0, s.lock == "overtime"
+        if tl is not None and tl.clocks:
+            _, period, clock = tl.clocks[-1][:3]
+            try:
+                left, in_ot = value2.seconds_left(lg, int(period or 0), clock)
+                ot = ot or in_ot
+            except KeyError:
+                pass
+        hold = self.cfg.get("decider.crunch.hold_personal", 5)
+        return anchor_mod.Game(gid, lg, margin, left, ot, bool(s.crunch_now) and not s.garbage, s.personal >= hold,
+                               1.0, self._value_league_rank(lg), tl is not None and tl.final_at is not None)
+
+    def _anchor_tick(self, cands: dict[str, Candidate], now: float) -> None:
+        """Every tick with the flag on: which game is the anchor, the late queue, and the anchor machine (each move says why)."""
+        games = [self._anchor_game(g, x) for g, x in cands.items() if g not in PSEUDO]
+        old = self._anchor
+        new = anchor_mod.pick_anchor(games, old if old in cands else None, self.cfg)
+        stats = self.__dict__.setdefault("anchor_counts", Counter())
+        if new != old:
+            self._anchor = new
+            if new is None:
+                self.anchor_m.to("off", f"anchor {old} ended: no game in crunch or overtime holds it", now=now)
+            else:
+                g = next(x for x in games if x.gid == new)
+                why = f"anchor {old} -> {new}" if old else f"anchor {new}"
+                self.anchor_m.to("holding", f"{why}: leverage x stakes {anchor_mod.anchor_score(g):.2f}"
+                                 f"{', your team' if g.mine else ''}", now=now)
+                stats["anchors"] += 1
+        if self._anchor is None:
+            self._anchor_clip = self._anchor_back = None
+            return
+        if self.replaying and self._clip is not None and self._clip is self._anchor_clip:
+            self.anchor_m.to("filling", f"gap clip {self._clip.game_id}:{self._clip.pid} on the hidden stick", now=now)
+        elif self.anchor_m.is_("filling"):
+            self.anchor_m.to("holding", "the gap clip ended: back on the anchor", now=now)
+            self._anchor_clip = self._anchor_back = None
+        self._anchor_late(cands, now)
+
+    def _anchor_clip_of(self, m: Missed, now: float, reach_s: float) -> anchor_mod.Clip:
+        tl = self.timelines.get(m.game_id)
+        play_s = PLAY_LEN_S.get(tl.league, 8.0) if tl else 8.0
+        lead = 3.0 + anchor_mod.knob(self.cfg, "lead_doubt_s")          # 3.0 = Missed.back_s lead_s
+        aired = m.aired or m.t
+        return anchor_mod.Clip(f"{m.game_id}:{m.pid}", self._replay_value(m, now), lead + play_s + 1.0,
+                               anchor_mod.clip_deadline(aired, play_s, lead, reach_s))
+
+    def _anchor_reach(self) -> float:
+        return self._catchup_route_params(self._arbiter_params()).reach_s
+
+    def _anchor_late(self, cands, now: float) -> None:
+        """Past its 180 s deadline a queued clip is dropped, unless its replay value is in the top anchor.late_big_pct of the
+        history: then it stays queued for the normal show after the anchor (it airs last, when anchor mode ends)."""
+        hist = self.__dict__.setdefault("_anchor_hist", {})
+        reach = self._anchor_reach()
+        mine = [(m, self._anchor_clip_of(m, now, reach)) for m in list(self.queue)
+                if m.game_id != self._anchor and not (m.seen_live or m.replayed)]
+        for m, c in mine:
+            hist.setdefault(c.id, c.value)
+        late = self.__dict__.setdefault("_anchor_late_ids", set())
+        _, last, dropped = anchor_mod.late_queue([c for _, c in mine], now, list(hist.values()), self.cfg)
+        gone = {c.id for c in dropped}
+        stats = self.__dict__.setdefault("anchor_counts", Counter())
+        for m, c in mine:
+            if c.id in gone:
+                self.queue.remove(m)
+                stats["late_dropped"] += 1
+                log.info("anchor: %s dropped, past 180 s and not in the top %g%%", c.id, anchor_mod.knob(self.cfg, "late_big_pct"))
+        for c in last:
+            if c.id not in late:
+                late.add(c.id)
+                stats["late_kept"] += 1
+
+    def _anchor_gap(self, gid: str, cands, now: float) -> tuple[float, float, str] | None:
+        """(away budget, the anchor's guaranteed restart on screen, why) of the stoppage on the anchor's screen; None: no open
+        stoppage on screen. The restart is the earlier of the break table's floor and _next_snap_s (a play already in the data)."""
+        tl, x = self.timelines.get(gid), cands.get(gid)
+        if tl is None or x is None:
+            return None
+        start, end = tl.last("stop_start"), tl.last("stop_end")
+        if start is None or (end is not None and end.seen >= start.lo):
+            return None
+        d = self.delays.get(x.target or "unknown")
+        elapsed = now - (start.lo + d.mu)
+        if elapsed < 0:
+            return None                  # the stoppage hasn't reached the screen yet
+        sigma = d.current_sigma(now)
+        lg = x.scored.league.value.lower()
+        sure = min(anchor_mod.guaranteed_s(lg, start.label, elapsed, self.cfg, sigma), max(0.0, self._next_snap_s(gid, cands, now)))
+        c = anchor_mod.costs(self.cfg)
+        budget = max(0.0, sure - 2.0 * c.flip - anchor_mod.knob(self.cfg, "margin_s")) if sure > 0 else 0.0
+        return budget, now + sure, f"{start.label}: {sure:.0f} s sure, {budget:.0f} s away"
+
+    def _anchor_fill(self, cands, now: float, gid: str) -> Missed | None:
+        """The gap plan's first clip, when the hidden stick has it ready now; None keeps the screen on the anchor. Rule #1: the
+        plan's flip back lands at least anchor.margin_s before the anchor's guaranteed restart, or nothing starts."""
+        stats = self.__dict__.setdefault("anchor_counts", Counter())
+        gap = self._anchor_gap(gid, cands, now)
+        if gap is None:
+            return None
+        budget, restart, why = gap
+        if budget <= 0:
+            stats["no_budget"] += 1
+            return None
+        reach, games = self._anchor_reach(), self._replay_pool(cands)
+        ready = {}
+        for m in self.queue:
+            if m.game_id == gid or m.seen_live or m.replayed or m.retry_at > now or not self._replayable(games.get(m.game_id)):
+                continue
+            ready[f"{m.game_id}:{m.pid}"] = m
+        clips = [self._anchor_clip_of(m, now, reach) for m in ready.values()]
+        c = anchor_mod.costs(self.cfg)
+        plan = anchor_mod.plan_gap(budget, self._route_stick_at + c.prep, now, clips, (), self.cfg)
+        if not plan.items:
+            stats["nothing_fits"] += 1
+            return None
+        first = plan.items[0]
+        if plan.starts[0] > now + c.flip + 0.5:
+            stats["stick_loading"] += 1
+            return None                  # the hidden stick is still loading: stay on the anchor, the next tick re-plans
+        if now + c.flip + first.seconds + c.flip > restart - anchor_mod.knob(self.cfg, "margin_s"):
+            stats["vetoed_restart"] += 1
+            return None
+        m = ready[first.id]
+        tl = self.timelines.get(m.game_id)
+        play_s = PLAY_LEN_S.get(tl.league, 8.0) if tl else 8.0
+        m.offset_s, m.piece_s = 0.0, first.seconds
+        m.marked_replay = m.marked_replay or self._catchup_seen(m.game_id, (m.aired or m.t) - play_s, now)
+        self._route_clip = (m, first.seconds)        # one whole short clip: _route_piece_ended finishes it
+        self._anchor_clip, self._anchor_back = m, (restart, first.seconds)
+        stats["clips"] += 1
+        log.info("anchor %s gap (%s): %s, plan of %d worth %.0f, back by %.0f s before the restart", gid, why, first.id,
+                 len(plan.items), plan.value, restart - (now + 2 * c.flip + first.seconds))
+        return m
+
+    def anchor_veto(self, d, now: float) -> bool:
+        """[anchor.enabled, Rule #1] At the flip: the planned clip would bring the screen back later than the anchor's guaranteed
+        restart less anchor.margin_s (the flip came late, or the anchor's stoppage ended in the data). True: do not start it."""
+        if d.action != "replay" or not self._anchor_active() or d.replay is None or d.replay is not self._anchor_clip \
+                or self._anchor_back is None:
+            return False
+        restart, secs = self._anchor_back
+        tl = self.timelines.get(self._anchor or "")
+        start, end = (tl.last("stop_start"), tl.last("stop_end")) if tl is not None else (None, None)
+        if start is None or (end is not None and end.seen >= start.lo):
+            return True
+        flip = anchor_mod.costs(self.cfg).flip
+        return now + 2.0 * flip + secs > restart - anchor_mod.knob(self.cfg, "margin_s")
+
+    def _anchor_time(self, cands, s_cur: Scored, on_break: bool, gate_ok: bool, gate_txt: str, state: State,
+                     now: float) -> Decision:
+        """_crunch_time with an anchor: get to the anchor at a safe gap, then hold it through every live play; at its stoppages
+        a gap clip that surely ends first (_crunch_replay -> _anchor_fill)."""
+        a = self._anchor
+        if self.current != a:
+            if gate_ok:
+                return Decision(now, "switch", a, self._why(cands[a], "anchor: crunch time"), state, gate_txt, kind="crunch")
+            return Decision(now, "stay", self.current, f"want the anchor: {cands[a].scored.reason} — waiting: {gate_txt}",
+                            state, gate_txt, want=a)
+        if on_break and gate_ok and not _nhl_ot(s_cur):
+            rp = self._crunch_replay(cands, now, a)
+            if rp:
+                self._home_set(a, self._home_at, "anchor gap")
+                return self._replay_decision(rp, state, gate_txt, now)
+        return Decision(now, "stay", self.current, f"anchor: {s_cur.reason}", state, gate_txt)
 
     # ----- [jump mode] --------------------------------------------------------
     # Nick, Nov 7 12:52: "should be 4-5 switches every minute". The normal decider stays on the best game and
