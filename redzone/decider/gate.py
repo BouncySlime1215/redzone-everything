@@ -280,21 +280,45 @@ def entry_veto(host: Any, d: Any, target: str | None, now: float | None = None) 
     return next((name for name, rule in ENTRY_RULES if rule(f)), "")
 
 
+def leave_refusal(dec: Any, gid: str | None, target: str | None, phase: Any, now: float, uncalibrated_sigma: float,
+                  required_s: float = 0.0) -> str:
+    """Why the screen's game is not safe to leave for the next required_s ("" = it is). The body of Engine.safe_to_leave,
+    clock passed in, so a decider waiting on the leave and the flip read one rule. The product reads only empty or not; the
+    names are gate:leave's sub-causes in scripts/veto_audit.py: replay, no_timeline, unaired_row (a LIVE game whose newest
+    data row has not aired yet), ended_airing (the same check on a game that ended or left the list), window."""
+    if not gid or gid in PSEUDO:   # [S-5] a pseudo game has no timeline and no play to cut
+        return ""
+    if dec.replaying or dec.after_replay:
+        return "" if now >= max(dec.replay_until, dec.replay_exit_after) else "replay"
+    if gid not in dec.timelines:
+        return "no_timeline"  # no screen timing evidence is not an open cutting window
+    if dec._ending_still_airing(gid, now) > 0:
+        return "unaired_row" if phase == Phase.LIVE else "ended_airing"
+    if phase == Phase.POST:
+        return ""   # its last play has aired (checked above): there's nothing left to cut
+    ok = leave_window(dec.timelines[gid], dec.delays.get(target or "unknown"), now, uncalibrated_sigma, required_s).safe
+    return "" if ok else "window"
+
+
 def leave_open(dec: Any, gid: str | None, target: str | None, phase: Any, now: float, uncalibrated_sigma: float,
                required_s: float = 0.0) -> bool:
-    """Is the screen's game safe to leave for the next required_s? The body of Engine.safe_to_leave, clock passed in, so a
-    decider waiting on the leave and the flip read one rule."""
-    if not gid or gid in PSEUDO:   # [S-5] a pseudo game has no timeline and no play to cut
-        return True
-    if dec.replaying or dec.after_replay:
-        return now >= max(dec.replay_until, dec.replay_exit_after)
-    if gid not in dec.timelines:
-        return False  # no screen timing evidence is not an open cutting window
-    if dec._ending_still_airing(gid, now) > 0:
-        return False
-    if phase == Phase.POST:
-        return True   # its last play has aired (checked above): there's nothing left to cut
-    return leave_window(dec.timelines[gid], dec.delays.get(target or "unknown"), now, uncalibrated_sigma, required_s).safe
+    """Is the screen's game safe to leave for the next required_s? (leave_refusal says why not.)"""
+    return not leave_refusal(dec, gid, target, phase, now, uncalibrated_sigma, required_s)
+
+
+def leave_cause(f: Flip, usual: float = 8.0) -> str:
+    """Which part of the leave rule says no to this flip ("" = none of it): leave_refusal's name for the plain window (asked for
+    `usual` seconds, _leave's own number), `jump` for the rotation's own gate, `high_leverage` for the clock proof. Read only by
+    scripts/veto_audit.py, to split gate:leave; no decision depends on it."""
+    if not _leave(f):
+        return ""
+    if f.jump:
+        return "jump"
+    host, before = f.host, f.before or ""
+    g = host.merger.games.get(before)
+    why = leave_refusal(host.decider, f.before, getattr(host.where.get(before), "target", None), g.phase if g is not None else None,
+                        f.now, host.cfg.get("decider.uncalibrated_sigma_s"), usual)
+    return why or "high_leverage"
 
 
 class DeciderHost:
