@@ -516,13 +516,15 @@ def catchup_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> se
     return shown
 
 
-def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: dict | None = None) -> tuple[dict[Air, bool], Counter]:
+def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: dict | None = None, info: dict | None = None) -> tuple[dict[Air, bool], Counter]:
     """SIMULATED arbiter.catchup_route (redzone/noggin/catchup.py) on the replay's own screen, at this rewind reach: which unseen moments
     air before the hard cap, each piece inside dead time on the game on screen (truth, with a margin) on a tick the route was open.
     Causal: a clip starts without knowing the next dead ball is coming. {moment: airs marked as a replay}, and what became of the rest.
     Clips can't move the replay's own cuts; a cut on the way ends the dead time and takes the hidden stick for its prep.
     `why` (info only, it changes no choice): filled with {moment not shown: (its cause from CAUSES, an opening came within PAST_CAP_S
-    after the cap)}."""
+    after the cap)}. `info` (info only too): filled with "played" (the moments whose first piece aired: it holds the whole play, so the
+    play was seen even if the clip never finished), "gates" ({moment: Counter of the gates that shut the route on its window's ticks})
+    and "stick" ({moment whose clip started: was the hidden stick already on its game (seek_only), on another (retune), or on none (cold)})."""
     r = catchup.Route(reach_s=min(reach, catchup.HARD_CAP_S), clip_s=t.route_clip_s or CLIP_S, flip_s=FLIP_S, prep_s=PREP_S, lead_s=3.0, margin_s=2.0,
                       short=t.route_short)
     moments = {f"{m.game_id}:{m.at}:{m.kind}:{i}": m for i, m in enumerate(unseen)}
@@ -538,6 +540,8 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: di
     by_aired = sorted(pool, key=lambda x: x.aired)
     aired_at = [x.aired for x in by_aired]
     span_s = catchup.HARD_CAP_S         # no window reaches further past the airing than the cap
+    played, gates, stick_job = set(), defaultdict(Counter), {}
+    clip_game, clip_end = None, float("-inf")      # what the hidden stick last showed, and when it came off the screen
 
     def waiting(now: float) -> list[catchup.Moment]:
         """The moments whose window holds this tick: set up, and a first piece now would still be on time."""
@@ -566,8 +570,12 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: di
             (open_ticks if ok else closed_ticks)[x.id] += 1
 
     if why is not None:
-        for now, gid in t.route_off:
+        for k, (now, gid) in enumerate(t.route_off):
             note(now, gid, "route_off")
+            if info is not None and k < len(t.route_off_gate):
+                for x in waiting(now):
+                    if x.game_id != gid:
+                        gates[x.id][t.route_off_gate[k]] += 1
     for now, gid, plain in t.route2:
         rep = truth.replays.get(gid)
         if rep is None or now < busy_to:
@@ -606,6 +614,12 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: di
                 got(p.moment, "abandoned")       # stays its cause only if the rest never airs
         if p is None:
             continue
+        if p.offset_s == 0.0:
+            played.add(moments[p.moment.id])
+            # the hidden stick holds the game the last cut left, or the last clip's game if a clip aired since that cut
+            held = clip_game if i > 0 and clip_end > cuts[i - 1] else t.screen[i - 2][1] if i >= 2 else clip_game if i == 0 else None
+            stick_job[moments[p.moment.id]] = "cold" if held is None else "seek_only" if held == p.moment.game_id else "retune"
+        clip_game, clip_end = p.moment.game_id, p.until
         stick_end = busy_to = p.until
         stats["pieces"] += 1
         aired_of_game[p.moment.game_id].append(p.moment.aired)
@@ -633,15 +647,36 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: di
                 k = bisect.bisect_left(openings, (cap_at, ""))
                 later = any(g != x.game_id for at, g in openings[k:bisect.bisect_right(openings, (cap_at + PAST_CAP_S, "\uffff"))])
                 why[moments[x.id]] = (CAUSES[step.get(x.id, 0)], later)
+    if info is not None:
+        info.update(played=played, gates={moments[k]: v for k, v in gates.items()}, stick=stick_job)
     return shown, stats
+
+
+def own_game_why(m: Air, screen: list) -> str:
+    """How a must-see was missed although its own game was on screen for the rest of its window: when the picture of that game came up,
+    against the play (its last PLAY_LEN_S seconds on air), and whether the screen had left that game in the run-up to it."""
+    ups = [s[0] for s in screen]
+    i = bisect.bisect_right(ups, m.at - PLAY_LEN_S) - 1          # the screen as the play started: not this game, or it was seen
+    k = next((j for j in range(i + 1, len(screen)) if screen[j][1] == m.game_id), None)
+    if k is None:
+        return "never_joined"
+    after = ups[k] - m.at
+    when = "joined_during_the_play" if after <= 0.0 else "joined_0_15s_after" if after <= 15.0 else "joined_15_60s_after" if after <= 60.0 else "joined_60s_plus_after"
+    left = any(screen[j][1] == m.game_id and ups[j + 1] >= m.at - PLAY_LEN_S - RUN_UP_S for j in range(i))
+    return when + ("|left_it_in_the_run_up" if left else "|was_elsewhere")
 
 
 def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
     """Charge every unseen must-see moment to the last refusal of its game in the run-up. Seen and uncharged are counted."""
     unseen = [m for ms in truth.moments.values() for m in ms if not seen(m, t.screen)]
     why: dict = {r: {} for r in REACHES}
+    info: dict = {r: {} for r in REACHES}
     if t.route_on:
-        results = {r: route_shown(unseen, t, truth, r, why[r]) for r in REACHES}
+        results = {r: route_shown(unseen, t, truth, r, why[r], info[r]) for r in REACHES}
+        for r in REACHES:
+            jobs = league_row["stick_job"][str(r)]
+            for m, job in info[r]["stick"].items():
+                jobs[("aired_" if m in results[r][0] else "started_only_") + job] += 1
         shown = {r: set(results[r][0]) for r in REACHES}
         for r in REACHES:
             late = max(league_row["route"][str(r)].get("max_late_s", 0.0), results[r][1].pop("max_late_s", 0.0))
@@ -667,6 +702,13 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
                 for r in REACHES:
                     if m not in shown[r]:
                         league_row["lost_after_catchup"][str(r)][rule] += m.value
+                        if m not in info[r].get("played", ()):
+                            league_row["lost_play_unseen"][str(r)][rule] += m.value
+                        if m in why[r] and why[r][m][0] == "route_off":
+                            gate_of = info[r]["gates"].get(m)
+                            league_row["route_off_gate"][str(r)][gate_of.most_common(1)[0][0] if gate_of else "unnamed"] += m.value
+                        if m in why[r] and why[r][m][0] == "own_game_on_screen":
+                            league_row["own_game"][str(r)][own_game_why(m, t.screen)] += m.value
                         league_row["avoidable_lost"][str(r)] += 0.0 if (real and real[0]) else m.value
                         if m in why[r]:
                             cause, later = why[r][m]
@@ -682,7 +724,9 @@ def new_row() -> dict:
             "ticks": 0, "wanted": 0, "went": 0, "held": 0, "released": 0, "held_ticks": 0, "over": Counter(), "refused": Counter(), "alone": Counter(), "any_rule": Counter(), "protected": Counter(), "high": Counter(),
             "lost_after_catchup": {str(r): Counter() for r in REACHES}, "route": {str(r): Counter() for r in REACHES}, "avoidable_lost": {str(r): 0.0 for r in REACHES},
             "residual": {str(r): Counter() for r in REACHES}, "residual_by_rule": {str(r): Counter() for r in REACHES},
-            "past_cap": {str(r): Counter() for r in REACHES}}
+            "past_cap": {str(r): Counter() for r in REACHES},
+            "lost_play_unseen": {str(r): Counter() for r in REACHES}, "route_off_gate": {str(r): Counter() for r in REACHES},
+            "own_game": {str(r): Counter() for r in REACHES}, "stick_job": {str(r): Counter() for r in REACHES}}
 
 
 def card(script: str, *args: str) -> dict:
@@ -803,7 +847,41 @@ def table(rows: list[dict], *, top: int = 25) -> str:
         c, pct = r["card"], 100.0 * r["must_seen"] / r["must_total"] if r["must_total"] else 0.0
         lines.append(f"{r['league']}/{r['brain']}: must-see seen {pct:.1f}% of {r['must_total']:.0f}, not asked {r['not_asked']:.0f}, "
                      f"wanted {r['wanted']} went {r['went']}, mid-play {c['entries_mid_play']}/{c['entries']}, high-lev leaves {c['cuts_high']}, all mid-play leaves {c['mid_play_leaves']}")
-    return "\n".join(lines + catchup_lines(rows) + residual_lines(rows))
+    return "\n".join(lines + catchup_lines(rows) + residual_lines(rows) + detail_lines(rows))
+
+
+def detail_lines(rows: list[dict], reach: int = REACHES[-1]) -> list[str]:
+    """With the route on, at Nick's cap: the second lost column (the whole play never aired), the gate behind `route_off`, how an
+    `own_game_on_screen` moment was missed, and what the hidden stick held when a clip started. Simulated, info only."""
+    leagues = list(dict.fromkeys(r["league"] for r in rows))
+
+    def per(key: str) -> dict[str, Counter]:
+        by = {lg: Counter() for lg in leagues}
+        for r in rows:
+            by[r["league"]].update(r.get(key, {}).get(str(reach), {}))
+        return by
+
+    def block(title: str, by: dict[str, Counter]) -> list[str]:
+        total = Counter()
+        for c in by.values():
+            total.update(c)
+        if not sum(total.values()):
+            return []
+        out = ["", title, f"{'':<44}{'all':>8}" + "".join(f"{lg:>8}" for lg in leagues)]
+        for k, v in sorted(total.items(), key=lambda kv: -kv[1]):
+            out.append(f"{k:<44}{v:>8.1f}" + "".join(f"{by[lg][k]:>8.1f}" for lg in leagues))
+        return out
+
+    lost, unseen = per("lost_after_catchup"), per("lost_play_unseen")
+    if not any(r.get("residual", {}).get(str(reach)) for r in rows):
+        return []
+    lines = ["", f"lost after catch-up at reach {reach} s, two ways (SIMULATED)", f"{'':<44}{'all':>8}" + "".join(f"{lg:>8}" for lg in leagues)]
+    for name, by in (("lost_after_catchup (clip not finished)", lost), ("lost_play_unseen (the play never aired)", unseen)):
+        lines.append(f"{name:<44}{sum(sum(c.values()) for c in by.values()):>8.1f}" + "".join(f"{sum(by[lg].values()):>8.1f}" for lg in leagues))
+    lines += block("route_off, by the gate that shut the route on most of the moment's ticks", per("route_off_gate"))
+    lines += block("own_game_on_screen, by when its picture came up | where the screen was before", per("own_game"))
+    lines += block("clips by what the hidden stick held when they started (count of clips, not value)", per("stick_job"))
+    return lines
 
 
 def residual_lines(rows: list[dict], reach: int = REACHES[-1]) -> list[str]:
