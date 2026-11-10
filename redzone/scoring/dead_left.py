@@ -10,6 +10,9 @@ Pure: the table is read once, no clock.
 from __future__ import annotations
 
 import json
+import math
+import re
+from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
 
@@ -53,3 +56,38 @@ def guaranteed_left(league: League | str, stoppage_kind: str, elapsed_s: float, 
     already ran, never below 0. A kind the table never measured (a plain dead ball, `none`) guarantees nothing: 0."""
     length = quantile(league, stoppage_kind, q)
     return 0.0 if length is None else max(0.0, length - max(0.0, elapsed_s))
+
+
+# ----- [timing.dead_v2, off] v2: by break class and by the time already elapsed ----------------------------------------------------
+# Why: the pooled quantile less the elapsed seconds is valid but wasteful. At the 99% level it allowed a clip in 0 of 891 NFL
+# timeouts on 11 held-out nights; the official / team split and the survivors' remaining time allowed 598 (research ledger L1,
+# Nov 10, simulated on recorded nights). scripts/measure_dead_left.py builds the table from train nights only.
+
+TABLE_V2_FILE = LENGTHS_FILE.with_name("dead_left_table.json")
+LANDMARKS = (0, 10, 20, 30, 45, 60, 90, 120)    # elapsed seconds the table conditions on (stoppages that outlasted each one)
+ALPHAS = (0.10, 0.05, 0.02, 0.01)               # the risk levels the table stores: the share of stoppages allowed to restart sooner
+_TEAM_TIMEOUT = re.compile(r"timeout #?(\d)")
+
+
+def stoppage_class(league: League | str, kind: str, type_text: str = "", text: str = "") -> str:
+    """The break class of a stoppage, from the feed's own words on the play that began it. Football timeouts split three ways:
+    "official" (the type or the text says official, TV or media: a commercial break), "team" ("Timeout #2 by WSH": short) and
+    "other". Every other kind and league is its own single class, named after the kind (so is a timeout whose play carries no
+    timeout type: nothing to read). A class is only ever a finer cell of the same kind."""
+    k = str(getattr(kind, "value", kind) or "")
+    ty = (type_text or "").lower()
+    if k != "timeout" or League(getattr(league, "value", league)).base != League.NFL or "timeout" not in ty:
+        return k
+    tx = (text or type_text or "").lower()      # models.Play.text falls back to the type the same way
+    if "official" in ty or "official" in tx or "tv " in tx or "media" in tx:
+        return "official"
+    named = bool(_TEAM_TIMEOUT.search(tx)) or " by " in tx
+    return "team" if named and "tv" not in tx else "other"
+
+
+def conformal_lower(values, alpha: float) -> float | None:
+    """One-sided split-conformal lower bound on a new draw: the floor(alpha * (n + 1))-th smallest of `values`. None when n is too
+    small for that alpha (fewer than 1 / alpha - 1 values): nothing can be promised at that level."""
+    v = sorted(float(x) for x in values)
+    k = math.floor(Fraction(str(alpha)) * (len(v) + 1))
+    return v[k - 1] if k >= 1 else None
