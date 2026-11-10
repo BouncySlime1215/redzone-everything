@@ -34,14 +34,14 @@ from redzone.moments import value2
 from redzone.noggin.catchup import HARD_CAP_S, Route
 from redzone.scoring.dead_left import guaranteed_left
 
-FLAG = "anchor.enabled"
+ANCHOR_FLAG = "anchor.enabled"
 # The priors (default_config.yaml anchor.*), used when a config lacks a key. None of them is fitted yet.
 PRIORS = {"hysteresis": 1.3, "margin_s": 3.0, "quantile": 0.10, "late_big_pct": 5.0, "max_items": 6, "lead_doubt_s": 0.0}
 NO_GAP_KINDS = frozenset({"none", "whistle", "unknown", ""})   # v1: not used, whatever the table says (spec section 3)
 
 
 def on(cfg) -> bool:
-    return bool(cfg is not None and hasattr(cfg, "get") and cfg.get(FLAG, False))
+    return bool(cfg is not None and hasattr(cfg, "get") and cfg.get(ANCHOR_FLAG, False))
 
 
 def knob(cfg, key: str) -> float:

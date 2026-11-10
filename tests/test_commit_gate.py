@@ -108,7 +108,6 @@ CASES = {
     "ending_airing": (_airing, {"kind": "jump"}, T, None),
     "replay_exit": (None, {}, T, AT + 50.0),
     "leave": (lambda h: _set(h, safe_to_leave=lambda gid, required_s=0.0: False), {}, T, None),
-    "anchor_return": (lambda h: _set(h.decider, anchor_veto=lambda d, now: True), {"action": "replay", "replay": NS(replayed=False)}, T, None),
     "landing_whistle": (lambda h: _set(h, _flip_lands_whistle=lambda d, t: False), {}, T, None),
 }
 

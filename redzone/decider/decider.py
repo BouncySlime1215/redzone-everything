@@ -3376,7 +3376,8 @@ class Decider:
         reach, games = self._anchor_reach(), self._replay_pool(cands)
         ready = {}
         for m in self.queue:
-            if m.game_id == gid or m.seen_live or m.replayed or m.retry_at > now or not self._replayable(games.get(m.game_id)):
+            if m.game_id == gid or m.seen_live or m.replayed or m.retry_at > now or not self._replayable(games.get(m.game_id)) \
+                    or not self._parkable(m, now):
                 continue
             ready[f"{m.game_id}:{m.pid}"] = m
         clips = [self._anchor_clip_of(m, now, reach) for m in ready.values()]

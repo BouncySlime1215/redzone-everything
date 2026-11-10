@@ -2015,6 +2015,8 @@ class Engine:
 
         def cut_veto() -> str:
             """Why this switch may not cut right now ("" = it may). [P1-ROOTCAUSE-04] Named for every kind, not only jumps."""
+            if d.action == "replay" and self.decider.anchor_veto(d, time.time()):
+                return "anchor_return"   # [anchor.enabled, Rule #1] the flip back would land after the anchor's guaranteed restart
             if d.kind != "user" and (self.cfg.get("commit_gate.enabled", False) or getattr(d, "leave_held", False)):
                 return gate.commit_gate(self, d, before, target, cands, replay_exit)   # [WP-05] one gate, every non-tap kind
             if self.decider.user.paused or self.cfg.get("mode.dry_run", True):
