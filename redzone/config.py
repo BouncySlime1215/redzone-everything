@@ -59,6 +59,8 @@ LIMITS: dict[str, tuple[float, float]] = {
     "delay.edge_prior.prior": (0.2, 180),
     "delay.edge_prior.drift_cap_s": (0, 10),
     "replay": (0, 7200),
+    "anchor.alpha": (0.001, 0.5),                  # [timing.dead_v2] a risk level: a share of stoppages, never 0 and never a coin flip
+    "arbiter.catchup_route_alpha": (0.001, 0.5),
     "reel.min_clips": (1, 12),
     "reel.min_s": (5, 120),
     "reel.max_s": (10, 180),

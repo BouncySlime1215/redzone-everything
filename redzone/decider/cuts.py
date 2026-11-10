@@ -501,6 +501,14 @@ class DeadTracker:
         """Seconds the data proves window w has stayed dead."""
         return 0.0 if covered is None else max(0.0, covered - w.start)
 
+    def open_at(self, x0: float) -> bool:
+        """[timing.dead_v2] The dead window the screen is in at real time x0 has no restart in the data yet: where it ends is a
+        floor, not a fact."""
+        for w in reversed(self.windows()):
+            if w.start <= x0:
+                return w.end is None
+        return False
+
     def dead_until(self, x0: float) -> float | None:
         """The screen shows real time x0 (its earliest) now: until what real time is it surely still
         dead? None if x0 isn't inside a dead window."""

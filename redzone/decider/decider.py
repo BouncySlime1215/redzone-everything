@@ -55,6 +55,7 @@ from redzone import config as _config
 from redzone import measured_timing
 from redzone.decider import core
 from redzone.decider.core import BreakView, CoreState, DecisionCore, Knobs, MomentView, Option, SwitchPath
+from redzone.scoring.dead_left import guaranteed_left_v2_within
 from redzone.scoring.engine import Scored
 from redzone.fsm import MachineMap
 from redzone.machines import decider as M
@@ -2253,14 +2254,33 @@ class Decider:
                              short=p.catchup_route_short)
 
     def _catchup_span(self, cur: Candidate, now: float) -> tuple[float, bool] | None:
-        """How long the dead time on screen lasts, surely: (when play can restart on screen at the earliest, in a commercial?). None: mid-play."""
+        """How long the dead time on screen lasts, surely: (when play can restart on screen at the earliest, in a commercial?). None: mid-play.
+        [timing.dead_v2] An open stoppage on screen lasts at least as long as the class and elapsed-time table promises."""
         tl, dl = self.timelines.get(self.current or ""), self.delays.get(cur.target or "unknown")
         dead = getattr(tl, "dead", None)
         if dead is None:
             return None
         m = 2.0 * dl.current_sigma(now)
         until = dead.dead_until(now - dl.mu - m)
+        if until is not None and anchor_mod.dead_v2(self.cfg):
+            return max(until + dl.mu - m, self._dead_v2_until(tl, dl, now)), bool(cur.scored.is_break)
         return (until + dl.mu - m, bool(cur.scored.is_break)) if until is not None else None
+
+    def _dead_v2_until(self, tl: Timeline, dl, now: float) -> float:
+        """[timing.dead_v2] The screen time the open stoppage on screen surely lasts until, from the class and elapsed-time table at
+        arbiter.catchup_route_alpha (dead_left.guaranteed_left_v2: the least bound over the delay's doubt and the doubt of the
+        stoppage's start). -inf: no stoppage is open on screen, or the dead window the screen is in already has its restart in the
+        data: that end is a fact, and no table may stretch it."""
+        start, end = tl.last("stop_start"), tl.last("stop_end")
+        doubt = 2.0 * dl.current_sigma(now)
+        if start is None or (end is not None and end.seen >= start.lo) or not tl.dead.open_at(now - dl.mu - doubt):
+            return float("-inf")
+        elapsed = now - (start.lo + dl.mu)
+        if elapsed < 0:
+            return float("-inf")         # the stoppage hasn't reached the screen yet
+        alpha = anchor_mod.risk(self._arbiter_params().catchup_route_alpha, arbiter.DEFAULT_PARAMS.catchup_route_alpha)
+        return now + guaranteed_left_v2_within(tl.league, start.label, elapsed - start.spread - doubt, elapsed + doubt, alpha,
+                                               start.stop_class or None)
 
     def _catchup_seen(self, gid: str, since: float, now: float) -> bool:
         """Has the screen shown this game since the moment aired? Then its result is known: the clip airs marked as a replay."""

@@ -52,6 +52,11 @@ def dead_v2(cfg) -> bool:
     return bool(cfg is not None and hasattr(cfg, "get") and cfg.get(DEAD_V2_FLAG, False))
 
 
+def risk(alpha: float, default: float) -> float:
+    """A configured risk level, or `default` when it is not a share strictly between 0 and 1 (a bad setting never stops a tick)."""
+    return float(alpha) if 0.0 < float(alpha) < 1.0 else float(default)
+
+
 def knob(cfg, key: str) -> float:
     """anchor.<key> from the config, else its prior."""
     v = cfg.get(f"anchor.{key}") if cfg is not None and hasattr(cfg, "get") else None
@@ -137,7 +142,7 @@ def guaranteed_s(league: str, stoppage_kind: str, elapsed_s: float, cfg=None, si
     if dead_v2(cfg):
         doubt = 2.0 * max(0.0, sigma_s)
         return guaranteed_left_v2_within(league, kind, elapsed_s - max(0.0, spread_s) - doubt, elapsed_s + doubt,
-                                         knob(cfg, "alpha"), cls or None)
+                                         risk(knob(cfg, "alpha"), PRIORS["alpha"]), cls or None)
     return max(0.0, guaranteed_left(league, kind, elapsed_s, knob(cfg, "quantile")) - 2.0 * max(0.0, sigma_s))
 
 

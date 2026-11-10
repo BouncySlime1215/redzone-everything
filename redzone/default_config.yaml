@@ -991,6 +991,8 @@ timing:
                            # timeout the feed calls official is a commercial, "Timeout #n by TEAM" is short) and by the time
                            # already elapsed (redzone/scoring/broadcast/dead_left_table.json, train nights only), at the risk
                            # level anchor.alpha. Off = the pooled anchor.quantile length less the elapsed time, as before.
+                           # The catch-up route (arbiter.catchup_route) reads the same table for an open stoppage on screen, at
+                           # arbiter.catchup_route_alpha; off, its span is the dead tracker's own, as before.
                            # Simulated on recorded nights only (research ledger L1)
 
 anchor:                    # [ANCHOR, docs/plans/2026-11-09-anchor-mode.md] OFF: hold the biggest crunch / overtime game on the screen
@@ -1227,6 +1229,7 @@ arbiter:                   # [build plan WP-17] picks among legal options, with 
   last_game_to_live: false # [VETO-AUDIT] a finished game on screen may cut to the one game still live
   catchup_route: false     # [CATCHUP-ROUTE] a missed must-see airs late on the hidden stick in the screen's dead time, in pieces if it must, never 180 s or more late (noggin/catchup.py). Simulated only: the deep rewind is unproven on the TV
   catchup_route_reach_s: 95  # how far back that stick may seek; 95 s is what is measured on the TV
+  catchup_route_alpha: 0.01  # [timing.dead_v2 on; no effect while it or catchup_route is off] the route sizes a piece inside an open stoppage with the dead time the class and elapsed-time table promises at this risk level (0.01 = sure at the 99% level; the table stores 0.10, 0.05, 0.02, 0.01). Simulated only
   catchup_route_short: true   # [ZERO-LOSS-4, Nick yes Nov 9: "thats the whole point"; no effect while catchup_route is off] with another missed must-see waiting, a catch-up clip is just the play (lead-in, play, 1 s), so the one hidden stick clears more of the queue inside the 180 s cap. Needs catchup_route. Simulated only
   class_bonus: false       # [P1] a brain's pick: your team and crunch add points instead of filtering; the must-show floor is unchanged
   class_bonus_pts: 20.0    # [P1] per class: your team +40, crunch +20, open 0
