@@ -1228,6 +1228,23 @@ threads:                   # [D-ADDICT M1] each live game's open question; holds
   flicker_s: 8             # a power play or pulled goalie must be gone this long to count as over
   chain_gap_s: 30          # holds this close together count as one chain, capped at twice the reach
   run_pts: 8               # unanswered points that make a close_run (a fact only; never holds or ranks)
+  arrival:                 # [D-ADDICT] rank games by how soon their open question is answered on the picture and how much it matters; OFF until judged on real nights (decisions.md)
+    enabled: false         # needs threads.enabled; points only, never above a must-show, crunch or your-team game
+    bonus_pts: 25          # most points a question adds to a game's score
+    min_lead_s: 4          # arriving later than this before the answer airs loses the buildup: earns nothing
+    full_lead_nfl_s: 50    # up to a play or two of lead earns the full points, per sport
+    full_lead_cfb_s: 50
+    full_lead_nba_s: 25
+    full_lead_cbb_s: 25
+    full_lead_nhl_s: 30
+    full_lead_mlb_s: 50
+    fade_s: 45             # past the full lead the points fall to zero over this long
+    use_answered: true     # also count an answer the feed has that the picture has not aired
+    snap_s: 38             # the live estimate of how soon a question is answered, per sport (judgments, not fitted)
+    yards_a_snap: 7
+    possession_s: 18
+    at_bat_s: 75
+    hazard_s: 15
 
 labels:                    # [own-data job 17] extra logging only, for data no public source has
   enabled: false
