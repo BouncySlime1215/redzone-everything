@@ -3,6 +3,7 @@
     nice -n 15 python scripts/veto_audit.py --split fit --leagues nba --brains hindsight heuristic --cap 3 --json out.json
     --set arbiter.visit_budget=0   any config value for this run (repeatable), for a before/after
     --set audit.assume_gate_ok=true   what-if: legal_options stops asking for a leave gap at list time (the flip still does)
+    --prep-s 60   what-if: the hidden stick needs this long to tune and seek to a clip (default 15; 60 is a re-tuned stick, buffered.prep_s)
 
 Dev nights only (`--split` takes fit and nothing else; a locked night is never opened). No TV, no adb, no engine.
 
@@ -62,7 +63,7 @@ if ROOT.as_posix() not in sys.path:
 from redzone import engine as engine_mod  # noqa: E402
 from redzone.contracts import brain as contract  # noqa: E402
 from redzone.decider import gate  # noqa: E402
-from redzone.decider.decider import Decider, Decision, LeaveHold, _holds_replays  # noqa: E402
+from redzone.decider.decider import Decider, Decision, FocusMode, LeaveHold, _holds_replays  # noqa: E402
 from redzone.engine import Engine  # noqa: E402
 from redzone.grading import dead_at, lag_of  # noqa: E402
 from redzone.lab import backtest, leverage, splits, sportsgrade  # noqa: E402
@@ -77,7 +78,8 @@ RUN_UP_S = 75.0     # how far ahead the hindsight brain looks, and how far back 
 SCALE = 10.0        # one value point is this many brain points, so a single must-see clears the arbiter's margin
 REACHES = (95, 150, 180)  # catch-up rewind reach, s: the measured floor (YouTube TV), the measured ceiling, and Nick's never-3-minutes-late cap
 CLIP_S = arbiter.DEFAULT_PARAMS.plan_clip_s   # one catch-up clip holds the screen this long
-PREP_S = 15.0        # buffered_jump_sim.MR.prep_s: a free stick takes this long to set a clip up
+DEFAULT_PREP_S = 15.0   # buffered_jump_sim.MR.prep_s: a free stick takes this long to set a clip up
+PREP_S = DEFAULT_PREP_S  # this run's load time (--prep-s): how long after it aired a moment is ready, and the stick's wait after a cut or a piece
 FLIP_S = 3.2         # buffered.py flip_s: an input flip between the sticks (the slowest usual)
 PAST_CAP_S = 600.0   # `past_cap`: how long after the 180 s cap a later opening is still looked for (info only)
 
@@ -261,6 +263,7 @@ class Tally:
     route_clip_s: float = 0.0                             # audit.route_clip_s, what-if: a shorter clip (0 = the plan's CLIP_S)
     route2: list = field(default_factory=list)            # [catchup_route] (t, game on screen, a plain dead ball is open too) on a stay tick
     route_off: list = field(default_factory=list)         # [catchup_route] (t, game on screen) on a stay tick the gates shut the route (info only)
+    route_off_gate: list = field(default_factory=list)    # ...and, tick for tick, which gate shut it (GATES; info only)
     held: int = 0            # [legal.leave_at_flip] picks remembered to leave later
     released: int = 0        # ...that went
     held_ticks: int = 0      # ticks a remembered pick waited
@@ -444,6 +447,7 @@ class AuditDecider(Decider):
                 self.tally.route2.append((now, self.current, plain))
             else:
                 self.tally.route_off.append((now, self.current))
+                self.tally.route_off_gate.append(self._route_gate(cur, now))
             return
         if cur is None or not self.cfg.get("replay.enabled", True) or _holds_replays(cur.scored) or cur.scored.crunch_now \
                 or cur.scored.high_leverage or self._crunch_on(cands):
@@ -452,6 +456,15 @@ class AuditDecider(Decider):
         opts = legal.legal_options(self.legal_facts(cands, now))
         if arbiter.catchup_pick([("clip", 0, now)], opts, self._arbiter_show(cands, now, p), now, p) is not None:
             self.tally.route.append((now, self.current))
+
+    def _route_gate(self, cur, now: float) -> str:
+        """Which check of Decider.catchup_gates shut the route, in its order (info only: the real gate decides, this names it)."""
+        u = self.user
+        checks = (("screen_game_not_live", cur is None), ("replays_off", not self.cfg.get("replay.enabled", True)),
+                  ("home_visit", self._home is not None), ("safe_mode", bool(self.safe_mode)), ("paused", bool(u.paused)),
+                  ("locked_game", bool(u.locked_game)), ("manual_pause", (u.manual_until or 0.0) > now),
+                  ("focus_mode", u.focus_mode != FocusMode.AUTOPILOT), ("buffered_jump", self.buffered_on()))
+        return next((name for name, shut in checks if shut), "unnamed")
 
     def _charge(self, pick: str, blockers: list[str], now: float) -> None:
         t, first = self.tally, blockers[0]
@@ -742,7 +755,8 @@ def replay(brain_name: str, sets: dict, row: dict, cap: int | None):
 
 def run_one(job: tuple) -> dict:
     """One league under one brain: the row for the table."""
-    league, brain_name, sets, cap = job
+    global PREP_S
+    league, brain_name, sets, cap, PREP_S = job      # a worker process has its own module: the load time rides in on the job
     row = new_row()
     script, args = SCRIPTS[league]
     extra = ["--split", "fit"]
@@ -865,18 +879,27 @@ def main() -> int:
     ap.add_argument("--cap", type=int, default=None, help="busiest N fit nights per league (default every fit night)")
     ap.add_argument("--workers", type=int, default=2, choices=(1, 2))
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="override one config value for this run")
+    ap.add_argument("--prep-s", type=float, default=DEFAULT_PREP_S,
+                    help="what-if: seconds the hidden stick needs to tune and seek to a catch-up clip (default 15; 60 models a re-tuned stick)")
     ap.add_argument("--json", type=Path, default=None)
     a = ap.parse_args()
+    if a.prep_s < 0:
+        ap.error("--prep-s must be 0 or more")
     sets = parse_sets(a.set)
-    jobs = [(lg, b, sets, a.cap) for lg in a.leagues for b in a.brains]
+    jobs = [(lg, b, sets, a.cap, a.prep_s) for lg in a.leagues for b in a.brains]
     if a.workers == 1 or len(jobs) == 1:
         rows = [run_one(j) for j in jobs]
     else:
         with ProcessPoolExecutor(max_workers=a.workers) as ex:
             rows = list(ex.map(run_one, jobs))
     print(table(rows))
+    if a.prep_s != DEFAULT_PREP_S:
+        print(f"what-if: hidden stick load time {a.prep_s:g} s (default {DEFAULT_PREP_S:g} s)")
     if a.json:
-        a.json.write_text(json.dumps({"sets": sets, "rows": rows, "rules": merge(rows), "avoidable_lost": {str(r): avoidable(rows, r) for r in REACHES}}, indent=1))
+        out = {"sets": sets, "rows": rows, "rules": merge(rows), "avoidable_lost": {str(r): avoidable(rows, r) for r in REACHES}}
+        if a.prep_s != DEFAULT_PREP_S:      # the default run's file stays byte-identical
+            out["prep_s"] = a.prep_s
+        a.json.write_text(json.dumps(out, indent=1))
     return 0
 
 
