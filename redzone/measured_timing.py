@@ -14,16 +14,14 @@ Pure: reads a config-like object (`get(dotted, default)`), no I/O.
 """
 from __future__ import annotations
 
-FLAG = "timing.measured"
+TIMING_FLAG = "timing.measured"
 # The shipped values (default_config.yaml timing.*), used when a config lacks a key.
 MEASURED = {"flip_s": 1.9, "flip_max_s": 2.2, "tune_s": 3.0, "tune_max_s": 4.3, "clip_prep_s": 19.0, "clip_prep_max_s": 25.0,
             "seek_base_s": 28.7, "seek_per_press_s": 16.5, "reach_s": 175.0}
-# What the catch-up route assumed before (catchup.Route's defaults; the decider read the flip from buffered_jump.flip_s).
-ASSUMED_CLIP_PREP_S = 15.0
 
 
 def on(cfg) -> bool:
-    return bool(cfg is not None and hasattr(cfg, "get") and cfg.get(FLAG, False))
+    return bool(cfg is not None and hasattr(cfg, "get") and cfg.get(TIMING_FLAG, False))
 
 
 def value(cfg, key: str) -> float:

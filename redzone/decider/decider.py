@@ -2236,7 +2236,7 @@ class Decider:
         m = measured_timing.route_costs(self.cfg)
         if m is None:
             return catchup.Route(reach_s=min(p.catchup_route_reach_s, catchup.HARD_CAP_S), clip_s=p.plan_clip_s, flip_s=float(bj.cfg_get(self.cfg, "flip_s")),
-                                 prep_s=measured_timing.ASSUMED_CLIP_PREP_S, short=p.catchup_route_short)
+                                 prep_s=catchup.Route.prep_s, short=p.catchup_route_short)
         return catchup.Route(reach_s=min(m["reach_s"], catchup.HARD_CAP_S), clip_s=p.plan_clip_s, flip_s=m["flip_s"], prep_s=m["prep_s"],
                              short=p.catchup_route_short)
 

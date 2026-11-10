@@ -542,7 +542,7 @@ def use_timing(timing: str = TIMINGS[0], dead: str = DEADS[0], prep_s: float | N
 
 def measured_cfg(sets: dict | None) -> NS:
     """Config-like over default_config.yaml and this run's --set values, with timing.measured on."""
-    over = {**(sets or {}), measured_timing.FLAG: True}
+    over = {**(sets or {}), measured_timing.TIMING_FLAG: True}
     return NS(get=lambda k, d=None: over[k] if k in over else rz_config.default(k, d))
 
 
@@ -952,7 +952,7 @@ def main() -> int:
         ap.error("--prep-s must be 0 or more")
     sets = parse_sets(a.set)
     if a.timing == "measured":
-        sets.setdefault(measured_timing.FLAG, True)      # the replayed decider reads the same timings
+        sets.setdefault(measured_timing.TIMING_FLAG, True)      # the replayed decider reads the same timings
     use_timing(a.timing, a.dead, a.prep_s, sets)
     a.prep_s = PREP_S
     jobs = [(lg, b, sets, a.cap, a.prep_s) + ((a.timing, a.dead) if (a.timing, a.dead) != (TIMINGS[0], DEADS[0]) else ())

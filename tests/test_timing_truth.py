@@ -30,7 +30,7 @@ def test_flag_off_the_route_costs_are_todays():
     old = C.Route(reach_s=min(P.catchup_route_reach_s, C.HARD_CAP_S), clip_s=P.plan_clip_s, flip_s=float(bj.cfg_get(d.cfg, "flip_s")),
                   short=P.catchup_route_short)       # what _catchup_route_params built before TIMING-TRUTH
     assert d._catchup_route_params(P) == old
-    assert old.prep_s == mt.ASSUMED_CLIP_PREP_S == 15.0 and old.flip_s == 3.2
+    assert old.prep_s == C.Route.prep_s == 15.0 and old.flip_s == 3.2
     assert mt.route_costs(d.cfg) is None and route_decider(**{"timing.measured": False})._catchup_route_params(P) == old
 
 
