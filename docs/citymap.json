@@ -5551,6 +5551,7 @@
     "redzone/noggin/anchor.py:on",
     "redzone/noggin/anchor.py:pick_anchor",
     "redzone/noggin/anchor.py:plan_gap",
+    "redzone/noggin/anchor.py:risk",
     "redzone/noggin/arbiter.py:Clip",
     "redzone/noggin/arbiter.py:NullBrain",
     "redzone/noggin/arbiter.py:Params",
@@ -5597,6 +5598,7 @@
     "redzone/noggin/wire.py:game_input",
     "redzone/noggin/wire.py:pick",
     "redzone/noggin/wire.py:rules",
+    "redzone/scoring/dead_left.py:guaranteed_left_v2_within",
     "redzone/scoring/engine.py:Scored"
    ],
    "contracts": [
@@ -5637,6 +5639,7 @@
     "redzone/noggin/pick.py",
     "redzone/noggin/priority.py",
     "redzone/noggin/wire.py",
+    "redzone/scoring/dead_left.py",
     "redzone/scoring/engine.py",
     "uses:seek_model"
    ],
@@ -10923,6 +10926,7 @@
    },
    "outputs": [
     "redzone/decider/break_tail.py",
+    "redzone/decider/decider.py",
     "redzone/decider/screen.py",
     "redzone/noggin/anchor.py",
     "scripts/measure_dead_left.py",
@@ -18249,6 +18253,8 @@
     "redzone/noggin/legal.py:legal_options",
     "redzone/noggin/legal.py:refusals",
     "redzone/scoring/dead_left.py:guaranteed_left",
+    "redzone/scoring/dead_left.py:guaranteed_left_v2",
+    "redzone/scoring/dead_left.py:stoppage_class",
     "redzone/sources/espn.py:stoppage_for"
    ],
    "contracts": [],
@@ -18490,7 +18496,7 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2164,
+  "calls": 2168,
   "data_files": 204,
   "machines": 52,
   "modules": 457,
