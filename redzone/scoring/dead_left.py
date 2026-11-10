@@ -4,6 +4,8 @@ Why: dead-ball length lived in five tables that disagree (NFL two-minute warning
 `--dead floor` need one guaranteed floor (docs/plans/2026-11-09-anchor-mode.md section 7). It reads the pooled `*` rows of
 redzone/scoring/broadcast/break_lengths.json (stoppage -> real restart, train nights only) and interpolates the stored quantiles.
 Nothing live calls it yet: only scripts/veto_audit.py --dead floor and its tests.
+v2 (`guaranteed_left_v2`, below; read by anchor mode only with timing.dead_v2 on): the same promise by break class and by the time
+already elapsed, from redzone/scoring/broadcast/dead_left_table.json (scripts/measure_dead_left.py, train nights only).
 
 Pure: the table is read once, no clock.
 """
@@ -91,3 +93,62 @@ def conformal_lower(values, alpha: float) -> float | None:
     v = sorted(float(x) for x in values)
     k = math.floor(Fraction(str(alpha)) * (len(v) + 1))
     return v[k - 1] if k >= 1 else None
+
+
+@lru_cache(maxsize=1)
+def _table_v2() -> dict:
+    return json.loads(TABLE_V2_FILE.read_text())["table"]
+
+
+def _level(alpha: float) -> str | None:
+    """The stored risk level read for `alpha`: the largest one not above it, so the promise is never looser than asked.
+    None: `alpha` is stricter than every stored level."""
+    if not 0.0 < alpha < 1.0:
+        raise ValueError(f"alpha must be a risk level between 0 and 1, not {alpha}")
+    ok = [a for a in ALPHAS if a <= alpha + 1e-12]
+    return f"{max(ok):.2f}" if ok else None
+
+
+def cell_v2(league: League | str, kind: str, mark: int, alpha: float, cls: str | None = None) -> tuple[str, dict] | None:
+    """(the class read, its table cell) at landmark `mark` for this risk level: the stoppage's own class when that cell holds a
+    bound, else the kind's pooled class. A college league reads its own table first, then its pro league's. None: no cell has
+    enough survivors for this level."""
+    k, level = str(getattr(kind, "value", kind) or ""), _level(alpha)
+    lg = League(getattr(league, "value", league))
+    for name in dict.fromkeys((lg.value, lg.base.value)):
+        classes = _table_v2().get(name, {}).get(k, {})
+        for c in dict.fromkeys((cls or k, k)):
+            cell = classes.get(c, {}).get(str(mark))
+            if level is not None and cell and cell["left_s"].get(level) is not None:
+                return c, cell
+    return None
+
+
+def _left_from(league, kind: str, mark: int, elapsed_s: float, alpha: float, cls: str | None) -> float:
+    """The bound read at landmark `mark`, carried to `elapsed_s` (at or after it): what has run since the landmark comes off."""
+    got = cell_v2(league, kind, mark, alpha, cls)
+    return 0.0 if got is None else max(0.0, float(got[1]["left_s"][_level(alpha)]) - (elapsed_s - mark))
+
+
+def guaranteed_left_v2(league: League | str, kind: str, elapsed_s: float, alpha: float, cls: str | None = None) -> float:
+    """Seconds of this stoppage still to come with probability 1 - alpha, given it is still running `elapsed_s` after it began
+    and given its break class (`stoppage_class`; None: the kind's pooled class). Read at the largest landmark at or before
+    `elapsed_s`, less the seconds since that landmark: the stoppages that outlast `elapsed_s` are among those that outlasted the
+    landmark. A class cell that is missing or has too few survivors falls back to the pooled class of the kind (a promise over
+    every stoppage of the kind, not over that class alone); nothing that qualifies, or an unmeasured kind: 0."""
+    e = max(0.0, float(elapsed_s))
+    return _left_from(league, kind, max(t for t in LANDMARKS if t <= e), e, alpha, cls)
+
+
+def guaranteed_left_v2_within(league: League | str, kind: str, lo_s: float, hi_s: float, alpha: float,
+                              cls: str | None = None) -> float:
+    """The least `guaranteed_left_v2` over every elapsed time from `lo_s` to `hi_s`: the promise when the time already run is
+    only known to that window (the stream delay is an estimate). The bound can rise at a landmark, so a stoppage that has run
+    less than believed may still sit under the earlier, lower one."""
+    hi = max(0.0, float(hi_s))
+    lo = min(hi, max(0.0, float(lo_s)))
+    least = guaranteed_left_v2(league, kind, hi, alpha, cls)
+    for prev, t in zip(LANDMARKS, LANDMARKS[1:]):
+        if lo < t <= hi:                 # just before landmark t the bound still reads the one before it
+            least = min(least, _left_from(league, kind, prev, t, alpha, cls))
+    return least
