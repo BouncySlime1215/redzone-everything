@@ -416,6 +416,7 @@ class Decider:
     home_leaks: int = 0
     _leave_pick: LeaveHold | None = None
     _route_doing: tuple[Missed, float] | None = None   # [arbiter.catchup_route] the clip in pieces: (the play, seconds of it already aired)
+    _route_clip: tuple[Missed, float] | None = None    # [arbiter.catchup_route_short] (the play, its clip's own length) of the piece last offered
     _LAZY = {"owner_m": M.OWNER, "screen_m": M.DECIDER_SCREEN, "start_m": M.START, "gone_m": M.SCREEN_GONE, "home_m": M.DECIDER_HOME,
              "safe_m": M.SAFE, "override_m": M.OVERRIDE, "lock_m": M.LOCK_WAIT, "entry_m": M.ENTRY_WAIT, "leave_m": M.LEAVE_WAIT,
              "catchup_m": M.CATCHUP_ROUTE}
@@ -2224,7 +2225,8 @@ class Decider:
         return True, not (_holds_replays(s) or s.crunch_now or s.high_leverage or self._crunch_on(cands))
 
     def _catchup_route_params(self, p: arbiter.Params) -> catchup.Route:
-        return catchup.Route(reach_s=min(p.catchup_route_reach_s, catchup.HARD_CAP_S), clip_s=p.plan_clip_s, flip_s=float(bj.cfg_get(self.cfg, "flip_s")))
+        return catchup.Route(reach_s=min(p.catchup_route_reach_s, catchup.HARD_CAP_S), clip_s=p.plan_clip_s, flip_s=float(bj.cfg_get(self.cfg, "flip_s")),
+                             short=p.catchup_route_short)
 
     def _catchup_span(self, cur: Candidate, now: float) -> tuple[float, bool] | None:
         """How long the dead time on screen lasts, surely: (when play can restart on screen at the earliest, in a commercial?). None: mid-play."""
@@ -2271,6 +2273,7 @@ class Decider:
             return None
         m = doing[0] if doing is not None else ready[piece.moment.id]
         m.offset_s, m.piece_s, m.marked_replay = piece.offset_s, piece.seconds, m.marked_replay or piece.marked
+        self._route_clip = (m, piece.clip_s)      # [catchup_route_short] this clip's own length: a short one ends with this piece
         return m
 
     def _route_end(self, m: Missed, why: str, now: float) -> None:
@@ -2284,7 +2287,8 @@ class Decider:
         m = self._clip
         if m is None or m.piece_s <= 0:
             return False
-        clip = self._arbiter_params().plan_clip_s
+        cut = self._route_clip
+        clip = cut[1] if cut is not None and cut[0] is m and cut[1] > 0 else self._arbiter_params().plan_clip_s
         offset = m.offset_s + m.piece_s
         if offset >= clip - 0.5:
             m.piece_s, m.offset_s, self._route_doing = 0.0, 0.0, None
