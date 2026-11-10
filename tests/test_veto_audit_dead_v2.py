@@ -1,8 +1,9 @@
-"""The audit's --dead v2 --alpha: catch-up pieces sized by the class and elapsed-time table; hindsight and floor print and write what they did.
+"""The audit's --dead v2 --alpha and its safety count: catch-up pieces sized by the class and elapsed-time table, and how many
+pieces a knowable bound alone brings back after the real restart; hindsight and floor print and write what they did.
 
 Why: sized with the real dead time the route leaves 2,866 value points lost, with today's knowable floor 4,339 (41 fit nights,
-simulated); the table of research ledger L1 is the knowable bound that could close part of that gap, and the audit has to size
-with it before any risk level is chosen.
+simulated); the table of research ledger L1 is the knowable bound that could close part of that gap, and no risk level can be
+chosen until the audit says what each one costs in late returns.
 """
 import json
 from types import SimpleNamespace as NS
@@ -29,6 +30,15 @@ def assumed():
     va.use_timing()
 
 
+def _less_safety(text: str, written: str) -> tuple[str, str]:
+    """What the run printed and wrote, without the safety count (new with --dead floor or v2): the rest is what it always was."""
+    out = json.loads(written)
+    assert set(out.pop("safety")) == {"95", "150", "180"}
+    for row in out["rows"]:
+        assert set(row.pop("safety")) == {"95", "150", "180"}
+    return "".join(x for x in text.splitlines(True) if not x.startswith("safety at reach ")), json.dumps(out, indent=1)
+
+
 # ----- hindsight and floor are what they were ---------------------------------------------------------------------------------------
 
 def test_the_defaults_know_nothing_of_v2():
@@ -43,12 +53,16 @@ def test_hindsight_and_floor_print_and_write_byte_for_byte_what_they_did(monkeyp
     text, written, jobs = _main(monkeypatch, tmp_path, capsys)
     assert (text, written, jobs) == (va.table(rows) + "\n", json.dumps(base, indent=1), [("nfl", "hindsight", {}, None, 15.0)])
     assert _main(monkeypatch, tmp_path, capsys, "--alpha", "0.05")[:2] == (text, written)        # --alpha alone changes nothing
+    assert "safety" not in text and "safety" not in written                                     # hindsight carries no safety count
     text, written, jobs = _main(monkeypatch, tmp_path, capsys, "--timing", "measured", "--dead", "floor")
+    assert text.count("safety at reach ") == 3
+    text, written = _less_safety(text, written)                  # floor: everything but the new safety count is what it was
     assert text == va.table(rows) + "\n" + MEASURED_SAID + FLOOR_SAID
     sets = {"timing.measured": True}
     assert written == json.dumps({**base, "sets": sets, "prep_s": 19.0, "timing": "measured", "dead": "floor"}, indent=1)
     assert jobs == [("nfl", "hindsight", sets, None, 19.0, "measured", "floor")]
     text, written, jobs = _main(monkeypatch, tmp_path, capsys, "--dead", "floor", "--alpha", "0.02")
+    text, written = _less_safety(text, written)
     assert text == va.table(rows) + "\n" + FLOOR_SAID and written == json.dumps({**base, "dead": "floor"}, indent=1)
     assert jobs == [("nfl", "hindsight", {}, None, 15.0, "assumed", "floor")]
 
@@ -139,3 +153,80 @@ def test_only_the_stored_risk_levels_are_taken(monkeypatch, tmp_path, capsys):
         va.use_timing(dead="v2", alpha=0.03)
     with pytest.raises(SystemExit):
         _main(monkeypatch, tmp_path, capsys, "--dead", "v2", "--alpha", "0.03")
+
+
+# ----- the safety count: what a knowable bound alone costs in late returns ----------------------------------------------------------
+
+def _one_tick(monkeypatch, real_left: float, known_left: float, dead: str = "floor"):
+    """One open dead ball at 1040 with a 30 s clip owed: (the table's own route, the same route sized by the knowable bound alone)."""
+    air = va.Air(1000.0, "b", "td", 5.0)
+    t = truth(monkeypatch, {"b": [air]}, dead=(True, False, real_left))
+    monkeypatch.setattr(va, "floor_left", lambda rep, st: known_left)
+    monkeypatch.setattr(va, "v2_left", lambda rep, st: known_left)
+    va.use_timing(dead=dead)
+    tally = va.Tally(route_on=True, route2=[(1040.0, "a", True)])
+    return va.route_shown([air], tally, t, 180)[1], va.route_shown([air], tally, t, 180, clamp=False)[1], tally, t
+
+
+@pytest.mark.parametrize("dead", ["floor", "v2"])
+def test_a_bound_above_the_truth_comes_back_late_and_is_counted(monkeypatch, dead):
+    cut, alone, _, _ = _one_tick(monkeypatch, 25.0, 60.0, dead)
+    assert (cut["pieces"], cut["late_returns"]) == (1, 0)          # the table's route: cut to the real 25 s, back in time
+    assert (alone["pieces"], alone["late_returns"]) == (1, 1)      # the bound alone: the whole 30 s clip, back at 1076.4, restart at 1065
+
+
+def test_a_bound_under_the_truth_is_never_late(monkeypatch):
+    cut, alone, _, _ = _one_tick(monkeypatch, 100.0, 20.0)
+    assert (cut["pieces"], alone["pieces"], alone["late_returns"]) == (1, 1, 0)
+    assert "late_returns" not in cut                                # only the bound-alone pass ever counts one
+
+
+def test_a_piece_only_the_bound_has_room_for_is_a_late_return(monkeypatch):
+    cut, alone, _, _ = _one_tick(monkeypatch, 12.0, 40.0)           # really 12 s: no room for the play's 11 s and two flips
+    assert cut["pieces"] == 0 and (alone["pieces"], alone["late_returns"]) == (1, 1)
+
+
+def test_hindsight_sizes_with_the_truth_and_cannot_be_late(monkeypatch):
+    air = va.Air(1000.0, "b", "td", 5.0)
+    t = truth(monkeypatch, {"b": [air]}, dead=(True, False, 25.0))
+    tally = va.Tally(route_on=True, route2=[(1040.0, "a", True)])
+    assert va.route_shown([air], tally, t, 180, clamp=False)[1]["late_returns"] == 0
+    row = va.new_row()
+    va.charge_night(tally, t, row)
+    assert "safety" not in row
+
+
+def test_a_night_adds_its_safety_count_per_reach(monkeypatch):
+    _, _, tally, t = _one_tick(monkeypatch, 25.0, 60.0)
+    row = va.new_row()
+    va.charge_night(tally, t, row)
+    assert row["safety"] == {str(r): {"pieces": 1, "late_returns": 1} for r in va.REACHES}
+    assert row["route"]["180"]["pieces"] == 1 and "late_returns" not in row["route"]["180"]     # the table's route is unchanged
+    va.charge_night(tally, t, row)
+    assert row["safety"]["180"] == {"pieces": 2, "late_returns": 2}
+
+
+def test_the_safety_count_is_summed_printed_and_written(monkeypatch, tmp_path, capsys):
+    plain = _row()                                                  # a hindsight row: no safety count in it
+    va.use_timing(dead="v2", alpha=0.05)
+
+    def row(league, pieces, late):
+        r = va.new_row()
+        r["league"], r["brain"], r["card"] = league, "hindsight", {"entries_mid_play": 0, "entries": 0, "cuts_high": 0, "mid_play_leaves": 0}
+        r["safety"]["180"].update(pieces=pieces, late_returns=late)
+        return json.loads(json.dumps(r))
+    rows = [row("nfl", 150, 3), row("nba", 50, 1)]
+    assert va.safety(rows, 180) == {"pieces": 200, "late_returns": 4, "rate": 0.02,
+                                    "by_league": {"nfl": {"pieces": 150, "late_returns": 3}, "nba": {"pieces": 50, "late_returns": 1}}}
+    assert va.safety(rows, 95)["rate"] is None and va.safety([plain], 180) is None
+    lines = va.safety_lines(rows)
+    assert len(lines) == 3 and "pieces 200, late_returns 4 (2.00%)" in lines[2] and lines[2].endswith("nfl 3/150, nba 1/50")
+    assert "pieces 0, late_returns 0 (no pieces)" in lines[0] and va.safety_lines([plain]) == []
+    served = iter(rows)
+    monkeypatch.setattr(va, "run_one", lambda job: next(served))
+    out = tmp_path / "out.json"
+    monkeypatch.setattr("sys.argv", ["veto_audit.py", "--leagues", "nfl", "nba", "--brains", "hindsight", "--workers", "1", "--json", str(out),
+                                     "--dead", "v2", "--alpha", "0.05"])
+    assert va.main() == 0
+    assert lines[2] in capsys.readouterr().out
+    assert json.loads(out.read_text())["safety"]["180"]["late_returns"] == 4

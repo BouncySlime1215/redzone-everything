@@ -35,6 +35,12 @@ mid-play. Reach 95 s is the measured floor, 180 s is Nick's never-3-minutes-late
 TV. Clips can't move the replay's own cuts. `avoidable lost` is lost_after_catchup without the moments whose refusal was
 `protected`: what no rule protected and no replay made up.
 
+`safety` (--dead floor or v2, with arbiter.catchup_route on; SIMULATED): the price of the knowable dead time. The table's own route
+sizes a piece with the lesser of the knowable bound and the real dead time, as --dead floor always has, so it never comes back late:
+that is the route with a perfect "restart seen" net. `safety` replays the same night's route a second time sized by the knowable
+bound ALONE, as live code without a net would: `pieces` it airs, and `late_returns`, the pieces whose flip back (piece end + flip)
+lands after the live game's real restart. Their rate is what one risk level costs against another.
+
 `residual` (with arbiter.catchup_route on): every value point still lost after catch-up, by WHY the route did not air it. A
 moment's cause is the furthest step any tick got inside its window (set up 15 s after it aired, up before the reach and the
 180 s cap), see CAUSES. `past_cap` is the part of it that had an open, long-enough dead ball in the 10 minutes after the cap.
@@ -543,16 +549,23 @@ def v2_left(rep, st: float) -> float:
     return guaranteed_left_v2(rep.league, stop.value, st - rep.wall[k], RISK, cls)
 
 
-def dead_left(rep, st: float, stats: Counter | None = None) -> tuple[bool, bool, float]:
-    """dead_at, with --dead floor or v2: the seconds left are what the live code could know in advance, never more than the truth (a
-    floor above the truth would have run a clip into live play: counted in `floor_over_truth` ticks, info only)."""
+def dead_both(rep, st: float, stats: Counter | None = None) -> tuple[bool, bool, float, float]:
+    """dead_at, and beside the real seconds left the ones the live code could know in advance (--dead floor or v2; in hindsight the
+    two are the same). A floor above the truth would have run a clip into live play: counted in `floor_over_truth` ticks."""
     dead, brk, left = dead_at(rep.league, rep.wall, rep.plays, st)
     if DEAD == DEADS[0] or not dead:
-        return dead, brk, left
+        return dead, brk, left, left
     fl = floor_left(rep, st) if DEAD == "floor" else v2_left(rep, st)
     if fl > left and stats is not None:
         stats["floor_over_truth"] += 1
-    return dead, brk, min(left, fl)
+    return dead, brk, left, fl
+
+
+def dead_left(rep, st: float, stats: Counter | None = None) -> tuple[bool, bool, float]:
+    """dead_at, with --dead floor or v2: the seconds left are what the live code could know in advance, never more than the truth (a
+    floor above the truth would have run a clip into live play: counted in `floor_over_truth` ticks, info only)."""
+    dead, brk, left, known = dead_both(rep, st, stats)
+    return dead, brk, min(left, known)
 
 
 def use_timing(timing: str = TIMINGS[0], dead: str = DEADS[0], prep_s: float | None = None, sets: dict | None = None,
@@ -606,13 +619,16 @@ def catchup_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> se
     return shown
 
 
-def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: dict | None = None) -> tuple[dict[Air, bool], Counter]:
+def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: dict | None = None,
+                clamp: bool = True) -> tuple[dict[Air, bool], Counter]:
     """SIMULATED arbiter.catchup_route (redzone/noggin/catchup.py) on the replay's own screen, at this rewind reach: which unseen moments
     air before the hard cap, each piece inside dead time on the game on screen (truth, with a margin) on a tick the route was open.
     Causal: a clip starts without knowing the next dead ball is coming. {moment: airs marked as a replay}, and what became of the rest.
     Clips can't move the replay's own cuts; a cut on the way ends the dead time and takes the hidden stick for its prep.
     `why` (info only, it changes no choice): filled with {moment not shown: (its cause from CAUSES, an opening came within PAST_CAP_S
-    after the cap)}."""
+    after the cap)}.
+    `clamp` False (the `safety` pass, --dead floor or v2): pieces are sized by the knowable dead time alone, even where it is more
+    than the real one, and `late_returns` counts the pieces whose flip back lands after the live game's real restart."""
     r = catchup.Route(reach_s=min(reach, catchup.HARD_CAP_S, REACH_CAP_S), clip_s=t.route_clip_s or CLIP_S, flip_s=FLIP_S, prep_s=PREP_S, lead_s=3.0, margin_s=2.0,
                       short=t.route_short)
     moments = {f"{m.game_id}:{m.at}:{m.kind}:{i}": m for i, m in enumerate(unseen)}
@@ -665,7 +681,8 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: di
                 note(now, gid, "screen_on_clip" if rep is not None else "screen_not_started")
             continue
         st = now - lag_of(truth.lag, gid)
-        dead, brk, left = dead_left(rep, st, stats)
+        dead, brk, real_left, known_left = dead_both(rep, st, stats)
+        left = min(real_left, known_left) if clamp else known_left
         i = bisect.bisect_left(cuts, now)
         end = min(now + left, cuts[i] if i < len(cuts) else float("inf"))
         if why is not None:
@@ -698,6 +715,8 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: di
             continue
         stick_end = busy_to = p.until
         stats["pieces"] += 1
+        if not clamp and p.until > now + real_left:
+            stats["late_returns"] += 1        # the screen is back on the live game only after its real restart
         aired_of_game[p.moment.game_id].append(p.moment.aired)
         aired_late[p.moment.id] = catchup.lateness(p.moment, now + r.flip_s, p.offset_s, r)
         if p.marked:
@@ -737,6 +756,9 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
             late = max(league_row["route"][str(r)].get("max_late_s", 0.0), results[r][1].pop("max_late_s", 0.0))
             league_row["route"][str(r)].update(results[r][1])
             league_row["route"][str(r)]["max_late_s"] = late
+            if "safety" in league_row:        # --dead floor or v2: the same route sized by the knowable dead time alone
+                alone = route_shown(unseen, t, truth, r, clamp=False)[1]
+                league_row["safety"][str(r)].update({"pieces": alone["pieces"], "late_returns": alone["late_returns"]})
     else:
         shown = {r: catchup_shown(unseen, t, truth, r) for r in REACHES}
     for gid, ms in truth.moments.items():
@@ -772,7 +794,9 @@ def new_row() -> dict:
             "ticks": 0, "wanted": 0, "went": 0, "held": 0, "released": 0, "held_ticks": 0, "over": Counter(), "refused": Counter(), "alone": Counter(), "any_rule": Counter(), "protected": Counter(), "high": Counter(),
             "lost_after_catchup": {str(r): Counter() for r in REACHES}, "route": {str(r): Counter() for r in REACHES}, "avoidable_lost": {str(r): 0.0 for r in REACHES},
             "residual": {str(r): Counter() for r in REACHES}, "residual_by_rule": {str(r): Counter() for r in REACHES},
-            "past_cap": {str(r): Counter() for r in REACHES}}
+            "past_cap": {str(r): Counter() for r in REACHES},
+            # hindsight sizes with the truth and cannot come back late: its rows (and its file) carry no safety count
+            **({"safety": {str(r): Counter(pieces=0, late_returns=0) for r in REACHES}} if DEAD != DEADS[0] else {})}
 
 
 def card(script: str, *args: str) -> dict:
@@ -894,7 +918,34 @@ def table(rows: list[dict], *, top: int = 25) -> str:
         c, pct = r["card"], 100.0 * r["must_seen"] / r["must_total"] if r["must_total"] else 0.0
         lines.append(f"{r['league']}/{r['brain']}: must-see seen {pct:.1f}% of {r['must_total']:.0f}, not asked {r['not_asked']:.0f}, "
                      f"wanted {r['wanted']} went {r['went']}, mid-play {c['entries_mid_play']}/{c['entries']}, high-lev leaves {c['cuts_high']}, all mid-play leaves {c['mid_play_leaves']}")
-    return "\n".join(lines + catchup_lines(rows) + residual_lines(rows))
+    return "\n".join(lines + catchup_lines(rows) + safety_lines(rows) + residual_lines(rows))
+
+
+def safety(rows: list[dict], reach: int) -> dict | None:
+    """{pieces, late_returns, rate, by_league} at this reach over the rows that carry a safety count; None when none does (hindsight)."""
+    have = [r for r in rows if "safety" in r]
+    if not have:
+        return None
+    by = {lg: Counter() for lg in dict.fromkeys(r["league"] for r in have)}
+    for r in have:
+        by[r["league"]].update(r["safety"][str(reach)])
+    pieces, late = sum(c["pieces"] for c in by.values()), sum(c["late_returns"] for c in by.values())
+    return {"pieces": pieces, "late_returns": late, "rate": round(late / pieces, 4) if pieces else None,
+            "by_league": {lg: {"pieces": c["pieces"], "late_returns": c["late_returns"]} for lg, c in by.items()}}
+
+
+def safety_lines(rows: list[dict]) -> list[str]:
+    """The route sized by the knowable dead time alone, per reach: pieces aired and how many came back after the real restart."""
+    lines = []
+    for reach in REACHES:
+        s = safety(rows, reach)
+        if s is None:
+            continue
+        rate = "no pieces" if s["rate"] is None else f"{100.0 * s['rate']:.2f}%"
+        per = ", ".join(f"{lg} {c['late_returns']}/{c['pieces']}" for lg, c in s["by_league"].items())
+        lines.append(f"safety at reach {reach} s (SIMULATED, sized by the knowable dead time alone, not cut to the real one): "
+                     f"pieces {s['pieces']}, late_returns {s['late_returns']} ({rate}) back on the live game after its real restart; {per}")
+    return lines
 
 
 def residual_lines(rows: list[dict], reach: int = REACHES[-1]) -> list[str]:
@@ -1015,6 +1066,8 @@ def main() -> int:
             out["dead"] = a.dead
         if a.dead == "v2":
             out["alpha"] = a.alpha
+        if any("safety" in r for r in rows):
+            out["safety"] = {str(r): safety(rows, r) for r in REACHES}
         a.json.write_text(json.dumps(out, indent=1))
     return 0
 
