@@ -2,13 +2,16 @@
 
     python scripts/anchor_sim.py --split fit                       # NFL slates of the fit split (scripts/eval.py's set)
     python scripts/anchor_sim.py --split fit --set timing.measured=true
+    python scripts/anchor_sim.py --split fit --set timing.measured=true --set timing.dead_v2=true   # the dead-time table v2
+    python scripts/anchor_sim.py --league nba --split fit          # another league's nights, as scripts/eval_sports.py runs them
     python scripts/anchor_sim.py --fixture                         # the small NBA fixture night the tests replay
 
 Per run: entries_mid_play (joins mid-play, must be 0), mid_play_cuts and mid_play_cuts_high (leaves mid-play; the anchor is
 crunch, so a leave of it mid-play is a high one), crunch_on_replay (crunch plays that aired while a clip was on screen: an
 anchor live play missed while away, or a return after the restart; must be 0 with the flag on), crunch live, big seen, and
 the decider's anchor counters (anchors, clips aired, gaps with no budget / nothing fitting / the stick loading / vetoed at the
-restart, late clips dropped or kept for after the anchor). Heavy: one whole replay per night and flag; not for the live Mac.
+restart, clips stopped by the restart net, late clips dropped or kept for after the anchor). Heavy: one whole replay per night
+and flag; not for the live Mac.
 Why: anchor mode ships off until a sim over the fit nights shows these counters (spec section 8 step 3).
 """
 from __future__ import annotations
@@ -37,23 +40,38 @@ def _eval_cfg() -> Config:
     return cfg
 
 
-def _nights(a) -> list[tuple[list, set[str], dict | None, object]]:
-    """(replays, your teams, targets, a fresh config per run) per night."""
+def _nights(a) -> list[tuple[list, set[str], dict, object]]:
+    """(replays, your teams, backtest.run's keywords, a fresh config per run) per night."""
     if a.fixture:
         fix = ROOT / "tests" / "fixtures" / "your_team_crunch"
         evs = json.loads((fix / "espn_nba_scoreboard_20251212.json").read_text())["events"]
         from redzone.models import League
         reps = [r for r in (backtest.Replay.load(League.NBA, fix / f"espn_nba_summary_{e['id']}.json") for e in evs) if r]
         targets = {r.gid: ("prime:" if i % 3 == 0 else "youtubetv:") + r.gid for i, r in enumerate(reps)}
-        return [(reps, {"WSH"}, targets, lambda: Config(user_path=fix / "eval_config.yaml"))]
+        kw = dict(targets=targets, seed=1, **backtest.feed_lag_knobs(70.0, 90.0))
+        return [(reps, {"WSH"}, kw, lambda: Config(user_path=fix / "eval_config.yaml"))]
+    if a.league != "nfl":
+        # Another league: its nights, channels, league-scoped settings and buffer exactly as scripts/eval_sports.py runs them.
+        from redzone.models import League
+        from scripts.eval_sports import EVAL_END, nights
+        cfg = _eval_cfg()
+        for kv in a.set:
+            evaldata.apply_set(cfg, kv)
+        evaldata.flatten_league_overrides(cfg, a.league)
+        teams = set(cfg.get(f"teams.{a.league}") or ["WSH"])
+        lag = backtest.feed_lag_knobs(None, evaldata.config_behind_live(cfg, a.league))
+        return [(reps, teams, dict(targets=targets, **lag), _eval_cfg)
+                for _, reps, targets in nights(League(a.league), a.n, evaldata.window_end(a.league, EVAL_END), a.split)]
     from scripts.eval import eval_set
     teams = set(_eval_cfg().get("teams.nfl") or ())
-    return [(reps, teams, None, _eval_cfg) for reps in eval_set(a.n, split=a.split)]
+    return [(reps, teams, {}, _eval_cfg) for reps in eval_set(a.n, split=a.split)]
 
 
-def _run(reps, teams, targets, cfg, sets: list[str]) -> dict:
+def _run(reps, teams, kw: dict, cfg, sets: list[str], league: str | None = None) -> dict:
     for kv in sets:
         evaldata.apply_set(cfg, kv)
+    if league:
+        evaldata.flatten_league_overrides(cfg, league)     # after --set, as scripts/eval_sports.py does
     made: list = []
     real = backtest.Decider
 
@@ -63,7 +81,6 @@ def _run(reps, teams, targets, cfg, sets: list[str]) -> dict:
             made.append(self)
     backtest.Decider = Watched
     try:
-        kw = dict(targets=targets, seed=1, **backtest.feed_lag_knobs(70.0, 90.0)) if targets else {}
         r = backtest.run(reps, cfg, teams, **kw)
     finally:
         backtest.Decider = real
@@ -81,14 +98,17 @@ def _run(reps, teams, targets, cfg, sets: list[str]) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--split", default="fit")
-    ap.add_argument("--n", type=int, default=16, help="NFL slates when the split is 'all'")
+    ap.add_argument("--n", type=int, default=16, help="NFL slates (another league: nights) when the split is 'all'")
+    ap.add_argument("--league", default="nfl", choices=("nfl", "nba", "nhl"),
+                    help="nfl (default): the slates of scripts/eval.py. nba / nhl: that league's nights as scripts/eval_sports.py loads them")
     ap.add_argument("--fixture", action="store_true", help="the NBA fixture night of tests/fixtures/your_team_crunch only")
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="applied to both runs")
     a = ap.parse_args()
     tot = {"off": Counter(), "on": Counter()}
-    for reps, teams, targets, new_cfg in _nights(a):
+    league = None if a.fixture or a.league == "nfl" else a.league
+    for reps, teams, kw, new_cfg in _nights(a):
         for flag in ("off", "on"):
-            row = _run(reps, teams, targets, new_cfg(), [*a.set, f"anchor.enabled={'true' if flag == 'on' else 'false'}"])
+            row = _run(reps, teams, kw, new_cfg(), [*a.set, f"anchor.enabled={'true' if flag == 'on' else 'false'}"], league)
             tot[flag].update(row)
             print(json.dumps({"night": reps[0].gid, "anchor": flag, **row}))
     keys = sorted(set(tot["off"]) | set(tot["on"]), key=lambda k: (k not in KEYS, KEYS.index(k) if k in KEYS else 0, k))

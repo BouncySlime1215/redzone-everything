@@ -593,6 +593,13 @@
     "redzone/discovery/yttv.py"
    ]
   },
+  "dead_left_table.json": {
+   "readers": [
+    "redzone/scoring/dead_left.py"
+   ],
+   "users": [],
+   "writers": []
+  },
   "default_config.yaml": {
    "readers": [
     "redzone/config.py",
@@ -5537,6 +5544,7 @@
     "redzone/noggin/anchor.py:anchor_score",
     "redzone/noggin/anchor.py:clip_deadline",
     "redzone/noggin/anchor.py:costs",
+    "redzone/noggin/anchor.py:dead_v2",
     "redzone/noggin/anchor.py:guaranteed_s",
     "redzone/noggin/anchor.py:knob",
     "redzone/noggin/anchor.py:late_queue",
@@ -5854,7 +5862,8 @@
     "redzone/fsm.py:MachineMap",
     "redzone/models.py:ByLeague",
     "redzone/models.py:Stoppage",
-    "redzone/models.py:pro_period"
+    "redzone/models.py:pro_period",
+    "redzone/scoring/dead_left.py:stoppage_class"
    ],
    "contracts": [],
    "data": {
@@ -5869,7 +5878,8 @@
     "redzone/decider/sync.py",
     "redzone/fsm.py",
     "redzone/machines/decider.py",
-    "redzone/models.py"
+    "redzone/models.py",
+    "redzone/scoring/dead_left.py"
    ],
    "kind": "module",
    "machines": {
@@ -7049,6 +7059,7 @@
     "scripts/ladder_replay.py",
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
+    "scripts/measure_dead_left.py",
     "scripts/noggin_selfplay.py",
     "scripts/queue_replay.py",
     "scripts/queue_trace.py",
@@ -7313,6 +7324,7 @@
     "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/measure_break_lengths.py",
+    "scripts/measure_dead_left.py",
     "scripts/northstar.py"
    ],
    "owner": "INTEGRATION",
@@ -8270,6 +8282,7 @@
     "scripts/exp023_belief.py",
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
+    "scripts/measure_dead_left.py",
     "scripts/moment_rates.py",
     "scripts/queue_replay.py",
     "scripts/queue_trace.py",
@@ -8886,6 +8899,7 @@
     "scripts/kaggle_gamevalue_holdset.py",
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
+    "scripts/measure_dead_left.py",
     "scripts/noggin_factory.py",
     "scripts/noggin_tokens.py",
     "scripts/perf_probe.py",
@@ -9263,7 +9277,8 @@
     "redzone/measured_timing.py:value",
     "redzone/moments/value2.py:config",
     "redzone/moments/value2.py:leverage",
-    "redzone/scoring/dead_left.py:guaranteed_left"
+    "redzone/scoring/dead_left.py:guaranteed_left",
+    "redzone/scoring/dead_left.py:guaranteed_left_v2_within"
    ],
    "contracts": [],
    "data": {
@@ -10892,7 +10907,8 @@
    "contracts": [],
    "data": {
     "reads": [
-     "break_lengths.json"
+     "break_lengths.json",
+     "dead_left_table.json"
     ],
     "uses": [],
     "writes": []
@@ -10907,7 +10923,9 @@
    },
    "outputs": [
     "redzone/decider/break_tail.py",
+    "redzone/decider/screen.py",
     "redzone/noggin/anchor.py",
+    "scripts/measure_dead_left.py",
     "scripts/veto_audit.py"
    ],
    "owner": "unowned",
@@ -11332,6 +11350,7 @@
     "scripts/green_summaries.py",
     "scripts/holdset_public.py",
     "scripts/measure_break_lengths.py",
+    "scripts/measure_dead_left.py",
     "scripts/noggin_factory.py",
     "scripts/noggin_tokens.py",
     "scripts/plan_tonight.py",
@@ -13069,8 +13088,13 @@
     "redzone/lab/backtest.py:feed_lag_knobs",
     "redzone/lab/backtest.py:run",
     "redzone/lab/evaldata.py:apply_set",
+    "redzone/lab/evaldata.py:config_behind_live",
+    "redzone/lab/evaldata.py:flatten_league_overrides",
     "redzone/lab/evaldata.py:use_shipped_switch_costs",
-    "scripts/eval.py:eval_set"
+    "redzone/lab/evaldata.py:window_end",
+    "redzone/models.py:League",
+    "scripts/eval.py:eval_set",
+    "scripts/eval_sports.py:nights"
    ],
    "contracts": [],
    "data": {
@@ -13089,7 +13113,8 @@
     "redzone/lab/backtest.py",
     "redzone/lab/evaldata.py",
     "redzone/models.py",
-    "scripts/eval.py"
+    "scripts/eval.py",
+    "scripts/eval_sports.py"
    ],
    "kind": "entry",
    "machines": {
@@ -14596,7 +14621,9 @@
     "declares": [],
     "drives": []
    },
-   "outputs": [],
+   "outputs": [
+    "scripts/anchor_sim.py"
+   ],
    "owner": "INTEGRATION",
    "role": "Scorecard for NBA / NHL (and NFL/MLB) using real archived nights.",
    "serves": [
@@ -15834,6 +15861,43 @@
    "outputs": [],
    "owner": "unowned",
    "role": "[Data F] Measured break lengths by league x network x break kind, from the pinned archive.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/measure_dead_left.py": {
+   "calls": [
+    "redzone/lab/backtest.py:Replay",
+    "redzone/lab/cutgrade.py:resume_after",
+    "redzone/lab/splits.py:archive_nights",
+    "redzone/lab/splits.py:league_split",
+    "redzone/models.py:League",
+    "redzone/scoring/dead_left.py:conformal_lower",
+    "redzone/scoring/dead_left.py:stoppage_class",
+    "redzone/sources/espn.py:stoppage_for"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/lab/splits.py",
+    "redzone/models.py",
+    "redzone/scoring/dead_left.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[timing.dead_v2] The dead-time-left table: sure seconds left in a stoppage, by break class and by the time already elapsed.",
    "serves": [
     "untagged"
    ]
@@ -18426,13 +18490,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2148,
-  "data_files": 203,
+  "calls": 2164,
+  "data_files": 204,
   "machines": 52,
-  "modules": 456,
+  "modules": 457,
   "orphans": 34,
-  "unowned": 258,
-  "untagged": 387
+  "unowned": 259,
+  "untagged": 388
  },
  "version": 2
 }
