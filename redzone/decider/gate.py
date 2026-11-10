@@ -216,7 +216,7 @@ def _leave(f: Flip) -> bool:
     if f.jump:
         ok = f.host.decider.jump_may_leave(f.before, f.live, f.now, f.host._leave_margin())
     else:
-        ok = f.host.safe_to_leave(f.before, required_s=_leave_need(f, 8.0))   # the value cut_veto has always used
+        ok = _plain_leave(f, 8.0)   # the value cut_veto has always used
         if not ok and getattr(f.d, "leave_held", False):       # [legal.leave_low_leverage] a held pick may go at a low-leverage moment
             ok = not _ending_airing(f) and f.host.decider.held_low_leverage_exit(f.before, f.live, f.now)
     return not ok or _leaves_high_leverage_play(f)
@@ -363,6 +363,43 @@ def _leave_need(f: Flip, usual: float) -> float:
     if f.host.cfg.get("gate.leave_margin_measured", False):
         return float(f.host._leave_margin())
     return usual
+
+
+def _plain_leave(f: Flip, usual: float) -> bool:
+    """A non-jump leave of the game on screen: the 'data covers the screen' window, open for the whole flip, or (flag) a proven
+    dead window on the screen's game."""
+    return bool(f.host.safe_to_leave(f.before, required_s=_leave_need(f, usual))) or _dead_window_leave(f)
+
+
+def _dead_window_leave(f: Flip) -> bool:
+    """[gate.leave_dead_window, off] The screen's LIVE game sits inside a play-by-play dead window (cuts.DeadTracker: a foul, free
+    throws, a timeout, a huddle) for the whole flip, delay doubt on both sides: the dead-window bar a jump's leave already uses
+    (Decider._jump_gate), without its break guess, its walk or its low-leverage exception. The plain window never asked the
+    tracker, so basketball and hockey answered "play is live" with the whistle already in the feed. Never when the game clock is
+    proven running across the leave, at ANY leverage: an earlier trial of dead-window leaves made 1-2 mid-play NBA cuts
+    (decisions.md 2026-11-04), and a window can outlast the restart (_lands_with_clock_running). An ended game is ending_airing's."""
+    host, before = f.host, f.before
+    if not host.cfg.get("gate.leave_dead_window", False) or not before or before in PSEUDO:
+        return False
+    g = host.merger.games.get(before)
+    if g is None or g.phase != Phase.LIVE:
+        return False
+    need = float(host._leave_margin())
+    target = getattr(host.where.get(before), "target", None)
+    return bool(host.decider.dead_window_leave(before, target, f.now, need)) and not _clock_ran_on_leave(f, need)
+
+
+def _clock_ran_on_leave(f: Flip, need: float) -> bool:
+    """Basketball: the game clock is proven running at some moment the screen shows during [now, now + need] on the game being left
+    (_leaves_high_leverage_play's proof, asked whatever the leverage). No clock rows, or another sport: False."""
+    before = f.before or ""
+    tl = f.host.decider.timelines.get(before)
+    g = f.host.merger.games.get(before)
+    events = getattr(tl, "clock_events", None)
+    if g is None or not events or g.league.base.value not in WHISTLE_LEAGUES:
+        return False
+    mu = f.host.delays.get(getattr(f.host.where.get(before), "target", None) or "unknown").mu
+    return _clock_ran(events, f.now - mu, f.now + need - mu)
 
 
 def _own_frame(f: Flip) -> bool:

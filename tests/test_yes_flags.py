@@ -9,8 +9,8 @@ import yaml
 from redzone import measured_timing as mt
 from redzone.decider import gate
 from redzone.decider.decider import PSEUDO, Decision, State
-from redzone.decider.screen import Event, leave_window
-from redzone.models import Phase
+from redzone.decider.screen import Event, Timeline, leave_window
+from redzone.models import League, Phase
 from tests.test_exits_catchup import cand, host
 from tests.test_timing_truth import _night_decisions
 
@@ -20,7 +20,7 @@ CONFIG = yaml.safe_load((Path(mt.__file__).parent / "default_config.yaml").read_
 ALL = ["nfl", "cfb", "nba", "cbb", "nhl", "mlb"]
 # The fixture night with the arbiter choosing and a held pick allowed to wait: the paths the flags live on.
 CTX = {"arbiter.enabled": True, "legal.leave_at_flip": True, "legal.leave_low_leverage": ALL}
-OFF = {"gate.leave_unaired_row_only_ended": False, "gate.leave_margin_measured": False}        # every new flag at its shipped default
+OFF = {"gate.leave_unaired_row_only_ended": False, "gate.leave_margin_measured": False, "gate.leave_dead_window": False}        # every new flag at its shipped default
 
 
 def night(ctx=None, **sets):
@@ -157,4 +157,75 @@ def test_flag_on_the_host_is_asked_with_its_own_margin_and_a_jump_is_untouched()
 def test_flag_off_the_night_decides_as_with_the_8_s_window(monkeypatch):
     after = night()
     monkeypatch.setattr(gate, "_leave_need", lambda f, usual: usual)
+    assert night() == after
+
+
+# ----- step 4: gate.leave_dead_window -------------------------------------------------------------------------------------------------
+
+DEAD = "gate.leave_dead_window"
+NBA = {"on": cand(League.NBA), "a": cand()}
+
+
+def at_the_line(**cfg):
+    """Basketball, a shooting foul logged at 160: with a 35 s delay (sigma 1) the screen at 200 shows 165 +- 2, inside the dead window
+    the foul opened (surely dead 22 s, to 182). The plain window knows no stoppage: 'play is live'."""
+    d = host((), **cfg)
+    tl = Timeline(League.NBA)
+    tl.fresh_at = 200.0
+    tl.events.append(Event(150.0, "play"))
+    tl.dead.add("f1", 160.0, 160.0, "", "shooting foul on A", "Shooting Foul", 500.0, 1)
+    tl.dead.seen(200.0, 10.0)
+    d.timelines["on"] = tl
+    d.replay_until = d.replay_exit_after = 0.0
+    return d
+
+
+def test_flag_off_basketball_at_the_line_still_answers_play_is_live():
+    d = at_the_line()
+    f = flip(d, NBA)
+    assert d._ending_still_airing("on", 200.0) == 0 and d.dead_window_leave("on", "yt:on", 200.0, 3.2)
+    assert gate._dead_window_leave(f) is False and gate._leave(f) is True and gate.leave_cause(f) == "window"
+
+
+def test_flag_on_a_proven_dead_window_opens_the_leave():
+    d = at_the_line(**{DEAD: True})
+    assert gate._leave(flip(d, NBA)) is False
+    assert gate._leave(flip(d, NBA, now=215.0)) is True          # 215: the flip would end at screen time 183.2 + doubt, past the sure 182
+    d.timelines["on"].dead.marks.clear()
+    assert gate._leave(flip(d, NBA)) is True                     # no dead-ball data: nothing proves it
+
+
+def test_flag_on_a_running_game_clock_refuses_at_every_leverage():
+    d = at_the_line(**{DEAD: True})
+    d.timelines["on"].clock_events.extend([(162.0, 1, 500.0, "foul"), (170.0, 1, 494.0, "jump shot")])     # the clock ran from 164
+    for kw in ({}, {"high_leverage": True}):
+        f = flip(d, {"on": cand(League.NBA, **kw), "a": cand()})
+        assert gate._clock_ran_on_leave(f, 3.2) is True and gate._dead_window_leave(f) is False and gate._leave(f) is True
+    d.timelines["on"].clock_events.clear()
+    d.timelines["on"].clock_events.extend([(140.0, 1, 520.0, "shot"), (160.0, 1, 500.0, "foul")])          # it ran before the whistle only
+    assert gate._leave(flip(d, NBA)) is False
+
+
+@pytest.mark.parametrize("phase", [Phase.POST, Phase.PRE, None])
+def test_flag_on_only_a_live_game_is_left_on_a_dead_window(phase):
+    d = at_the_line(**{DEAD: True})
+    f = flip(d, NBA)
+    if phase is None:
+        del f.host.merger.games["on"]
+    else:
+        f.host.merger.games["on"].phase = phase
+    assert gate._dead_window_leave(f) is False
+
+
+def test_flag_on_the_window_must_cover_the_flip_with_doubt_on_both_sides():
+    d = at_the_line(**{DEAD: True})
+    assert d.dead_window_leave("on", "yt:on", 200.0, 3.2) is True
+    assert d.dead_window_leave("on", "yt:on", 196.0, 3.2) is False       # screen 161 - 2 sigma: may still be before the whistle
+    assert d.dead_window_leave("on", "yt:on", 200.0, 16.0) is False      # 200 + 16 - 35 + 2 = 183: past the sure 182
+    assert d.dead_window_leave("gone", "yt:on", 200.0, 3.2) is False and d.dead_window_leave(None, None, 200.0, 3.2) is False
+
+
+def test_flag_off_the_night_decides_as_with_the_plain_window_alone(monkeypatch):
+    after = night()
+    monkeypatch.setattr(gate, "_plain_leave", lambda f, usual: bool(f.host.safe_to_leave(f.before, required_s=usual)))
     assert night() == after

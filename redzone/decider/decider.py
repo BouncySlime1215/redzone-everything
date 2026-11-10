@@ -3368,6 +3368,17 @@ class Decider:
             return Gate(False, "dead balls only (buffered: no mid-play leave)")
         return g
 
+    def dead_window_leave(self, gid: str | None, target: str | None, now: float, required_s: float) -> bool:
+        """[gate.leave_dead_window] The picture of gid is inside a play-by-play dead window from now until required_s from now,
+        with the jump's delay doubt on both sides: _jump_gate's dead-window test and nothing else of it. Read by gate._dead_window_leave."""
+        tl = self.timelines.get(gid or "")
+        if tl is None or not tl.dead.marks:
+            return False
+        d = self.delays.get(target or "unknown")
+        m = self._jump_margin(d, now)
+        until = tl.dead.dead_until(now - d.mu - m)
+        return until is not None and until >= now + required_s - d.mu + m
+
     def _jump_break_on_screen(self, gid: str, cur: Candidate, tl: Timeline, d, now: float) -> bool:
         """[overseer Nov 8 01:16Z: a timeout on MIA@ND held the screen 46 s with the standby ready] A break
         (timeout, end of quarter, injury, review, score) that the FRESH feed is still in, and that has reached
