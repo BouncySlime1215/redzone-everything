@@ -4,7 +4,7 @@ Why: decisions.md 2026-11-09 (personal data): metadata only (service, when, how 
 the allow-list lives here so no caller can put a message body, URL or identifier in the file.
 
 Every record has exactly: ts (UTC ISO), service, title, tags, duration_s, source. `clean()` builds a new dict from those
-keys, so anything else on the input is dropped, never stored. Stdlib only. data/ is git-ignored (.gitignore).
+keys, so anything else on the input is dropped, never stored; a title or tag that carries a URL or a video id is blanked. Stdlib only. data/ is git-ignored (.gitignore).
 """
 from __future__ import annotations
 
@@ -19,6 +19,9 @@ MAX_TEXT = 200
 MAX_TAGS = 5
 STORE_NAME = "events.jsonl"
 _CTRL = re.compile(r"[\x00-\x1f\x7f]")
+_LINK = re.compile(r"https?://|\bwww\.", re.I)
+_LONG_RUN = re.compile(r"[A-Za-z0-9_-]{11,}")
+_WORDS = re.compile(r"[A-Z]?[a-z]+(?:[A-Z][a-z]{2,})*\d*|[A-Z]+\d*|\d+")   # a word, CamelCase words, CAPS, a number
 
 
 def store_path(data_dir: Path) -> Path:
@@ -30,6 +33,23 @@ def text(v, limit: int = MAX_TEXT) -> str:
     if not isinstance(v, str):
         return ""
     return _CTRL.sub(" ", v).strip()[:limit]
+
+
+def _flips(piece: str) -> int:
+    """How often the case or digit-ness changes along a piece, not counting a capital starting a word."""
+    kinds = ["d" if c.isdigit() else "u" if c.isupper() else "l" for c in piece]
+    return sum(a != b and (a, b) != ("u", "l") for a, b in zip(kinds, kinds[1:]))
+
+
+def _id_like(run: str) -> bool:
+    """A video or track id: its letters and digits look random. A long word, hyphenated words, a date or a CamelCase name do not."""
+    pieces = re.split(r"[-_]", run)
+    return sum(_flips(p) for p in pieces) >= 3 and not all(_WORDS.fullmatch(p) for p in pieces if p)
+
+
+def _no_identifier(s: str) -> str:
+    """s, or "" when it carries a URL or a video id: a title can, and the allow-list keeps titles."""
+    return "" if _LINK.search(s) or any(_id_like(r) for r in _LONG_RUN.findall(s)) else s
 
 
 def parse_ts(v) -> str | None:
@@ -63,8 +83,8 @@ def clean(rec) -> dict | None:
     dur = rec.get("duration_s")
     dur = round(float(dur), 1) if isinstance(dur, (int, float)) and not isinstance(dur, bool) and 0 <= dur < 86400 * 2 else None
     source = rec.get("source") if rec.get("source") in EVENT_SOURCES else "shortcut"
-    return {"ts": ts, "service": service, "title": text(rec.get("title")),
-            "tags": [t for t in (text(x, 80) for x in tags[:MAX_TAGS]) if t], "duration_s": dur, "source": source}
+    return {"ts": ts, "service": service, "title": _no_identifier(text(rec.get("title"))),
+            "tags": [t for t in (_no_identifier(text(x, 80)) for x in tags[:MAX_TAGS]) if t], "duration_s": dur, "source": source}
 
 
 def _key(r: dict) -> str:

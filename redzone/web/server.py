@@ -486,20 +486,25 @@ def build_app(engine: Engine) -> FastAPI:
     @app.post("/api/personal/app-open")
     async def personal_app_open(request: Request):
         """iOS Shortcuts 'app opened' event: {"app", "timestamp"} only (redzone/personal/store.py). Off unless
-        personal.enabled (then 404, nothing written). Same LAN-only middleware as every route; if the Mac's
-        environment sets REDZONE_PERSONAL_TOKEN, the X-RedZone-Token header must match it as well."""
+        personal.enabled (then 404, nothing written). Same LAN-only middleware as every route, and the X-RedZone-Token
+        header must match REDZONE_PERSONAL_TOKEN in the Mac's environment (unset: 503, nothing written)."""
         if not engine.cfg.get("personal.enabled", False):
             return JSONResponse({"ok": False, "message": "not found"}, status_code=404)
         import hmac
         import os
         want = os.environ.get("REDZONE_PERSONAL_TOKEN", "")
-        if want and not hmac.compare_digest(want.encode(), request.headers.get("x-redzone-token", "").encode()):
+        if not want:
+            return JSONResponse({"ok": False, "message": "the intake token is not set on the Mac"}, status_code=503)
+        if not hmac.compare_digest(want.encode(), request.headers.get("x-redzone-token", "").encode()):
             return JSONResponse({"ok": False, "message": "bad token"}, status_code=401)
-        if not request.headers.get("content-length", "0").isdigit() or int(request.headers.get("content-length", "0")) > 2048:
-            return JSONResponse({"ok": False, "message": "payload too large"}, status_code=413)
+        raw = bytearray()
+        async for chunk in request.stream():          # counted as it arrives: a chunked body has no content-length to believe
+            raw += chunk
+            if len(raw) > 2048:
+                return JSONResponse({"ok": False, "message": "payload too large"}, status_code=413)
         from redzone.personal import store
         try:
-            body = json.loads((await request.body())[:2048])
+            body = json.loads(bytes(raw))
         except ValueError:
             body = None
         ts = store.parse_ts(body.get("timestamp")) if isinstance(body, dict) else None

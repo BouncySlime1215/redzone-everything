@@ -126,7 +126,7 @@ def thin_nights(nights: list[str], limit: int) -> list[str]:
 
 
 def games_from_raw(league: str, raw: Path, nights: set[str]):
-    """(game id, summary, night, season, playoff) of the wanted nights only: every other game's features are never built."""
+    """(game id, summary, night, season, playoff) of the wanted nights only: every other game's features are never built. Its return value is the readers' stats (missing columns, games dropped)."""
     stats: dict = {}
     for path in sorted((raw / league).glob("pbp_*.parquet")):
         digits = re.sub(r"\D", "", path.stem)
@@ -140,6 +140,7 @@ def games_from_raw(league: str, raw: Path, nights: set[str]):
         for gid, summary, night, season_read, playoff, _key in gen:
             if night in nights:
                 yield str(gid), summary, night, season_read, playoff
+    return stats
 
 
 @dataclass
@@ -422,10 +423,20 @@ def select_league(league: str, raw: Path, nights: list[str], fitter, *, keep_fil
     def stream(wanted_list: list[str], step: int):
         wanted = set(wanted_list)
         source = games_factory(wanted) if games_factory else games_from_raw(league, raw, wanted)
-        for gid, summary, night, season, playoff in source:
+        yielded: set[str] = set()
+
+        def read():
+            stats = yield from source
+            if stats:
+                log(json.dumps({"league": league, "raw_stats": stats}), flush=True)
+
+        for gid, summary, night, season, playoff in read():
             if night not in wanted:
                 raise Refused(f"{league}: selection reached night {night}, not a training night of this step")
+            yielded.add(night)
             yield game_rows(league, gid, summary, night, season, playoff, step)
+        if wanted - yielded:            # a file missing its columns yields nothing: a step that read fewer nights than it was given has not finished
+            raise Refused(f"{league}: {len(wanted - yielded)} of {len(wanted)} nights never came out of the raw files, e.g. {sorted(wanted - yielded)[:3]}")
 
     start = time.monotonic()
     filter_deadline = None if deadline is None else start + 0.5 * max(deadline - start, 0.0)    # half the league's budget for the filter
@@ -547,12 +558,12 @@ def main(argv=None, fitter=None) -> int:
             report[league] = result
             W.write_kept(a.out, {lg: r.as_json() for lg, r in report.items()}, complete=False, shard_id=shard_id)         # partial output after every league
             print(json.dumps({"league": league, "candidates_generated": result.counts.get("candidates_generated"), "kept": len(result.kept), "folds_done": result.folds_done, "complete": result.complete, "verdict": result.verdict}), flush=True)
-    except (Refused, ValueError) as e:
+    except Refused as e:
         print(f"REFUSED: {e}", flush=True)
         return EXIT_REFUSED
     if a.probe_games:
         return 0
-    finished = all(r.complete for r in report.values()) and set(report) == set(leagues)
+    finished = bool(leagues) and bool(report) and all(r.complete for r in report.values()) and set(report) == set(leagues)
     W.write_kept(a.out, {lg: r.as_json() for lg, r in report.items()}, complete=finished, shard_id=shard_id)
     print("HONEST COUNTS: generated", {lg: r.counts.get("candidates_generated") for lg, r in report.items()}, "kept per league", {lg: len(r.kept) for lg, r in report.items()},
           "complete" if finished else "INCOMPLETE: the runtime will not load this file", flush=True)

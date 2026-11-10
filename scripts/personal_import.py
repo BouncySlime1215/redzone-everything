@@ -3,7 +3,7 @@
 Why: decisions.md 2026-11-09 (personal data): metadata only, local only. Only the allow-listed fields (timestamp, service,
 title, tags, duration) are kept; every other column or key is dropped, never stored (redzone/personal/store.py).
 
-    python scripts/personal_import.py PATH [--data-dir data] [--dry-run]
+    python scripts/personal_import.py PATH [--data-dir data] [--dry-run]     # --data-dir must be git-ignored in this repo
 
 PATH is a file or a folder he unzipped himself. Files are untrusted: parsed with json/csv only (no eval, no links followed,
 no zips opened, symlinks skipped), each file capped at 50 MB, rows capped, malformed rows skipped and counted.
@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -131,6 +132,14 @@ def find_files(p: Path) -> list[Path]:
     return out
 
 
+def store_is_git_ignored(data_dir: Path) -> bool:
+    """Is the store's path git-ignored in this repo? The repo is public: a folder git could add, or one it can't vouch for, is refused."""
+    try:
+        return subprocess.run(["git", "check-ignore", "-q", str(store.store_path(data_dir.resolve()))], cwd=ROOT, capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
 def run(path: Path, data_dir: Path, dry_run: bool = False) -> dict:
     stats = {"files": 0, "read": 0, "malformed": 0, "written": 0, "skipped_files": 0}
     for f in find_files(path):
@@ -159,6 +168,9 @@ def main(argv=None) -> int:
         ap.error("path is required unless --profile")
     if not a.path.exists():
         print("path not found")
+        return 2
+    if not store_is_git_ignored(a.data_dir):
+        print("refused: --data-dir is not git-ignored in this repo, and personal data never goes where git can add it")
         return 2
     s = run(a.path, a.data_dir, a.dry_run)
     print(" ".join(f"{k}={v}" for k, v in s.items()) + (" (dry run)" if a.dry_run else ""))

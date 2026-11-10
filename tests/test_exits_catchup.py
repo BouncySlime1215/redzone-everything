@@ -11,7 +11,7 @@ import pytest
 from redzone.decider import gate
 from redzone.decider.decider import Candidate, Decider, Decision, FocusMode, Missed, State
 from redzone.decider.screen import Delay, Event, Timeline
-from redzone.models import League
+from redzone.models import League, Phase
 from redzone.noggin import arbiter as A
 from redzone.noggin import catchup as C
 from redzone.scoring.engine import Scored
@@ -54,9 +54,11 @@ def host(leagues=("nfl",), **kw):
     return d
 
 
-def flip(d, cands, *, held=True, now=200.0):
+def flip(d, cands, *, held=True, now=200.0, game_on_screen=None):
     dec = Decision(now, "switch", "a", "", State.WATCHING, kind="better", leave_held=held)
     h = gate.DeciderHost(d, {**cands, "a": cands["a"]}, now)
+    if game_on_screen is not None:
+        game_on_screen(h.merger.games)
     return gate._leave(gate.Flip(h, dec, "on", "yt:a", cands, None, now))
 
 
@@ -67,6 +69,40 @@ def test_a_held_pick_may_leave_a_low_leverage_play_only_with_the_flag():
     assert flip(host(()), cands) is True                     # flag off: the mid-play leave stays refused
     assert flip(host(("nfl",)), cands) is False
     assert flip(host(("nba",)), cands) is True               # per league
+
+
+@pytest.mark.parametrize("break_it", [lambda d: d.timelines.clear(), lambda d: d.timelines["on"].events.clear()])
+def test_a_held_pick_never_leaves_without_screen_timing(break_it):
+    """Rule #1 side: leave_open refuses a game it has no timing for, and the exit must not overrule that."""
+    d = host(("nfl",))
+    cands = {"on": cand(), "a": cand()}
+    assert d.held_low_leverage_exit("on", cands, 200.0) is True
+    break_it(d)
+    assert d.held_low_leverage_exit("on", cands, 200.0) is False
+
+
+def _ended(games):
+    games["on"].phase = Phase.POST
+
+
+def _lost(games):
+    del games["on"]
+
+
+@pytest.mark.parametrize("game_on_screen", [_ended, _lost])
+def test_a_held_pick_never_leaves_an_ended_game_whose_last_play_is_still_airing(game_on_screen):
+    """Rule #1 side, the commit gate's ending_airing test: an ended game (or one the merger lost) waits for its last play."""
+    d = host(("nfl",))
+    assert d._ending_still_airing("on", 200.0) > 0
+    assert flip(d, {"on": cand(), "a": cand()}, game_on_screen=game_on_screen) is True
+
+
+def test_a_live_game_mid_play_still_gets_the_low_leverage_exit_and_high_leverage_does_not():
+    """Still airing is true of nearly every live game (tests/test_commit_gate.py), so it must not close this exit."""
+    d = host(("nfl",))
+    assert d._ending_still_airing("on", 200.0) > 0
+    assert flip(d, {"on": cand(), "a": cand()}) is False
+    assert flip(d, {"on": cand(high_leverage=True), "a": cand()}) is True
 
 
 def test_a_pick_that_was_not_held_never_reads_the_new_rule():

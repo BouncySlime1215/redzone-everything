@@ -232,6 +232,43 @@ def test_a_floor_pick_expires_when_its_must_show_is_no_longer_owed():
     assert tick(d, 175.0).action == "stay" and d.leave_m.is_("idle")
 
 
+def _must(game):
+    return A.Must(f"{game}:td", game, "td", 1, 1, 400.0)
+
+
+def test_a_brain_pick_gives_way_to_a_must_show_on_another_game():
+    d = make(nfl_screen(130.0))
+    tick(d, 130.0)
+    d._arbiter_musts = lambda *a: (_must("b"),)
+    out = tick(d, 175.0)
+    assert (out.action, out.target) == ("switch", "b") and out.reason.startswith("arbiter: floor:") and d._leave_pick is None
+
+
+def test_a_brain_pick_gives_way_to_a_must_show_on_the_game_on_screen():
+    d = make(nfl_screen(130.0))
+    tick(d, 130.0)
+    d._arbiter_musts = lambda *a: (_must("on"),)
+    assert tick(d, 175.0).action == "stay" and d.leave_m.is_("idle") and d._leave_pick is None
+
+
+def test_a_brain_pick_whose_own_game_has_the_must_show_still_goes():
+    d = make(nfl_screen(130.0))
+    tick(d, 130.0)
+    d._arbiter_musts = lambda *a: (_must("a"),)
+    out = tick(d, 175.0)
+    assert (out.action, out.target, out.leave_held) == ("switch", "a", True)
+
+
+@pytest.mark.parametrize("silent", [NS(name="t", think=lambda inp: None), Scores()])
+def test_a_silent_brain_ends_a_pick_past_the_grace_but_not_a_fresh_one(silent):
+    d = make(nfl_screen(130.0))
+    tick(d, 130.0)
+    d.arbiter_brain = silent
+    assert tick(d, 133.0).want == "a" and d.leave_m.is_("waiting")              # three seconds of silence: the brain just picked it
+    out = tick(d, 175.0)
+    assert out.action == "stay" and d.leave_m.is_("idle") and d._leave_pick is None
+
+
 def test_the_wait_is_bounded():
     d = make(nfl_screen(130.0), **{"legal.leave_wait_s": 20.0})
     tick(d, 130.0)

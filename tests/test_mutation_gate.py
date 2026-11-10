@@ -548,6 +548,9 @@ def k_a_held_pick_leaves_only_by_its_low_leverage_exit(m):
     assert V(m, host(False, True)) == "leave"
     assert V(m, host(True, False), leave_held=True) == ""
     assert V(m, host(False, False), leave_held=True) == "leave"
+    ended = host(False, True)                   # in a whole flip ending_airing answers first, so ask the rule itself: the exit can't overrule it
+    _airing(ended)
+    assert m._leave(m.Flip(ended, _d(leave_held=True), "a", T, _cands(), None, AT)) is True
 
 
 CHECKS = [v for k, v in sorted(globals().items()) if k.startswith("k_") and callable(v)]

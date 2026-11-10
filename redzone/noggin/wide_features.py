@@ -539,6 +539,8 @@ def read_kept(path: Path | str | None = None) -> dict:
     for n in names:
         parse(n)
     leagues = data.get("leagues")
+    if not leagues:
+        raise ValueError(f"{target}: lists no league")
     if not isinstance(leagues, dict) or not all(isinstance(v, dict) and isinstance(v.get("kept_columns"), list) for v in leagues.values()):
         raise ValueError(f"{target}: every league needs its own kept_columns")
     if sorted({c for v in leagues.values() for c in v["kept_columns"]}) != names:

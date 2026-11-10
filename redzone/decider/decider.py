@@ -2147,17 +2147,20 @@ class Decider:
         return "" if self._leave_worth(h, facts, cands, now) else "no longer worth it"
 
     def _leave_worth(self, h: LeaveHold, facts: legal.Facts, cands: dict[str, Candidate], now: float) -> bool:
-        """A pick of the floor: its must-show is still owed. A brain's: it still beats staying by the margin (a brain with no
-        opinion this tick doesn't end the wait)."""
+        """A pick of the floor: its must-show is still owed. A brain's: no must-show is owed anywhere else, and it still beats
+        staying by the margin. A brain with no opinion doesn't end a fresh wait, but past legal.leave_silent_s the pick has nothing behind it."""
         p = self._arbiter_params()
         inp = brain.BrainInput(tick=len(self.log), now=now, options=legal.legal_options(facts))
+        show = self._arbiter_show(cands, now, p)
+        pool = arbiter.lowest_l1_class([o for o in inp.options if o.verb == "stay" or legal.kind_of(o.verb)], show.current_class)
+        floor = arbiter.must_show_floor(pool, self._arbiter_musts(cands, now, p), show.current, now, p)
         if h.why.startswith("floor:"):
-            show = self._arbiter_show(cands, now, p)
-            pool = arbiter.lowest_l1_class([o for o in inp.options if o.verb == "stay" or legal.kind_of(o.verb)], show.current_class)
-            return h.option_id in arbiter.must_show_floor(pool, self._arbiter_musts(cands, now, p), show.current, now, p)
+            return h.option_id in floor
+        if floor and h.option_id not in floor:
+            return False
         out = self._arbiter_think(inp)
         if out is None or not brain.valid(out, inp) or not out.scores:
-            return True
+            return now - h.at <= float(self.cfg.get("legal.leave_silent_s", 5.0))
         s = out.scores
         return s.get(h.option_id, -math.inf) - s.get(arbiter.STAY_ID, -math.inf) >= p.brain_margin
 
@@ -4118,10 +4121,15 @@ class Decider:
     def held_low_leverage_exit(self, gid: str | None, live: dict[str, Candidate], now: float) -> bool:
         """[legal.leave_low_leverage, off] May a held pick leave this game mid-play? Only in the listed leagues, and only by every rule
         of _leavable: redzone/lab/leverage.py's high-leverage floor (live as scoring.engine.high_leverage and _high_lev_at while
-        it may still be on screen), your team, crunch or its run-up, a locked moment, late and close. A pick that isn't held never reads this."""
+        it may still be on screen), your team, crunch or its run-up, a locked moment, late and close. A pick that isn't held never reads this.
+        Never without screen timing (no timeline, or one with no events): that is gate.leave_open's own refusal, and this exit must not overrule it.
+        A live game's last play is nearly always still airing, so that alone refuses nothing here; gate._leave refuses it for a game that ended."""
         lgs = self.cfg.get("legal.leave_low_leverage") or []
         cur = live.get(gid or "")
         if not lgs or cur is None:
+            return False
+        tl = self.timelines.get(gid)
+        if tl is None or not tl.events:
             return False
         return self._leavable(cur, now, self.delays.get(cur.target or "unknown"), leagues=lgs)
 
