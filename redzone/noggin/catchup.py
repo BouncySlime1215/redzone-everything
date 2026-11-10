@@ -11,6 +11,8 @@ The rules this module owns, and tests pin:
   * a piece fits inside the dead time on screen, with a margin, so the flip back lands before the live game restarts.
   * the first piece holds the whole play, so a clip cut short never ended on half a play.
   * a clip whose result the screen has already shown is marked as a replay; it never airs as if it were news.
+  * [arbiter.catchup_route_short, off] with another missed must-see waiting, a clip is only its first piece: the lead-in, the whole
+    play and a second after. One hidden stick then clears more of the queue inside the cap. Alone, a clip stays whole.
 
 A piece is a separate replay at a later offset (Missed.offset_s): the hidden stick re-seeks between pieces, so no new stick command.
 
@@ -47,6 +49,7 @@ class Route:
     margin_s: float = 2.0       # back on the live game at least this long before it restarts
     lead_s: float = 3.0         # a clip starts this long before the play (Missed.back_s lead_s)
     min_piece_s: float = 8.0    # a later piece shorter than this isn't worth two flips
+    short: bool = False         # [arbiter.catchup_route_short] a clip is just the play while another clip waits its turn
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,7 @@ class Piece:
     until: float           # the picture is back on the live stick by here
     last: bool             # this piece finishes the clip
     marked: bool           # airs labelled as a replay: the screen already showed this result
+    clip_s: float = 0.0    # the whole clip's length this piece was cut from (shorter than Route.clip_s on a short clip)
 
 
 def first_piece_s(m: Moment, r: Route) -> float:
@@ -111,15 +115,18 @@ def next_piece(pool: Sequence[Moment], now: float, end: float, *, doing: tuple[M
     if first is None:
         return None
     # plan_clips picks the best run; the first clip of it goes, or the next-best one this dead ball can hold
+    owed = [m for m in live if on_time(m, now + r.flip_s, 0.0, r)] if r.short else ()
     for m in (order[first], *sorted((x for x in live if x.id != first), key=lambda x: (-x.value, x.aired))):
-        p = _piece(m, 0.0, now, fit, ready_at, known(m), r)
+        short = any(x.id != m.id for x in owed)      # someone else can still make it: this clip is just the play
+        p = _piece(m, 0.0, now, fit, ready_at, known(m), r, first_piece_s(m, r) if short else None)
         if p is not None:
             return p
     return None
 
 
-def _piece(m: Moment, off: float, now: float, fit: float, ready_at: float, marked: bool, r: Route) -> Piece | None:
-    left = r.clip_s - off
+def _piece(m: Moment, off: float, now: float, fit: float, ready_at: float, marked: bool, r: Route, clip_s: float | None = None) -> Piece | None:
+    clip = r.clip_s if clip_s is None else clip_s
+    left = clip - off
     secs = min(fit, left)
     need = first_piece_s(m, r) if off == 0.0 else min(r.min_piece_s, left)
     if secs < need or now < ready_at:
@@ -130,4 +137,4 @@ def _piece(m: Moment, off: float, now: float, fit: float, ready_at: float, marke
     last = secs >= left
     if not last and not can_finish(m, off + secs, r, up + secs):
         return None        # an opening piece of a clip that could never finish: don't start it
-    return Piece(m, off, secs, now, up + secs + r.flip_s, last, marked)
+    return Piece(m, off, secs, now, up + secs + r.flip_s, last, marked, clip)

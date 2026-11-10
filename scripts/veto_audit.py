@@ -28,6 +28,10 @@ mid-play. Reach 95 s is the measured floor, 180 s is Nick's never-3-minutes-late
 TV. Clips can't move the replay's own cuts. `avoidable lost` is lost_after_catchup without the moments whose refusal was
 `protected`: what no rule protected and no replay made up.
 
+`residual` (with arbiter.catchup_route on): every value point still lost after catch-up, by WHY the route did not air it. A
+moment's cause is the furthest step any tick got inside its window (set up 15 s after it aired, up before the reach and the
+180 s cap), see CAUSES. `past_cap` is the part of it that had an open, long-enough dead ball in the 10 minutes after the cap.
+
 This is a replay: seek, prep and feed lag are model constants, so stick_prep and missing_data rules can only be judged
 on the TV. It is info only: not a gate, nothing frozen is imported. Stdout: the ranked table.
 
@@ -75,6 +79,22 @@ REACHES = (95, 150, 180)  # catch-up rewind reach, s: the measured floor (YouTub
 CLIP_S = arbiter.DEFAULT_PARAMS.plan_clip_s   # one catch-up clip holds the screen this long
 PREP_S = 15.0        # buffered_jump_sim.MR.prep_s: a free stick takes this long to set a clip up
 FLIP_S = 3.2         # buffered.py flip_s: an input flip between the sticks (the slowest usual)
+PAST_CAP_S = 600.0   # `past_cap`: how long after the 180 s cap a later opening is still looked for (info only)
+
+# Why the catch-up route did not air a lost moment: the furthest step any tick got inside the moment's window, in this order.
+CAUSES = ("no_stay_tick",        # no tick in the window at all: the replay was cutting, or the night ended
+          "route_off",           # every tick had the route shut by Nick's controls, a home visit or buffered jump (catchup_gates)
+          "own_game_on_screen",  # the moment's own game was on screen: the route never rewinds the game it is on
+          "screen_mid_play",     # the game on screen was in play on every tick: Rule #1, a clip can't leave it
+          "screen_not_started",  # the game on screen had not started or had ended: the replay gives it no dead time to use
+          "dead_too_short",      # dead balls only too short for the whole play plus two flips and the margin
+          "route_closed",        # a long-enough plain dead ball, on a held, crunch or high-leverage game (commercials only)
+          "screen_on_clip",      # hidden stick busy: another catch-up clip was on screen
+          "stick_prep",          # hidden stick busy: still setting up after a cut or the last piece
+          "queued",              # hidden stick busy: an opening came, another clip took it
+          "cant_finish",         # an opening came, but the clip could not have finished before the cap
+          "abandoned")           # it started, and the rest never aired in time
+STICK_BUSY = ("screen_on_clip", "stick_prep", "queued")
 
 RULE1, USER, POLICY, CAUTION, STICK, DATA = "rule1", "user", "policy", "caution", "stick_prep", "missing_data"
 CLASSES: dict[str, str] = {
@@ -237,8 +257,10 @@ class Tally:
     screen: list = field(default_factory=list)            # (picture up at, game)
     route: list = field(default_factory=list)             # (t, game on screen) when the catch-up route was open on a stay tick
     route_on: bool = False                                # arbiter.catchup_route: the new route (route2), not the old one
+    route_short: bool = False                             # arbiter.catchup_route_short: a clip is just the play while another waits
     route_clip_s: float = 0.0                             # audit.route_clip_s, what-if: a shorter clip (0 = the plan's CLIP_S)
     route2: list = field(default_factory=list)            # [catchup_route] (t, game on screen, a plain dead ball is open too) on a stay tick
+    route_off: list = field(default_factory=list)         # [catchup_route] (t, game on screen) on a stay tick the gates shut the route (info only)
     held: int = 0            # [legal.leave_at_flip] picks remembered to leave later
     released: int = 0        # ...that went
     held_ticks: int = 0      # ticks a remembered pick waited
@@ -416,9 +438,12 @@ class AuditDecider(Decider):
         if self.cfg.get("arbiter.catchup_route", False):
             self.tally.route_on = True
             self.tally.route_clip_s = float(self.cfg.get("audit.route_clip_s", 0.0) or 0.0)
+            self.tally.route_short = bool(self.cfg.get("arbiter.catchup_route_short", False))
             ok, plain = self.catchup_gates(cur, cands, now)
             if ok:
                 self.tally.route2.append((now, self.current, plain))
+            else:
+                self.tally.route_off.append((now, self.current))
             return
         if cur is None or not self.cfg.get("replay.enabled", True) or _holds_replays(cur.scored) or cur.scored.crunch_now \
                 or cur.scored.high_leverage or self._crunch_on(cands):
@@ -478,12 +503,15 @@ def catchup_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> se
     return shown
 
 
-def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> tuple[dict[Air, bool], Counter]:
+def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: dict | None = None) -> tuple[dict[Air, bool], Counter]:
     """SIMULATED arbiter.catchup_route (redzone/noggin/catchup.py) on the replay's own screen, at this rewind reach: which unseen moments
     air before the hard cap, each piece inside dead time on the game on screen (truth, with a margin) on a tick the route was open.
     Causal: a clip starts without knowing the next dead ball is coming. {moment: airs marked as a replay}, and what became of the rest.
-    Clips can't move the replay's own cuts; a cut on the way ends the dead time and takes the hidden stick for its prep."""
-    r = catchup.Route(reach_s=min(reach, catchup.HARD_CAP_S), clip_s=t.route_clip_s or CLIP_S, flip_s=FLIP_S, prep_s=PREP_S, lead_s=3.0, margin_s=2.0)
+    Clips can't move the replay's own cuts; a cut on the way ends the dead time and takes the hidden stick for its prep.
+    `why` (info only, it changes no choice): filled with {moment not shown: (its cause from CAUSES, an opening came within PAST_CAP_S
+    after the cap)}."""
+    r = catchup.Route(reach_s=min(reach, catchup.HARD_CAP_S), clip_s=t.route_clip_s or CLIP_S, flip_s=FLIP_S, prep_s=PREP_S, lead_s=3.0, margin_s=2.0,
+                      short=t.route_short)
     moments = {f"{m.game_id}:{m.at}:{m.kind}:{i}": m for i, m in enumerate(unseen)}
     pool = [catchup.Moment(k, m.game_id, float(m.value), m.at, PLAY_LEN_S) for k, m in moments.items()]
     tune, cuts, ups = truth.tune_s, sorted(s[0] - truth.tune_s for s in t.screen), [s[0] for s in t.screen]
@@ -492,6 +520,23 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> tupl
     stats: Counter = Counter()
     doing, stick_end, busy_to, aired_of_game, aired_late = None, float("-inf"), float("-inf"), defaultdict(list), {}
     open_ticks, closed_ticks = defaultdict(int), defaultdict(int)     # per moment: a dead tick in its window, route open / closed by a held game
+    step: dict[str, int] = {}           # per moment: the furthest CAUSES step any tick in its window got (info only)
+    openings: list[tuple[float, str]] = []     # ticks any waiting clip could have started on: dead, long enough, route open
+    by_aired = sorted(pool, key=lambda x: x.aired)
+    aired_at = [x.aired for x in by_aired]
+    span_s = catchup.HARD_CAP_S         # no window reaches further past the airing than the cap
+
+    def waiting(now: float) -> list[catchup.Moment]:
+        """The moments whose window holds this tick: set up, and a first piece now would still be on time."""
+        lo, hi = bisect.bisect_left(aired_at, now - span_s), bisect.bisect_right(aired_at, now - PREP_S)
+        return [x for x in by_aired[lo:hi] if moments[x.id] not in shown and catchup.on_time(x, now + r.flip_s, 0.0, r)]
+
+    def got(x: catchup.Moment, cause: str) -> None:
+        step[x.id] = max(step.get(x.id, 0), CAUSES.index(cause))
+
+    def note(now: float, gid: str, cause: str) -> None:
+        for x in waiting(now):
+            got(x, cause if x.game_id != gid else "own_game_on_screen")
 
     def known(x: catchup.Moment, now: float) -> bool:
         i = bisect.bisect_right(ups, x.aired) - 1
@@ -507,13 +552,26 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> tupl
         if x.game_id != gid and x.aired + PREP_S <= now and catchup.on_time(x, now + r.flip_s, 0.0, r):
             (open_ticks if ok else closed_ticks)[x.id] += 1
 
+    if why is not None:
+        for now, gid in t.route_off:
+            note(now, gid, "route_off")
     for now, gid, plain in t.route2:
         rep = truth.replays.get(gid)
         if rep is None or now < busy_to:
+            if why is not None:
+                note(now, gid, "screen_on_clip" if rep is not None else "screen_not_started")
             continue
-        dead, brk, left = dead_at(rep.league, rep.wall, rep.plays, now - lag_of(truth.lag, gid))
+        st = now - lag_of(truth.lag, gid)
+        dead, brk, left = dead_at(rep.league, rep.wall, rep.plays, st)
         i = bisect.bisect_left(cuts, now)
         end = min(now + left, cuts[i] if i < len(cuts) else float("inf"))
+        if why is not None:
+            fit, off_air = catchup.room(now, end, r), not rep.wall or st < rep.wall[0] or st > rep.wall[-1]
+            if dead and not off_air and (brk or plain) and fit >= r.lead_s + PLAY_LEN_S + 1.0:
+                openings.append((now, gid))
+            for x in waiting(now):
+                got(x, "own_game_on_screen" if x.game_id == gid else "screen_not_started" if off_air else "screen_mid_play" if not dead
+                    else "dead_too_short" if fit < catchup.first_piece_s(x, r) else "route_closed" if not (brk or plain) else "stick_prep")
         if dead:
             for x in pool:
                 if catchup.room(now, end, r) >= catchup.first_piece_s(x, r):
@@ -526,6 +584,13 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> tupl
         ready = max(stick_end + PREP_S, (cuts[i - 1] if i > 0 else float("-inf")) + PREP_S)
         rest = [x for x in pool if moments[x.id] not in shown and x.game_id != gid]
         p = catchup.next_piece(rest if doing is None else (), now, end, doing=doing, ready_at=ready, known=lambda x: known(x, now), r=r)
+        if why is not None and now >= ready:      # the stick was free: whoever had room and did not go was queued, or could not have finished
+            took = p.moment.id if p is not None else doing[0].id if doing is not None else None
+            for x in waiting(now):
+                if x.game_id != gid and x.id != took and catchup.room(now, end, r) >= catchup.first_piece_s(x, r):
+                    got(x, "queued" if took is not None else "cant_finish")
+            if p is not None and not p.last:
+                got(p.moment, "abandoned")       # stays its cause only if the rest never airs
         if p is None:
             continue
         stick_end = busy_to = p.until
@@ -550,14 +615,20 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> tupl
     for x in pool:
         if moments[x.id] not in shown:
             stats["left_" + ("no_dead_time" if not open_ticks[x.id] and not closed_ticks[x.id] else "route_closed" if not open_ticks[x.id] else "one_stick_queue")] += moments[x.id].value
+            if why is not None:
+                cap_at = x.aired - x.play_s - r.lead_s + min(r.reach_s, catchup.HARD_CAP_S) - r.flip_s      # the last flip that is on time
+                k = bisect.bisect_left(openings, (cap_at, ""))
+                later = any(g != x.game_id for at, g in openings[k:bisect.bisect_right(openings, (cap_at + PAST_CAP_S, "\uffff"))])
+                why[moments[x.id]] = (CAUSES[step.get(x.id, 0)], later)
     return shown, stats
 
 
 def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
     """Charge every unseen must-see moment to the last refusal of its game in the run-up. Seen and uncharged are counted."""
     unseen = [m for ms in truth.moments.values() for m in ms if not seen(m, t.screen)]
+    why: dict = {r: {} for r in REACHES}
     if t.route_on:
-        results = {r: route_shown(unseen, t, truth, r) for r in REACHES}
+        results = {r: route_shown(unseen, t, truth, r, why[r]) for r in REACHES}
         shown = {r: set(results[r][0]) for r in REACHES}
         for r in REACHES:
             late = max(league_row["route"][str(r)].get("max_late_s", 0.0), results[r][1].pop("max_late_s", 0.0))
@@ -584,6 +655,11 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
                     if m not in shown[r]:
                         league_row["lost_after_catchup"][str(r)][rule] += m.value
                         league_row["avoidable_lost"][str(r)] += 0.0 if (real and real[0]) else m.value
+                        if m in why[r]:
+                            cause, later = why[r][m]
+                            league_row["residual"][str(r)][cause] += m.value
+                            league_row["residual_by_rule"][str(r)][f"{rule}|{cause}"] += m.value
+                            league_row["past_cap"][str(r)][cause] += m.value if later else 0.0
             else:
                 league_row["not_asked"] += m.value
 
@@ -591,7 +667,9 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
 def new_row() -> dict:
     return {"must_total": 0.0, "must_seen": 0.0, "not_asked": 0.0, "lost": Counter(), "lost_alone": Counter(), "moments": Counter(),
             "ticks": 0, "wanted": 0, "went": 0, "held": 0, "released": 0, "held_ticks": 0, "over": Counter(), "refused": Counter(), "alone": Counter(), "any_rule": Counter(), "protected": Counter(), "high": Counter(),
-            "lost_after_catchup": {str(r): Counter() for r in REACHES}, "route": {str(r): Counter() for r in REACHES}, "avoidable_lost": {str(r): 0.0 for r in REACHES}}
+            "lost_after_catchup": {str(r): Counter() for r in REACHES}, "route": {str(r): Counter() for r in REACHES}, "avoidable_lost": {str(r): 0.0 for r in REACHES},
+            "residual": {str(r): Counter() for r in REACHES}, "residual_by_rule": {str(r): Counter() for r in REACHES},
+            "past_cap": {str(r): Counter() for r in REACHES}}
 
 
 def card(script: str, *args: str) -> dict:
@@ -711,7 +789,33 @@ def table(rows: list[dict], *, top: int = 25) -> str:
         c, pct = r["card"], 100.0 * r["must_seen"] / r["must_total"] if r["must_total"] else 0.0
         lines.append(f"{r['league']}/{r['brain']}: must-see seen {pct:.1f}% of {r['must_total']:.0f}, not asked {r['not_asked']:.0f}, "
                      f"wanted {r['wanted']} went {r['went']}, mid-play {c['entries_mid_play']}/{c['entries']}, high-lev leaves {c['cuts_high']}, all mid-play leaves {c['mid_play_leaves']}")
-    return "\n".join(lines + catchup_lines(rows))
+    return "\n".join(lines + catchup_lines(rows) + residual_lines(rows))
+
+
+def residual_lines(rows: list[dict], reach: int = REACHES[-1]) -> list[str]:
+    """Why the catch-up route did not air what is still lost, at Nick's cap: per cause and league, biggest first. Simulated."""
+    leagues = list(dict.fromkeys(r["league"] for r in rows))
+    by = {lg: Counter() for lg in leagues}
+    past, rules = Counter(), defaultdict(Counter)
+    for r in rows:
+        by[r["league"]].update(r.get("residual", {}).get(str(reach), {}))
+        past.update(r.get("past_cap", {}).get(str(reach), {}))
+        for key, v in r.get("residual_by_rule", {}).get(str(reach), {}).items():
+            rule, _, cause = key.partition("|")
+            rules[cause][rule] += v
+    total = Counter()
+    for c in by.values():
+        total.update(c)
+    if not sum(total.values()):
+        return []
+    lines = ["", f"still lost after catch-up at reach {reach} s, by why the route did not air it (SIMULATED)",
+             f"{'cause':<22}{'lost':>8}" + "".join(f"{lg:>8}" for lg in leagues) + f"{'past cap':>10}  top rules"]
+    for cause, v in sorted(total.items(), key=lambda kv: -kv[1]):
+        top = ", ".join(f"{k} {n:.0f}" for k, n in rules[cause].most_common(3))
+        lines.append(f"{cause:<22}{v:>8.1f}" + "".join(f"{by[lg][cause]:>8.1f}" for lg in leagues) + f"{past[cause]:>10.1f}  {top}")
+    lines.append(f"{'TOTAL':<22}{sum(total.values()):>8.1f}" + "".join(f"{sum(by[lg].values()):>8.1f}" for lg in leagues) + f"{sum(past.values()):>10.1f}")
+    lines.append(f"hidden stick busy ({' + '.join(STICK_BUSY)}): {sum(total[c] for c in STICK_BUSY):.1f}")
+    return lines
 
 
 def catchup_lines(rows: list[dict]) -> list[str]:
@@ -730,10 +834,11 @@ def catchup_lines(rows: list[dict]) -> list[str]:
         r = Counter()
         for row in rows:
             r.update(row["route"][str(reach)])
+        r["max_late_s"] = max((row["route"][str(reach)].get("max_late_s", 0.0) for row in rows), default=0.0)     # the latest, not a sum of rows
         if r["pieces"]:
             lines.append(f"route at reach {reach} s (SIMULATED): clips {r['clips']} of value {r['value']:.0f} (marked as replays {r['marked_value']:.0f}), "
                          f"pieces {r['pieces']}, clips in 2+ pieces {r['pieced_clips']}, started but not finished {r['abandoned'] + r['unfinished']}, "
-                         f"left: no dead time {r['left_no_dead_time']:.0f}, route closed {r['left_route_closed']:.0f}, one stick queue {r['left_one_stick_queue']:.0f}, latest {r['max_late_s']:.0f} s")
+                         f"left: no dead time {r['left_no_dead_time']:.0f}, route closed {r['left_route_closed']:.0f}, one stick queue {r['left_one_stick_queue']:.0f}, latest {r['max_late_s']:.1f} s")
     return lines
 
 
