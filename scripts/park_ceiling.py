@@ -57,7 +57,9 @@ FLIP_S, TUNE_S = 2.05, 2.5          # measured medians (50 of 50, 30 of 30)
 LOAD_1_S, PRESS_S = 19.3, 1.28      # park / clip load at one rewind press, and each further press (18.5-20.2 ... 28.8-30.2 at 9)
 RESCRUB_1_S = LOAD_1_S - TUNE_S - 3.0   # a fresh scrub on the channel the stick is already on (load = tune + 3 s + rewind)
 POS_ERR_S = 5.0                     # the rewind label is right within about 5 s
-REACH_S, MIN_BEHIND_S = 175.0, 45.0  # deepest and shallowest a stick sits behind live
+REACH_S, MIN_BEHIND_S = 175.0, 45.0  # deepest and shallowest a REWIND puts a stick behind live
+PAUSE_REACH_S = 315.0               # a pause was held this far behind live on the TV (Nov 10, 04:21-04:33); longer was not tried
+PAUSE_KEY_S = 0.65                  # pause key to paused, 0.64-0.68 s (n=4)
 SKIP_STEP_S = 15.0
 HIGH_PLAY_S = 7.0                   # veto_audit.PLAY_LEN_S: a high-leverage play covers this long before its stamp
 SHOT_WINDOW_S = 4.0                 # R2: this long after any shot counts as a legal point (the grader gives a made basket 4 s)
@@ -296,9 +298,10 @@ def skip_cost(delta: float, skip: bool) -> float:
 def park_run(games: list[dict], *, sticks: int = 2, e: float = POS_ERR_S, q: float = 0.0, shots: bool = False,
              min_visit: float = 0.0, park_at: str = "end", skip: bool = True, pick: str = "next", flip: float = FLIP_S,
              reach: float = REACH_S, min_behind: float = MIN_BEHIND_S, repark: bool = True,
-             start: float | None = None, stop: float | None = None) -> dict:
+             start: float | None = None, stop: float | None = None, tune_park: bool = False) -> dict:
     """The greedy max-pace viewer on these games with parked sticks. Returns jump times and what each visit showed."""
     us = [Units(g, e=e, q=q, shots=shots, min_visit=min_visit, park_at=park_at) for g in games]
+    other_routes = ("tune", "rewind") if (tune_park and q == 0) else ("rewind",)
     T0, T1 = span(games)
     T0, T1 = (T0 if start is None else start), (T1 if stop is None else stop)
     k = min(sticks, len(games))
@@ -310,10 +313,11 @@ def park_run(games: list[dict], *, sticks: int = 2, e: float = POS_ERR_S, q: flo
         """(ready time, visit seconds, game, unit) for this hidden stick to be landed on at `target` or as soon after."""
         best = None
         cands = [s["g"]] + ([h for h in range(len(games)) if h not in held] if repark else [])
-        for h in cands:
+        routes = [(s["g"], "same")] + ([(h, r) for h in range(len(games)) if h not in held for r in other_routes] if repark else [])
+        for h, route in routes:
             u = us[h]
-            same = h == s["g"]
-            lo = s["c"] if same else s["hid"] + LOAD_1_S - reach
+            same = route == "same"
+            lo = s["c"] if same else s["hid"] + TUNE_S if route == "tune" else s["hid"] + LOAD_1_S - min(reach, REACH_S)
             i = bisect.bisect_left(u.p, lo)
             seen = 0
             while i < len(u.p) and seen < 40:
@@ -322,16 +326,19 @@ def park_run(games: list[dict], *, sticks: int = 2, e: float = POS_ERR_S, q: flo
                     behind = max(min_behind, s["hid"] + RESCRUB_1_S - p)
                     ready = s["hid"] + min(skip_cost(p - s["c"], skip or q > 0), RESCRUB_1_S + (SKIP_STEP_S / 2.0 if q == 0 else 0.0)
                                            + PRESS_S * max(0, math.ceil((behind - MIN_BEHIND_S) / SKIP_STEP_S)))
-                else:
+                    ready = max(ready, p - flip if tune_park else p + min_behind - flip)   # never ahead of the live edge
+                elif route == "tune":      # tune, play from the live edge to the spot, one pause key (measured Nov 10: the pause holds)
+                    ready = max(s["hid"] + TUNE_S, p) + PAUSE_KEY_S
+                else:                      # a spot the live edge has already passed: the rewind load
                     behind = max(min_behind, s["hid"] + LOAD_1_S - p)
                     ready = s["hid"] + LOAD_1_S + PRESS_S * max(0, math.ceil((behind - MIN_BEHIND_S) / SKIP_STEP_S)) \
                         + (SKIP_STEP_S / 2.0 if q == 0 else 0.0)
-                ready = max(ready, p + min_behind - flip)
+                    ready = max(ready, p + min_behind - flip)
                 go = max(ready, target)
                 if go + flip - p > reach:        # parked too long ago: this stick has to move on to a later play
                     i += 1
                     continue
-                key = (go, i if pick == "next" else u.leave[i] - p, 0 if same else 1)
+                key = (go, i if pick == "next" else u.leave[i] - p, 0 if same else 1, route)
                 if best is None or key < best[0]:
                     best = (key, ready, u.leave[i] - p, h, i)
                 if ready > target and (pick == "next" or seen > 12):
@@ -528,7 +535,7 @@ def break_counts(games: list[dict], cuts: list[tuple], sd: float, rng) -> dict:
     return out
 
 
-def error_grid(cap: int, cache: Path | None, out_csv: str, sticks: tuple = (2, 3), slates: tuple = ERR_SLATES) -> None:
+def error_grid(cap: int, cache: Path | None, out_csv: str, sticks: tuple = (2, 3), slates: tuple = ERR_SLATES, tune_park: bool = False) -> None:
     """Pace and Rule #1 counters per (position error sd, padding k): the greedy viewer keeps k x sd from every edge, then
     every leave and landing is moved by its own N(0, sd) draw and judged by the grader's facts. ERR_DRAWS draws per night."""
     import random
@@ -549,7 +556,8 @@ def error_grid(cap: int, cache: Path | None, out_csv: str, sticks: tuple = (2, 3
                         for k in ERR_K:
                             pad = round(k * sd, 3)
                             if pad not in runs:
-                                runs[pad] = [park_run(x, sticks=k_st, e=pad, shots=shots, pick="short") for x in ss]
+                                runs[pad] = [park_run(x, sticks=k_st, e=pad, shots=shots, pick="short", tune_park=tune_park,
+                                                      reach=PAUSE_REACH_S if tune_park else REACH_S) for x in ss]
                             rs = runs[pad]
                             mins = sum((r["span"][1] - r["span"][0]) / 60.0 for r in rs)
                             nj = sum(len(r["jumps"]) for r in rs)
@@ -628,12 +636,14 @@ def main() -> int:
     ap.add_argument("--only", nargs="*", default=None, help="rule-set names containing any of these")
     ap.add_argument("--cache", default=None, help="a folder OUTSIDE the repo for the per-game facts")
     ap.add_argument("--burst", action="store_true", help="also probe bursts from a full bank (slower)")
+    ap.add_argument("--tune-park", action="store_true", help="the physics measured Nov 10: the pause holds, so a park on another game is a "
+                    "tune, play to the spot and one pause key (no rewind), and a paused stick may sit 315 s behind")
     ap.add_argument("--error-grid", default=None, help="write the position-error grid (sd x padding) for Nick's slates to this CSV and stop")
     ap.add_argument("--json", default=None)
     ap.add_argument("--csv", default=None)
     a = ap.parse_args()
     if a.error_grid:
-        error_grid(a.cap, Path(a.cache) if a.cache else None, a.error_grid)
+        error_grid(a.cap, Path(a.cache) if a.cache else None, a.error_grid, tune_park=a.tune_park)
         return 0
     rows, facts = [], {}
     for lg in a.leagues:
