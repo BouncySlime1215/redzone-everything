@@ -293,7 +293,11 @@ def leave_refusal(dec: Any, gid: str | None, target: str | None, phase: Any, now
     if gid not in dec.timelines:
         return "no_timeline"  # no screen timing evidence is not an open cutting window
     if dec._ending_still_airing(gid, now) > 0:
-        return "unaired_row" if phase == Phase.LIVE else "ended_airing"
+        live = phase == Phase.LIVE
+        # [gate.leave_unaired_row_only_ended, off] "its last row is still airing" is a rule for a game that ENDED: a live game's newest
+        # row has nearly always not aired yet, so on one it refused before the leave window (which guards every play) was asked
+        if not (live and dec.cfg.get("gate.leave_unaired_row_only_ended", False)):
+            return "unaired_row" if live else "ended_airing"
     if phase == Phase.POST:
         return ""   # its last play has aired (checked above): there's nothing left to cut
     ok = leave_window(dec.timelines[gid], dec.delays.get(target or "unknown"), now, uncalibrated_sigma, required_s).safe

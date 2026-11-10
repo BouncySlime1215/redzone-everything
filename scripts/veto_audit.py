@@ -384,6 +384,8 @@ class AuditDecider(Decider):
         t.held_ticks += 1
         d = Decision(now, "switch", h.target, f"brain {self.brain.name}: held", self.base_state, kind=h.kind, owner=self.base_owner, leave_held=True)
         vetoes = self._flip_vetoes(d, cands[h.target].target, cands, now)
+        if veto == "leave" and "leave" not in vetoes:
+            self.leave_sub = "decider_only"     # the decider's own view of the leave (gate.DeciderHost) said no, the flip's did not
         blockers = ([f"legal:{veto}"] if veto == "no_landing" else [f"gate:{veto}"] if veto else []) + [f"gate:{v}" for v in vetoes if f"gate:{v}" != f"gate:{veto}"]
         if status == "wait" or vetoes:
             self._charge(h.target, blockers, now)
