@@ -24,8 +24,9 @@ numpy, lightgbm, and the table CSVs named above. Both tables are made from the P
                  (`planner_pick`), always stay, always jump. Writes park_actions.npz.
 Every kind also writes <kind>_features.json and <kind>_report.json to --out.
 
-Whole nights are split oldest to newest per slate (the last `--test-frac` of each slate's nights are the test nights, never
-fitted on). A tree file is written only when a numpy walk of it gives the booster's own numbers on the test rows.
+Whole nights are split oldest to newest on `night_id`, the calendar day of the games: the newest `--test-frac` of the
+recorded nights are the test nights, never fitted on, under every slate they appear in (the same night sits under NBA 2,
+NBA 4, MNF+3 ...). A tree file is written only when a numpy walk of it gives the booster's own numbers on the test rows.
 
 Why: the planner's weak spot is the seconds the feed has not reported yet, and what a landing is worth is exactly what a
 model can learn from nights already played; the 8 GB Mac must not train, so the coordinator launches this on Kaggle.
@@ -42,7 +43,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-KEYS = ("league", "games", "night", "error", "t")
+KEYS = ("league", "games", "night", "night_id", "error", "t")
 ACTIONS = ("stay", "jump", "park")
 ROUTES = ("hold", "roll", "skip", "tune")
 UNKNOWN_FEATURES = ("k_lev", "k_margin", "k_left_s", "k_dead", "k_since", "k_val60", "k_live60")      # = park_table.UNKNOWN_FEATURES
@@ -58,24 +59,28 @@ def load(paths: list[str]):
     if not frames:
         raise SystemExit("no tables found")
     df = pd.concat(frames, ignore_index=True)
-    if "error" not in df.columns:
-        df["error"] = ""
+    for col in ("error", "night_id"):
+        if col not in df.columns:
+            df[col] = ""
     df["decision"] = df[list(KEYS)].astype(str).agg("|".join, axis=1)
     return df
 
 
 def split(df, test_frac: float):
-    """Whole nights, per slate: the newest `test_frac` are the test nights."""
-    test = set()
-    for lg, part in df.groupby("league"):
-        nights = sorted(part["night"].unique())
-        k = max(1, int(round(len(nights) * test_frac)))
-        test |= {(lg, n) for n in nights[-k:]}
-    is_test = [(lg, n) in test for lg, n in zip(df["league"], df["night"])]
-    train, held = df[[not x for x in is_test]], df[is_test]
+    """Whole recorded nights: the newest `test_frac` of the `night_id`s are the test nights, under every slate."""
+    if "night_id" not in df.columns:
+        raise SystemExit("the tables have no night_id column: regenerate them with scripts/park_table.py")
+    nights = sorted(df["night_id"].astype(str).unique())
+    k = max(1, int(round(len(nights) * test_frac)))
+    is_test = df["night_id"].astype(str).isin(set(nights[-k:]))
+    train, held = df[~is_test], df[is_test]
     if train.empty or held.empty:
-        raise SystemExit("need at least two nights per slate: one to fit, one to test")
+        raise SystemExit("need at least two recorded nights: one to fit, one to test")
     return train, held
+
+
+def nights_of(df) -> list[str]:
+    return sorted(df["night_id"].astype(str).unique())
 
 
 def fit(x, y, weight=None):
@@ -128,7 +133,7 @@ def main_unknown(a) -> int:
     train, test = split(df, a.test_frac)
     model = fit(train[feats], train["unk_rate"], train["unk_s"])
     mean = float((train["unk_rate"] * train["unk_s"]).sum() / train["unk_s"].sum())
-    report = {"kind": "unknown", "rows_train": int(len(train)), "rows_test": int(len(test)), "features": feats,
+    report = {"kind": "unknown", "rows_train": int(len(train)), "rows_test": int(len(test)), "features": feats, "test_nights": nights_of(test),
               "test": {"model": judge_unknown(test, model.predict(test[feats]).clip(min=0.0)),
                        "planner_rule_0.02_x_leverage": judge_unknown(test, PLANNER_UNK_W * test["k_lev"]),
                        "training_mean": judge_unknown(test, mean + 0.0 * test["k_lev"])}}
@@ -155,7 +160,7 @@ def main_landings(a) -> int:
     feats = list(LANDING_FEATURES)
     train, test = split(df, a.test_frac)
     model = fit(train[feats], train["gain_per_s"])
-    report = {"kind": "landings", "rows_train": int(len(train)), "rows_test": int(len(test)), "features": feats,
+    report = {"kind": "landings", "rows_train": int(len(train)), "rows_test": int(len(test)), "features": feats, "test_nights": nights_of(test),
               "test": {"model": judge_landings(test, model.predict(test[feats])), "planner_pick": judge_landings(test, test["picked"]),
                        "planner_gain": judge_landings(test, test["plan_gain"]), "shortest_wait": judge_landings(test, -test["wait_s"])}}
     out = Path(a.out)
@@ -192,7 +197,7 @@ def main_actions(a) -> int:
     feats = [c for c in df.columns if c.startswith(("s_", "h_", "a_", "act_")) or c in ("on_screen_s", "games_live", "n_actions")]
     train, test = split(df, a.test_frac)
     model = fit(train[feats], target(train, a.rule1_penalty))
-    report = {"kind": "actions", "rows_train": int(len(train)), "rows_test": int(len(test)), "features": feats,
+    report = {"kind": "actions", "rows_train": int(len(train)), "rows_test": int(len(test)), "features": feats, "test_nights": nights_of(test),
               "test": {"model": judge(test, model.predict(test[feats])), "planner": judge(test, test["planner_pick"]),
                        "always_stay": judge(test, test["act_stay"]), "always_jump": judge(test, test["act_jump"])},
               "by_slate": {lg: judge(part, model.predict(part[feats])) for lg, part in test.groupby("league")}}

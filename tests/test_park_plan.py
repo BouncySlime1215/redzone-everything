@@ -11,6 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -336,14 +337,19 @@ def test_the_trainer_reads_the_planners_tables(tmp_path):
             w = None
             for k in range(2):
                 for row in make(random_night(20 + k, games=3, minutes=20)):
-                    row = {"league": "tiny 3", "games": 3, "night": k, "error": "none", **row}
+                    row = {"league": "tiny 3", "games": 3, "night": k, "night_id": f"2026010{k + 1}", "error": "none", **row}
                     w = w or csv.DictWriter(fh, fieldnames=list(row))
                     if fh.tell() == 0:
                         w.writeheader()
                     w.writerow(row)
     land = kp.load([str(paths["landings"])])
     train, test = kp.split(land, 0.5)
-    assert set(train["night"]) == {0} and set(test["night"]) == {1}
+    assert set(train["night"]) == {0} and set(test["night"]) == {1}          # the newest recorded night is the test night
+    assert kp.nights_of(test) == ["20260102"] and kp.nights_of(train) == ["20260101"]
+    twice = pd.concat([land, land.assign(league="tiny 2")])                  # the same nights under a second slate
+    tr2, te2 = kp.split(twice, 0.5)
+    assert set(tr2["night_id"].astype(str)).isdisjoint(set(te2["night_id"].astype(str))) and len(te2) == 2 * len(test)
+    assert pt.night_id(random_night(20)) == "19691231"                        # hand-made games tip off at second 1000 (12 h are taken off)
     assert set(kp.LANDING_FEATURES) - {f"route_{r}" for r in kp.ROUTES} <= set(land.columns)
     unk = kp.unknown_rows(land)
     assert len(unk) and (unk["unk_s"] >= kp.UNKNOWN_MIN_S).all() and not unk.duplicated(["league", "night", "error", "t", "game"]).any()

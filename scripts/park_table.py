@@ -26,6 +26,8 @@ to imitate. Beside those, what really followed (hindsight, for grading only): th
 
 The features are only what the live app could know at that second. Columns prefixed k_ describe a game at the last second
 the feed has reported; s_ is the screen game, h_ the hidden stick's game, a_ the action's game.
+Every row carries `night_id`, the calendar day of the slate's games: the same recorded night sits under several slates
+(NBA 2, NBA 4, MNF+3 ...), so a trainer must split on `night_id`, never on the per-slate `night` number.
 
 `ModelBrain` is the hook: it loads a small file of trees (an .npz in the layout redzone.models_rt.forest reads: arrays
 feat, thr, left, right, dleft, miss, value, roots and a meta json with `features`, `depth`, `init`) and gives the planner
@@ -39,6 +41,7 @@ from __future__ import annotations
 import argparse
 import copy
 import csv
+import datetime as dt
 import json
 import random
 import sys
@@ -95,6 +98,12 @@ def unknown_features(x, k: int) -> dict:
     return {"k_lev": x.lev[k], "k_margin": float(x.margin[k]), "k_left_s": float(x.left_s[k]), "k_dead": float(x.legal[k]),
             "k_since": float(min(x.since[k], 300)), "k_val60": x.cumv[k + 1] - x.cumv[lo],
             "k_live60": float(sum(1 for i in range(lo, k + 1) if not x.dead[i]))}
+
+
+def night_id(night: ps.Night) -> str:
+    """The calendar day the slate's games tipped off (US evening), from the facts alone: one id per recorded night."""
+    t0 = min(g["t0"] for g in night.games[-1:] + night.games[1:])      # the basketball games (a synthetic slate's football game is first)
+    return (dt.datetime.fromtimestamp(t0, dt.timezone.utc) - dt.timedelta(hours=12)).strftime("%Y%m%d")
 
 
 def clone(S):
@@ -293,7 +302,7 @@ def main() -> int:
         with open(path, "w", newline="") as fh:
             for name, k, night in nights:
                 for row in make(night):
-                    row = {"league": name, "games": len(night.games), "night": k, "error": a.error, **row}
+                    row = {"league": name, "games": len(night.games), "night": k, "night_id": night_id(night), "error": a.error, **row}
                     if w is None:
                         w = csv.DictWriter(fh, fieldnames=list(row))
                         w.writeheader()
