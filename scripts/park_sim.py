@@ -31,6 +31,15 @@ definition). Big plays: the audit's must-see moments (a score 5, a red-zone trip
 picture was on the game from 7 s before the moment; split by how it was seen (near live, parked behind live, a clip of a
 play the feed had already reported).
 
+Added Nov 10 (all OFF by default: with these at their defaults every number above is unchanged). Planner runs only.
+`restart_known=rows`: the honest feed. The end of a dead ball is known only once a LATER play row whose game clock has moved
+has been reported, not `feed_lead` seconds ahead. Until then the stoppage is OPEN: it is believed still stopped up to
+`open_wait` seconds behind the feed, and that belief can be wrong (the game restarted and no row says so yet). The controller's
+padding tests then read the belief; Rule #1 is still judged by the grader's facts at the true positions, so a wrong belief
+shows up in the counters. `streams` = how many streams there are (one on screen, the rest hidden). `show_delay` = every
+landing is at least this far behind the stream's live edge (the lateness cap stays hard). Step times the planner knows:
+`park_confirm_s`, `left_pause_s`, `jump_done_s`, `seek_s`, `seek_over_s`. `DEVICES` holds the two device profiles.
+
 Why: Nick wants many jumps, a yes-rate near 95% and zero mid-play cuts; the pace, the yes-rate and the Rule #1 counters of
 every PARK setting have to be measurable in under a second so thousands of settings can be compared before anything is wired
 into the live decider.
@@ -67,6 +76,8 @@ LIVE_BEHIND_S = 60   # a big play seen this close to the live edge counts as see
 LONG_STOP_S = 20     # a stoppage the feed says still has this long to run may be left without having shown any play
 SAME_BEHIND_S = 10   # a stick already behind live may skip forward to this close to the live edge
 PAD_S = 400
+INF = 10 ** 9        # a feed time that never comes
+CLOCK_EPS = 0.05     # grading.resume_after: the game clock has moved when it differs by more than this
 WHY = ("other_game_parked", "nothing_parked", "loading", "margin", "flip_in_progress", "min_stay", "past_reach", "screen_high_leverage",
        "screen_mid_play", "landing_not_dead", "landing_long_wait",
        # a planner's own reasons (park_plan.Planner.why): what its search found in the way
@@ -119,6 +130,71 @@ class Setting:
     value: str = "dense"          # what the brain values: dense = value2 grades + 2 x must-sees + live action | v1 = must-sees only
     live_w: float = 0.05          # dense: brain points per second of live play (30 s of play = 1.5, about one good basket)
     seed: int = 0
+    # ---- added Nov 10; planner runs only; the defaults leave every run as it was ----
+    restart_known: str = "lead"   # lead = the end of a dead ball is read `feed_lead` ahead (optimistic) | rows = only once a
+    #                               later play row whose game clock has moved has been reported (honest)
+    open_wait: float = 0.0        # rows: an open stoppage is believed still stopped up to this far behind the feed. 0 = until
+    #                               the feed shows the clock ran; 26 = the grader's own bound (grading.RESUME_LEAD)
+    streams: int = 2              # streams in all: one on screen, the rest hidden (parked or being moved)
+    show_delay: float = 0.0       # every landing is at least this far behind the stream's live edge
+    park_confirm_s: float = 0.0   # seconds from the freeze to a park the controller may jump to
+    left_pause_s: float = 0.0     # the stream that was left freezes this long after the jump starts
+    jump_done_s: float = 0.0      # a jump is complete this long after it starts: no other jump starts before
+    seek_s: float = 0.0           # a forward seek on a hidden stream takes this long (0 = none: 15 s skips only)
+    seek_over_s: float = 0.0      # and may land this far past its target, so it is aimed this much early
+    min_guard: int = 1            # the padding is never under this many seconds, whatever pad_k x the summed error gives
+
+
+# The two picture sources, step by step, in seconds. Every number says where it comes from:
+#   MEASURED = timed on Nick's TV (sticks) or on his Mac's Chrome (chrome) on Nov 10;  ASSUMED = not timed yet.
+# Nothing here was produced by this simulator. The grid is 1 s: a step time is rounded to the nearest second and a
+# non-zero one is at least 1 s (`ticks`), so no step is ever modelled faster than one grid second.
+DEVICES = {
+    "sticks": {
+        "streams": 2,             # MEASURED: two Fire TV sticks on two HDMI inputs
+        "tune_s": 2.7,            # MEASURED: tune a new channel
+        "pause_key_s": 0.7,       # MEASURED: pause key to the freeze. Not a Setting: the key is sent this much early
+        "flip": 2.06,             # MEASURED: start of a jump to the new picture (median, 169 of 169)
+        "park_confirm_s": 2.0,    # MEASURED: a park is confirmed about 2 s after the freeze
+        "jump_done_s": 3.0,       # MEASURED: a jump is complete about 3 s after it starts
+        "left_pause_s": 2.06,     # ASSUMED: the stick that was left freezes at the end of the measured jump
+        "seek_s": 0.0,            # no forward seek (15 s skip keys only)
+        "seek_over_s": 0.0,
+        "pos_sd": 0.3,            # MEASURED: a paused stick holds its place within 0.4 s
+        "min_guard": 2,           # the grid: see below
+    },
+    "chrome": {
+        "streams": 4,             # MEASURED: four channels played at once in four tabs (more was not tried)
+        "tune_s": 5.0,            # ASSUMED: load another channel in a tab (never timed)
+        "pause_key_s": 0.0,       # MEASURED: pauseVideo() held the frame exactly
+        "switch_s": 0.3,          # ASSUMED: activate another tab (never timed). Not a Setting: part of `flip`
+        "resume_s": 0.28,         # MEASURED: playVideo() to a moving picture. Not a Setting: part of `flip`
+        "flip": 0.58,             # switch_s + resume_s: ASSUMED + MEASURED
+        "park_confirm_s": 0.0,    # MEASURED: the player reports paused and its position at once
+        "jump_done_s": 0.58,      # ASSUMED: the jump is complete when the new tab plays
+        "left_pause_s": 0.58,     # ASSUMED: the tab that was left is paused right after the new one plays
+        "seek_s": 0.46,           # MEASURED: a 4 s forward seek was playing again in 0.46 s (one seek)
+        "seek_over_s": 0.22,      # MEASURED: it landed 0.22 s past the target (one seek)
+        "pos_sd": 0.0,            # MEASURED: the player gives its position to the millisecond
+        # With an exact position the padding rule (4 x the summed error) gives 1.5 s at the best timing, which rounds to
+        # 1 s. On this 1 s grid a 1 s padding is thinner than the rounding of positions: on hand-made nights it gave
+        # mid-play cuts with or without the honest feed, and 2 s gave none. So no profile runs under 2 s.
+        "min_guard": 2,
+    },
+}
+NOT_SETTINGS = ("pause_key_s", "switch_s", "resume_s")
+
+
+def profile(name: str, **kw) -> dict:
+    """Setting keywords for a device by name ("sticks" | "chrome"); `kw` overrides (streams=8, show_delay=45, ...)."""
+    out = {k: v for k, v in DEVICES[name].items() if k not in NOT_SETTINGS}
+    out.update(kw)
+    return out
+
+
+def ticks(x: float) -> int:
+    """A step time on the 1 s grid: 0 stays 0, anything else is at least one second."""
+    return 0 if x <= 0 else max(1, int(round(x)))
 
 
 class Arr:
@@ -142,6 +218,7 @@ class Arr:
                 si = max(0, int(s - base))
                 legal[si:si + int(pc.SHOT_WINDOW_S)] = b"\x01" * len(legal[si:si + int(pc.SHOT_WINDOW_S)])
         self.dead, self.brk, self.legal = dead, brk, legal
+        self.shot_i = sorted({int(x - base) for x in g["shots"]})
         since, left, run = [0] * n, [0] * n, 0
         self.starts, self.ends = [], []          # legal stretches that end in a play (so a stick can be parked on them)
         for i in range(n):
@@ -197,8 +274,69 @@ class Arr:
                 cur = rows[k][1:]
                 k += 1
             self.lev[i], self.margin[i], self.left_s[i] = cur
+        self.rows = [(r[0], r[3]) for r in sorted(rows)]      # every play row with a score: (second, game clock left; < 0 = none)
+        self.stamps = [r[0] for r in self.rows]
         self.n = n
         self._leave: dict[tuple, list[int]] = {}
+        self._feed: dict[int, tuple] = {}
+
+    def feed(self, q: int = 0) -> tuple[list[int], list[int], list[int]]:
+        """The honest feed (`restart_known=rows`), per second: (bf, bt, rv), all feed times.
+        A second is BELIEVED legal while bf <= feed time < bt. rv = the feed time at which the end of the dead ball this
+        second is in becomes known: the stamp of the first LATER row whose game clock differs from the clock the ball went
+        dead at (grading.resume_after reads the restart off that row). Before that the stoppage is open: second x is
+        believed still stopped from feed time x + q on. That is a belief: the seconds between the true restart and that
+        row are believed stopped too (bt ends it), which is how an honest reader can cut into play.
+        The 4 s after a shot are legal by rule as soon as the shot row is in; so is a made basket's own short dead ball."""
+        if q not in self._feed:
+            n, dead, legal, a1 = self.n, self.dead, self.legal, self.a1
+            stamps, clocks = self.stamps, [r[1] for r in self.rows]
+            bf, bt, rv = [INF] * n, [INF] * n, [INF] * n
+            win = int(pc.SHOT_WINDOW_S)
+            by_rule = bytearray(n)
+            for si in self.shot_i:
+                for x in range(max(0, si), min(n, si + win)):
+                    by_rule[x] = 1
+            for x in range(n):
+                if legal[x] and (by_rule[x] or x >= a1):
+                    bf[x] = x                           # after a shot, or the game is over: known as the feed gets there
+                    if not dead[x] or x >= a1:
+                        rv[x] = x
+            i = 0
+            while i < n:
+                if not dead[i]:
+                    i += 1
+                    continue
+                ds = i
+                while i < n and dead[i]:
+                    i += 1
+                de = i
+                if de >= n:
+                    for x in range(ds, min(a1, n)):
+                        bf[x] = min(bf[x], max(x, min(a1, x + q)))      # the last dead ball: open until the final row
+                    continue
+                if de - ds <= win + 1 and bisect.bisect_right(self.shot_i, ds) - bisect.bisect_left(self.shot_i, ds - 1) > 0:
+                    for x in range(ds, de):             # a made basket's own dead ball: 4 s at most, by rule
+                        bf[x], rv[x] = x, de
+                    continue
+                kl = bisect.bisect_left(stamps, de) - 1          # the last row before the restart
+                kc = kl
+                while kc >= 0 and clocks[kc] < 0:
+                    kc -= 1
+                rd = INF
+                for k in range(kl + 1, len(stamps)):
+                    if kc < 0 or (clocks[k] >= 0 and abs(clocks[k] - clocks[kc]) > CLOCK_EPS):
+                        rd = max(stamps[k], de)
+                        break
+                for x in range(ds, de):
+                    bf[x] = min(bf[x], max(x, min(rd, x + q)))
+                    rv[x] = rd
+                if rd < INF:
+                    for x in range(de, min(rd, n)):     # play has restarted and no row says so yet
+                        if bf[x] == INF:
+                            bf[x], bt[x] = x + q, rd
+            self._feed[q] = (bf, bt, rv)
+        return self._feed[q]
 
     def leave_in(self, guard: int, low_leverage: bool) -> list[int]:
         """Seconds from each picture position until this game next offers a legal leave (the controller's own test)."""
@@ -287,7 +425,17 @@ BRAINS = {"hindsight": Hindsight, "foresight": Foresight, "heuristic": Heuristic
 
 
 class State:
-    __slots__ = ("sg", "sb", "se", "s_land", "s_from", "s_kind", "s_live", "hg", "hb", "he", "h_ready", "h_paused", "h_kind", "black", "rng", "gd")
+    __slots__ = ("sg", "sb", "se", "s_land", "s_from", "s_kind", "s_live", "hg", "hb", "he", "h_ready", "h_paused", "h_kind", "black", "rng", "gd",
+                 "busy", "pool", "hk")
+    # With more than two streams `pool` holds every hidden stream as (game, behind, error, ready, paused, kind) and the
+    # h* slots are the working copy of pool[hk]. With two streams pool is empty and the h* slots are the hidden stick.
+
+
+def hidden_of(S) -> list[tuple]:
+    """Every hidden stream as (game, seconds behind, position error, ready second, paused), in a fixed order."""
+    one = (S.hg, S.hb, S.he, S.h_ready, S.h_paused)
+    pool = getattr(S, "pool", ())
+    return [one] if not pool else [one if k == S.hk else pool[k][:5] for k in range(len(pool))]
 
 
 class Stats:
@@ -313,21 +461,31 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
     what to do ('stay', 'park' the hidden stick on a game, or 'jump' to it) instead of asking the brain.
     `planner` (park_plan.Planner) replaces the rule set: each second it says whether to jump and what the hidden stick does
     (tune to a game, pause at a spot, skip forward to one, or roll). The physics, the padding tests and the counters below are
-    the same ones; the brain is then only asked what it WANTS, for the audit's yes-rate."""
+    the same ones; the brain is then only asked what it WANTS, for the audit's yes-rate.
+    With `streams` > 2 the planner gives one such command per hidden stream (`planner.acts`) and names the one to jump to."""
     A = night.arrs(s.shots, s.value, s.live_w)
     N, n = len(A), night.n
     a, b = night.span
     t0, t1 = (a if t0 is None else t0), (b if t1 is None else t1)
     live = s.mode == "live"
+    rows, ns, D, wait = s.restart_known == "rows", int(s.streams), int(round(s.show_delay)), int(round(s.open_wait))
+    conf, lpause, jdone, seek = ticks(s.park_confirm_s), ticks(s.left_pause_s), ticks(s.jump_done_s), ticks(s.seek_s)
+    if s.restart_known not in ("lead", "rows") or ns < 2:
+        raise ValueError("restart_known is lead or rows, and there are at least two streams")
+    if (rows or ns != 2 or D or conf or lpause or jdone or seek) and (planner is None or live or s.route != "tune" or not s.pause_holds):
+        raise ValueError("restart_known=rows, streams, show_delay and the step times need planner= and the tune-and-pause route")
+    multi = ns > 2
     sd = 0.6 * s.pos_err if s.pos_sd < 0 else s.pos_sd
     guard = int(round(s.pos_err if s.guard < 0 else s.guard))
     if s.pad_k > 0:
         guard = max(1, int(round(s.pad_k * math.sqrt(sd ** 2 + s.delay_sd ** 2 + s.stamp_sd ** 2 + s.key_sd ** 2))))   # the grid is 1 s
+    guard = max(guard, int(s.min_guard))
     edge_sd = math.sqrt(s.stamp_sd ** 2 + s.key_sd ** 2)
     flip = max(1, int(round(s.flip)))
     lattice = 0 if (s.pause_holds or live) else int(pc.SKIP_STEP_S)
     tune = s.route != "rewind" and s.pause_holds and not live
     fresh = 0 if (live or tune) else int(s.min_behind)      # where a game no stick holds would be picked up
+    fresh = max(fresh, D)
     reach = int(s.max_behind)                                # a paused stick
     rw_reach = int(pc.REACH_S if s.clips else min(s.max_behind, pc.REACH_S))   # a rewind
     lead, know = int(round(s.resume_lead_s)), int(s.feed_lead)
@@ -352,7 +510,27 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
         S.sb += S.se
         S.s_live = 0
         S.hg, S.hb, S.he, S.h_ready, S.h_paused, S.h_kind, S.black = -1, 0.0, 0.0, t0, False, "park", t0
+        S.busy, S.hk = t0, 0
+        S.pool = tuple((-1, 0.0, 0.0, t0, False, "park") for _ in range(ns - 1)) if multi else ()
     rng = S.rng
+
+    def padded(x: Arr, i: int, K: int) -> bool:
+        """Is believed position i at least `guard` inside a legal stretch, as far as the controller can know at feed time K."""
+        if not rows:
+            return x.since[i] > guard and x.left[i] >= guard
+        bf, bt, _ = x.feed(wait)
+        for y in range(max(0, i - guard), min(n, i + guard)):
+            if bf[y] > K or bt[y] <= K:
+                return False
+        return True
+
+    def load(k: int) -> None:
+        """Make hidden stream k the one in the h* slots."""
+        if k != S.hk:
+            pool = list(S.pool)
+            pool[S.hk] = (S.hg, S.hb, S.he, S.h_ready, S.h_paused, S.h_kind)
+            S.hg, S.hb, S.he, S.h_ready, S.h_paused, S.h_kind = pool[k]
+            S.pool, S.hk = tuple(pool), k
 
     def choose_park(g: int, ready: int, t: int, lo: int | None = None, hi: int | None = None) -> tuple[int, bool, float] | None:
         """(believed position to park at, is it a clip of an already reported moment, its value) for a stick ready at `ready`."""
@@ -421,11 +599,31 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
         """15 s skips and then play, to believed position p on the game the hidden stick holds (it then sits paused one
         second short of p)."""
         d = max(0, p - int(t - S.hb + S.he))
-        cost = 2.0 + pc.PRESS_S * math.floor(d / pc.SKIP_STEP_S) + (0 if lattice else d % pc.SKIP_STEP_S)
-        ready = int(math.ceil(t + cost))
+        cost = seek if seek else 2.0 + pc.PRESS_S * math.floor(d / pc.SKIP_STEP_S) + (0 if lattice else d % pc.SKIP_STEP_S)
+        ready = int(math.ceil(t + cost)) + conf           # one forward seek where there is one; the park is confirmed `conf` later
         S.he = rng.gauss(0.0, sd) + s.delay_error + S.gd[S.hg]
         S.h_ready, S.h_paused, S.hb = ready, not lattice, (ready - p) + S.he
         st.rolls += 1
+
+    def hid(act: tuple, t: int) -> None:
+        """A planner's command for the hidden stream in the h* slots: tune, skip or seek forward to the spot, or play on
+        to it and stop there with one pause."""
+        desire = act[1] if act[1] >= 0 else S.hg
+        if desire >= 0 and (desire != S.hg or act[3] == "tune"):
+            start_park(desire, t)
+            return
+        if S.hg < 0 or t < S.h_ready:
+            return
+        x = A[S.hg]
+        hb_i = min(n - 1, max(0, int(t - S.hb + S.he)))
+        if act[3] == "move" and act[2] > hb_i:
+            move_to(act[2], t)
+        elif act[2] < 0 or hb_i < act[2]:
+            S.h_paused = False
+        elif not S.h_paused and padded(x, hb_i, t + know) and hb_i + guard <= t + know:
+            S.h_paused = True
+            if conf:                      # frozen now, but the controller may not jump to it until the park is confirmed
+                S.h_ready, S.hb = t + conf, S.hb + conf - 1
 
     if planner is not None:
         planner.bind(A, s, guard=guard, reach=reach, flip=flip, lead=lead, know=know, n=n, stats=st)
@@ -434,6 +632,10 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
         st.ticks += 1
         if S.hg >= 0 and S.h_paused and t >= S.h_ready:
             S.hb += 1.0
+        held: dict | tuple = ()
+        if multi:
+            S.pool = tuple(h if (k == S.hk or h[0] < 0 or not h[4] or t < h[3]) else (h[0], h[1] + 1.0) + h[2:] for k, h in enumerate(S.pool))
+            held = {h[0]: int(t - h[1] + h[2]) for k, h in enumerate(S.pool) if k != S.hk and h[0] >= 0 and t >= h[3]}
         s_true = int(t - S.sb)
         s_bel = int(t - S.sb + S.se)
         h_ok = S.hg >= 0 and t >= S.h_ready
@@ -448,7 +650,8 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                 continue
             if not (x.a0 <= t <= x.a1 + fresh):
                 continue
-            v = brain.score(g, h_bel, t, False, 0) if (g == S.hg and h_ok) else brain.score(g, t - fresh, t, False, back)
+            v = brain.score(g, h_bel, t, False, 0) if (g == S.hg and h_ok) else brain.score(g, held[g], t, False, 0) if g in held \
+                else brain.score(g, t - fresh, t, False, back)
             if g == S.hg:
                 sc_h = v
             if v > best_sc:
@@ -472,9 +675,19 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
         elif planner is not None:
             if want >= 0:
                 st.wants.append((t, want))
-            act = planner.act(t, S)          # (jump now, the hidden stick's game, the spot to pause at, "" | "tune" | "move")
+            # per hidden stream: (jump now, its game, the spot to pause at, "" | "tune" | "move")
+            acts = planner.acts(t, S) if multi else (planner.act(t, S),)
+            kj = -1
+            for k, act in enumerate(acts):
+                if multi:
+                    load(k)
+                if act[0]:
+                    kj = k
+                hid(act, t)
+            if multi:      # the jump goes to stream kj; with none, the reasons below are about the stream on the wanted game
+                load(kj if kj >= 0 else next((k for k, h in enumerate(hidden_of(S)) if h[0] == want), S.hk))
+                act = acts[S.hk]
             target = S.hg if act[0] else -1
-            desire = act[1] if act[1] >= 0 else S.hg
         else:
             if want >= 0:
                 st.wants.append((t, want))
@@ -483,18 +696,10 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                 desire = pk if (s.prepark or want >= 0) else -1
             elif h_ok and target < 0 and pk >= 0 and pk != S.hg and (s.prepark or want >= 0) and pk_sc > pk_h + s.repark_margin:
                 desire = pk
-        if desire >= 0 and (desire != S.hg or (act is not None and act[3] == "tune")):
+        if act is not None:
+            pass                            # a planner's hidden streams were moved above (hid)
+        elif desire >= 0 and desire != S.hg:
             start_park(desire, t)
-        elif h_ok and act is not None:
-            # a planner's hidden stick: skip forward to the spot, or play on to it and stop there with one pause key
-            x = A[S.hg]
-            hb_i = min(n - 1, max(0, h_bel))
-            if act[3] == "move" and act[2] > hb_i:
-                move_to(act[2], t)
-            elif act[2] < 0 or hb_i < act[2]:
-                S.h_paused = False
-            elif not S.h_paused and x.since[hb_i] > guard and x.left[hb_i] >= guard and hb_i + guard <= t + know:
-                S.h_paused = True
         elif h_ok and not live:
             x = A[S.hg]
             hb_i = min(n - 1, max(0, h_bel))
@@ -533,24 +738,36 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                    else "past_reach" if not (live or S.hb - S.he <= reach + flip) else None)
             if act is not None and target < 0:
                 why = planner.why(t, S, want)
-        if target >= 0 and S.hg == target and t >= S.h_ready and t >= S.black and t - S.s_land >= s.min_stay \
+        if target >= 0 and S.hg == target and t >= S.h_ready and t >= S.black and t >= S.busy and t - S.s_land >= s.min_stay \
                 and (live or S.hb - S.he <= reach + flip):
             xs, xh = A[S.sg], A[target]
             i = min(n - 1, max(0, s_bel))
             calm = xs.hlc[min(n, i + guard + 1)] - xs.hlc[max(0, i - guard)] == 0
-            leave = (xs.since[i] > guard and xs.left[i] >= guard and calm) or (s.leave_rule == "low_leverage" and calm) or t > xs.a1 + S.sb
+            in_s = padded(xs, i, t + know)
+            leave = (in_s and calm) or (s.leave_rule == "low_leverage" and calm) or t > xs.a1 + S.sb
             j = min(n - 1, max(0, int(t - S.hb + S.he) + (lead if S.h_paused else flip)))
             if i + guard > t + know or j + guard > t + know:
                 leave = False           # the feed has not yet reported the seconds the padding has to cover
-            if S.s_live < s.min_live_s and xs.left[i] < LONG_STOP_S and t <= xs.a1 + S.sb:
+            rem, in_h, wait_ok = xs.left[i], padded(xh, j, t + know), s.land_wait_max >= xh.left[j]
+            shown = S.s_live
+            if rows:                    # how long this stoppage, and the landing's, still run is known only once revealed
+                if xs.feed(wait)[2][i] > t + know:
+                    rem = t + know - wait - i if in_s else 0
+                wait_ok = s.land_wait_max >= 999.0 or (xh.feed(wait)[2][j] <= t + know and wait_ok)
+                # and the play this visit has shown is known only up to the game's last reported row
+                kr = bisect.bisect_right(xs.stamps, t + know) - 1
+                shown = xs.dead.count(0, min(n - 1, max(0, int(S.s_from + S.se))), max(0, min(i, xs.stamps[kr] + 1 if kr >= 0 else 0)))
+            if shown < s.min_live_s and rem < LONG_STOP_S and t <= xs.a1 + S.sb:
                 leave = False           # nothing of this game has been shown yet: a hop through dead air is not a visit
                 if why is None and want >= 0 and force is None:
                     why = "min_stay"
+            if D and (S.hb - S.he) + (flip - lead if S.h_paused else 0) < D:
+                leave = False           # the show delay: no picture comes up closer to the live edge than this
             if why is None and want >= 0 and force is None:
                 why = ("screen_high_leverage" if not calm else "screen_mid_play" if not leave
-                       else "landing_not_dead" if not (xh.since[j] > guard and xh.left[j] >= guard)
-                       else "landing_long_wait" if xh.left[j] > s.land_wait_max else None)
-            if leave and xh.since[j] > guard and s.land_wait_max >= xh.left[j] >= guard:
+                       else "landing_not_dead" if not in_h
+                       else "landing_long_wait" if not wait_ok else None)
+            if leave and in_h and wait_ok:
                 ti = min(n - 1, max(0, s_true if not edge_sd else int(t - S.sb + rng.gauss(0.0, edge_sd))))
                 bad = st.mid_leave + st.hl_leave + st.mid_entry
                 if not xs.dead[ti]:
@@ -578,10 +795,17 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                 S.s_live = 0
                 old = (S.sg, S.sb, S.se)
                 S.sg, S.sb, S.se, S.s_land, S.s_from, S.s_kind, S.black = target, new_sb, S.he, up, ei, S.h_kind, up
+                if jdone:
+                    S.busy = t + jdone
                 if live:
                     S.hg, S.hb, S.he, S.h_ready, S.h_paused, S.h_kind = old[0], old[1], old[2], t, False, "pp"
                 elif s.ping_pong or act is not None:
                     S.hg, S.hb, S.he, S.h_ready, S.h_paused, S.h_kind = old[0], old[1], old[2], t, not lattice, "pp"
+                    if lpause or jdone:
+                        # the stream that was left plays on for `lpause`, freezes there, and may be jumped to again once
+                        # this jump is complete
+                        d = max(lpause, jdone)
+                        S.h_ready, S.hb = t + d, old[1] + (d - lpause) - 1
                     if s.skip_dead and not lattice and act is None:
                         end = i + xs.left[i]
                         p = end - guard - lead

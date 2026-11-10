@@ -16285,6 +16285,27 @@
     "untagged"
    ]
   },
+  "scripts/park_profiles.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "One table per slate and timing scenario: two sticks as simulated until now, two sticks on the honest feed, and Chrome tabs.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/park_report.py": {
    "calls": [],
    "contracts": [],
@@ -18526,10 +18547,10 @@
   "calls": 2144,
   "data_files": 202,
   "machines": 51,
-  "modules": 462,
+  "modules": 463,
   "orphans": 34,
-  "unowned": 264,
-  "untagged": 393
+  "unowned": 265,
+  "untagged": 394
  },
  "version": 2
 }
