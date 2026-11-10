@@ -702,8 +702,10 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
                 for r in REACHES:
                     if m not in shown[r]:
                         league_row["lost_after_catchup"][str(r)][rule] += m.value
+                        league_row["moments_after_catchup"][str(r)][rule] += 1
                         if m not in info[r].get("played", ()):
                             league_row["lost_play_unseen"][str(r)][rule] += m.value
+                            league_row["moments_play_unseen"][str(r)][rule] += 1
                         if m in why[r] and why[r][m][0] == "route_off":
                             gate_of = info[r]["gates"].get(m)
                             league_row["route_off_gate"][str(r)][gate_of.most_common(1)[0][0] if gate_of else "unnamed"] += m.value
@@ -726,7 +728,8 @@ def new_row() -> dict:
             "residual": {str(r): Counter() for r in REACHES}, "residual_by_rule": {str(r): Counter() for r in REACHES},
             "past_cap": {str(r): Counter() for r in REACHES},
             "lost_play_unseen": {str(r): Counter() for r in REACHES}, "route_off_gate": {str(r): Counter() for r in REACHES},
-            "own_game": {str(r): Counter() for r in REACHES}, "stick_job": {str(r): Counter() for r in REACHES}}
+            "own_game": {str(r): Counter() for r in REACHES}, "stick_job": {str(r): Counter() for r in REACHES},
+            "moments_after_catchup": {str(r): Counter() for r in REACHES}, "moments_play_unseen": {str(r): Counter() for r in REACHES}}
 
 
 def card(script: str, *args: str) -> dict:
@@ -847,7 +850,22 @@ def table(rows: list[dict], *, top: int = 25) -> str:
         c, pct = r["card"], 100.0 * r["must_seen"] / r["must_total"] if r["must_total"] else 0.0
         lines.append(f"{r['league']}/{r['brain']}: must-see seen {pct:.1f}% of {r['must_total']:.0f}, not asked {r['not_asked']:.0f}, "
                      f"wanted {r['wanted']} went {r['went']}, mid-play {c['entries_mid_play']}/{c['entries']}, high-lev leaves {c['cuts_high']}, all mid-play leaves {c['mid_play_leaves']}")
-    return "\n".join(lines + catchup_lines(rows) + residual_lines(rows) + detail_lines(rows))
+    return "\n".join(lines + catchup_lines(rows) + count_lines(rows) + residual_lines(rows) + detail_lines(rows))
+
+
+def count_lines(rows: list[dict]) -> list[str]:
+    """Exact counts, per league and brain: must-see moments charged to a refusal before catch-up, and still unseen after it at each
+    reach (the same moments `lost` and `lost_after_catchup` weigh by value). Simulated."""
+    lines = ["", "must-see MOMENTS (a count, not value) lost to a refusal, before and after catch-up (SIMULATED)",
+             f"{'league/brain':<20}{'before':>8}" + "".join(f"{'reach ' + str(r) + 's':>13}" for r in REACHES)]
+    total = Counter()
+    for r in rows:
+        after = {x: sum(r.get("moments_after_catchup", {}).get(str(x), {}).values()) for x in REACHES}
+        before = sum(r["moments"].values())
+        total.update({"before": before, **{str(x): v for x, v in after.items()}})
+        lines.append(f"{r['league'] + '/' + r['brain']:<20}{before:>8}" + "".join(f"{after[x]:>13}" for x in REACHES))
+    lines.append(f"{'TOTAL':<20}{total['before']:>8}" + "".join(f"{total[str(x)]:>13}" for x in REACHES))
+    return lines
 
 
 def detail_lines(rows: list[dict], reach: int = REACHES[-1]) -> list[str]:
