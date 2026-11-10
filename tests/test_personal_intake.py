@@ -20,6 +20,14 @@ import personal_import  # noqa: E402
 
 URL = "/api/personal/app-open"
 GOOD = {"app": "TestApp", "timestamp": "2026-11-09T20:15:00Z"}
+TOKEN = {"x-redzone-token": "synthetic-test-value"}
+JSON = {"content-type": "application/json", **TOKEN}
+
+
+@pytest.fixture(autouse=True)
+def intake_token(monkeypatch):
+    """The endpoint needs the token set; a synthetic one, so no test depends on the machine's environment."""
+    monkeypatch.setenv("REDZONE_PERSONAL_TOKEN", TOKEN["x-redzone-token"])
 
 
 def _path(engine):
@@ -39,7 +47,7 @@ def test_flag_off_is_404_and_writes_nothing(client, engine):
 
 def test_good_event_is_stored_when_on(client, engine):
     _on(engine)
-    assert client.post(URL, json=GOOD).json() == {"ok": True}
+    assert client.post(URL, json=GOOD, headers=TOKEN).json() == {"ok": True}
     rows = store.read_all(_path(engine))
     assert rows == [{"ts": "2026-11-09T20:15:00Z", "service": "TestApp", "title": "", "tags": [], "duration_s": None, "source": "shortcut"}]
 
@@ -52,15 +60,22 @@ def test_good_event_is_stored_when_on(client, engine):
 ])
 def test_bad_payload_rejected_and_nothing_written(client, engine, bad):
     _on(engine)
-    assert client.post(URL, json=bad).status_code == 400
+    assert client.post(URL, json=bad, headers=TOKEN).status_code == 400
     assert not _path(engine).exists()
 
 
 def test_oversize_and_non_json_rejected(client, engine):
     _on(engine)
-    assert client.post(URL, content=b"x" * 5000, headers={"content-type": "application/json"}).status_code == 413
-    assert client.post(URL, content=b"{nope", headers={"content-type": "application/json"}).status_code == 400
+    assert client.post(URL, content=b"x" * 5000, headers=JSON).status_code == 413
+    assert client.post(URL, content=b"{nope", headers=JSON).status_code == 400
     assert client.post(URL, content=b"a=b", headers={"content-type": "text/plain"}).status_code == 415
+    assert not _path(engine).exists()
+
+
+def test_a_body_with_no_content_length_is_still_capped(client, engine):
+    _on(engine)
+    chunks = iter([b'{"app": "', b"x" * 1500, b"y" * 1500, b'", "timestamp": "2026-11-09T20:15:00Z"}'])
+    assert client.post(URL, content=chunks, headers=JSON).status_code == 413
     assert not _path(engine).exists()
 
 
@@ -78,9 +93,16 @@ def test_guard_cross_site_refused(client, engine):
     assert not _path(engine).exists()
 
 
-def test_token_when_set_is_required(client, engine, monkeypatch):
+def test_flag_on_with_no_token_set_refuses_and_writes_nothing(client, engine, monkeypatch):
     _on(engine)
-    monkeypatch.setenv("REDZONE_PERSONAL_TOKEN", "synthetic-test-value")
+    monkeypatch.delenv("REDZONE_PERSONAL_TOKEN")
+    assert client.post(URL, json=GOOD).status_code == 503
+    assert client.post(URL, json=GOOD, headers=TOKEN).status_code == 503
+    assert not _path(engine).exists()
+
+
+def test_token_when_set_is_required(client, engine):
+    _on(engine)
     assert client.post(URL, json=GOOD).status_code == 401
     assert client.post(URL, json=GOOD, headers={"x-redzone-token": "wrong"}).status_code == 401
     assert not _path(engine).exists()
@@ -93,6 +115,34 @@ def test_allow_list_drops_other_fields():
     c = store.clean(planted)
     assert set(c) == set(store.FIELDS)
     assert "PLANTED" not in json.dumps(c)
+
+
+@pytest.mark.parametrize("value", [
+    "https://example.test/watch", "see HTTP://example.test/a", "www.example.test", "WWW.example.test recap", "Watched dQw4w9WgXcQ",
+    "jNQXAC9IVRw", "9bZkp7q19f0 highlights", "6rqhFgbbKwnb9MLmUQDhG6", "x7kq2mn9plw", "aB_c-dEfGhIj", "550e8400-e29b-41d4-a716-446655440000",
+])
+def test_a_title_or_tag_carrying_a_link_or_an_id_is_blanked(value):
+    c = store.clean({"ts": "2026-11-09T20:15:00Z", "service": "s", "title": value, "tags": [value, "Test Channel"], "source": "youtube"})
+    assert c["title"] == "" and c["tags"] == ["Test Channel"]
+
+
+@pytest.mark.parametrize("value", [
+    "Testville Rockets highlights", "Championship recap", "Internationalization", "Spider-Man-Homecoming", "2026-11-08-recap", "LeBronJames",
+    "TheLastDanceEpisodeFour", "PlayStation5", "McDonaldsFC", "NBA_Highlights_2024", "Week12-Highlights", "state-of-the-art-highlights", "Awww. So good",
+])
+def test_a_normal_long_title_is_kept(value):
+    c = store.clean({"ts": "2026-11-09T20:15:00Z", "service": "s", "title": value, "tags": [value], "source": "youtube"})
+    assert c["title"] == value and c["tags"] == [value]
+
+
+def test_importer_refuses_a_data_dir_git_could_add(tmp_path, capsys):
+    (tmp_path / "watch-history.json").write_text(json.dumps([{"title": "Watched A", "time": "2026-11-08T01:02:03Z"}]))
+    src = str(tmp_path / "watch-history.json")
+    assert personal_import.main([src, "--data-dir", str(ROOT / "docs" / "no-such-personal-dir"), "--dry-run"]) == 2     # inside the repo, not ignored
+    outside = tmp_path / "out"
+    assert personal_import.main([src, "--data-dir", str(outside)]) == 2                                                 # git can't vouch for it
+    assert not outside.exists() and "refused" in capsys.readouterr().out
+    assert personal_import.main([src, "--data-dir", str(ROOT / "data"), "--dry-run"]) == 0                              # the default folder
 
 
 def test_importer_never_stores_planted_fields(tmp_path):

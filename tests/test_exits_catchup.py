@@ -40,13 +40,14 @@ class Cfg:
 
 
 def host(leagues=("nfl",), **kw):
-    """A decider at a mid-play moment on screen (no dead window): only the new rule can open the leave."""
+    """A decider whose last play has aired while the feed went quiet (no data covers the screen, so the plain leave says no): the one
+    state the held exit can open since it refuses while anything is still airing. Only the new rule can open the leave."""
     d = Decider.__new__(Decider)
     d.cfg = Cfg(**{"legal.leave_low_leverage": list(leagues), "legal.leave_at_flip": True, "decider.uncalibrated_sigma_s": 8.0,
                    "decider.crunch.hold_personal": 5, "decider.leave.sticky_closeness": 0.5, **kw})
     tl = Timeline(League.NFL)
-    tl.fresh_at = 200.0
-    tl.events.append(Event(165.0, "play"))        # airing on screen around 200 at a 35 s delay: mid-play, the leave gate is shut
+    tl.fresh_at = 150.0
+    tl.events.append(Event(150.0, "play"))        # aired on screen around 185 at a 35 s delay; nothing from the feed since
     d.timelines, d.delays, d.current, d.replaying, d.after_replay, d.safe_mode = {"on": tl}, NS(get=lambda t: Delay(35.0, 1.0), held={}), "on", False, False, False
     d._yours, d._high_lev_at, d._known, d._target_of, d._crunch_tail = set(), {}, {}, {}, {}
     d.entry_cost, d.user = None, NS(paused=False, locked_game=None, manual_until=0.0, focus_mode=FocusMode.AUTOPILOT)
@@ -67,6 +68,24 @@ def test_a_held_pick_may_leave_a_low_leverage_play_only_with_the_flag():
     assert flip(host(()), cands) is True                     # flag off: the mid-play leave stays refused
     assert flip(host(("nfl",)), cands) is False
     assert flip(host(("nba",)), cands) is True               # per league
+
+
+@pytest.mark.parametrize("break_it", [lambda d: d.timelines.clear(), lambda d: d.timelines["on"].events.clear()])
+def test_a_held_pick_never_leaves_without_screen_timing(break_it):
+    """Rule #1 side: leave_open refuses a game it has no timing for, and the exit must not overrule that."""
+    d = host(("nfl",))
+    cands = {"on": cand(), "a": cand()}
+    assert d.held_low_leverage_exit("on", cands, 200.0) is True
+    break_it(d)
+    assert d.held_low_leverage_exit("on", cands, 200.0) is False
+
+
+def test_a_held_pick_never_leaves_while_the_last_play_is_still_airing():
+    """Rule #1 side: seen at 165, airing until about 207 at a 35 s delay (leave_open's _ending_still_airing)."""
+    d = host(("nfl",))
+    d.timelines["on"].events.append(Event(165.0, "play"))
+    assert d._ending_still_airing("on", 200.0) > 0
+    assert d.held_low_leverage_exit("on", {"on": cand(), "a": cand()}, 200.0) is False
 
 
 def test_a_pick_that_was_not_held_never_reads_the_new_rule():

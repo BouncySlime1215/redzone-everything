@@ -486,6 +486,77 @@ def test_selection_stops_when_a_night_outside_its_list_reaches_it(tmp_path, v4):
         S.select_league("nba", tmp_path, nights, FakeFitter(), keep_filter=10, sizes=(5,), folds=2, blocks=wanted, games_factory=lambda _wanted: iter(leak), log=lambda *a, **k: None)
 
 
+@pytest.mark.parametrize("step", ["filter", "forward"])
+def test_a_step_that_read_fewer_nights_than_it_was_given_refuses_and_says_why(tmp_path, v4, step):
+    nights = NIGHTS[:10]
+    filter_nights, forward_nights = S.split_nights(nights)
+    gone = (filter_nights if step == "filter" else forward_nights)[0]
+    logged = []
+
+    def factory(wanted):
+        yield from _factory([g for g in _games(nights) if g[2] != gone])(wanted)
+        return {"missing_columns": "time_of_day"}
+
+    with pytest.raises(S.Refused, match=f"never came out.*{gone}"):
+        S.select_league("nba", tmp_path, nights, FakeFitter(), keep_filter=60, sizes=(5,), folds=2, blocks=WANTED, games_factory=factory, log=lambda *a, **k: logged.append(a[0]))
+    assert any("missing_columns" in line for line in logged)
+
+
+def test_the_raw_reader_returns_what_it_skipped(tmp_path):
+    (tmp_path / "nfl").mkdir()
+    pd.DataFrame({"qtr": [1]}).to_parquet(tmp_path / "nfl" / "pbp_2023.parquet")
+    gen = S.games_from_raw("nfl", tmp_path, {"20231008"})
+    with pytest.raises(StopIteration) as stop:
+        next(gen)
+    assert stop.value.value == {"missing_columns": "time_of_day"}
+
+
+def test_the_command_refuses_a_train_night_the_raw_files_do_not_have(tmp_path, monkeypatch, v4, capsys):
+    out = _shards(tmp_path / "shards", "nfl", nfl_summary, "nflverse_pbp", "CC-BY 4.0", "A", games=2)
+    few = tuple(b for b in W.blocks("nfl") if b.stat == "pts" and b.window in ("p5", "p10", "game"))
+    monkeypatch.setattr(S.W, "blocks", lambda league: few)
+    splits = json.loads((out / "splits.json").read_text())
+    splits["nfl"]["train"] = sorted(splits["nfl"]["train"] + ["20000903"])
+    (out / "splits.json").write_text(json.dumps(splits))
+    kept_path = tmp_path / "v5_kept.json"
+    rc = S.main(["--shards", str(out), "--raw", str(_raw_dir(out)), "--out", str(kept_path), "--leagues", "nfl", "--keep-filter", "12", "--sizes", "3", "--folds", "2"], fitter=FakeFitter())
+    assert rc == S.EXIT_REFUSED and "20000903" in capsys.readouterr().out
+    assert not kept_path.exists() or json.loads(kept_path.read_text())["complete"] is False
+
+
+def _bare_shards(tmp_path):
+    shards = tmp_path / "bare"
+    shards.mkdir()
+    (shards / "manifest.json").write_text("{}")
+    (shards / "splits.json").write_text(json.dumps({"nfl": {"train": ["20231008"]}}))
+    return ["--shards", str(shards), "--raw", str(tmp_path), "--out", str(tmp_path / "kept.json")]
+
+
+def test_a_run_with_no_leagues_is_never_a_finished_list(tmp_path, v4):
+    args = _bare_shards(tmp_path)
+    assert S.main([*args, "--leagues", ","], fitter=FakeFitter()) == 0
+    assert json.loads((tmp_path / "kept.json").read_text())["complete"] is False
+
+
+def test_a_kept_list_naming_no_league_will_not_load(tmp_path):
+    W.write_kept(tmp_path / "kept.json", {}, complete=True, shard_id="test")
+    with pytest.raises(ValueError, match="no league"):
+        W.read_kept(tmp_path / "kept.json")
+
+
+def test_a_real_bug_keeps_its_traceback_and_a_refusal_stays_a_refusal(tmp_path, monkeypatch, v4, capsys):
+    args = [*_bare_shards(tmp_path), "--leagues", "nfl"]
+    def raises(error):
+        def fail(*a, **k):
+            raise error
+        return fail
+    monkeypatch.setattr(S, "selection_nights", raises(ValueError("a real bug")))
+    with pytest.raises(ValueError, match="a real bug"):
+        S.main(args, fitter=FakeFitter())
+    monkeypatch.setattr(S, "selection_nights", raises(S.Refused("not allowed")))
+    assert S.main(args, fitter=FakeFitter()) == S.EXIT_REFUSED and "REFUSED: not allowed" in capsys.readouterr().out
+
+
 def _res(base, got, noise=0.01, done=5, planned=5):
     return S.ForwardResult([], {0: base, 5: got}, [noise] * len(base), done, planned)
 
