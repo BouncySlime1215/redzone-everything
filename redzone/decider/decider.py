@@ -779,6 +779,9 @@ class Decider:
         cur = cands.get(self.current) if self.current else None
         gate = self._gate(cur, now) if cur is not None else None
         hold = c.get("decider.crunch.hold_personal", 5)
+        lock = (cur.scored.lock or "") if cur is not None else ""
+        lock_rule = bool(c.get("legal.lock_dead_ball", False))       # off: any lock hides every cut (legal.lock_hides)
+        lead = float(c.get("decider.locked_override_lead", 20)) if lock_rule and lock else 0.0
         rows = []
         for gid, x in cands.items():
             s = x.scored
@@ -791,7 +794,8 @@ class Decider:
                 game_id=gid, app=(x.target or "").split(":", 1)[0], tunable=legal.tunable(gid, x, u.muted),
                 dark=self._entry_dark(gid, x, now), landable=gid in PSEUDO or bool(plan and plan.ok), reel=gid == REEL,
                 l1_class=0 if (gid in self._yours or s.personal >= hold) else 1 if s.crunch else 2, must_see=big,
-                latest_s=max(0.0, resume - now) if resume is not None else 0.0, needs_prep_s=cost if math.isfinite(cost) else 0.0))
+                latest_s=max(0.0, resume - now) if resume is not None else 0.0, needs_prep_s=cost if math.isfinite(cost) else 0.0,
+                over_lock=bool(lock_rule and lock and s.score >= cur.scored.score + lead)))
         on_game = bool(self.current) and self.current not in PSEUDO
         return legal.Facts(
             now=now, current=self.current, safe_mode=self.safe_mode, paused=u.paused, locked_game=u.locked_game,
@@ -801,10 +805,22 @@ class Decider:
             last_switch_at=self.history[-1][0] if self.history else None,
             min_gap_s=float(c.get("noggin.pick.min_gap_s", 0.0)),
             gate_ok=bool(gate and gate.safe), leave_at_flip=self._leave_at_flip(),
-            moment_lock=(cur.scored.lock or "") if cur is not None else "",
+            moment_lock=lock, lock_dead_ball=lock_rule, lock_high=bool(lock_rule and lock and self._high_leverage_on_screen(cur, now)),
             focus_game=u.focus_game if u.focus_mode != FocusMode.AUTOPILOT else None,
             focus_must_see=u.focus_mode == FocusMode.FOCUS_MUST_SEE,
             banned_apps=HardRules.from_config(c).banned_apps, games=tuple(rows))
+
+    def _high_leverage_on_screen(self, cur: Candidate, now: float) -> bool:
+        """[legal.lock_dead_ball] The game on screen is at a high-leverage moment (close and late, or overtime: scoring.engine's copy
+        of redzone/lab/leverage.py), by the feed now or by the feed of a stream delay ago that the picture may still be showing
+        (the same horizon as _leavable)."""
+        if getattr(cur.scored, "high_leverage", False):
+            return True
+        hl = self._high_lev_at.get(self.current or "")
+        if hl is None:
+            return False
+        d = self.delays.get(cur.target or "unknown")
+        return now - hl <= d.mu + 2 * d.current_sigma(now)
 
     def legal_options(self, cands: dict[str, Candidate], now: float | None = None) -> tuple:
         """[WP-16] What the show may do right now (brain.Option), stay first."""

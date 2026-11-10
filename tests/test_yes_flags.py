@@ -3,15 +3,21 @@
 Why: Nick, Nov 10: "the code keeps saying no... a no is rare, like 95% yes", with the guarantee that touchdowns and big plays must air. Five
 inspections measured which refusals were logic errors (research ledger L6); each fix sits behind its own flag, and flag off the night decides as before.
 """
+import dataclasses
+import itertools
+
 import pytest
 import yaml
 
 from redzone import measured_timing as mt
 from redzone.decider import gate
-from redzone.decider.decider import PSEUDO, Decision, State
+from redzone.config import _deep_merge
+from redzone.decider.decider import PSEUDO, Candidate, Decider, Decision, State
 from redzone.decider.screen import Event, Timeline, leave_window
 from redzone.models import League, Phase
+from redzone.noggin import legal
 from tests.test_exits_catchup import cand, host
+from tests.test_legal import _c, _dec
 from tests.test_timing_truth import _night_decisions
 
 from pathlib import Path
@@ -20,7 +26,8 @@ CONFIG = yaml.safe_load((Path(mt.__file__).parent / "default_config.yaml").read_
 ALL = ["nfl", "cfb", "nba", "cbb", "nhl", "mlb"]
 # The fixture night with the arbiter choosing and a held pick allowed to wait: the paths the flags live on.
 CTX = {"arbiter.enabled": True, "legal.leave_at_flip": True, "legal.leave_low_leverage": ALL}
-OFF = {"gate.leave_unaired_row_only_ended": False, "gate.leave_margin_measured": False, "gate.leave_dead_window": False}        # every new flag at its shipped default
+OFF = {"gate.leave_unaired_row_only_ended": False, "gate.leave_margin_measured": False, "gate.leave_dead_window": False,
+       "legal.lock_dead_ball": False}        # every new flag at its shipped default
 
 
 def night(ctx=None, **sets):
@@ -228,4 +235,82 @@ def test_flag_on_the_window_must_cover_the_flip_with_doubt_on_both_sides():
 def test_flag_off_the_night_decides_as_with_the_plain_window_alone(monkeypatch):
     after = night()
     monkeypatch.setattr(gate, "_plain_leave", lambda f, usual: bool(f.host.safe_to_leave(f.before, required_s=usual)))
+    assert night() == after
+
+
+# ----- step 5: legal.lock_dead_ball ---------------------------------------------------------------------------------------------------
+
+LOCK = "legal.lock_dead_ball"
+ROWS = (legal.GameRow("on"), legal.GameRow("a"), legal.GameRow("big", over_lock=True))
+
+
+def lock_facts(**kw):
+    return legal.Facts(**{"now": 100.0, "current": "on", "games": ROWS, "moment_lock": "red zone drive", **kw})
+
+
+def cuts(f):
+    return [o.game_id for o in legal.legal_options(f) if o.verb == "cut"]
+
+
+def test_flag_off_any_lock_hides_every_cut_whatever_else_is_known():
+    for kw in ({}, {"lock_high": True}, {"gate_ok": False, "leave_at_flip": True}):
+        f = lock_facts(**kw)
+        assert legal.legal_options(f) == (legal.STAY,) and "moment_lock" in legal.refusals(f, "big")
+
+
+def test_flag_on_a_lock_that_is_not_high_leverage_hides_nothing():
+    f = lock_facts(lock_dead_ball=True)
+    assert cuts(f) == ["a", "big"] and legal.refusals(f, "a") == ()
+    assert legal.legal_options(lock_facts(lock_dead_ball=True, gate_ok=False)) == (legal.STAY,)       # the leave gate still decides when
+    assert cuts(lock_facts(lock_dead_ball=True, gate_ok=False, leave_at_flip=True)) == ["a", "big"]   # ...or the pick waits for the flip
+
+
+def test_flag_on_a_high_leverage_lock_gives_way_only_at_a_dead_ball_to_a_much_bigger_moment():
+    f = lock_facts(lock_dead_ball=True, lock_high=True)
+    assert cuts(f) == ["big"]                                              # dead ball on screen, and it outranks the lock by the lead
+    assert legal.refusals(f, "a") == ("moment_lock",) and legal.refusals(f, "big") == ()
+    for mid_play in ({"gate_ok": False}, {"gate_ok": False, "leave_at_flip": True}):
+        f = lock_facts(lock_dead_ball=True, lock_high=True, **mid_play)
+        assert legal.legal_options(f) == (legal.STAY,) and "moment_lock" in legal.refusals(f, "big")   # never mid-play, held or not
+
+
+@pytest.mark.parametrize("flag,high,gate_ok,at_flip,lock", list(itertools.product((False, True), (False, True), (False, True), (False, True),
+                                                                                   ("", "overtime"))))
+def test_refusals_are_empty_exactly_when_the_cut_is_listed(flag, high, gate_ok, at_flip, lock):
+    f = lock_facts(lock_dead_ball=flag, lock_high=high, gate_ok=gate_ok, leave_at_flip=at_flip, moment_lock=lock)
+    for g in ("a", "big"):
+        assert (legal.refusals(f, g) == ()) == (g in cuts(f))
+
+
+def _locked(d, cfg, flag, **scored_kw):
+    cfg.data = _deep_merge(cfg.data, {"legal": {"lock_dead_ball": flag}})
+    d.current = "a"
+    on = _c("a", 50.0, "youtubetv:a")
+    cands = {"a": Candidate(dataclasses.replace(on.scored, lock="red zone drive", **scored_kw), on.target),
+             "b": _c("b", 69.0, "youtubetv:b"), "c": _c("c", 70.0, "youtubetv:c")}
+    return d.legal_facts(cands)
+
+
+def test_the_decider_says_which_lock_is_high_leverage_and_which_cut_outranks_it(cfg, clock):
+    d = _dec(cfg, clock)
+    f = _locked(d, cfg, True)
+    assert (f.moment_lock, f.lock_dead_ball, f.lock_high) == ("red zone drive", True, False)
+    assert {g.game_id: g.over_lock for g in f.games} == {"a": False, "b": False, "c": True}      # decider.locked_override_lead is 20
+    assert _locked(d, cfg, True, high_leverage=True).lock_high is True
+    d._high_lev_at["a"] = clock.t - 30.0            # close and late 30 s ago in the feed: a 40 s delay still shows it
+    assert _locked(d, cfg, True).lock_high is True
+    d._high_lev_at["a"] = clock.t - 300.0
+    assert _locked(d, cfg, True).lock_high is False
+
+
+def test_flag_off_the_decider_hands_over_the_lock_and_nothing_new(cfg, clock, monkeypatch):
+    monkeypatch.setattr(Decider, "_high_leverage_on_screen", lambda *a: (_ for _ in ()).throw(AssertionError("read with the flag off")))
+    f = _locked(_dec(cfg, clock), cfg, False, high_leverage=True)
+    assert (f.moment_lock, f.lock_dead_ball, f.lock_high) == ("red zone drive", False, False) and not any(g.over_lock for g in f.games)
+
+
+def test_flag_off_the_night_never_asks_about_the_lock(monkeypatch):
+    after = night()
+    monkeypatch.setattr(Decider, "_high_leverage_on_screen", lambda *a: (_ for _ in ()).throw(AssertionError("read with the flag off")))
+    monkeypatch.setattr(legal, "lock_hides", lambda lock, rule=False, *a: bool(lock) if not rule else 1 / 0)
     assert night() == after

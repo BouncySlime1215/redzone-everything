@@ -1223,6 +1223,7 @@ legal:                     # [LEAVE-AT-FLIP] noggin/legal.py. Needs arbiter.enab
   leave_at_flip: false     # a cut stays listed with the leave gate shut or no landing yet; it waits (decider.leave_wait) and goes only when the flip's leave rules and a dead-ball landing both allow it
   leave_low_leverage: []   # leagues where a held cut may leave mid-play at a low-leverage moment (Decider._leavable: redzone/lab/leverage.py's floor, your team, crunch, a locked moment). Needs leave_at_flip. [] = only at a dead window: today's rule
   leave_wait_s: 45         # the longest a cut waits (per league: league_overrides); it also ends when the target stops being worth it or can't be entered at all
+  lock_dead_ball: false    # [YES-1] a moment lock (red-zone drive, power play, at-bat) stops hiding every cut for as long as the game state holds: only a lock at a high-leverage moment (close and late, overtime) hides cuts, and it lets one through at a proven dead ball when the cut outranks it by decider.locked_override_lead. The leave gate still decides when
 
 slate:                     # [build plan WP-18] blocks of a few games, then catch-up, late narrowing; NBA misses its exit bar
   enabled: false
