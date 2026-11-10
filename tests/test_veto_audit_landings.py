@@ -109,3 +109,43 @@ def test_the_option_rides_on_the_job_and_changes_no_default(monkeypatch, tmp_pat
     assert [j[2] for j in jobs] == [{"gate.x": True, va.LANDINGS_KEY: True}] and out["sets"] == {"gate.x": True}
     plain = _main(monkeypatch, tmp_path, capsys, lambda job: _row())
     assert plain[2] == [("nfl", "hindsight", {}, None, 15.0)] and plain[0] == va.table([_row()]) + "\n"
+
+
+# ----- audit.flip_at_landing: a what-if, no product flag ------------------------------------------------------------------------------
+
+class _Clock:
+    t = 100.0
+
+    def __call__(self):
+        return self.t
+
+
+def _waiting(on, lands_at=(), vetoed_at=()):
+    """An audit decider at t = 100 whose pick "b" has a landing plan only at the seconds in lands_at; the gate says no at vetoed_at."""
+    a = va.AuditDecider.__new__(va.AuditDecider)
+    a._clock, a.tally, a.truth, a.brain = _Clock(), va.Tally(), NS(tune_s=5.0), NS(name="t")
+    a.cfg = NS(get=lambda k, d=None: {va.FLIP_AT_KEY: on, "polling.live_s": 10}.get(k, d))
+    a.base_state, a.base_owner, a.asked = None, "", []
+    a.entry_plan = lambda gid, cands, at: a.asked.append((at, a._clock.t)) or NS(ok=at in lands_at)
+    a._flip_vetoes = lambda d, target, cands, at: ["leave"] if at in vetoed_at else []
+    a._commit, a._land_behind, a._leave_end = lambda target, kind=None: None, lambda target, rewind_s: None, lambda why, now: None
+    return a
+
+
+def test_the_what_if_is_off_unless_set_and_then_finds_the_first_second_that_lands_and_may_go():
+    cands = {"b": NS(target="yt:b")}
+    off = _waiting(False, lands_at=(103.0,))
+    assert off._flip_at_landing("b", "better", cands, 100.0) is None and off.asked == []
+    a = _waiting(True, lands_at=(103.0, 106.0, 107.0), vetoed_at=(103.0,))
+    d = a._flip_at_landing("b", "better", cands, 100.0)
+    assert (d.target, d.at, d.defer_s, d.leave_held) == ("b", 100.0, 6.0, True)          # 103 lands but the gate says no; 106 goes
+    assert a.asked == [(100.0 + w, 100.0 + w) for w in range(1, 7)] and a._clock.t == 100.0   # asked with the clock at that second, then put back
+    assert _waiting(True, lands_at=(110.0,))._flip_at_landing("b", "better", cands, 100.0) is None     # the next tick's own second
+    assert _waiting(True, lands_at=(103.0,))._flip_at_landing("zz", "better", cands, 100.0) is None
+
+
+def test_a_deferred_cut_is_a_jump_at_its_tick_and_its_picture_is_up_after_the_wait():
+    a = _waiting(True, lands_at=(104.0,))
+    d = a._release_later("b", "better", {"b": NS(target="yt:b")}, 100.0)
+    assert d.defer_s == 4.0 and a.tally.screen == [(109.0, "b")] and a.tally.jumps == [100.0] and (a.tally.went, a.tally.released) == (1, 1)
+    assert _waiting(True)._release_later("b", "better", {"b": NS(target="yt:b")}, 100.0) is None

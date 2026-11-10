@@ -3,6 +3,9 @@
     nice -n 15 python scripts/veto_audit.py --split fit --leagues nba --brains hindsight heuristic --cap 3 --json out.json
     --set arbiter.visit_budget=0   any config value for this run (repeatable), for a before/after
     --set audit.assume_gate_ok=true   what-if: legal_options stops asking for a leave gap at list time (the flip still does)
+    --set audit.flip_at_landing=true  what-if (no product flag): a cut that can't go at the tick's instant goes at the first whole second
+                  inside the tick (10 s in the replay) that its landing plan and every gate rule allow, as a deferred cut (Decision.defer_s,
+                  graded by the replay at that second). It measures what a flip timed to the landing would buy before anyone builds it
     --prep-s 60   what-if: the hidden stick needs this long to tune and seek to a clip (default 15; 60 is a re-tuned stick, buffered.prep_s)
     --timing measured   the catch-up route's flip, clip load and reach as the TV measured them Nov 9 (timing.* via redzone/measured_timing.py:
                   flip 2.2 s, load 19 s, reach capped at 175 s, so the 180 s column reads 175). Default `assumed`: today's 3.2 / 15 / column reach
@@ -121,6 +124,7 @@ DELAY_ERROR_KEY = "audit.delay_error_s"   # --delay-error: rides on the job's se
 SIGMA_KEY = "audit.sigma_s"               # --sigma: rides on the job's sets (no product flag); the doubt the replayed app states for its delay estimate
 SIGMA_HOLD_KEY = "audit.sigma_hold"       # --sigma-hold: rides on the job's sets (no product flag); that doubt does not grow through the night
 DEFAULT_SIGMA_S = 3.0                     # backtest.run's own `sigma`: what every audit before --sigma ran with
+FLIP_AT_KEY = "audit.flip_at_landing"     # what-if only (no product flag): a cut goes at the first second inside the tick its landing and the gate allow
 LANDINGS_KEY = "audit.landings"           # --landings: rides on the job's sets (no product flag); the two landing tables are filled
 LANDING_GRAIN_S, LANDING_CAP_S = 0.5, 600.0   # the next legal landing is looked for every half second, this far ahead (the cap = none found)
 WAIT_EDGES = (0.0, 5.0, 15.0, 30.0, 60.0)     # the wait columns; 15 s is the yes-rate's 20 s bar less the 5 s the picture takes to come up
@@ -462,8 +466,40 @@ class AuditDecider(Decider):
         self.tally.bucket += int(self.land_kind == "bucket")
         self._commit(d.target, kind=d.kind)
         self._land_behind(d.target, d.rewind_s)
-        self.tally.screen.append((now + self.truth.tune_s, d.target))
+        self.tally.screen.append((now + float(getattr(d, "defer_s", 0.0) or 0.0) + self.truth.tune_s, d.target))
         return d
+
+    def _flip_at_landing(self, target: str, kind: str, cands: dict, now: float) -> Decision | None:
+        """[audit.flip_at_landing, what-if only: no product flag] The cut can't go at this tick's instant. The first whole second
+        inside the tick at which its landing plan (entry_plan, the list's own test) is good and no gate rule says no: the cut,
+        deferred to that second (Decision.defer_s, which the replay applies and grades there). Every rule is asked with the clock
+        at that second and the feed data this tick holds. None: nothing inside this tick, or the what-if is off."""
+        clock = self._clock
+        if not self.cfg.get(FLIP_AT_KEY, False) or not hasattr(clock, "t") or target not in cands:
+            return None
+        try:
+            for w in range(1, int(float(self.cfg.get("polling.live_s", 10)))):
+                clock.t = now + w
+                plan = self.entry_plan(target, cands, now + w)
+                if plan is None or not plan.ok:
+                    continue
+                d = Decision(now, "switch", target, f"brain {self.brain.name}: flip in {w} s, at the landing", self.base_state, kind=kind,
+                             owner=self.base_owner, leave_held=True)
+                d.defer_s = float(w)
+                if not self._flip_vetoes(d, cands[target].target, cands, now + w):
+                    return d
+        finally:
+            clock.t = now
+        return None
+
+    def _release_later(self, target: str, kind: str, cands: dict, now: float) -> Decision | None:
+        """The what-if's deferred cut for a waiting pick, gone and counted as released; None when there is none."""
+        later = self._flip_at_landing(target, kind, cands, now)
+        if later is None:
+            return None
+        self._leave_end("released", now)
+        self.tally.released += 1
+        return self._go(later, now)
 
     def _held_tick(self, cands: dict, now: float, stay: Decision) -> Decision | None:
         """A pick is waiting: stay and charge what still refuses it, or go. None: it is over, the tick goes on."""
@@ -480,6 +516,8 @@ class AuditDecider(Decider):
             self.leave_sub = "decider_only"     # the decider's own view of the leave (gate.DeciderHost) said no, the flip's did not
         blockers = ([f"legal:{veto}"] if veto == "no_landing" else [f"gate:{veto}"] if veto else []) + [f"gate:{v}" for v in vetoes if f"gate:{v}" != f"gate:{veto}"]
         if status == "wait" or vetoes:
+            if (later := self._release_later(h.target, h.kind, cands, now)) is not None:
+                return later
             self._charge(h.target, blockers, now)
             self._note_route(cands, now)
             return stay
@@ -515,6 +553,8 @@ class AuditDecider(Decider):
             first = "no_landing" if not land else names[0]
             self._leave_begin(LeaveHold(chosen.id, chosen.game_id, legal.kind_of(chosen.verb), ch.why, self.current, now), first, now)
             t.held += 1
+            if (later := self._release_later(chosen.game_id, legal.kind_of(chosen.verb), cands, now)) is not None:
+                return later
             self._note_route(cands, now)
             return stay
         if names:
