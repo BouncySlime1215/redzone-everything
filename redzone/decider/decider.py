@@ -423,6 +423,7 @@ class Decider:
     _anchor: str | None = None               # [anchor.enabled] the game the screen stick holds (redzone/noggin/anchor.py)
     _anchor_clip: Missed | None = None       # ...the gap plan's clip on the hidden stick now
     _anchor_back: tuple[float, float] | None = None   # ...(the anchor's guaranteed restart on screen, the clip's seconds) of that clip
+    _anchor_stop: tuple[str, Event] | None = None     # ...(the anchor, its stop_start event) of the stoppage that clip was planned in
     _route_stick_at: float = float("-inf")   # [arbiter.catchup_route] when the hidden stick's last job began (a cut, a replay or piece that
                                              # ended): it is loading until this + the route's prep_s. Read only by the route
     _LAZY = {"owner_m": M.OWNER, "screen_m": M.DECIDER_SCREEN, "start_m": M.START, "gone_m": M.SCREEN_GONE, "home_m": M.DECIDER_HOME,
@@ -1299,8 +1300,8 @@ class Decider:
             + AFTER_PLAY_BUFFER_S          # 3.0 = Missed.back_s lead_s
         return max(0.0, need - self.cfg.get("replay.clip_s", 15))
 
-    def abort_replay(self) -> None:
-        """An interrupted replay is still missed; do not credit its planned duration."""
+    def abort_replay(self, why: str = "") -> None:
+        """An interrupted replay is still missed; do not credit its planned duration. `why` is added to the screen machine's reason."""
         m = self.replaying
         if m is None:
             return
@@ -1313,7 +1314,7 @@ class Decider:
         self._clip = None
         self.replay_until = 0.0
         # the current picture is still old footage until a live tune
-        self.screen_m.to("after_replay", f"replay of {m.game_id} interrupted")
+        self.screen_m.to("after_replay", f"replay of {m.game_id} interrupted" + (f": {why}" if why else ""))
         self._screen_log.append((self._clock(), None))
 
     def _start_replay(self, m: Missed, cands, now: float, *, confirmed: bool = False) -> None:
@@ -3302,14 +3303,39 @@ class Decider:
                                  f"{', your team' if g.mine else ''}", now=now)
                 stats["anchors"] += 1
         if self._anchor is None:
-            self._anchor_clip = self._anchor_back = None
+            self._anchor_clip = self._anchor_back = self._anchor_stop = None
             return
         if self.replaying and self._clip is not None and self._clip is self._anchor_clip:
-            self.anchor_m.to("filling", f"gap clip {self._clip.game_id}:{self._clip.pid} on the hidden stick", now=now)
+            stop = self._anchor_restart_known(cands, now)
+            if stop:
+                # [Rule #1 net] the anchor's restart is known from the feed: the clip stops and this tick flips back (_after_replay)
+                stats["aborted_restart"] += 1
+                log.info("anchor %s: gap clip %s:%s stopped, %s", self._anchor, self._clip.game_id, self._clip.pid, stop)
+                self.abort_replay(f"anchor restart, {stop}")
+                self.anchor_m.to("holding", f"the gap clip was stopped: {stop}", now=now)
+                self._anchor_clip = self._anchor_back = self._anchor_stop = None
+            else:
+                self.anchor_m.to("filling", f"gap clip {self._clip.game_id}:{self._clip.pid} on the hidden stick", now=now)
         elif self.anchor_m.is_("filling"):
             self.anchor_m.to("holding", "the gap clip ended: back on the anchor", now=now)
-            self._anchor_clip = self._anchor_back = None
+            self._anchor_clip = self._anchor_back = self._anchor_stop = None
         self._anchor_late(cands, now)
+
+    def _anchor_restart_known(self, cands, now: float) -> str:
+        """[anchor.enabled, Rule #1 net] Why the gap clip on screen must stop now ("" = it may run on): the anchor's restart is
+        known from the feed. The stoppage the clip was planned in ended in the data (a stop_end, or a newer stoppage began), or
+        the anchor's next snap airs sooner than one flip back plus anchor.margin_s (_next_snap_s)."""
+        held = self._anchor_stop
+        tl = self.timelines.get(held[0]) if held is not None and held[0] == self._anchor else None
+        if tl is None:
+            return ""
+        gid, planned = held
+        end = tl.last("stop_end")
+        if tl.last("stop_start") is not planned or (end is not None and end.seen >= planned.lo):
+            return f"its {planned.label} ended in the feed"
+        need = anchor_mod.costs(self.cfg).flip + anchor_mod.knob(self.cfg, "margin_s")
+        snap = self._next_snap_s(gid, cands, now)
+        return f"its next snap airs in {snap:.0f} s and a flip back needs {need:.1f} s" if snap < need else ""
 
     def _anchor_clip_of(self, m: Missed, now: float, reach_s: float) -> anchor_mod.Clip:
         tl = self.timelines.get(m.game_id)
@@ -3401,9 +3427,13 @@ class Decider:
         if plan.starts[0] > now + c.flip + 0.5:
             stats["stick_loading"] += 1
             return None                  # the hidden stick is still loading: stay on the anchor, the next tick re-plans
-        if now + c.flip + first.seconds + c.flip > restart - anchor_mod.knob(self.cfg, "margin_s"):
+        margin = anchor_mod.knob(self.cfg, "margin_s")
+        if now + c.flip + first.seconds + c.flip > restart - margin:
             stats["vetoed_restart"] += 1
             return None
+        if anchor_mod.dead_v2(self.cfg) and self._next_snap_s(gid, cands, now) < c.flip + margin:
+            stats["vetoed_restart"] += 1
+            return None                  # [timing.dead_v2] the feed leads the screen by too little: the net would stop this clip at once
         m = ready[first.id]
         tl = self.timelines.get(m.game_id)
         play_s = PLAY_LEN_S.get(tl.league, 8.0) if tl else 8.0
@@ -3411,6 +3441,7 @@ class Decider:
         m.marked_replay = m.marked_replay or self._catchup_seen(m.game_id, (m.aired or m.t) - play_s, now)
         self._route_clip = (m, first.seconds)        # one whole short clip: _route_piece_ended finishes it
         self._anchor_clip, self._anchor_back = m, (restart, first.seconds)
+        self._anchor_stop = (gid, self.timelines[gid].last("stop_start"))
         stats["clips"] += 1
         log.info("anchor %s gap (%s): %s, plan of %d worth %.0f, back by %.0f s before the restart", gid, why, first.id,
                  len(plan.items), plan.value, restart - (now + 2 * c.flip + first.seconds))

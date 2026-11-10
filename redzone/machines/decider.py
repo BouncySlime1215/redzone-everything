@@ -144,7 +144,8 @@ ANCHOR = Spec(
     states={
         "off": "no anchor: the normal show",
         "holding": "the anchor is on (or on its way to) the screen stick; its live plays are never left",
-        "filling": "a clip of the gap plan is on the hidden stick; the screen flips back before the anchor's guaranteed restart",
+        "filling": "a clip of the gap plan is on the hidden stick; the screen flips back before the anchor's guaranteed restart, "
+                   "or at once when the feed shows that restart",
     },
     edges={"off": ("holding",), "holding": ("filling", "off"), "filling": ("holding", "off")},
     initial="off")

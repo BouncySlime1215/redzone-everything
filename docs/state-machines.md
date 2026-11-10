@@ -499,7 +499,7 @@ Owner: `decider.Decider.anchor_m`. [anchor.enabled] the crunch or overtime game 
 |---|---|---|
 | `off` (initial) | no anchor: the normal show | holding |
 | `holding` | the anchor is on (or on its way to) the screen stick; its live plays are never left | filling, off |
-| `filling` | a clip of the gap plan is on the hidden stick; the screen flips back before the anchor's guaranteed restart | holding, off |
+| `filling` | a clip of the gap plan is on the hidden stick; the screen flips back before the anchor's guaranteed restart, or at once when the feed shows that restart | holding, off |
 
 ```mermaid
 stateDiagram-v2

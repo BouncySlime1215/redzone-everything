@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 from redzone.decider import screen
+from redzone.decider.decider import Decider
 from redzone.decider.screen import Event
 from redzone.models import League
 from redzone.noggin import anchor as A
@@ -163,6 +164,7 @@ def test_flag_off_a_night_decides_as_before_the_change(monkeypatch):
     for name in ("guaranteed_left_v2", "guaranteed_left_v2_within", "cell_v2"):
         monkeypatch.setattr(dead_left, name, boom)
     monkeypatch.setattr(A, "guaranteed_left_v2_within", boom)
+    monkeypatch.setattr(Decider, "_anchor_restart_known", boom)                # the restart net is anchor mode's alone
     monkeypatch.setattr(screen, "stoppage_class", lambda *a, **k: "")          # before: no class beside the label
     assert _night_decisions() == after
 
