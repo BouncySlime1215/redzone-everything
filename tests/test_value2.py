@@ -478,3 +478,105 @@ def test_every_number_comes_from_the_data_file():
 def test_hockey_and_baseball_are_not_graded_yet():
     with pytest.raises(KeyError):
         value2.grade("nhl", {"plays": []})
+
+
+# --- replay value and two-point tries (Nick's calls, Nov 9 night) ------------------------------------------------
+
+def test_replay_is_base_times_leverage_to_the_exponent_times_stakes():
+    a = value2.config()["replay_leverage_exponent"]
+    assert a == 0.3
+    post = _td(header={"season": {"type": 3}})
+    for g in value2.grade("nfl", post):
+        assert g.replay == pytest.approx(g.base * g.leverage ** a * g.stakes)
+        assert g.value == pytest.approx(g.base * g.leverage * g.stakes)          # live value is untouched
+    cfg = copy.deepcopy(value2.config())
+    cfg["replay_leverage_exponent"] = 1.0                                      # exponent 1: replay is the live value
+    assert all(g.replay == pytest.approx(g.value) for g in value2.grade("nfl", post, cfg=cfg))
+
+
+def test_garbage_time_interception_is_low_live_but_replay_worthy():
+    """The MIA @ NYJ garbage-time interception of the report: base 5, leverage 0.3."""
+    s = fb(fp("Rush", "for 1 yard.", per=4, clock="1:30", home=38, away=3),
+           fp("Pass Interception Return", "J.Doe pass INTERCEPTED by K.Fox at NYJ 15. K.Fox to NYJ 15 for no gain.",
+              per=4, clock="1:10", y=15, home=38, away=3, isTurnover=True))
+    g = one("nfl", s, "interception")
+    assert (g.base, g.leverage, g.stakes) == (5.0, 0.3, 1.0)
+    assert g.value == pytest.approx(1.5) and g.replay == pytest.approx(5.0 * 0.3 ** 0.3) and round(g.replay, 2) == 3.48
+    winner = one("nfl", fb(fp("Rush", "for 1 yard.", per=4, clock="1:00", home=20, away=17),
+                           fp("Passing Touchdown", "for 7 yards, TOUCHDOWN.", per=4, clock="0:40", home=20, away=24, scoring=True)), "td_off")
+    assert winner.replay > g.replay and winner.value / g.value > winner.replay / g.replay       # replay still ranks, but flatter
+
+
+def test_dead_moments_replay_at_zero_not_negative():
+    kneel = fb(fp("Rush", "J.Her kneels to PIT 39 for -1 yards.", per=4, clock="0:40", home=24, away=21))
+    ft = hoops(*lead(20, 30), bp("Free Throw - 1 of 2", "H makes free throw 1 of 2", per=1, clock="5:00", home=21, away=30, value=1, team="H"))
+    for g in (one("nfl", kneel, "dead_kneel"), one("nba", ft, "dead_ft")):
+        assert g.dead and g.value < 0 and g.replay == 0.0
+
+
+def test_graded_keeps_working_for_callers_and_pickles_without_replay():
+    import pickle
+    old = value2.Graded(1.0, "p", "td_off", 5.0, 1.0, 1.0, 5.0, 0, 7, 600.0, 1)       # a caller that never passes replay
+    assert old.replay == 0.0
+    assert pickle.loads(pickle.dumps(old)) == old
+    state = {k: v for k, v in old.__dict__.items() if k != "replay"}           # what a pickle from before the field holds
+    back = value2.Graded.__new__(value2.Graded)
+    back.__dict__.update(state)                                                # what unpickling does with that state
+    assert back.replay == 0.0 and back.value == 5.0
+
+
+def _try(text, *, before, after, per=4, clock="1:00"):
+    """A touchdown row with its two-point try: before / after are (home, away), and after includes the try."""
+    return fb(fp("Rush", "for 1 yard.", per=per, clock="1:30", home=before[0], away=before[1]),
+              fp("Passing Touchdown", text, per=per, clock=clock, home=after[0], away=after[1], scoring=True))
+
+
+# ESPN's own wording, from the archived NFL dev summaries (98 made or failed tries read, Nov 9).
+MADE = "T.Tag pass short right to J.Hil for 9 yards, TOUCHDOWN. TWO-POINT CONVERSION ATTEMPT. T.Tag pass to J.Hil is complete. ATTEMPT SUCCEEDS."
+FAILED = "P.Mah pass short left to T.Kel for 4 yards, TOUCHDOWN. TWO-POINT CONVERSION ATTEMPT. P.Mah pass to N.Gra is incomplete. ATTEMPT FAILS."
+
+
+def test_failed_two_point_try_is_unchanged():
+    g = one("nfl", _try(FAILED, before=(20, 14), after=(20, 20)), "two_point")          # TD ties it, try fails
+    assert g.base == 3.0 and g.grades == () and g.value == pytest.approx(3.0 * g.leverage)
+    g = one("nfl", _try(FAILED, before=(20, 17), after=(20, 23)), "two_point")          # TD takes the lead, try fails
+    assert g.base == 3.0 and g.grades == ()
+
+
+@pytest.mark.parametrize("before, after", [
+    ((20, 12), (20, 20)),        # away down 8: TD and two tie it
+    ((20, 13), (20, 21)),        # away down 7: TD ties, the two takes the lead
+    ((12, 20), (20, 20)),        # home side
+])
+def test_made_two_point_try_that_ties_or_leads_gets_the_bonus(before, after):
+    g = one("nfl", _try(MADE, before=before, after=after), "two_point")
+    bonus = value2.config()["football"]["bonus"]["two_point_ties_or_leads"]
+    assert bonus == 2.0 and g.base == 3.0 + bonus and g.grades == ("two_point_ties_or_leads",)
+    assert g.value == pytest.approx(g.base * g.leverage * g.stakes)
+
+
+@pytest.mark.parametrize("text, before, after", [
+    (MADE, (20, 3), (20, 11)),                       # made, still down 9
+    (MADE, (20, 17), (20, 25)),                      # made, already ahead after the touchdown
+    (MADE.replace("ATTEMPT SUCCEEDS.", "ATTEMPT FAILS. The Replay Official reversed the ruling. ATTEMPT SUCCEEDS."),
+     (20, 12), (20, 20)),                            # both words: ambiguous, no bonus
+    (MADE.replace(" ATTEMPT SUCCEEDS.", ""), (20, 12), (20, 20)),                   # neither word
+    (MADE, (20, 12), (20, 12)),                      # the row's score did not move
+])
+def test_no_bonus_when_the_try_does_not_tie_or_lead_or_the_text_is_ambiguous(text, before, after):
+    g = one("nfl", _try(text, before=before, after=after), "two_point")
+    assert g.base == 3.0 and g.grades == ()
+
+
+def test_value_is_identical_to_before_on_the_shard_fixtures():
+    """Every moment's live value on the shard fixtures, hashed at 98e026ab (before replay and the two-point bonus)."""
+    import hashlib
+    import json
+    from tests.test_gamevalue import nba_summary
+    from tests.test_value_shards import nfl_summary
+    rows = []
+    for lg, s in (("nfl", nfl_summary()), ("nba", nba_summary(0.0, 3))):
+        rows += [[lg, g.play_id, g.kind, f"{g.base:.6f}", f"{g.leverage:.6f}", f"{g.stakes:.6f}", f"{g.value:.6f}"]
+                 for g in value2.grade(lg, s)]
+    assert len(rows) == 83
+    assert hashlib.sha256(json.dumps(rows).encode()).hexdigest() == "fed6ec4db0cde29d62427757703b0b14cd7fa92fc3c36189e5fb69b20113db2c"
