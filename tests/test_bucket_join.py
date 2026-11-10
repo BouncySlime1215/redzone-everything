@@ -187,3 +187,17 @@ def test_flag_off_a_night_decides_as_before_the_change(monkeypatch):
         return real(self, key, default)
     monkeypatch.setattr(Config, "get", get)
     assert _night_decisions() == after
+
+
+# ----- [NBA-YES] a made free throw is not a made basket ------------------------------------------------------------------------------
+
+def test_a_made_free_throw_opens_no_window():
+    """The grader's window is field goals only (cutgrade.after_bucket): a join 4 to 8 s after a made last free throw is mid-play."""
+    last = ("1", 100.0, "A makes free throw 2 of 2", "Free Throw - 2 of 2", 500.0)
+    assert cuts.shot_kind(League.NBA, "", last[2], last[3]) == "made"                     # the walk's reading, unchanged
+    assert _lands([last, NEXT], 103.5, 105.0) is None and _lands([last, NEXT], 103.5, 105.0, cfg=CRUNCH) is None
+    college = ("1", 100.0, "A made Free Throw.", "MadeFreeThrow", 500.0)
+    assert _lands([college, NEXT], 103.5, 105.0, league=League.CBB) is None
+    assert _lands([MADE, NEXT], 103.5, 105.0) is not None                                  # a made field goal still opens it
+    tl = _tl([last, ("2", 110.0, *MADE[2:])])
+    assert [m.ft for m in tl.dead._order()] == [True, False]

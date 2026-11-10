@@ -269,6 +269,7 @@ class Mark:
     period: int | None = None
     faceoff: bool = False
     shot: str | None = None   # basketball: made / miss / dreb / oreb (shot_kind)
+    ft: bool = False          # basketball: a free throw (a made last one is shot "made", but it is not a made basket: gate._post_make_windows)
 
 
 @dataclass
@@ -366,7 +367,7 @@ class DeadTracker:
                 self.frozen_until = max(self.frozen_until, hi + FROZEN_HOLD_S)
             self._last_stamp = (lo, clock, period)
         self.marks[pid] = Mark(pid, lo, hi, after, clock, period, faceoff=tt in ("face off", "faceoff"),
-                               shot=shot_kind(self.league, kind, text, type_text))
+                               shot=shot_kind(self.league, kind, text, type_text), ft="freethrow" in tt.replace(" ", ""))
         self._sorted = self._windows = None
         self._walks.clear()
         if len(self.marks) > 600:   # keep the recent past only

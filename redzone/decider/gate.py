@@ -436,10 +436,11 @@ def bucket_on(cfg: Any) -> bool:
 def _post_make_windows(dead: Any, floor_s: float, p: slate_mod.Params) -> list[Window]:
     """Basketball: each made basket's window, in real time. Starts when the ball is through (bucket_after_s), ends at the
     measured moment the next possession can produce a shot (floor_s after the make) or the next logged action less the
-    stamp's guard, whichever is sooner. A window needs no next row in the data: with a late feed the floor is all there is."""
+    stamp's guard, whichever is sooner. A window needs no next row in the data: with a late feed the floor is all there is.
+    A made free throw opens none: Nick's rule is made baskets, and the grader's window (cutgrade.after_bucket) is field goals only."""
     out, ms = [], dead._order()
     for i, m in enumerate(ms):
-        if m.shot != "made" or m.hi <= dead.frozen_until:
+        if m.shot != "made" or m.ft or m.hi <= dead.frozen_until:
             continue
         nxt = dead._next_action(ms, i)
         end = m.hi + floor_s if nxt is None else min(m.hi + floor_s, nxt.lo - p.bucket_guard_s)
