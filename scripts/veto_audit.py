@@ -8,6 +8,8 @@
                   flip 2.2 s, load 19 s, reach capped at 175 s, so the 180 s column reads 175). Default `assumed`: today's 3.2 / 15 / column reach
     --dead floor  size every catch-up piece with the dead time the live code could count on in advance (scoring/dead_left.guaranteed_left,
                   q10 of the stoppage's measured length less what already ran), not the real length known afterwards. Default `hindsight`
+    --dead v2 --alpha 0.01   the same, from the class and elapsed-time table (scoring/dead_left.guaranteed_left_v2: the stoppage's break
+                  class as the timeline carries it, the seconds it has already run, sure at the 1 - alpha level; alpha 0.10, 0.05, 0.02 or 0.01)
 
 Dev nights only (`--split` takes fit and nothing else; a locked night is never opened). No TV, no adb, no engine.
 
@@ -77,7 +79,7 @@ from redzone.lab import backtest, leverage, splits, sportsgrade  # noqa: E402
 from redzone.models import League, Phase, Stoppage  # noqa: E402
 from redzone.moments.detect import detect as detect_moments  # noqa: E402
 from redzone.noggin import arbiter, catchup, legal  # noqa: E402
-from redzone.scoring.dead_left import guaranteed_left  # noqa: E402
+from redzone.scoring.dead_left import ALPHAS, guaranteed_left, guaranteed_left_v2, stoppage_class  # noqa: E402
 from redzone.sources import espn  # noqa: E402
 
 SCRIPTS = {"nfl": ("scripts/eval.py", []), "nba": ("scripts/eval_sports.py", ["nba"]),
@@ -92,8 +94,9 @@ PREP_S = DEFAULT_PREP_S  # this run's load time (--prep-s): how long after it ai
 FLIP_S = 3.2         # buffered.py flip_s: an input flip between the sticks (the slowest usual)
 DEFAULT_FLIP_S = FLIP_S
 REACH_CAP_S = float("inf")   # --timing measured: no reach column goes deeper than timing.reach_s (175 s measured)
-TIMINGS, DEADS = ("assumed", "measured"), ("hindsight", "floor")
+TIMINGS, DEADS = ("assumed", "measured"), ("hindsight", "floor", "v2")
 TIMING, DEAD = TIMINGS[0], DEADS[0]   # this run's --timing and --dead (defaults: today's numbers)
+RISK = ALPHAS[-1]    # --dead v2: this run's --alpha, the share of stoppages allowed to restart before the promised time (default 0.01)
 PAST_CAP_S = 600.0   # `past_cap`: how long after the 180 s cap a later opening is still looked for (info only)
 
 # Why the catch-up route did not air a lost moment: the furthest step any tick got inside the moment's window, in this order.
@@ -499,42 +502,69 @@ def seen(air: Air, screen: list) -> bool:
     return i >= 0 and screen[i][1] == air.game_id
 
 
-def floor_left(rep, st: float) -> float:
-    """[--dead floor] The dead time still to come that the live code could count on at screen time st: guaranteed_left (q10 of the
-    measured length, less what already ran) of the stoppage that began this dead ball. A plain dead ball, with no measured kind,
-    guarantees nothing."""
+def _stoppage_before(rep, st: float) -> tuple[int, Stoppage] | None:
+    """(index of its play, kind) of the stoppage that began the dead ball on screen at screen time st; None: a plain dead ball, or
+    off the air."""
     i = idx(rep.wall, st)
     if i < 0 or st > rep.wall[-1]:
-        return 0.0
+        return None
     for k in range(i, max(-1, i - 40), -1):
         stop = espn.stoppage_for(rep.league, rep.plays[k])
         if stop == Stoppage.NONE and k == i and (rep.league in CONTINUOUS or rep.league.base == League.NBA):
             stop = held_stop(rep.league, rep.wall, rep.plays, i)
         if stop not in (Stoppage.NONE, Stoppage.UNKNOWN):
-            return guaranteed_left(rep.league, stop.value, st - rep.wall[k])
+            return k, stop
         if is_action(rep.league, rep.plays[k]):
             break
-    return 0.0
+    return None
+
+
+def floor_left(rep, st: float) -> float:
+    """[--dead floor] The dead time still to come that the live code could count on at screen time st: guaranteed_left (q10 of the
+    measured length, less what already ran) of the stoppage that began this dead ball. A plain dead ball, with no measured kind,
+    guarantees nothing."""
+    got = _stoppage_before(rep, st)
+    return 0.0 if got is None else guaranteed_left(rep.league, got[1].value, st - rep.wall[got[0]])
+
+
+def v2_left(rep, st: float) -> float:
+    """[--dead v2] The same question answered by the class and elapsed-time table at this run's --alpha: guaranteed_left_v2 of the
+    stoppage that began this dead ball, by its break class (dead_left.stoppage_class on the stoppage's own play, what the timeline
+    carries beside the label) and the seconds since it began. A run of entries of one kind is one stoppage, timed and classed from
+    its first entry: that is how the table's rows were cut. A plain dead ball guarantees nothing."""
+    got = _stoppage_before(rep, st)
+    if got is None:
+        return 0.0
+    k, stop = got
+    while k > 0 and espn.stoppage_for(rep.league, rep.plays[k - 1]) == stop:
+        k -= 1
+    play = rep.plays[k]
+    cls = stoppage_class(rep.league, stop, (play.get("type") or {}).get("text") or "", play.get("text") or "")
+    return guaranteed_left_v2(rep.league, stop.value, st - rep.wall[k], RISK, cls)
 
 
 def dead_left(rep, st: float, stats: Counter | None = None) -> tuple[bool, bool, float]:
-    """dead_at, with --dead floor: the seconds left are what the live code could know in advance, never more than the truth (a floor
-    above the truth would have run a clip into live play: counted in `floor_over_truth` ticks, info only)."""
+    """dead_at, with --dead floor or v2: the seconds left are what the live code could know in advance, never more than the truth (a
+    floor above the truth would have run a clip into live play: counted in `floor_over_truth` ticks, info only)."""
     dead, brk, left = dead_at(rep.league, rep.wall, rep.plays, st)
-    if DEAD != "floor" or not dead:
+    if DEAD == DEADS[0] or not dead:
         return dead, brk, left
-    fl = floor_left(rep, st)
+    fl = floor_left(rep, st) if DEAD == "floor" else v2_left(rep, st)
     if fl > left and stats is not None:
         stats["floor_over_truth"] += 1
     return dead, brk, min(left, fl)
 
 
-def use_timing(timing: str = TIMINGS[0], dead: str = DEADS[0], prep_s: float | None = None, sets: dict | None = None) -> None:
-    """This process's knobs (a worker has its own module globals). `measured`: timing.* from the config defaults and --set."""
-    global TIMING, DEAD, PREP_S, FLIP_S, REACH_CAP_S
+def use_timing(timing: str = TIMINGS[0], dead: str = DEADS[0], prep_s: float | None = None, sets: dict | None = None,
+               alpha: float | None = None) -> None:
+    """This process's knobs (a worker has its own module globals). `measured`: timing.* from the config defaults and --set.
+    `alpha`: the risk level --dead v2 reads the table at (None: the default 0.01)."""
+    global TIMING, DEAD, PREP_S, FLIP_S, REACH_CAP_S, RISK
     if timing not in TIMINGS or dead not in DEADS:
         raise ValueError(f"--timing {timing!r} / --dead {dead!r}")
-    TIMING, DEAD = timing, dead
+    if alpha is not None and alpha not in ALPHAS:
+        raise ValueError(f"--alpha {alpha!r}: the table stores {ALPHAS}")
+    TIMING, DEAD, RISK = timing, dead, ALPHAS[-1] if alpha is None else alpha
     m = measured_timing.route_costs(measured_cfg(sets)) if timing == "measured" else None
     FLIP_S, REACH_CAP_S = (DEFAULT_FLIP_S, float("inf")) if m is None else (m["flip_s"], m["reach_s"])
     PREP_S = prep_s if prep_s is not None else DEFAULT_PREP_S if m is None else m["prep_s"]
@@ -814,10 +844,10 @@ def replay(brain_name: str, sets: dict, row: dict, cap: int | None):
 
 
 def run_one(job: tuple) -> dict:
-    """One league under one brain: the row for the table. (league, brain, sets, cap, prep_s[, timing, dead]): a worker process has its
-    own module, so the knobs ride in on the job."""
+    """One league under one brain: the row for the table. (league, brain, sets, cap, prep_s[, timing, dead[, alpha]]): a worker process
+    has its own module, so the knobs ride in on the job."""
     league, brain_name, sets, cap, prep_s, *knobs = job
-    use_timing(*knobs, prep_s=prep_s, sets=sets)
+    use_timing(*knobs[:2], prep_s=prep_s, sets=sets, alpha=knobs[2] if len(knobs) > 2 else None)
     row = new_row()
     script, args = SCRIPTS[league]
     extra = ["--split", "fit"]
@@ -944,8 +974,10 @@ def main() -> int:
                     help="what-if: seconds the hidden stick needs to tune and seek to a catch-up clip (default 15, or timing.clip_prep_s with "
                          "--timing measured; 60 models a re-tuned stick)")
     ap.add_argument("--timing", default=TIMINGS[0], choices=TIMINGS, help="catch-up flip, clip load and reach: assumed (today) or measured (timing.*)")
-    ap.add_argument("--dead", default=DEADS[0], choices=DEADS, help="catch-up pieces sized by the real dead time (hindsight, today) or the floor "
-                                                                   "the live code could know (floor)")
+    ap.add_argument("--dead", default=DEADS[0], choices=DEADS, help="catch-up pieces sized by the real dead time (hindsight, today), the floor "
+                                                                   "the live code could know (floor), or the class and elapsed-time table (v2)")
+    ap.add_argument("--alpha", type=float, default=ALPHAS[-1], choices=ALPHAS,
+                    help="--dead v2 only: the share of stoppages allowed to restart before the promised time (default 0.01, the 99%% level)")
     ap.add_argument("--json", type=Path, default=None)
     a = ap.parse_args()
     if a.prep_s is not None and a.prep_s < 0:
@@ -953,9 +985,10 @@ def main() -> int:
     sets = parse_sets(a.set)
     if a.timing == "measured":
         sets.setdefault(measured_timing.TIMING_FLAG, True)      # the replayed decider reads the same timings
-    use_timing(a.timing, a.dead, a.prep_s, sets)
+    v2 = (a.alpha,) if a.dead == "v2" else ()          # the risk level rides on the job (and the file) only when v2 reads it
+    use_timing(a.timing, a.dead, a.prep_s, sets, *v2)
     a.prep_s = PREP_S
-    jobs = [(lg, b, sets, a.cap, a.prep_s) + ((a.timing, a.dead) if (a.timing, a.dead) != (TIMINGS[0], DEADS[0]) else ())
+    jobs = [(lg, b, sets, a.cap, a.prep_s) + ((a.timing, a.dead) if (a.timing, a.dead) != (TIMINGS[0], DEADS[0]) else ()) + v2
             for lg in a.leagues for b in a.brains]
     if a.workers == 1 or len(jobs) == 1:
         rows = [run_one(j) for j in jobs]
@@ -967,8 +1000,11 @@ def main() -> int:
         print(f"what-if: hidden stick load time {a.prep_s:g} s (default {DEFAULT_PREP_S:g} s)")
     if a.timing != TIMINGS[0]:
         print(f"timing {a.timing}: flip {FLIP_S:g} s, clip load {PREP_S:g} s, reach capped at {REACH_CAP_S:g} s (SMALL SAMPLES, Nov 9, busy Mac)")
-    if a.dead != DEADS[0]:
+    if a.dead == "floor":
         print(f"dead {a.dead}: catch-up pieces sized by the q10 dead time the live code could know in advance, not the real length")
+    if a.dead == "v2":
+        print(f"dead v2, alpha {a.alpha:g}: catch-up pieces sized by the dead time the class and elapsed-time table promises at the "
+              f"{100.0 * (1.0 - a.alpha):g}% level (scoring/dead_left.guaranteed_left_v2), not the real length")
     if a.json:
         out = {"sets": sets, "rows": rows, "rules": merge(rows), "avoidable_lost": {str(r): avoidable(rows, r) for r in REACHES}}
         if a.prep_s != DEFAULT_PREP_S:      # the default run's file stays byte-identical
@@ -977,6 +1013,8 @@ def main() -> int:
             out["timing"] = a.timing
         if a.dead != DEADS[0]:
             out["dead"] = a.dead
+        if a.dead == "v2":
+            out["alpha"] = a.alpha
         a.json.write_text(json.dumps(out, indent=1))
     return 0
 
