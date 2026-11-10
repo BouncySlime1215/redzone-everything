@@ -1,4 +1,4 @@
-"""[arbiter.catchup_route_short] With another missed must-see waiting, a catch-up clip is just the play. Off by default.
+"""[arbiter.catchup_route_short] With another missed must-see waiting, a catch-up clip is just the play. On by default (Nick, Nov 9); it needs arbiter.catchup_route, which is off.
 
 Why: the audit's residual showed the biggest avoidable loss after catch-up is the one hidden stick's queue (1,543 of 3,456 value
 points): a 30 s clip plus its seek holds the stick about 51 s while other moments run past the 180 s cap. These pin what may never
@@ -19,9 +19,10 @@ ON, OFF = C.Route(reach_s=180.0, short=True), C.Route(reach_s=180.0)
 A1, B1 = C.Moment("a", "ga", 5.0, 1000.0), C.Moment("b", "gb", 3.0, 1005.0)
 
 
-def test_the_flag_ships_off_and_is_registered():
+def test_the_flag_is_registered_and_on_while_the_route_is_off():
     cfg = yaml.safe_load((Path(A.__file__).parents[1] / "default_config.yaml").read_text())
-    assert cfg["arbiter"]["catchup_route_short"] is False and A.DEFAULT_PARAMS.catchup_route_short is False and C.Route().short is False
+    assert cfg["arbiter"]["catchup_route_short"] is True and A.DEFAULT_PARAMS.catchup_route_short is True and C.Route().short is False
+    assert cfg["arbiter"]["catchup_route"] is False      # the route itself stays off until the TV proves the load time, so short changes nothing live
     assert A.Params.from_config({"arbiter.catchup_route_short": True}.get).catchup_route_short is True
 
 
