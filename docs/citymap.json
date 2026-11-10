@@ -838,13 +838,6 @@
    ],
    "writers": []
   },
-  "features.json": {
-   "readers": [],
-   "users": [],
-   "writers": [
-    "scripts/kaggle_park.py"
-   ]
-  },
   "feed_lag_profile.json": {
    "readers": [
     "redzone/buffer_shadow.py",
@@ -979,20 +972,6 @@
     "redzone/engine.py"
    ],
    "writers": []
-  },
-  "landings_features.json": {
-   "readers": [],
-   "users": [],
-   "writers": [
-    "scripts/kaggle_park.py"
-   ]
-  },
-  "landings_report.json": {
-   "readers": [],
-   "users": [],
-   "writers": [
-    "scripts/kaggle_park.py"
-   ]
   },
   "last_views.json": {
    "readers": [
@@ -1240,8 +1219,7 @@
     "agent/kaggle/teacher_distill.py"
    ],
    "writers": [
-    "agent/kaggle/grade.py",
-    "scripts/kaggle_park.py"
+    "agent/kaggle/grade.py"
    ]
   },
   "round.json": {
@@ -8937,7 +8915,9 @@
     "redzone/reasoner/head.py",
     "redzone/scoring/brain.py",
     "redzone/scoring/brain3.py",
-    "scripts/kaggle_gamevalue.py"
+    "scripts/kaggle_gamevalue.py",
+    "scripts/kaggle_park.py",
+    "scripts/park_table.py"
    ],
    "owner": "unowned",
    "role": "[one brain, step 4] One tree walker and one model loader (docs/onebrain-migration.md).",
@@ -10794,7 +10774,8 @@
     "redzone/noggin/predict_fit.py",
     "redzone/noggin/timing.py",
     "redzone/scoring/brain.py",
-    "scripts/kaggle_gamevalue.py"
+    "scripts/kaggle_gamevalue.py",
+    "scripts/kaggle_park.py"
    ],
    "owner": "unowned",
    "role": "Brain v3: one compact model per league, numpy only at runtime.",
@@ -15510,19 +15491,20 @@
    ]
   },
   "scripts/kaggle_park.py": {
-   "calls": [],
+   "calls": [
+    "redzone/models_rt/forest.py:Nodes",
+    "redzone/scoring/brain3.py:flatten"
+   ],
    "contracts": [],
    "data": {
     "reads": [],
     "uses": [],
-    "writes": [
-     "features.json",
-     "landings_features.json",
-     "landings_report.json",
-     "report.json"
-    ]
+    "writes": []
    },
-   "inputs": [],
+   "inputs": [
+    "redzone/models_rt/forest.py",
+    "redzone/scoring/brain3.py"
+   ],
    "kind": "entry",
    "machines": {
     "declares": [],
@@ -15530,7 +15512,7 @@
    },
    "outputs": [],
    "owner": "unowned",
-   "role": "Train the PARK action-value model on Kaggle CPU from scripts/park_table.py tables.",
+   "role": "Train the PARK models on Kaggle CPU from the two scripts/park_table.py tables.",
    "serves": [
     "untagged"
    ]
@@ -16240,6 +16222,27 @@
     "untagged"
    ]
   },
+  "scripts/park_compare.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "One table per slate and timing error: live-edge physics, the last sweep's best pick, the planner, the greedy ceiling.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/park_pick.py": {
    "calls": [],
    "contracts": [],
@@ -16257,6 +16260,27 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Pick the best safe PARK setting per slate from a park_sim sweep, print it beside today's physics, then vary one thing at a time.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/park_plan.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "PARK-BRAIN: a planning controller for the two-stick show, run inside park_sim (its nights, physics, padding and counters).",
    "serves": [
     "untagged"
    ]
@@ -16304,14 +16328,19 @@
    ]
   },
   "scripts/park_table.py": {
-   "calls": [],
+   "calls": [
+    "redzone/models_rt/forest.py:Nodes",
+    "redzone/models_rt/forest.py:load_npz"
+   ],
    "contracts": [],
    "data": {
     "reads": [],
     "uses": [],
     "writes": []
    },
-   "inputs": [],
+   "inputs": [
+    "redzone/models_rt/forest.py"
+   ],
    "kind": "entry",
    "machines": {
     "declares": [],
@@ -16319,7 +16348,7 @@
    },
    "outputs": [],
    "owner": "unowned",
-   "role": "PARK step 5: the training table.",
+   "role": "PARK step 5: the training tables, made from the PLANNER's own decisions (scripts/park_plan.py), and the model hook.",
    "serves": [
     "untagged"
    ]
@@ -18494,13 +18523,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2140,
-  "data_files": 205,
+  "calls": 2144,
+  "data_files": 202,
   "machines": 51,
-  "modules": 460,
+  "modules": 462,
   "orphans": 34,
-  "unowned": 262,
-  "untagged": 391
+  "unowned": 264,
+  "untagged": 393
  },
  "version": 2
 }
