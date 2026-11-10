@@ -782,10 +782,12 @@ class Decider:
         lock = (cur.scored.lock or "") if cur is not None else ""
         lock_rule = bool(c.get("legal.lock_dead_ball", False))       # off: any lock hides every cut (legal.lock_hides)
         lead = float(c.get("decider.locked_override_lead", 20)) if lock_rule and lock else 0.0
+        # [legal.facts_urgent, off] plan each landing as the flip gate will (the urgent and possession bars): one helper, gate.Flip.replan
+        flip_host = flip_gate().DeciderHost(self, cands, now) if c.get("legal.facts_urgent", False) else None
         rows = []
         for gid, x in cands.items():
             s = x.scored
-            plan = None if gid in PSEUDO else self.entry_plan(gid, cands, now)
+            plan = None if gid in PSEUDO else self.entry_plan(gid, cands, now) if flip_host is None else self._flip_plan(flip_host, gid, x, cands, now)
             cost = (self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target)) if x.target else 0.0
             resume = plan.landing.resume if plan is not None and plan.landing is not None else None
             big = cur is not None and legal.must_see(s.score, cur.scored.score, c.get("decider.must_see_score"),
@@ -809,6 +811,15 @@ class Decider:
             focus_game=u.focus_game if u.focus_mode != FocusMode.AUTOPILOT else None,
             focus_must_see=u.focus_mode == FocusMode.FOCUS_MUST_SEE,
             banned_apps=HardRules.from_config(c).banned_apps, games=tuple(rows))
+
+    def _flip_plan(self, host, gid: str, x: Candidate, cands: dict[str, Candidate], now: float) -> EntryPlan | None:
+        """[legal.facts_urgent] The landing plan for a brain's cut to gid as the commit gate itself makes it at the flip
+        (gate.Flip.replan, on the list's own switch cost): a crunch or sticky entry of a whistle-timed league lands on the
+        urgent margin, a possession-start entry on its cue. The list planned every landing with neither, so it refused cuts the
+        gate passes. An entry the flip does not time keeps the list's plan."""
+        d = Decision(now, "switch", gid, "", State.WATCHING, kind=legal.kind_of("cut") or "better")
+        timed, plan = flip_gate().Flip(host, d, self.current, x.target, cands, None, now).replan
+        return plan if timed else self.entry_plan(gid, cands, now)
 
     def _high_leverage_on_screen(self, cur: Candidate, now: float) -> bool:
         """[legal.lock_dead_ball] The game on screen is at a high-leverage moment (close and late, or overtime: scoring.engine's copy

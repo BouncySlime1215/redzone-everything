@@ -11,6 +11,7 @@ import yaml
 
 from redzone import measured_timing as mt
 from redzone.decider import gate
+from redzone.decider.cuts import EntryPlan
 from redzone.config import _deep_merge
 from redzone.decider.decider import PSEUDO, Candidate, Decider, Decision, State
 from redzone.decider.screen import Event, Timeline, leave_window
@@ -27,7 +28,7 @@ ALL = ["nfl", "cfb", "nba", "cbb", "nhl", "mlb"]
 # The fixture night with the arbiter choosing and a held pick allowed to wait: the paths the flags live on.
 CTX = {"arbiter.enabled": True, "legal.leave_at_flip": True, "legal.leave_low_leverage": ALL}
 OFF = {"gate.leave_unaired_row_only_ended": False, "gate.leave_margin_measured": False, "gate.leave_dead_window": False,
-       "legal.lock_dead_ball": False}        # every new flag at its shipped default
+       "legal.lock_dead_ball": False, "legal.facts_urgent": False}        # every new flag at its shipped default
 
 
 def night(ctx=None, **sets):
@@ -313,4 +314,61 @@ def test_flag_off_the_night_never_asks_about_the_lock(monkeypatch):
     after = night()
     monkeypatch.setattr(Decider, "_high_leverage_on_screen", lambda *a: (_ for _ in ()).throw(AssertionError("read with the flag off")))
     monkeypatch.setattr(legal, "lock_hides", lambda lock, rule=False, *a: bool(lock) if not rule else 1 / 0)
+    assert night() == after
+
+
+# ----- step 6: legal.facts_urgent -----------------------------------------------------------------------------------------------------
+
+URGENT = "legal.facts_urgent"
+
+
+def _planned(cfg, clock, **sets):
+    """The (game, urgent, possession, cost) of every landing plan legal_facts asks for, and its facts. A plan is ok only on the urgent bar."""
+    for k, v in sets.items():
+        node = v
+        for part in reversed(k.split(".")):
+            node = {part: node}
+        cfg.data = _deep_merge(cfg.data, node)
+    d = _dec(cfg, clock)
+    d.current = "a"
+    d.entry_cost = lambda target: 5.0
+    asked = []
+    d.entry_plan = lambda gid, cands, now, cost=None, urgent=False, possession=False: (
+        asked.append((gid, urgent, possession, cost)), EntryPlan(ok=urgent, why="t"))[1]
+    hockey = _c("b", 60.0, "youtubetv:b")
+    cands = {"a": _c("a", 50.0, "youtubetv:a"), "c": _c("c", 55.0, "youtubetv:c"),
+             "b": Candidate(dataclasses.replace(hockey.scored, league=League.NHL, crunch=True), hockey.target)}
+    for gid, x in cands.items():
+        d.timeline(gid, x.scored.league)
+    return asked, d.legal_facts(cands)
+
+
+def test_flag_off_the_list_plans_every_landing_with_neither_bar(cfg, clock):
+    asked, f = _planned(cfg, clock)
+    assert asked == [("a", False, False, None), ("c", False, False, None), ("b", False, False, None)]
+    assert not any(g.landable for g in f.games)
+
+
+def test_flag_on_the_list_plans_a_crunch_entry_on_the_urgent_bar_like_the_flip(cfg, clock):
+    asked, f = _planned(cfg, clock, **{URGENT: True})
+    assert asked == [("a", False, False, 5.0), ("c", False, False, 5.0), ("b", True, False, 5.0)]     # hockey into crunch: whistle-timed, urgent
+    assert {g.game_id: g.landable for g in f.games} == {"a": False, "c": False, "b": True}
+
+
+def test_flag_on_an_entry_the_flip_does_not_time_keeps_the_lists_plan(cfg, clock):
+    asked, _ = _planned(cfg, clock, **{URGENT: True, "decider.entry.hold_only": []})
+    assert asked[-1] == ("b", False, False, None)
+
+
+def test_flag_on_the_plan_is_the_flips_own_replan(cfg, clock, monkeypatch):
+    seen = []
+    real = gate.Flip.replan.func
+    monkeypatch.setattr(gate.Flip, "replan", property(lambda self: (seen.append((self.d.target, self.d.kind, self.before)), real(self))[1]))
+    _planned(cfg, clock, **{URGENT: True})
+    assert seen == [("a", "better", "a"), ("c", "better", "a"), ("b", "better", "a")]
+
+
+def test_flag_off_the_night_never_builds_a_flip_for_the_list(monkeypatch):
+    after = night()
+    monkeypatch.setattr(Decider, "_flip_plan", lambda *a: (_ for _ in ()).throw(AssertionError("read with the flag off")))
     assert night() == after

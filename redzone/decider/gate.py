@@ -327,13 +327,17 @@ def leave_cause(f: Flip, usual: float = 8.0) -> str:
 
 class DeciderHost:
     """What the leave rules read of the Engine, from a Decider on its own (no phase for a game outside this tick's list, so
-    its leave needs a window). For a cut waiting on the leave only: the switch still faces the real gate at the flip."""
+    its leave needs a window). For a cut waiting on the leave, and for the list's landing plan (Flip.replan, legal.facts_urgent):
+    the switch still faces the real gate at the flip."""
 
     def __init__(self, dec: Any, cands: dict, now: float):
         self.decider, self.delays, self.cfg, self._now = dec, dec.delays, dec.cfg, now
         self.scored = {g: x.scored for g, x in cands.items()}
         self.where = {g: _NS(target=x.target) for g, x in dec._known.items()}
         self.merger = _NS(games={g: _NS(game_id=g, phase=Phase.LIVE, league=x.scored.league) for g, x in cands.items() if g not in PSEUDO})
+        # [legal.facts_urgent] Flip.replan from the decider's list: the switch cost legal_facts and the entry plan already use
+        self.control = _NS(deadline_cost=lambda t: dec.entry_cost(t) if dec.entry_cost is not None else dec._deadline_cost(t),
+                           _scrub_wanted=lambda t: False)
 
     def safe_to_leave(self, gid: str | None, required_s: float = 0.0) -> bool:
         g = self.merger.games.get(gid or "")
