@@ -4,6 +4,10 @@
     --set arbiter.visit_budget=0   any config value for this run (repeatable), for a before/after
     --set audit.assume_gate_ok=true   what-if: legal_options stops asking for a leave gap at list time (the flip still does)
     --prep-s 60   what-if: the hidden stick needs this long to tune and seek to a clip (default 15; 60 is a re-tuned stick, buffered.prep_s)
+    --timing measured   the catch-up route's flip, clip load and reach as the TV measured them Nov 9 (timing.* via redzone/measured_timing.py:
+                  flip 2.2 s, load 19 s, reach capped at 175 s, so the 180 s column reads 175). Default `assumed`: today's 3.2 / 15 / column reach
+    --dead floor  size every catch-up piece with the dead time the live code could count on in advance (scoring/dead_left.guaranteed_left,
+                  q10 of the stoppage's measured length less what already ran), not the real length known afterwards. Default `hindsight`
 
 Dev nights only (`--split` takes fit and nothing else; a locked night is never opened). No TV, no adb, no engine.
 
@@ -65,11 +69,16 @@ from redzone.contracts import brain as contract  # noqa: E402
 from redzone.decider import gate  # noqa: E402
 from redzone.decider.decider import Decider, Decision, FocusMode, LeaveHold, _holds_replays  # noqa: E402
 from redzone.engine import Engine  # noqa: E402
-from redzone.grading import dead_at, lag_of  # noqa: E402
+from redzone import measured_timing  # noqa: E402
+from redzone import config as rz_config  # noqa: E402
+from redzone.decider.screen import CONTINUOUS  # noqa: E402
+from redzone.grading import dead_at, held_stop, idx, is_action, lag_of  # noqa: E402
 from redzone.lab import backtest, leverage, splits, sportsgrade  # noqa: E402
-from redzone.models import Phase  # noqa: E402
+from redzone.models import League, Phase, Stoppage  # noqa: E402
 from redzone.moments.detect import detect as detect_moments  # noqa: E402
 from redzone.noggin import arbiter, catchup, legal  # noqa: E402
+from redzone.scoring.dead_left import guaranteed_left  # noqa: E402
+from redzone.sources import espn  # noqa: E402
 
 SCRIPTS = {"nfl": ("scripts/eval.py", []), "nba": ("scripts/eval_sports.py", ["nba"]),
            "nhl": ("scripts/eval_sports.py", ["nhl"]), "mlb": ("scripts/eval_sports.py", ["mlb"])}
@@ -81,6 +90,10 @@ CLIP_S = arbiter.DEFAULT_PARAMS.plan_clip_s   # one catch-up clip holds the scre
 DEFAULT_PREP_S = 15.0   # buffered_jump_sim.MR.prep_s: a free stick takes this long to set a clip up
 PREP_S = DEFAULT_PREP_S  # this run's load time (--prep-s): how long after it aired a moment is ready, and the stick's wait after a cut or a piece
 FLIP_S = 3.2         # buffered.py flip_s: an input flip between the sticks (the slowest usual)
+DEFAULT_FLIP_S = FLIP_S
+REACH_CAP_S = float("inf")   # --timing measured: no reach column goes deeper than timing.reach_s (175 s measured)
+TIMINGS, DEADS = ("assumed", "measured"), ("hindsight", "floor")
+TIMING, DEAD = TIMINGS[0], DEADS[0]   # this run's --timing and --dead (defaults: today's numbers)
 PAST_CAP_S = 600.0   # `past_cap`: how long after the 180 s cap a later opening is still looked for (info only)
 
 # Why the catch-up route did not air a lost moment: the furthest step any tick got inside the moment's window, in this order.
@@ -486,10 +499,57 @@ def seen(air: Air, screen: list) -> bool:
     return i >= 0 and screen[i][1] == air.game_id
 
 
+def floor_left(rep, st: float) -> float:
+    """[--dead floor] The dead time still to come that the live code could count on at screen time st: guaranteed_left (q10 of the
+    measured length, less what already ran) of the stoppage that began this dead ball. A plain dead ball, with no measured kind,
+    guarantees nothing."""
+    i = idx(rep.wall, st)
+    if i < 0 or st > rep.wall[-1]:
+        return 0.0
+    for k in range(i, max(-1, i - 40), -1):
+        stop = espn.stoppage_for(rep.league, rep.plays[k])
+        if stop == Stoppage.NONE and k == i and (rep.league in CONTINUOUS or rep.league.base == League.NBA):
+            stop = held_stop(rep.league, rep.wall, rep.plays, i)
+        if stop not in (Stoppage.NONE, Stoppage.UNKNOWN):
+            return guaranteed_left(rep.league, stop.value, st - rep.wall[k])
+        if is_action(rep.league, rep.plays[k]):
+            break
+    return 0.0
+
+
+def dead_left(rep, st: float, stats: Counter | None = None) -> tuple[bool, bool, float]:
+    """dead_at, with --dead floor: the seconds left are what the live code could know in advance, never more than the truth (a floor
+    above the truth would have run a clip into live play: counted in `floor_over_truth` ticks, info only)."""
+    dead, brk, left = dead_at(rep.league, rep.wall, rep.plays, st)
+    if DEAD != "floor" or not dead:
+        return dead, brk, left
+    fl = floor_left(rep, st)
+    if fl > left and stats is not None:
+        stats["floor_over_truth"] += 1
+    return dead, brk, min(left, fl)
+
+
+def use_timing(timing: str = TIMINGS[0], dead: str = DEADS[0], prep_s: float | None = None, sets: dict | None = None) -> None:
+    """This process's knobs (a worker has its own module globals). `measured`: timing.* from the config defaults and --set."""
+    global TIMING, DEAD, PREP_S, FLIP_S, REACH_CAP_S
+    if timing not in TIMINGS or dead not in DEADS:
+        raise ValueError(f"--timing {timing!r} / --dead {dead!r}")
+    TIMING, DEAD = timing, dead
+    m = measured_timing.route_costs(measured_cfg(sets)) if timing == "measured" else None
+    FLIP_S, REACH_CAP_S = (DEFAULT_FLIP_S, float("inf")) if m is None else (m["flip_s"], m["reach_s"])
+    PREP_S = prep_s if prep_s is not None else DEFAULT_PREP_S if m is None else m["prep_s"]
+
+
+def measured_cfg(sets: dict | None) -> NS:
+    """Config-like over default_config.yaml and this run's --set values, with timing.measured on."""
+    over = {**(sets or {}), measured_timing.FLAG: True}
+    return NS(get=lambda k, d=None: over[k] if k in over else rz_config.default(k, d))
+
+
 def last_flip(m: Air, reach: float, tune_s: float) -> float:
     """The last second a catch-up of this play can start: its picture must be up within `reach` of the play's start on air,
     and never 180 s or more after it (Nick's rule)."""
-    return m.at - PLAY_LEN_S + min(reach, 180.0) - tune_s
+    return m.at - PLAY_LEN_S + min(reach, 180.0, REACH_CAP_S) - tune_s
 
 
 def catchup_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> set[Air]:
@@ -504,7 +564,7 @@ def catchup_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> se
         r = truth.replays.get(gid)
         if not pool or r is None:
             continue
-        dead, _, left = dead_at(r.league, r.wall, r.plays, now - lag_of(truth.lag, gid))
+        dead, _, left = dead_left(r, now - lag_of(truth.lag, gid))
         i = bisect.bisect_left(cuts, now)
         if not dead or left < need or (i < len(cuts) and cuts[i] < now + need):
             continue
@@ -523,7 +583,7 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: di
     Clips can't move the replay's own cuts; a cut on the way ends the dead time and takes the hidden stick for its prep.
     `why` (info only, it changes no choice): filled with {moment not shown: (its cause from CAUSES, an opening came within PAST_CAP_S
     after the cap)}."""
-    r = catchup.Route(reach_s=min(reach, catchup.HARD_CAP_S), clip_s=t.route_clip_s or CLIP_S, flip_s=FLIP_S, prep_s=PREP_S, lead_s=3.0, margin_s=2.0,
+    r = catchup.Route(reach_s=min(reach, catchup.HARD_CAP_S, REACH_CAP_S), clip_s=t.route_clip_s or CLIP_S, flip_s=FLIP_S, prep_s=PREP_S, lead_s=3.0, margin_s=2.0,
                       short=t.route_short)
     moments = {f"{m.game_id}:{m.at}:{m.kind}:{i}": m for i, m in enumerate(unseen)}
     pool = [catchup.Moment(k, m.game_id, float(m.value), m.at, PLAY_LEN_S) for k, m in moments.items()]
@@ -575,7 +635,7 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: di
                 note(now, gid, "screen_on_clip" if rep is not None else "screen_not_started")
             continue
         st = now - lag_of(truth.lag, gid)
-        dead, brk, left = dead_at(rep.league, rep.wall, rep.plays, st)
+        dead, brk, left = dead_left(rep, st, stats)
         i = bisect.bisect_left(cuts, now)
         end = min(now + left, cuts[i] if i < len(cuts) else float("inf"))
         if why is not None:
@@ -754,9 +814,10 @@ def replay(brain_name: str, sets: dict, row: dict, cap: int | None):
 
 
 def run_one(job: tuple) -> dict:
-    """One league under one brain: the row for the table."""
-    global PREP_S
-    league, brain_name, sets, cap, PREP_S = job      # a worker process has its own module: the load time rides in on the job
+    """One league under one brain: the row for the table. (league, brain, sets, cap, prep_s[, timing, dead]): a worker process has its
+    own module, so the knobs ride in on the job."""
+    league, brain_name, sets, cap, prep_s, *knobs = job
+    use_timing(*knobs, prep_s=prep_s, sets=sets)
     row = new_row()
     script, args = SCRIPTS[league]
     extra = ["--split", "fit"]
@@ -879,14 +940,23 @@ def main() -> int:
     ap.add_argument("--cap", type=int, default=None, help="busiest N fit nights per league (default every fit night)")
     ap.add_argument("--workers", type=int, default=2, choices=(1, 2))
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="override one config value for this run")
-    ap.add_argument("--prep-s", type=float, default=DEFAULT_PREP_S,
-                    help="what-if: seconds the hidden stick needs to tune and seek to a catch-up clip (default 15; 60 models a re-tuned stick)")
+    ap.add_argument("--prep-s", type=float, default=None,
+                    help="what-if: seconds the hidden stick needs to tune and seek to a catch-up clip (default 15, or timing.clip_prep_s with "
+                         "--timing measured; 60 models a re-tuned stick)")
+    ap.add_argument("--timing", default=TIMINGS[0], choices=TIMINGS, help="catch-up flip, clip load and reach: assumed (today) or measured (timing.*)")
+    ap.add_argument("--dead", default=DEADS[0], choices=DEADS, help="catch-up pieces sized by the real dead time (hindsight, today) or the floor "
+                                                                   "the live code could know (floor)")
     ap.add_argument("--json", type=Path, default=None)
     a = ap.parse_args()
-    if a.prep_s < 0:
+    if a.prep_s is not None and a.prep_s < 0:
         ap.error("--prep-s must be 0 or more")
     sets = parse_sets(a.set)
-    jobs = [(lg, b, sets, a.cap, a.prep_s) for lg in a.leagues for b in a.brains]
+    if a.timing == "measured":
+        sets.setdefault(measured_timing.FLAG, True)      # the replayed decider reads the same timings
+    use_timing(a.timing, a.dead, a.prep_s, sets)
+    a.prep_s = PREP_S
+    jobs = [(lg, b, sets, a.cap, a.prep_s) + ((a.timing, a.dead) if (a.timing, a.dead) != (TIMINGS[0], DEADS[0]) else ())
+            for lg in a.leagues for b in a.brains]
     if a.workers == 1 or len(jobs) == 1:
         rows = [run_one(j) for j in jobs]
     else:
@@ -895,10 +965,18 @@ def main() -> int:
     print(table(rows))
     if a.prep_s != DEFAULT_PREP_S:
         print(f"what-if: hidden stick load time {a.prep_s:g} s (default {DEFAULT_PREP_S:g} s)")
+    if a.timing != TIMINGS[0]:
+        print(f"timing {a.timing}: flip {FLIP_S:g} s, clip load {PREP_S:g} s, reach capped at {REACH_CAP_S:g} s (SMALL SAMPLES, Nov 9, busy Mac)")
+    if a.dead != DEADS[0]:
+        print(f"dead {a.dead}: catch-up pieces sized by the q10 dead time the live code could know in advance, not the real length")
     if a.json:
         out = {"sets": sets, "rows": rows, "rules": merge(rows), "avoidable_lost": {str(r): avoidable(rows, r) for r in REACHES}}
         if a.prep_s != DEFAULT_PREP_S:      # the default run's file stays byte-identical
             out["prep_s"] = a.prep_s
+        if a.timing != TIMINGS[0]:
+            out["timing"] = a.timing
+        if a.dead != DEADS[0]:
+            out["dead"] = a.dead
         a.json.write_text(json.dumps(out, indent=1))
     return 0
 
