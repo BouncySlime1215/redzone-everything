@@ -593,6 +593,8 @@ multiview:                 # YouTube TV multiview as a switch path (redzone/tune
 tuners:                    # per-app switch paths
   prime_fast_confirm: false # [build plan WP-04] confirm a Prime tune without running OCR inside the poll loops
   espn_link_form: false     # [build plan WP-04] use the checked ESPN deep-link form
+  app_change_confirm: false # [TV Nov 10] after another app was in front: let the plain link confirm (about 2.5 s) before the
+                            # resend as a new task, and count the asked channel already playing at a retry as success
   unauthorized_retry_s: 300   # [DEV-15] an adb-unauthorized stick is not re-connected faster than this (re-raises the TV prompt)
   diagnose_timeout_s: 4       # [DEV-17] a failed tune's screen read (names "signed out" etc.) is cut after this
   launch_timeout_s: 30     # [DEV-11] `am start -W` (an app deep link) waits this long: a cold start can top 15 s
