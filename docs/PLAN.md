@@ -71,7 +71,7 @@ Phases, each exits on its check:
 
 ## 4. P2 the show and the brain
 
-Show first, then brain. One Tier 1/2/3 list per league. Tier first, league order as tiebreak, your teams first, crunch first.
+Show first, then brain ([value v2 spec](plans/2026-11-09-value-v2.md)). One Tier 1/2/3 list per league. Tier first, league order as tiebreak, your teams first, crunch first.
 Every Tier 1 airs live or rewound by its route's deadline: 2-3 min on YouTube TV, clip lag on routes that can't seek.
 A cut lands before one play, ends when the play ends, and needs a payoff. Stops and failed 4th downs count.
 

@@ -106,7 +106,7 @@ def test_a_rank_file_without_its_knots_does_not_load(two_leagues):
 
 def test_a_real_lambdarank_fit_exports_with_parity(two_leagues):
     """The one real fit: a few hundred rows, a dozen trees, so the LightGBM dump layout of a ranker is really checked."""
-    pytest.importorskip("lightgbm")
+    import lightgbm  # noqa: F401  # requirements-ci.txt installs it, so CI runs this fit instead of skipping it
     df = pd.read_parquet(two_leagues / "nfl" / "w0.parquet")
     trainer = K.LightGBMTrainer(rounds=12)
     trial = K.Trial("tiny", "lambdarank", 12, {"min_data_in_leaf": 5})

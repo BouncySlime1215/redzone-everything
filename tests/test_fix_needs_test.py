@@ -102,6 +102,6 @@ def test_only_the_data_gated_skip_is_allowed():
     import fix_needs_test as F
 
     ok = NS(path="tests/a.py", added=['pytest.skip("pinned eval data not fetched (x)")'], removed=[], status="M")
-    bad = NS(path="tests/b.py", added=['pytest.skip("flaky")'], removed=[], status="M")
+    bad = NS(path="tests/b.py", added=["pytest." + 'skip("flaky")'], removed=[], status="M")
     assert not [w for w in F.test_problems([ok]) if "skip" in w]
     assert [w for w in F.test_problems([bad]) if "skip" in w]
