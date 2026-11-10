@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**454 modules**, 385 untagged, 256 unowned, 34 orphans (no importer); 2124 call edges, 202 data files, 51 machines.
+**454 modules**, 385 untagged, 256 unowned, 34 orphans (no importer); 2126 call edges, 202 data files, 51 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -238,7 +238,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/demo/engine.py` | The real Engine, replaying a past day on a simulated clock. | channels, config, control, crunch, decider.decider, decider.screen +10 -> demo.__main__ | untagged |
 | `redzone/engine.py` | The producer loop: poll every feed -> merge -> score -> decide -> act -> tell the phone. | bets, buffer_rc8, buffer_shadow, calibration, channels, cheap_labels +61 -> __main__, demo.engine, lab.night.run, web.server, scripts.fault_drill, scripts.perf_probe +1 | BTN-04, BTN-05, FEED-01, SAFE-01, SAFE-03, STK-06 |
 | `redzone/lab/backtest.py` | Replay a real slate of past games through the scorer and decider, then grade it. | channels, config, contracts.switching, decider.decider, decider.screen, decider.whistle +16 -> agent.kaggle.build_moments_kaggle, demo.engine, lab.cutgrade, lab.night.run, lab.optimize, lab.oracle +27 | untagged |
-| `redzone/lab/cutgrade.py` | Cut-timing scorecard: WHERE in each game we left, and WHERE we landed. | decider.screen, grading, lab.backtest, models, sources.espn -> lab.backtest, lab.oracle, lab.sportsgrade, scripts.buffer_shadow_grade, scripts.entry_autopsy, scripts.eval +2 | untagged |
+| `redzone/lab/cutgrade.py` | Cut-timing scorecard: WHERE in each game we left, and WHERE we landed. | decider.screen, grading, lab.backtest, models, sources.espn -> lab.backtest, lab.oracle, lab.sportsgrade, scripts.buffer_shadow_grade, scripts.entry_autopsy, scripts.eval +3 | untagged |
 | `redzone/lab/datasets.py` | Training datasets: per-league game-state snapshots with break / key-moment / hotness labels. | - -> lab.brain3data, lab.brainfit, lab.breakblend, lab.sportsdata, scripts.build_training, scripts.train_brain | untagged |
 | `redzone/lab/optimize.py` | Training lab: search decider settings against real past slates. | config, lab.backtest, models -> lab.tune, scripts.eval | untagged |
 | `redzone/lab/replaycheck.py` | Exact-date replay diagnostics. | config, decider.screen, lab.backtest, lab.sportsgrade, models, sources.espn -> scripts.replay_check | untagged |
@@ -503,7 +503,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/tv_test_runner.py` (entry) | TV test runner: walks docs/test-queue.md and the Wave T1 hidden-stick measurements, one at a time. | - -> - | untagged |
 | `scripts/value2_report.py` (entry) | Value v2 against value v1 on archived dev games: what each one calls a big moment. | moments.detect, moments.value2, noggin.value_shards, scripts.coverage_audit -> - | untagged |
 | `scripts/value_leak_check.py` (entry) | Leak check for GameValue shards: exit 1 if any row is from a locked or fresh night or reads past its decision. | moments.detect, noggin.factory, scripts.coverage_audit, scripts.holdset, scripts.holdset_public -> agent.kaggle.qwen_finetune, scripts.kaggle_gamevalue, scripts.kaggle_value_shards | untagged |
-| `scripts/veto_audit.py` (entry) | The brain-first audit: what refuses a strong brain's top pick, per rule, and what each refusal costs. | config, contracts.brain, decider.decider, decider.gate, decider.screen, engine +13 -> scripts.thread_replay | untagged |
+| `scripts/veto_audit.py` (entry) | The brain-first audit: what refuses a strong brain's top pick, per rule, and what each refusal costs. | config, contracts.brain, decider.decider, decider.gate, decider.screen, engine +14 -> scripts.thread_replay | untagged |
 | `scripts/watchdog_try.py` (entry) | Run one WATCHED join (join -> read -> verify -> re-seek once -> fall back to live) on the HIDDEN stick, then optionally watch it for drift. | channels, tuners.adb, tuners.join, tuners.join_watchdog, tuners.tuners, tuners.yttv_label -> - | untagged |
 | `scripts/why.py` (entry) | Answer "why?" from the records RedZone already keeps. | - -> - | untagged |
 | `scripts/world_model_pilot.py` (entry) | World model pilot (EXP-100): event tokens -> a small transformer -> held-out-night grades, end to end. | noggin.factory -> - | untagged |
@@ -937,7 +937,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/lab/night/presses.py`
 - `redzone/tuners/identity.py`
 
-## Most-called symbols (top 25 of 1124)
+## Most-called symbols (top 25 of 1125)
 
 | symbol | callers |
 |---|---:|
