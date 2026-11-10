@@ -136,3 +136,54 @@ def test_a_join_in_the_window_goes_through_the_running_clock_bar():
 
 def test_the_running_clock_bar_still_holds_with_the_flag_off():
     assert _running_clock_join() == "landing"
+
+
+# ----- [NBA-YES] basketball.join_after_bucket_crunch: the same window, into a crunch or high-leverage game too ------------------------
+
+TIGHT = (NS(high_leverage=True, crunch=False, crunch_now=False), NS(high_leverage=False, crunch=True, crunch_now=False),
+         NS(high_leverage=False, crunch=False, crunch_now=True))
+CRUNCH = {**PLAIN, "basketball.join_after_bucket_crunch": True}
+
+
+def test_the_crunch_flag_ships_off():
+    from pathlib import Path
+
+    import yaml
+    cfg = yaml.safe_load((Path(gate.__file__).parent.parent / "default_config.yaml").read_text())
+    assert cfg["basketball"] == {"join_after_bucket": False, "join_after_bucket_crunch": False}
+
+
+@pytest.mark.parametrize("scored", TIGHT)
+def test_with_the_crunch_flag_a_tight_game_takes_the_same_window(scored):
+    assert _lands([MADE, NEXT], 103.5, 105.0, scored=scored) is None                       # off: today's rule
+    land = _lands([MADE, NEXT], 103.5, 105.0, scored=scored, cfg=CRUNCH)
+    assert land is not None and land.kind == "bucket" and land.resume == 108.0
+    assert _lands([MADE, NEXT], 101.0, 102.5, scored=scored, cfg=CRUNCH) is None           # may be before the make: still waits
+    assert _lands([MADE, NEXT], 106.5, 108.0, scored=scored, cfg=CRUNCH) is None           # may be after the 8 s floor: still waits
+    assert _lands([MADE, NEXT], 103.5, 105.0, sigma=4.0, scored=scored, cfg=CRUNCH) is None
+    for row in (MISS, REB, STEAL):
+        assert _lands([row, NEXT], 103.5, 105.0, scored=scored, cfg=CRUNCH) is None        # made baskets only
+
+
+def test_the_crunch_flag_alone_opens_nothing_and_changes_no_low_leverage_landing():
+    alone = {"basketball.join_after_bucket_crunch": True}
+    assert _lands([MADE, NEXT], 103.5, 105.0, cfg=alone) is None and _lands([MADE, NEXT], 103.5, 105.0, scored=TIGHT[0], cfg=alone) is None
+    for x0, x1 in ((103.5, 105.0), (101.0, 102.5), (106.5, 108.0), (102.0, 103.0)):
+        a, b = _lands([MADE, NEXT], x0, x1), _lands([MADE, NEXT], x0, x1, cfg=CRUNCH)
+        assert (a is None) == (b is None) and (a is None or (a.kind, a.resume) == (b.kind, b.resume))
+
+
+def test_flag_off_a_night_decides_as_before_the_change(monkeypatch):
+    """After: as shipped. Before: the new key does not exist (a read of it raises). Without join_after_bucket the crunch flag opens nothing."""
+    from redzone.config import Config
+    from tests.test_timing_truth import _night_decisions
+    after = _night_decisions()
+    assert len(after[0]) > 500 and after[1]
+    assert _night_decisions(**{"basketball.join_after_bucket_crunch": True}) == after
+    real = Config.get
+
+    def get(self, key, default=None):
+        assert key != "basketball.join_after_bucket_crunch", "read with join_after_bucket off"
+        return real(self, key, default)
+    monkeypatch.setattr(Config, "get", get)
+    assert _night_decisions() == after

@@ -1281,3 +1281,4 @@ views:                     # [build plan WP-21] the phone's clock as of the scre
 
 basketball:                # [NBA-BUCKET] land right after a made basket, including the transition after it (Nick, Nov 9)
   join_after_bucket: false
+  join_after_bucket_crunch: false   # [NBA-YES] with join_after_bucket: the made-basket window also takes a join INTO a crunch or high-leverage game (off: only low-leverage games). Nick decides; simulated on recorded nights only
