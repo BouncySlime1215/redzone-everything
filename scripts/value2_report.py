@@ -161,8 +161,11 @@ def render(r: dict) -> str:
     cut, what = ROUTINE[fam]
     low = t1[t1.v2 < cut]
     damped = t1[t1.lev <= 0.5]
+    typical = float(plays[plays.v2 > 0].v2.median())
+    under = t1[t1.v2 < typical]
     out += ["### Where they disagree", "",
             f"v1 tier-1 plays: {len(t1)}. v2 rates {len(low)} of them ({100.0 * len(low) / max(1, len(t1)):.1f}%) below {cut:g} points ({what}).",
+            f"v2 rates {len(under)} of them ({100.0 * len(under) / max(1, len(t1)):.1f}%) below the median graded play of this sample ({typical:.2f} points).",
             f"v2 leverage is 0.5 or less on {len(damped)} of them ({100.0 * len(damped) / max(1, len(t1)):.1f}%): the garbage-time ones. "
             f"v2 value of a v1 tier-1 play runs from {t1.v2.min():.2f} to {t1.v2.max():.2f} (v1 gives each the same {V.TIER_WEIGHTS[1]:g}).", ""]
     if len(damped):
