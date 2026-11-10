@@ -73,8 +73,13 @@ WHY = ("other_game_parked", "nothing_parked", "loading", "margin", "flip_in_prog
 @dataclass(frozen=True)
 class Setting:
     mode: str = "park"            # park | live (today's physics: both sticks at the live edge)
-    pause_holds: bool = True      # False: only scrub positions hold
-    load_s: float = 19.3          # park load on a new game (18.5-30 s measured)
+    pause_holds: bool = True      # measured Nov 10: it does. False = the fallback where only scrub positions hold
+    route: str = "tune"           # how the hidden stick gets to another game: tune (tune, play to the spot, one pause key) |
+    #                               rewind (the 19 s rewind load, every time) | either (rewind only for a better spot already passed)
+    tune_s: float = 3.0           # a tune within YouTube TV: 2.5-3.7 s, then the stick is at the live edge
+    load_s: float = 19.3          # the rewind load on a new game (18.5-30 s measured)
+    rewind_sd: float = 3.0        # extra position doubt after a rewind (the on-screen label)
+    resume_lead_s: float = 0.0    # the parked stick is resumed this long before its picture is up (the pause banner has to clear)
     pos_err: float = 5.0          # the position label is right within about this (sd = 0.6 x)
     guard: float = -1.0           # seconds kept from every edge of a dead stretch; -1 = pos_err
     delay_error: float = 0.0      # every true position is this much later than believed (the audit's --delay-error)
@@ -85,8 +90,8 @@ class Setting:
     key_sd: float = 0.0           # key latency spread, drawn per jump
     pad_k: float = 0.0            # > 0: guard = pad_k x the root of the summed squares of the four (overrides guard)
     min_dead: float = 10.0        # shortest dead stretch worth parking on
-    max_behind: float = 175.0     # how far behind the live edge a stick may sit
-    min_behind: float = 45.0      # smallest rewind
+    max_behind: float = 175.0     # how far behind the live edge a paused stick may sit (315 s was held on the TV)
+    min_behind: float = 45.0      # the smallest rewind lands about this far behind
     ping_pong: bool = True        # the stick being left stays on its game, paused where the viewer left
     min_stay: float = 0.0         # seconds on a game before the next jump
     min_live_s: float = 3.0       # seconds of live play a visit must have shown before the next jump (waived in a long stoppage)
@@ -308,8 +313,12 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
     edge_sd = math.sqrt(s.stamp_sd ** 2 + s.key_sd ** 2)
     flip = max(1, int(round(s.flip)))
     lattice = 0 if (s.pause_holds or live) else int(pc.SKIP_STEP_S)
-    fresh = 0 if live else int(s.min_behind)
-    reach = int(pc.REACH_S if s.clips else s.max_behind)
+    tune = s.route != "rewind" and s.pause_holds and not live
+    fresh = 0 if (live or tune) else int(s.min_behind)      # where a game no stick holds would be picked up
+    reach = int(s.max_behind)                                # a paused stick
+    rw_reach = int(pc.REACH_S if s.clips else min(s.max_behind, pc.REACH_S))   # a rewind
+    lead, know = int(round(s.resume_lead_s)), int(s.feed_lead)
+    sd_rw = math.sqrt(sd ** 2 + s.rewind_sd ** 2)
     back, la = 0, int(s.lookahead_s)
     need = max(int(s.min_dead), 2 * guard + lattice)
     st = stats or Stats()
@@ -327,10 +336,10 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
         S.hg, S.hb, S.he, S.h_ready, S.h_paused, S.h_kind, S.black = -1, 0.0, 0.0, t0, False, "park", t0
     rng = S.rng
 
-    def choose_park(g: int, ready: int, t: int, lo: int | None = None, hi: int | None = None) -> tuple[int, bool] | None:
-        """(believed position to park at, is it a clip of an already reported moment) for a stick ready at `ready`."""
+    def choose_park(g: int, ready: int, t: int, lo: int | None = None, hi: int | None = None) -> tuple[int, bool, float] | None:
+        """(believed position to park at, is it a clip of an already reported moment, its value) for a stick ready at `ready`."""
         x = A[g]
-        lo, hi = (ready - reach if lo is None else lo), (ready - fresh if hi is None else hi)
+        lo, hi = (ready - rw_reach if lo is None else lo), (ready - int(s.min_behind) if hi is None else hi)
         if s.park_at == "end":
             i, j = bisect.bisect_left(x.ends, lo + guard), bisect.bisect_right(x.ends, hi + guard)
         else:
@@ -340,15 +349,15 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
         for k in range(j - 1, i - 1, -1):
             if x.ends[k] - x.starts[k] < need or x.ends[k] > known:
                 continue
-            p = x.ends[k] - guard if s.park_at == "end" else x.starts[k] + guard
-            if s.park_target == "recent":
-                return p, False
+            p = x.ends[k] - guard - lead if s.park_at == "end" else x.starts[k] + guard
             v = x.ahead(p, min(p + RUN_UP_S, known), p)
+            if s.park_target == "recent":
+                return p, False, v
             if best is None or v > best[0] + 1e-9:
                 best = (v, p)
         if best is None:
             return None
-        return best[1], bool(s.clips and best[0] > 0 and best[1] < t - int(s.max_behind))
+        return best[1], bool(s.clips and best[0] > 0 and best[1] < t - int(s.max_behind)), best[0]
 
     def start_park(g: int, t: int) -> None:
         same = g == S.hg
@@ -361,15 +370,22 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
             S.hg, S.he, S.h_ready, S.h_paused, S.h_kind = g, rng.gauss(0.0, sd) + s.delay_error + S.gd[g], ready, False, "park"
             S.hb = S.he
             return
-        got = choose_park(g, ready, t)
+        got = None if s.route == "tune" and tune else choose_park(g, ready, t)
+        if tune and (got is None or s.route == "tune" or got[2] <= A[g].ahead(t, min(n - 1, t + know), t) + 1.0):
+            # tune to it; the stick then plays from the live edge and is paused with one key at the next spot (the loop below)
+            cost = (s.tune_s + s.load_slow_s) * (2.0 if load > s.load_s + s.load_slow_s + 1 else 1.0)
+            S.hg, S.he, S.h_ready, S.h_paused, S.h_kind = g, rng.gauss(0.0, sd) + s.delay_error + S.gd[g], int(math.ceil(t + cost)), False, "park"
+            S.hb = S.he
+            st.parks += 1
+            return
         if got is None:
             if not same:
                 S.hg, S.h_ready, S.h_paused = -1, t, False
             return
-        p, clip = got
+        p, clip, _ = got
         if lattice:
             p -= rng.randrange(lattice)
-        S.hg, S.he, S.h_ready, S.h_paused, S.h_kind = g, rng.gauss(0.0, sd) + s.delay_error + S.gd[g], ready, not lattice, "clip" if clip else "park"
+        S.hg, S.he, S.h_ready, S.h_paused, S.h_kind = g, rng.gauss(0.0, sd_rw) + s.delay_error + S.gd[g], ready, not lattice, "clip" if clip else "park"
         S.hb = (ready - p) + S.he
         st.parks += 1
 
@@ -412,8 +428,8 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                 sc_h = v
             if v > best_sc:
                 best, best_sc = g, v
-            if la:
-                v = brain.score(g, t - fresh + la, t, False, back)
+            if la:      # two looks, 15 s apart, so one play entering or leaving the window does not move the stick
+                v = 0.5 * (brain.score(g, t - fresh + la, t, False, back) + brain.score(g, t - fresh + la + 15, t, False, back))
                 if g == S.hg:
                     pk_h = v
                 if v > pk_sc:
@@ -434,7 +450,7 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
             # the hidden stick: a load in progress is finished; an idle stick moves to the brain's top other game
             if S.hg < 0 or not (A[S.hg].a0 <= t <= A[S.hg].a1 + fresh):
                 desire = pk if (s.prepark or want >= 0) else -1
-            elif h_ok and pk >= 0 and pk != S.hg and (s.prepark or want >= 0) and pk_sc > pk_h + s.repark_margin:
+            elif h_ok and target < 0 and pk >= 0 and pk != S.hg and (s.prepark or want >= 0) and pk_sc > pk_h + s.repark_margin:
                 desire = pk
         if desire >= 0 and desire != S.hg:
             start_park(desire, t)
@@ -455,8 +471,19 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                     if far:
                         S.he = rng.gauss(0.0, sd) + s.delay_error + S.gd[S.hg]
                         S.hb, S.h_ready = (reach - 2 * pc.SKIP_STEP_S) + S.he, t + 2 + int(pc.PRESS_S * 2)
-            elif not S.h_paused and not lattice and spot and x.left[hb_i] <= guard + 1 and x.since[hb_i] + x.left[hb_i] > need:
-                S.h_paused = True               # a stick playing on hidden stops just before the next play starts
+            elif S.h_paused and s.skip_dead and not lattice and x.left[hb_i] > max(s.land_wait_max, guard + lead + pc.SKIP_STEP_S) \
+                    and hb_i + x.left[hb_i] <= t + know:
+                # parked early in a long stoppage whose end the feed now knows: skip to just before the play
+                d = x.left[hb_i] - guard - lead
+                ready = int(math.ceil(t + 2.0 + pc.PRESS_S * math.floor(d / pc.SKIP_STEP_S) + d % pc.SKIP_STEP_S))
+                p = hb_i + d
+                if ready - p >= 0:
+                    S.he = rng.gauss(0.0, sd) + s.delay_error + S.gd[S.hg]
+                    S.h_ready, S.hb = ready, (ready - p) + S.he
+                    st.rolls += 1
+            elif not S.h_paused and not lattice and spot and x.since[hb_i] + x.left[hb_i] > need and hb_i + guard <= t + know \
+                    and (s.park_at == "start" or (x.left[hb_i] <= guard + lead + 1 and hb_i + x.left[hb_i] <= t + know)):
+                S.h_paused = True               # one pause key: a stick playing on hidden stops just before the next play starts
         # the jump
         why = None
         if want >= 0 and force is None:
@@ -469,7 +496,9 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
             i = min(n - 1, max(0, s_bel))
             calm = xs.hlc[min(n, i + guard + 1)] - xs.hlc[max(0, i - guard)] == 0
             leave = (xs.since[i] > guard and xs.left[i] >= guard and calm) or (s.leave_rule == "low_leverage" and calm) or t > xs.a1 + S.sb
-            j = min(n - 1, max(0, int(t - S.hb + S.he) + (0 if S.h_paused else flip)))
+            j = min(n - 1, max(0, int(t - S.hb + S.he) + (lead if S.h_paused else flip)))
+            if i + guard > t + know or j + guard > t + know:
+                leave = False           # the feed has not yet reported the seconds the padding has to cover
             if S.s_live < s.min_live_s and xs.left[i] < LONG_STOP_S and t <= xs.a1 + S.sb:
                 leave = False           # nothing of this game has been shown yet: a hop through dead air is not a visit
                 if why is None and want >= 0 and force is None:
@@ -486,7 +515,7 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                     else:
                         st.mid_leave += 1
                 st.hl_leave += xs.hl[ti]
-                new_sb = S.hb + (flip if S.h_paused else 0)
+                new_sb = S.hb + (flip - lead if S.h_paused else 0)
                 up = t + flip
                 ei = min(n - 1, max(0, int(up - new_sb)))
                 ej = ei if not edge_sd else min(n - 1, max(0, int(up - new_sb + rng.gauss(0.0, s.stamp_sd if S.h_paused else edge_sd))))
@@ -508,7 +537,7 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                     S.hg, S.hb, S.he, S.h_ready, S.h_paused, S.h_kind = old[0], old[1], old[2], t, not lattice, "pp"
                     if s.skip_dead and not lattice:
                         end = i + xs.left[i]
-                        p = end - guard
+                        p = end - guard - lead
                         if end <= t + int(s.feed_lead) and p - i >= pc.SKIP_STEP_S and end - xs.starts[bisect.bisect_right(xs.starts, i) - 1] >= need:
                             ready = int(math.ceil(t + 2.0 + pc.PRESS_S * math.ceil((p - i) / pc.SKIP_STEP_S)))
                             if ready - p >= s.min_behind:
@@ -636,12 +665,13 @@ def evaluate(nights: list[Night], brain_name: str, s: Setting) -> dict:
 
 
 GRID = {
-    "pause_holds": [True, False], "load_s": [18.5, 25.0, 30.0], "pos_sd": [0.25, 0.5, 1.0, 2.0, 3.0], "delay_sd": [0.0, 0.5, 1.5],
-    "stamp_sd": [0.3, 1.0], "key_sd": [0.2, 0.5], "pad_k": [2.0, 3.0, 4.0],
-    "min_dead": [4.0, 8.0, 12.0, 20.0], "max_behind": [60.0, 90.0, 120.0, 175.0], "ping_pong": [True, False],
+    "pause_holds": [True], "route": ["tune", "tune", "either", "rewind"], "load_s": [18.5, 25.0, 30.0], "resume_lead_s": [0.0, 1.0, 2.0],
+    "pos_sd": [0.3], "delay_sd": [0.2, 0.5, 1.0, 2.0, 3.5], "stamp_sd": [0.3, 0.6], "key_sd": [0.1, 0.3], "pad_k": [3.0, 4.0],
+    "feed_lead": [10.0, 20.0, 27.0],
+    "min_dead": [4.0, 8.0, 12.0, 20.0], "max_behind": [90.0, 175.0, 300.0, 600.0], "ping_pong": [True, False],
     "min_stay": [0.0, 8.0, 15.0, 30.0], "min_live_s": [3.0, 3.0, 8.0], "land_wait_max": [8.0, 15.0, 30.0, 999.0], "margin": [0.0, 1.0, 3.0], "skip_dead": [True, False], "clips": [True, False],
     "leave_rule": ["dead", "low_leverage"], "park_at": ["end", "start"], "park_target": ["value", "recent"],
-    "shots": [False, True], "prepark": [True, False], "delay_error": [0.0, 0.0, 3.0], "live_w": [0.0, 0.05, 0.15],
+    "shots": [False, True], "prepark": [True, False], "delay_error": [0.0], "live_w": [0.0, 0.05, 0.15],
     "repark_margin": [0.0, 1.0, 3.0], "value": ["dense", "dense", "v1"], "lookahead_s": [0.0, 15.0, 30.0, 45.0],
     "bore_w": [0.0, 0.0, 0.02, 0.05, 0.1],
 }
@@ -677,7 +707,8 @@ def main() -> int:
     ap.add_argument("--cache", default=None, help="a folder OUTSIDE the repo for the per-game facts")
     ap.add_argument("--csv", default=None)
     a = ap.parse_args()
-    base = Setting(**parse_sets(a.set))
+    fixed = parse_sets(a.set)          # in a sweep these stay fixed and the other knobs are drawn
+    base = Setting(**fixed)
     names = [f.name for f in fields(Setting)]
     fh = w = None
     rng = random.Random(a.seed)
@@ -690,7 +721,8 @@ def main() -> int:
                 continue
             ng = ng or len(nights[0].games)
             todo = [("baseline_live", replace(base, mode="live")), ("base", base)] if not a.sweep else \
-                [("baseline_live", Setting(mode="live")), ("default", Setting())] + [(f"s{i}", draw(rng, lg)) for i in range(a.sweep)]
+                [("baseline_live", replace(Setting(mode="live"), **fixed)), ("default", replace(Setting(), **fixed))] \
+                + [(f"s{i}", replace(draw(rng, lg), **fixed)) for i in range(a.sweep)]
             for tag, s in todo:
                 for bn in a.brains:
                     t_start = time.time()
