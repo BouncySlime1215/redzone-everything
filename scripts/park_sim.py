@@ -63,7 +63,10 @@ YES_S = 20           # veto_audit.YES_S
 FEED_LEAD_S = 27     # the feed runs this far ahead of the stream's live edge (stream delay 35 s less feed lag 8 s)
 TUNE_TICKS = 3       # a tune within YouTube TV: 2.3-3.0 s
 LIVE_BEHIND_S = 60   # a big play seen this close to the live edge counts as seen live
+SAME_BEHIND_S = 10   # a stick already behind live may skip forward to this close to the live edge
 PAD_S = 400
+WHY = ("other_game_parked", "nothing_parked", "loading", "margin", "flip_in_progress", "min_stay", "past_reach", "screen_high_leverage",
+       "screen_mid_play", "landing_not_dead")
 
 
 @dataclass(frozen=True)
@@ -175,6 +178,20 @@ class Arr:
                 k += 1
             self.lev[i], self.margin[i], self.left_s[i] = cur
         self.n = n
+        self._leave: dict[tuple, list[int]] = {}
+
+    def leave_in(self, guard: int, low_leverage: bool) -> list[int]:
+        """Seconds from each picture position until this game next offers a legal leave (the controller's own test)."""
+        key = (guard, low_leverage)
+        if key not in self._leave:
+            n, out, nxt = self.n, [0] * self.n, 10 ** 6
+            for i in range(n - 1, -1, -1):
+                calm = self.hlc[min(n, i + guard + 1)] - self.hlc[max(0, i - guard)] == 0
+                if calm and (low_leverage or (self.since[i] > guard and self.left[i] > guard)):
+                    nxt = i
+                out[i] = nxt - i
+            self._leave[key] = out
+        return self._leave[key]
 
     def ahead(self, lo: int, hi: int, c: int) -> float:
         """Must-see value in (lo, hi], sooner counting a bit more (veto_audit.Truth.ahead)."""
@@ -259,8 +276,10 @@ class Stats:
         self.seen = {"live": 0.0, "parked": 0.0, "clip": 0.0}
         self.pic = self.live_s = self.dead_s = self.brk_s = 0
         self.mid_entry = self.mid_leave = self.hl_leave = self.walk_entry = self.walk_leave = 0
-        self.parks = self.load_fail = self.ticks = 0
+        self.parks = self.load_fail = self.ticks = self.rolls = self.leave_soon = 0
         self.v2_seen = self.brain_value = 0.0
+        self.why: dict[str, int] = {}          # per second the brain wanted another game and no jump went: the first thing in the way
+        self.shown: set[tuple[int, int]] = set()   # (game, second) of every valued moment already counted: a play watched twice counts once
 
 
 def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | None = None, state: State | None = None,
@@ -293,10 +312,10 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
         S.hg, S.hb, S.he, S.h_ready, S.h_paused, S.h_kind, S.black = -1, 0.0, 0.0, t0, False, "park", t0
     rng = S.rng
 
-    def choose_park(g: int, ready: int, t: int) -> tuple[int, bool] | None:
+    def choose_park(g: int, ready: int, t: int, lo: int | None = None, hi: int | None = None) -> tuple[int, bool] | None:
         """(believed position to park at, is it a clip of an already reported moment) for a stick ready at `ready`."""
         x = A[g]
-        lo, hi = ready - reach, ready - fresh
+        lo, hi = (ready - reach if lo is None else lo), (ready - fresh if hi is None else hi)
         if s.park_at == "end":
             i, j = bisect.bisect_left(x.ends, lo + guard), bisect.bisect_right(x.ends, hi + guard)
         else:
@@ -338,6 +357,22 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
         S.hg, S.he, S.h_ready, S.h_paused, S.h_kind = g, rng.gauss(0.0, sd) + s.delay_error, ready, not lattice, "clip" if clip else "park"
         S.hb = (ready - p) + S.he
         st.parks += 1
+
+    def roll_forward(t: int) -> bool:
+        """Move the hidden stick forward on its own game, by 15 s skips and then play, to the next spot it can be landed on.
+        A stick that is already behind live needs no fresh rewind for this, so it may end closer to live than `min_behind`."""
+        cur = int(t - S.hb + S.he)
+        got = choose_park(S.hg, t, t, lo=max(cur + 1, t - reach), hi=t - SAME_BEHIND_S)
+        if got is None:
+            return False
+        p = got[0] - (rng.randrange(lattice) if lattice else 0)
+        d = max(0, p - cur)
+        cost = 2.0 + pc.PRESS_S * math.floor(d / pc.SKIP_STEP_S) + (0 if lattice else d % pc.SKIP_STEP_S)
+        ready = int(math.ceil(t + cost))
+        S.he = rng.gauss(0.0, sd) + s.delay_error
+        S.h_ready, S.h_paused, S.hb = ready, not lattice, (ready - p) + S.he
+        st.rolls += 1
+        return True
 
     for t in range(t0, t1):
         st.ticks += 1
@@ -395,9 +430,24 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                 if x.legal[hb_i] and x.left[hb_i] <= guard + 1 and x.since[hb_i] - int(pc.SKIP_STEP_S) > guard:
                     S.hb += pc.SKIP_STEP_S          # one step back holds the stick in its dead stretch
                     S.h_ready = t + 3
-            if (S.hb - S.he) > reach + 1 or (S.h_paused and not (x.since[hb_i] > guard and x.left[hb_i] > guard)):
-                start_park(S.hg, t)             # parked too long, or on a spot that cannot be landed on: set it up again
+            far = (S.hb - S.he) > reach + 1
+            spot = x.since[hb_i] > guard and x.left[hb_i] > guard
+            if far or (S.h_paused and not spot):
+                # parked too long, or on a spot that cannot be landed on: skip forward to the next good spot; with none in
+                # reach yet, let the stick play on hidden (it stops falling behind) and pull it inside the reach
+                if not roll_forward(t):
+                    S.h_paused = False
+                    if far:
+                        S.he = rng.gauss(0.0, sd) + s.delay_error
+                        S.hb, S.h_ready = (reach - 2 * pc.SKIP_STEP_S) + S.he, t + 2 + int(pc.PRESS_S * 2)
+            elif not S.h_paused and not lattice and spot and x.left[hb_i] <= guard + 2 and x.since[hb_i] + x.left[hb_i] > need:
+                S.h_paused = True               # a stick playing on hidden stops just before the next play starts
         # the jump
+        why = None
+        if want >= 0 and force is None:
+            why = ("other_game_parked" if S.hg >= 0 and S.hg != want else "nothing_parked" if S.hg < 0 else "loading" if t < S.h_ready
+                   else "margin" if target < 0 else "flip_in_progress" if t < S.black else "min_stay" if t - S.s_land < s.min_stay
+                   else "past_reach" if not (live or S.hb - S.he <= reach + flip) else None)
         if target >= 0 and S.hg == target and t >= S.h_ready and t >= S.black and t - S.s_land >= s.min_stay \
                 and (live or S.hb - S.he <= reach + flip):
             xs, xh = A[S.sg], A[target]
@@ -405,6 +455,9 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
             calm = xs.hlc[min(n, i + guard + 1)] - xs.hlc[max(0, i - guard)] == 0
             leave = (xs.since[i] > guard and xs.left[i] > guard and calm) or (s.leave_rule == "low_leverage" and calm) or t > xs.a1 + S.sb
             j = min(n - 1, max(0, int(t - S.hb + S.he) + (0 if S.h_paused else flip)))
+            if why is None and want >= 0 and force is None:
+                why = ("screen_high_leverage" if not calm else "screen_mid_play" if not leave
+                       else "landing_not_dead" if not (xh.since[j] > guard and xh.left[j] > guard) else None)
             if leave and xh.since[j] > guard and xh.left[j] > guard:
                 ti = min(n - 1, max(0, s_true))
                 if not xs.dead[ti]:
@@ -441,6 +494,11 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                 else:
                     S.hg, S.h_ready, S.h_paused = -1, t, False
                 continue
+        if want >= 0 and force is None:
+            ok = A[S.sg].leave_in(guard, s.leave_rule == "low_leverage")
+            st.leave_soon += int(ok[min(n - 1, max(0, s_bel))] <= YES_S - flip)
+        if why:
+            st.why[why] = st.why.get(why, 0) + 1
         # what the screen shows this second
         if t >= S.black:
             xs = A[S.sg]
@@ -454,14 +512,16 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
             else:
                 st.live_s += 1
             st.behind.append(S.sb)
-            if S.s_from <= ti - SEEN_LEAD_S:
-                v = xs.mom.get(ti)
-                if v:
-                    st.seen["clip" if S.s_kind == "clip" else "live" if S.sb <= LIVE_BEHIND_S else "parked"] += v
-                v = xs.v2.get(ti)
-                if v and v > 0:
-                    st.v2_seen += v
-            st.brain_value += xs.cumv[ti + 1] - xs.cumv[ti]
+            if (S.sg, ti) not in st.shown:
+                if S.s_from <= ti - SEEN_LEAD_S and (ti in xs.mom or ti in xs.v2):
+                    st.shown.add((S.sg, ti))
+                    v = xs.mom.get(ti)
+                    if v:
+                        st.seen["clip" if S.s_kind == "clip" else "live" if S.sb <= LIVE_BEHIND_S else "parked"] += v
+                    v = xs.v2.get(ti)
+                    if v and v > 0:
+                        st.v2_seen += v
+                st.brain_value += xs.cumv[ti + 1] - xs.cumv[ti]
     return st, S
 
 
@@ -496,6 +556,7 @@ def summarize(runs: list[tuple[Night, Stats]]) -> dict:
     wants = sum(y[1] for y in yes)
     out["wanted_s_per_min"] = round(wants / mins, 2) if mins else 0.0
     out["yes_rate"] = round(sum(y[0] for y in yes) / wants, 4) if wants else ""
+    out["yes_ceiling"] = round(sum(x.leave_soon for _, x in runs) / wants, 4) if wants else ""   # the screen game offered a legal leave in time
     big = sum(n.big_total for n, _ in runs)
     for k in ("live", "parked", "clip"):
         out[f"big_{k}"] = round(sum(x.seen[k] for _, x in runs) / big, 4) if big else ""
@@ -512,9 +573,15 @@ def summarize(runs: list[tuple[Night, Stats]]) -> dict:
     out["commercial_share"] = round(sum(x.brk_s for _, x in runs) / pic, 3)
     vis = [v for _, x in runs for v in x.visits]
     out["visit_med_s"] = statistics.median(vis) if vis else ""
-    for k in ("mid_entry", "mid_leave", "hl_leave", "walk_entry", "walk_leave", "parks", "load_fail"):
+    for k in ("mid_entry", "mid_leave", "hl_leave", "walk_entry", "walk_leave", "parks", "rolls", "load_fail"):
         out[k] = sum(getattr(x, k) for _, x in runs)
     out["jumps"] = nj
+    why: dict[str, int] = {}
+    for _, x in runs:
+        for k, v in x.why.items():
+            why[k] = why.get(k, 0) + v
+    for k in WHY:
+        out[f"why_{k}"] = why.get(k, 0)
     return out
 
 
