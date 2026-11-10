@@ -118,7 +118,7 @@ def table(night: ps.Night, s: ps.Setting, *, every: int, hold: int, horizon: int
                          "games_live": float(sum(1 for x in A if x.a0 <= t <= x.a1)),
                          **{f"s_{k}": v for k, v in sf.items()}, **{f"h_{k}": v for k, v in hf.items()},
                          **{f"a_{k}": v for k, v in game_features(A, S, s, t, g).items()},
-                         "q_value": round(r.brain_value, 3), "q_must": round(sum(r.seen.values()), 3), "q_jumps": len(r.jumps),
+                         "q_value": round(r.brain_value, 3), "q_must": round(sum(r.seen.values()), 3), "q_jumps": len(r.hops),
                          "q_rule1": r.mid_entry + r.mid_leave + r.hl_leave})
         top = max(x["q_value"] for x in rows)
         for x in rows:
@@ -141,7 +141,7 @@ def landings(night: ps.Night, s: ps.Setting, *, every: int, per_game: int = 4):
     brain = ps.Hindsight()
     A = night.arrs(s.shots, s.value, s.live_w)
     a, b = night.span
-    guard, flip = guard_of(s), max(1, int(round(s.flip)))
+    guard, flip, lead = guard_of(s), max(1, int(round(s.flip))), int(round(s.resume_lead_s))
     lattice = 0 if s.pause_holds else int(ps.pc.SKIP_STEP_S)
     need = max(int(s.min_dead), 2 * guard + lattice)
     low = s.leave_rule == "low_leverage"
@@ -158,12 +158,17 @@ def landings(night: ps.Night, s: ps.Setting, *, every: int, per_game: int = 4):
                 continue
             held = g == S.hg
             cur = int(t - S.hb + S.he) if held else None
+            tune = s.route != "rewind" and s.pause_holds
             load = s.load_s + s.load_slow_s + (0 if lattice else ps.pc.SKIP_STEP_S / 2.0)
-            lo, hi = (max(cur, t - int(s.max_behind)), t - ps.SAME_BEHIND_S) if held else (int(t + load - s.max_behind), int(t + load - s.min_behind))
-            j = bisect.bisect_right(x.ends, hi + guard)
+            rewind_lo = int(t + load - min(s.max_behind, ps.pc.REACH_S))
+            # a held stick: any spot from where it is to near the live edge. Another game: spots the live edge has not reached yet
+            # (tune, play to it, one pause key), and with a rewind allowed also spots already passed
+            lo = max(cur, t - int(s.max_behind)) if held else (rewind_lo if s.route != "tune" or not tune else int(t + s.tune_s))
+            hi = t - ps.SAME_BEHIND_S if held else (known - guard if tune else int(t + load - s.min_behind))
+            j = bisect.bisect_right(x.ends, hi + guard + lead)
             n_out = 0
             for k in range(j - 1, -1, -1):
-                p = x.ends[k] - guard if s.park_at == "end" else x.starts[k] + guard
+                p = x.ends[k] - guard - lead if s.park_at == "end" else x.starts[k] + guard
                 if p < lo or n_out >= per_game:
                     break
                 if x.ends[k] - x.starts[k] < need or x.ends[k] > known or p > hi:
@@ -171,6 +176,10 @@ def landings(night: ps.Night, s: ps.Setting, *, every: int, per_game: int = 4):
                 if held:
                     d = max(0, p - cur)
                     ready = 0.0 if (d == 0 and t >= S.h_ready) else max(0.0, S.h_ready - t) + 2.0 + ps.pc.PRESS_S * math.floor(d / ps.pc.SKIP_STEP_S) + d % ps.pc.SKIP_STEP_S
+                elif tune and p >= t + s.tune_s:
+                    ready = (p - t) + ps.pc.PAUSE_KEY_S       # the live edge reaches the spot, then one pause key
+                elif s.route == "tune" or p > t + load - s.min_behind:
+                    continue                                   # already passed and no rewind allowed, or too recent for a rewind
                 else:
                     ready = load
                 wait = max(ready, float(leave_wait))

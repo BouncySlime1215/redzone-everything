@@ -16,7 +16,8 @@ import csv
 import statistics
 from collections import defaultdict
 
-KNOBS = ("pause_holds", "load_s", "pos_sd", "delay_sd", "stamp_sd", "key_sd", "pad_k", "delay_error", "min_dead", "max_behind", "ping_pong",
+KNOBS = ("pause_holds", "route", "load_s", "resume_lead_s", "feed_lead", "pos_sd", "delay_sd", "stamp_sd", "key_sd", "pad_k", "delay_error",
+         "min_dead", "max_behind", "ping_pong",
          "min_stay", "min_live_s", "land_wait_max", "margin", "repark_margin", "lookahead_s", "bore_w", "skip_dead", "clips", "leave_rule",
          "park_at", "park_target", "shots", "prepark", "live_w")
 TODAY_SD, SPEC_SD = 2.5, 0.75      # total error sd: the TV as measured (about 3 s) and the TV the next session has to prove (0.5 s)

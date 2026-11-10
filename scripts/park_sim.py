@@ -288,6 +288,7 @@ class State:
 class Stats:
     def __init__(self):
         self.jumps, self.wants, self.ups, self.behind, self.visits = [], [], [], [], []
+        self.hops: list[int] = []      # every flip; `jumps` holds only those whose visit went on to show 3 s or more of live play
         self.seen = {"live": 0.0, "parked": 0.0, "clip": 0.0}
         self.pic = self.live_s = self.dead_s = self.brk_s = 0
         self.mid_entry = self.mid_leave = self.hl_leave = self.walk_entry = self.walk_leave = 0
@@ -524,7 +525,9 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                         st.walk_entry += 1
                     else:
                         st.mid_entry += 1
-                st.jumps.append(t)
+                st.hops.append(t)
+                if S.s_live >= 3 and st.hops[:-1] and S.s_land - flip == st.hops[-2]:
+                    st.jumps.append(st.hops[-2])       # the flip that began the visit now ending: it showed play, so it counts
                 st.ups.append((up, target))
                 st.visits.append(t - S.s_land)
                 st.play_visits += int(S.s_live >= 3)
@@ -630,6 +633,7 @@ def summarize(runs: list[tuple[Night, Stats]]) -> dict:
     for k in ("mid_entry", "mid_leave", "hl_leave", "walk_entry", "walk_leave", "parks", "rolls", "load_fail"):
         out[k] = sum(getattr(x, k) for _, x in runs)
     out["jumps"] = nj
+    out["hops_per_min"] = round(sum(len(x.hops) for _, x in runs) / mins, 3) if mins else 0.0   # every flip, dead-air hops included
     why: dict[str, int] = {}
     for _, x in runs:
         for k, v in x.why.items():
