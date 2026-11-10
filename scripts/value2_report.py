@@ -7,7 +7,9 @@
 Why: v1 gives a garbage-time touchdown the same 5 points as a go-ahead one (docs/plans/2026-11-09-value-v2.md). Before
 any label or model moves to v2, Nick has to be able to read the top plays of a night he remembers and say "yes, those".
 So this prints, per league: every v2 kind (count, mean base, mean value), the leverage and stakes spread, one night's
-top 15 plays by v2 and by v1, the rank agreement of 3-minute windows, and where the two disagree most.
+top 15 plays by v2 and by v1 (each with the play's live v2 value and its replay value), the rank agreement of 3-minute
+windows, where the two disagree most, and the replay-worthy plays the live show would skip: the top 10 by replay value
+among plays that rank below 30th by live value on their own night, plus the 5 largest replay-minus-live gaps.
 
 Dev nights only: a summary is opened only if scripts/coverage_audit.DevOnly allows its night; locked and fresh nights
 stay closed. v1 here is the shard label's v1: published win probability is stripped first (value_shards.py), so wp5 and
@@ -35,6 +37,8 @@ from scripts.coverage_audit import DevOnly  # noqa: E402
 
 WINDOW = V.HORIZON_S
 TOP_N = 15
+REPLAY_N = 10
+LIVE_BELOW = 30  # "rank below 30 by live": 31st or lower by live v2 value within the play's own night
 ROUTINE = {"football": (1.0, "a 20-yard gain or a sack in an ordinary game state"),
            "hoops": (0.5, "a plain dunk or an early lead change in an ordinary game state")}
 BIG = 5.0        # one ordinary-state touchdown
@@ -90,14 +94,14 @@ def league_tables(archive: Path, league: str, max_nights: int, top_night: str | 
         for g in graded:
             v2_by[g.play_id].append(g)
             v2_rows.append({"kind": g.kind, "base": g.base, "leverage": g.leverage, "stakes": g.stakes, "value": g.value,
-                            "dead": g.dead})
+                            "replay": g.replay, "dead": g.dead})
         for pid in set(v1_by) | set(v2_by):
             p = index.get(pid) or {}
             g2, m1 = v2_by.get(pid, []), v1_by.get(pid, [])
             plays.append({
                 "night": night, "game": _teams(d), "gid": gid, "pid": pid, "t": (g2[0].t if g2 else m1[0].t),
                 "when": _clock(league, p), "score": f"{p.get('awayScore', '?')}-{p.get('homeScore', '?')}",
-                "v2": sum(g.value for g in g2), "v2_kinds": "+".join(g.kind for g in g2),
+                "v2": sum(g.value for g in g2), "replay": sum(g.replay for g in g2), "v2_kinds": "+".join(g.kind for g in g2),
                 "lev": max((g.leverage for g in g2 if not g.dead), default=float("nan")),
                 "v1": sum(V.TIER_WEIGHTS[m.tier] for m in m1), "v1_kinds": "+".join(m.kind for m in m1),
                 "v1_tier1": any(m.tier == 1 for m in m1),
@@ -126,11 +130,27 @@ def _md(df: pd.DataFrame) -> str:
 
 
 def _top(plays: pd.DataFrame, by: str) -> pd.DataFrame:
-    other = "v1" if by == "v2" else "v2"
     top = plays.sort_values([by, "t"], ascending=[False, True], kind="stable").head(TOP_N)
-    return pd.DataFrame({"#": range(1, len(top) + 1), by: top[by].to_numpy(float), other: top[other].to_numpy(float),
-                         "game": top.game, "when": top.when, "score after (away-home)": top.score,
+    cols = {"v2": ("live v2", top.v2), "v1": ("v1", top.v1)}
+    first, second = cols[by], cols["v1" if by == "v2" else "v2"]
+    return pd.DataFrame({"#": range(1, len(top) + 1), first[0]: first[1].to_numpy(float), second[0]: second[1].to_numpy(float),
+                         "replay": top.replay.to_numpy(float), "game": top.game, "when": top.when, "score after (away-home)": top.score,
                          "kinds": top[f"{by}_kinds"], "play": top.text})
+
+
+def replay_skipped(plays: pd.DataFrame) -> pd.DataFrame:
+    """Top REPLAY_N plays by replay value among those ranked below LIVE_BELOW by live value on their own night (ties on
+    live value broken by time, the same order the top-15 tables use)."""
+    if plays.empty:
+        return plays
+    p = plays.sort_values(["night", "v2", "t"], ascending=[True, False, True], kind="stable").copy()
+    p["live_rank"] = p.groupby("night").cumcount() + 1
+    low = p[(p.live_rank > LIVE_BELOW) & (p.replay > 0)]
+    top = low.sort_values(["replay", "t"], ascending=[False, True], kind="stable").head(REPLAY_N)
+    return pd.DataFrame({"#": range(1, len(top) + 1), "replay": top.replay.to_numpy(float), "live": top.v2.to_numpy(float),
+                         "replay - live": (top.replay - top.v2).to_numpy(float), "live rank that night": top.live_rank.to_numpy(int),
+                         "night": top.night, "game": top.game, "when": top.when, "score after (away-home)": top.score,
+                         "kinds": top.v2_kinds, "play": top.text})
 
 
 def render(r: dict) -> str:
@@ -138,7 +158,8 @@ def render(r: dict) -> str:
     v2, plays, win = r["v2"], r["plays"], r["windows"]
     out = [f"## {lg.upper()}: {r['games']} games on {r['nights']} dev nights ({r['night_span'][0]} to {r['night_span'][1]})", ""]
     kinds = v2.groupby("kind").agg(count=("value", "size"), mean_base=("base", "mean"), mean_value=("value", "mean"),
-                                   min_value=("value", "min"), max_value=("value", "max")).reset_index()
+                                   min_value=("value", "min"), max_value=("value", "max"),
+                                   mean_replay=("replay", "mean")).reset_index()
     out += ["### Every v2 kind", "", _md(kinds.sort_values("count", ascending=False)), ""]
     live = v2[~v2.dead]
     q = live.leverage.quantile([0.1, 0.25, 0.5, 0.75, 0.9]).round(2).tolist()
@@ -187,6 +208,17 @@ def render(r: dict) -> str:
         out += [f"### Night {r['top_night']}: top {TOP_N} plays by v2", "", _md(_top(night, "v2")), "",
                 f"### Night {r['top_night']}: top {TOP_N} plays by v1", "",
                 f"{ties} plays tie at v1's top score of {night.v1.max():g}; ties are listed in time order.", "", _md(_top(night, "v1")), ""]
+    a = value2.config()["replay_leverage_exponent"]
+    skipped = replay_skipped(plays)
+    out += [f"### Top {REPLAY_N} by replay that rank below {LIVE_BELOW} by live", "",
+            f"Replay-worthy plays the live show would skip. Replay = base x leverage^{a:g} x stakes (dead value 0); live = the v2 "
+            f"value. Live rank is within the play's own night, all {r['nights']} nights of this sample.", ""]
+    out += [_md(skipped) if len(skipped) else "None.", ""]
+    gap = plays.assign(gap=plays.replay - plays.v2).sort_values(["gap", "t"], ascending=[False, True], kind="stable").head(5)
+    out += [f"Largest replay minus live in the sample (garbage time, where leverage^{a:g} lifts the most):", "",
+            _md(pd.DataFrame({"replay - live": gap.gap.to_numpy(float), "replay": gap.replay.to_numpy(float),
+                              "live": gap.v2.to_numpy(float), "night": gap.night, "game": gap.game, "when": gap.when,
+                              "score after (away-home)": gap.score, "kinds": gap.v2_kinds, "play": gap.text})), ""]
     return "\n".join(out)
 
 
@@ -207,7 +239,9 @@ def main(argv=None) -> int:
     top = dict(x.split(":") for x in a.top.split(",") if x)
     print("# Value v2 against v1 on dev nights\n")
     print("A play's v2 value is the sum of its graded moments (base x leverage x stakes). v1 is the tier weight "
-          f"({', '.join(f'tier {k} = {v:g}' for k, v in V.TIER_WEIGHTS.items())}) with published win probability stripped.\n")
+          f"({', '.join(f'tier {k} = {v:g}' for k, v in V.TIER_WEIGHTS.items())}) with published win probability stripped.")
+    print("Live is that v2 value (worth cutting to now). Replay is the sum of base x leverage^"
+          f"{value2.config()['replay_leverage_exponent']:g} x stakes (worth airing later as a catch-up clip; dead value 0).\n")
     for lg in [x for x in a.leagues.split(",") if x]:
         print(render(league_tables(Path(a.archive), lg, a.max_nights, top.get(lg))))
     print(not_detectable())
