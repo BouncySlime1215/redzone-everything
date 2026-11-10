@@ -140,6 +140,58 @@ def load_nights(league: str, cap: int, cache: Path | None) -> list[list[dict]]:
     return out
 
 
+def shift(g: dict, dt: float) -> dict:
+    """The same game, every time moved by dt (the coordinator's coord_grid.shift)."""
+    return {"gid": g["gid"], "t0": g["t0"] + dt, "t1": g["t1"] + dt, "dead": [(a + dt, b + dt) for a, b in g["dead"]], "brk": list(g["brk"]),
+            "shots": [x + dt for x in g["shots"]], "big": [(t + dt, v) for t, v in g["big"]], "hl": [(a + dt, b + dt) for a, b in g["hl"]],
+            "lev": [(x[0] + dt,) + tuple(x[1:]) for x in g["lev"]], "v2": [(x[0] + dt,) + tuple(x[1:]) for x in g["v2"]]}
+
+
+def one_game_nfl(n: int, cache: Path | None) -> list[dict]:
+    """The first n dev nights that hold exactly one NFL game (a Monday or Thursday night)."""
+    key = cache / f"park_truth3_nfl1_{n}.pkl" if cache else None
+    if key and key.exists():
+        return pickle.loads(key.read_bytes())
+    d = ROOT / "data/archive/nfl"
+    keep = splits.nights_for(d, "fit") or set()
+    games = splits.archive_nights(d)
+    out = []
+    for night in sorted(k for k in keep if len(games.get(k, ())) == 1):
+        f = d / f"summary_{list(games[night])[0]}.json"
+        try:
+            r = Replay.load(League("nfl"), f)
+        except (OSError, ValueError):
+            continue
+        if r is not None and len(r.plays) >= 60:
+            out.append(truth_of(r))
+        if len(out) >= n:
+            break
+    if key:
+        key.parent.mkdir(parents=True, exist_ok=True)
+        key.write_bytes(pickle.dumps(out))
+    return out
+
+
+def slates_for(name: str, cap: int, cache: Path | None) -> list[list[dict]]:
+    """Nick's slates. "nba N": N basketball games of one recorded night. "mnf+K": ONE football game plus K basketball games.
+    The mixed slate is SYNTHETIC: the football archive is the 2025 season and the basketball one is Oct 2026, so a one-game
+    football night is shifted in time to kick off with the basketball slate. Different games' dead and live stretches do not
+    depend on each other, so the shift is fair for pace and timing; it is not a recorded night."""
+    nba = load_nights("nba", cap, cache)
+    kind, _, k = name.partition("+") if "+" in name else name.partition(" ")
+    k = int(k)
+    if kind == "nba":
+        return [x for x in (slate(night, k) for night in nba) if x]
+    nfl1 = one_game_nfl(cap, cache)
+    out = []
+    for i, night in enumerate(nba):
+        x = slate(night, k) if k > 1 else [sorted(night, key=lambda g: g["t0"])[0]]
+        if x and i < len(nfl1):
+            tip = statistics.median(g["t0"] for g in x)
+            out.append([shift(nfl1[i], tip - nfl1[i]["t0"])] + list(x))
+    return out
+
+
 def slate(night: list[dict], n: int) -> list[dict] | None:
     """The n games of this night that start closest together (None when the night has no such slate)."""
     gs = sorted(night, key=lambda g: g["t0"])
@@ -176,6 +228,9 @@ class Units:
         self.live_start = [x[0] for x in self.lives]
         self.zs = [s + e for s, x in wins if x - s >= 2 * e]       # safe leave zones [zs, ze]
         self.ze = [x - e for s, x in wins if x - s >= 2 * e]
+        self.hl = sorted(g.get("hl", ()))          # never leave inside (or within the padding of) a high-leverage play
+        self.hl_a = [a for a, _ in self.hl]
+        self.e = e
         self.p, self.leave = [], []
         for s, x in wins[:-1]:
             if x - s < 2 * e + q:
@@ -184,7 +239,7 @@ class Units:
             j = bisect.bisect_right(self.zs, x)          # the first leave zone that starts after this window ends
             out = None
             while j < len(self.zs):
-                c = max(self.zs[j], p + min_visit)
+                c = self.calm(max(self.zs[j], p + min_visit))
                 if c <= self.ze[j]:
                     out = c
                     break
@@ -195,10 +250,25 @@ class Units:
         self.big_t = [b[0] for b in g["big"]]
         self.big_v = [b[1] for b in g["big"]]
 
+    def calm(self, c: float) -> float:
+        """c, or the first later time whose padded neighbourhood touches no high-leverage play."""
+        for _ in range(50):
+            i = bisect.bisect_right(self.hl_a, c + self.e)
+            hit = [b for a, b in self.hl[max(0, i - 6):i] if b >= c - self.e]
+            if not hit:
+                return c
+            c = max(hit) + self.e + 0.01
+        return FAR
+
     def next_leave(self, c: float) -> float:
-        """The first content time at or after c that sits in a safe leave zone."""
+        """The first content time at or after c that sits in a safe leave zone and outside high leverage."""
         j = bisect.bisect_left(self.ze, c)
-        return max(c, self.zs[j]) if j < len(self.zs) else FAR
+        while j < len(self.zs):
+            x = self.calm(max(c, self.zs[j]))
+            if x <= self.ze[j]:
+                return x
+            j += 1
+        return FAR
 
     def whole_plays(self, a: float, b: float) -> int:
         return max(0, bisect.bisect_right(self.live_end, b) - bisect.bisect_left(self.live_start, a))
@@ -279,7 +349,7 @@ def park_run(games: list[dict], *, sticks: int = 2, e: float = POS_ERR_S, q: flo
     f, scr = min(first)
     land, unit = max(f[0], T0), (f[2], f[3])
     st[scr]["g"] = unit[0]
-    jumps, visits = [], []
+    jumps, visits, cuts = [], [], []      # cuts: (game left, its picture position, game joined, its picture position)
     while land < T1:
         g, i = unit
         u = us[g]
@@ -311,10 +381,11 @@ def park_run(games: list[dict], *, sticks: int = 2, e: float = POS_ERR_S, q: flo
         a, b = p, p + (tj - land)
         visits.append((b - a, u.live_seconds(a, b), u.whole_plays(a, b), u.big(a, b)))
         jumps.append(tj)
+        cuts.append((g, b, pl[2], us[pl[2]].p[pl[3]]))
         st[scr].update(c=b, hid=tj)
         scr, land, unit = n, tj + flip, (pl[2], pl[3])
         st[scr]["g"] = unit[0]
-    return {"jumps": jumps, "visits": visits, "span": (T0, T1)}
+    return {"jumps": jumps, "visits": visits, "span": (T0, T1), "cuts": cuts}
 
 
 def live_run(games: list[dict], *, min_visit: float = 0.0, flip: float = FLIP_S, need_play: bool = True) -> dict:
@@ -412,6 +483,96 @@ def supply(nights: list[list[dict]]) -> dict:
             "live_share": round(sum(live) / (mins * 60.0), 3)}
 
 
+ERR_SD = (0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0)
+ERR_K = (1.0, 1.5, 2.0, 2.5, 3.0, 4.0)
+ERR_SLATES = ("nba 2", "nba 3", "nba 4", "nba 6", "nba 8", "nba 12", "mnf+1", "mnf+3", "mnf+7")
+ERR_DRAWS = 20
+
+
+class Facts:
+    """Is this picture position a dead ball, the 4 s walk after a shot, or inside a high-leverage play, by the grader."""
+
+    def __init__(self, g: dict):
+        self.t0, self.t1 = g["t0"], g["t1"]
+        self.ds, self.de = [a for a, _ in g["dead"]], [b for _, b in g["dead"]]
+        self.shots = sorted(g["shots"])
+        self.hl = sorted(g["hl"])
+        self.hl_a = [a for a, _ in self.hl]
+
+    def dead(self, c: float) -> bool:
+        if c < self.t0 or c >= self.t1:
+            return True
+        i = bisect.bisect_right(self.ds, c) - 1
+        return i >= 0 and c < self.de[i]
+
+    def walk(self, c: float) -> bool:
+        i = bisect.bisect_right(self.shots, c) - 1
+        return i >= 0 and c < self.shots[i] + SHOT_WINDOW_S
+
+    def high(self, c: float) -> bool:
+        i = bisect.bisect_right(self.hl_a, c)
+        return any(b >= c for _, b in self.hl[max(0, i - 6):i])
+
+
+def break_counts(games: list[dict], cuts: list[tuple], sd: float, rng) -> dict:
+    """Rule #1 by the grader's facts when every leave and every landing is off by its own draw from N(0, sd)."""
+    f = [Facts(g) for g in games]
+    out = {"mid_join": 0, "mid_leave": 0, "hl_leave": 0, "walk_join": 0, "walk_leave": 0}
+    for g, c, h, p in cuts:
+        x, y = c + rng.gauss(0.0, sd), p + rng.gauss(0.0, sd)
+        if not f[g].dead(x):
+            out["walk_leave" if f[g].walk(x) else "mid_leave"] += 1
+        out["hl_leave"] += int(f[g].high(x))
+        if not f[h].dead(y):
+            out["walk_join" if f[h].walk(y) else "mid_join"] += 1
+    return out
+
+
+def error_grid(cap: int, cache: Path | None, out_csv: str, sticks: tuple = (2, 3), slates: tuple = ERR_SLATES) -> None:
+    """Pace and Rule #1 counters per (position error sd, padding k): the greedy viewer keeps k x sd from every edge, then
+    every leave and landing is moved by its own N(0, sd) draw and judged by the grader's facts. ERR_DRAWS draws per night."""
+    import random
+    cols = ["slate", "nights", "minutes", "sticks", "any_shot", "sd_s", "k", "pad_s", "jumps_per_min", "jumps_per_hour", "picture_s_median",
+            "mid_join_per_hour", "mid_leave_per_hour", "hl_leave_per_hour", "walk_join_per_hour", "walk_leave_per_hour",
+            "breaks_per_100_jumps", "nights_with_zero_breaks"]
+    with open(out_csv, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(cols)
+        for name in slates:
+            ss = slates_for(name, cap, cache)
+            if not ss:
+                continue
+            for k_st in sticks:
+                for shots in (False, True):
+                    runs: dict[float, list[dict]] = {}
+                    for sd in ERR_SD:
+                        for k in ERR_K:
+                            pad = round(k * sd, 3)
+                            if pad not in runs:
+                                runs[pad] = [park_run(x, sticks=k_st, e=pad, shots=shots, pick="short") for x in ss]
+                            rs = runs[pad]
+                            mins = sum((r["span"][1] - r["span"][0]) / 60.0 for r in rs)
+                            nj = sum(len(r["jumps"]) for r in rs)
+                            tot = {"mid_join": 0, "mid_leave": 0, "hl_leave": 0, "walk_join": 0, "walk_leave": 0}
+                            zero = 0
+                            for d in range(ERR_DRAWS):
+                                for i, (x, r) in enumerate(zip(ss, rs)):
+                                    b = break_counts(x, r["cuts"], sd, random.Random(1000 * d + i))
+                                    for kk, v in b.items():
+                                        tot[kk] += v
+                                    zero += int(b["mid_join"] + b["mid_leave"] + b["hl_leave"] == 0)
+                            hrs = ERR_DRAWS * mins / 60.0
+                            vis = [v[0] for r in rs for v in r["visits"]]
+                            w.writerow([name, len(ss), round(mins, 1), k_st, int(shots), sd, k, pad, round(nj / mins, 3), round(60.0 * nj / mins, 1),
+                                        round(statistics.median(vis), 1) if vis else "",
+                                        round(tot["mid_join"] / hrs, 3), round(tot["mid_leave"] / hrs, 3), round(tot["hl_leave"] / hrs, 3),
+                                        round(tot["walk_join"] / hrs, 3), round(tot["walk_leave"] / hrs, 3),
+                                        round(100.0 * (tot["mid_join"] + tot["mid_leave"] + tot["hl_leave"]) / max(1, ERR_DRAWS * nj), 3),
+                                        round(zero / (ERR_DRAWS * len(ss)), 3)])
+                            fh.flush()
+            print(name, "done", flush=True)
+
+
 BURST_SETS = ("R3+R4 one-play, pause holds, skips", "R3+R4 pick shortest", "R3+R4 scrub only, pick shortest", "R2 any shot, error 2 s, shortest",
               "R5 four sticks, pick shortest", "what-if error 3 s, shortest", "what-if error 0, shortest",
               "what-if error 0, flip 0.5 s, 4 sticks, shortest", "what-if error 0, any shot, 4 sticks, flip 0.5")
@@ -448,7 +609,7 @@ RULE_SETS: dict[str, tuple[str, dict]] = {
     "R5 three sticks": ("park", {"sticks": 3}),
     "R5 four sticks": ("park", {"sticks": 4}),
     "R5 four sticks, pick shortest": ("park", {"sticks": 4, "pick": "short"}),
-    "R6 min visit 12 s": ("park", {"min_visit": 12.0, "e": 0.0, "pick": "short"}),
+    "R6 min visit 12 s (error 0, what-if)": ("park", {"min_visit": 12.0, "e": 0.0, "pick": "short"}),
     "R6 min visit 8 s (error 0, what-if)": ("park", {"min_visit": 8.0, "e": 0.0, "pick": "short"}),
     "R6 min visit 6 s (error 0, what-if)": ("park", {"min_visit": 6.0, "e": 0.0, "pick": "short"}),
     "R6 min visit 4 s (error 0, what-if)": ("park", {"min_visit": 4.0, "e": 0.0, "pick": "short"}),
@@ -467,9 +628,13 @@ def main() -> int:
     ap.add_argument("--only", nargs="*", default=None, help="rule-set names containing any of these")
     ap.add_argument("--cache", default=None, help="a folder OUTSIDE the repo for the per-game facts")
     ap.add_argument("--burst", action="store_true", help="also probe bursts from a full bank (slower)")
+    ap.add_argument("--error-grid", default=None, help="write the position-error grid (sd x padding) for Nick's slates to this CSV and stop")
     ap.add_argument("--json", default=None)
     ap.add_argument("--csv", default=None)
     a = ap.parse_args()
+    if a.error_grid:
+        error_grid(a.cap, Path(a.cache) if a.cache else None, a.error_grid)
+        return 0
     rows, facts = [], {}
     for lg in a.leagues:
         nights = load_nights(lg, a.cap, Path(a.cache) if a.cache else None)
