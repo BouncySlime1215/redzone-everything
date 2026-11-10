@@ -203,12 +203,15 @@ def skip_cost(delta: float, skip: bool) -> float:
 
 def park_run(games: list[dict], *, sticks: int = 2, e: float = POS_ERR_S, q: float = 0.0, shots: bool = False,
              min_visit: float = 0.0, park_at: str = "end", skip: bool = True, pick: str = "next", flip: float = FLIP_S,
-             reach: float = REACH_S, min_behind: float = MIN_BEHIND_S, repark: bool = True) -> dict:
+             reach: float = REACH_S, min_behind: float = MIN_BEHIND_S, repark: bool = True,
+             start: float | None = None, stop: float | None = None) -> dict:
     """The greedy max-pace viewer on these games with parked sticks. Returns jump times and what each visit showed."""
     us = [Units(g, e=e, q=q, shots=shots, min_visit=min_visit, park_at=park_at) for g in games]
     T0, T1 = span(games)
+    T0, T1 = (T0 if start is None else start), (T1 if stop is None else stop)
     k = min(sticks, len(games))
-    # a stick: game index, content position it was left at, the time it went hidden
+    # a stick: game index, content position it was left at, the time it went hidden. Every stick starts with a full bank:
+    # as far behind live as the reach allows, already set up
     st = [{"g": i, "c": T0 - reach, "hid": T0 - 60.0} for i in range(k)]
 
     def plan(s: dict, target: float, held: set[int]) -> tuple | None:
@@ -387,6 +390,27 @@ def supply(nights: list[list[dict]]) -> dict:
             "live_share": round(sum(live) / (mins * 60.0), 3)}
 
 
+BURST_SETS = ("R3+R4 one-play, pause holds, skips", "R3+R4 pick shortest", "R3+R4 scrub only, pick shortest", "R2 any shot, error 2 s, shortest",
+              "R5 four sticks, pick shortest", "what-if error 3 s, shortest", "what-if error 0, shortest",
+              "what-if error 0, flip 0.5 s, 4 sticks, shortest", "what-if error 0, any shot, 4 sticks, flip 0.5")
+BURST_MIN = (1, 2, 3, 5)
+
+
+def burst(slates: list[list[dict]], kw: dict) -> dict:
+    """From a full bank (every stick 175 s behind and set up): jumps in the first 1 / 2 / 3 / 5 minutes, over start times
+    every 5 minutes through each night. [median, max]. The bank is the dead time a stick can skip before it reaches live."""
+    got = {m: [] for m in BURST_MIN}
+    for s in slates:
+        a, b = span(s)
+        t = a + 900.0
+        while t + 300.0 <= b:
+            j = park_run(s, start=t, stop=t + 300.0, **kw)["jumps"]
+            for m in BURST_MIN:
+                got[m].append(bisect.bisect_right(j, t + 60.0 * m))
+            t += 300.0
+    return {f"burst_{m}m": [pct(v, 0.5), pct(v, 0.9), max(v) if v else float("nan")] for m, v in got.items()}
+
+
 # name -> (physics, keyword settings). The step 0 table: each rule set, then what each one thing buys.
 RULE_SETS: dict[str, tuple[str, dict]] = {
     "R1 today, live edge, no park": ("live", {}),
@@ -420,6 +444,7 @@ def main() -> int:
     ap.add_argument("--cap", type=int, default=4, help="dev nights per league (those with the most games)")
     ap.add_argument("--only", nargs="*", default=None, help="rule-set names containing any of these")
     ap.add_argument("--cache", default=None, help="a folder OUTSIDE the repo for the per-game facts")
+    ap.add_argument("--burst", action="store_true", help="also probe bursts from a full bank (slower)")
     ap.add_argument("--json", default=None)
     ap.add_argument("--csv", default=None)
     a = ap.parse_args()
@@ -440,6 +465,8 @@ def main() -> int:
                     continue
                 runs = [live_run(s) if physics == "live" else park_run(s, **kw) for s in slates]
                 row = {"league": lg, "games": n, "rule_set": name, **summarize(runs, big_total)}
+                if a.burst and name in BURST_SETS:
+                    row.update(burst(slates, kw))
                 rows.append(row)
                 print(f"{lg} N={n} {name:48s} {row['jumps_per_min']:6.2f}/min  5m {row['per_5m']}  60m {row['per_60m']}  "
                       f"pic {row.get('picture_s_median')}s  whole {row.get('whole_play_share')}  big {row.get('big_seen_share')}  "
@@ -448,7 +475,8 @@ def main() -> int:
         Path(a.json).write_text(json.dumps({"facts": facts, "rows": rows}, indent=1))
     if a.csv and rows:
         cols = ["league", "games", "rule_set", "nights", "minutes", "jumps_per_min"] + [f"per_{w}m_{s}" for w in (1,) + WINDOWS_MIN for s in ("med", "p10", "max")] \
-            + ["longest_at_5_s", "longest_at_7_s", "picture_s_median", "live_share", "whole_play_share", "big_seen_share"]
+            + ["longest_at_5_s", "longest_at_7_s", "picture_s_median", "live_share", "whole_play_share", "big_seen_share"] \
+            + [f"burst_{m}m_{s}" for m in BURST_MIN for s in ("med", "p90", "max")]
         with open(a.csv, "w", newline="") as fh:
             w = csv.writer(fh)
             w.writerow(cols)
@@ -456,6 +484,9 @@ def main() -> int:
                 flat = dict(r)
                 for m in (1,) + WINDOWS_MIN:
                     flat[f"per_{m}m_med"], flat[f"per_{m}m_p10"], flat[f"per_{m}m_max"] = r[f"per_{m}m"]
+                for m in BURST_MIN:
+                    if f"burst_{m}m" in r:
+                        flat[f"burst_{m}m_med"], flat[f"burst_{m}m_p90"], flat[f"burst_{m}m_max"] = r[f"burst_{m}m"]
                 w.writerow([flat.get(c, "") for c in cols])
     return 0
 
