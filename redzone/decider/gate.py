@@ -222,6 +222,13 @@ def _leave(f: Flip) -> bool:
     return not ok or _leaves_high_leverage_play(f)
 
 
+def _anchor_return(f: Flip) -> bool:
+    """[anchor.enabled, Rule #1] A gap clip off the anchor goes only if the flip back still lands before the anchor's guaranteed
+    restart less anchor.margin_s (Decider.anchor_veto). Off, or not an anchor clip: never a veto."""
+    veto = getattr(f.host.decider, "anchor_veto", None)
+    return f.d.action == "replay" and veto is not None and bool(veto(f.d, f.now))
+
+
 def _landing_whistle(f: Flip) -> bool:
     """[EXP-610] Scrub path: the delayed picture at a stopped clock. A jump's own bar already judges its delayed picture."""
     return not f.jump and not f.host._flip_lands_whistle(f.d, f.target)
@@ -259,6 +266,7 @@ GATE_RULES: tuple[Rule, ...] = (
     ("deferred", _deferred),
     *ENTRY_RULES,
     *LEAVE_RULES,
+    ("anchor_return", _anchor_return),
     ("landing_whistle", _landing_whistle),
 )
 

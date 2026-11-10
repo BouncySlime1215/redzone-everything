@@ -20,6 +20,7 @@ Only `Machine.to()` moves a state; an undeclared move fails tests and logs a war
 | [control.standby](#control.standby) | `control.Controller.standby_m` | What the hidden stick holds for the next flip: one state replaces hidden_target/hidden_ready/parked/_snap_park/_holding/_left/_stuck_since, so 'ready while holding' or 'left hold and parked' can't happen. | 9 |
 | [control.two_stick](#control.two_stick) | `control.Controller.two_stick_m` | Two-stick (hot standby) mode health: a failed flip degrades to single-stick (hidden is None) until TWO_STICK_RETRY_S has passed and the input is known again. Config/stick-count reasons are in view. | 2 |
 | [control.visible](#control.visible) | `control.Controller.visible_m` | The stick on screen should be playing what we put there: replaces _visible_bad_since/_visible_state as loose fields (the 'how' resets when healthy). | 4 |
+| [decider.anchor](#decider.anchor) | `decider.Decider.anchor_m` | [anchor.enabled] the crunch or overtime game the screen stick holds, and whether a gap fill is on screen | 3 |
 | [decider.catchup_route](#decider.catchup_route) | `decider.Decider.catchup_m` | [arbiter.catchup_route] one missed must-see airing in pieces on the hidden stick, in the screen's dead time | 3 |
 | [decider.delay_label](#decider.delay_label) | `decider.screen.DelayBook.label_m` | [edge model] per target: is YouTube TV's overlay time label this tune's behind-live figure? | 3 |
 | [decider.entry_wait](#decider.entry_wait) | `decider.Decider.entry_m` | [cut timing] a switch waiting for a dead ball to land on (bounded by decider.entry.max_wait_s.<league>) | 2 |
@@ -488,6 +489,26 @@ stateDiagram-v2
     restoring --> ok
     restoring --> bad
     restoring --> repairing
+```
+
+## decider.anchor
+
+Owner: `decider.Decider.anchor_m`. [anchor.enabled] the crunch or overtime game the screen stick holds, and whether a gap fill is on screen
+
+| State | Meaning | Can move to |
+|---|---|---|
+| `off` (initial) | no anchor: the normal show | holding |
+| `holding` | the anchor is on (or on its way to) the screen stick; its live plays are never left | filling, off |
+| `filling` | a clip of the gap plan is on the hidden stick; the screen flips back before the anchor's guaranteed restart | holding, off |
+
+```mermaid
+stateDiagram-v2
+    [*] --> off
+    off --> holding
+    holding --> filling
+    holding --> off
+    filling --> holding
+    filling --> off
 ```
 
 ## decider.catchup_route
