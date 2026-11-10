@@ -974,6 +974,19 @@ timing:
                                  # (noggin.pick.FEED_LAG_P90) until T6's per-league feed-lag table gives real p95s
       approved_min_s: {nfl: 0, cfb: 0, nba: 0, cbb: 0, wcbb: 0, nhl: 0, mlb: 0}   # the lowest B a LOCKED gate
                                  # approved per league; 0 = none yet, so a held league never goes below its live B
+  measured: false          # [TIMING-TRUTH] OFF: true = the catch-up route (noggin/catchup.Route built by the decider) and
+                           # scripts/veto_audit.py --timing measured read the stick timings below, measured on Nick's TV
+                           # Nov 9 (small samples, on a busy Mac: TV test 3e re-times prep on a quiet one). Off = each
+                           # reads its own constant as before (flip 3.2, clip prep 15, reach arbiter.catchup_route_reach_s)
+  flip_s: 1.9              # input flip through SmartThings, median (9 of 9 at 1.83-2.22 s)
+  flip_max_s: 2.2          # ...the slowest of those 9: the route plans every flip with this one
+  tune_s: 3.0              # tune to another channel, picture confirmed: typical (n = 13, 2.3-4.3 s)
+  tune_max_s: 4.3          # ...the slowest of those 13
+  clip_prep_s: 19.0        # the hidden stick loads a clip: tune + 3 s wait + seek (18.0-19.0 s typical, n = 6)
+  clip_prep_max_s: 25.0    # ...the slowest (24.8 s)
+  seek_base_s: 28.7        # a seek lands this far behind live with no LEFT press (time label, 6 of 6, two games)
+  seek_per_press_s: 16.5   # ...plus this much per LEFT press
+  reach_s: 175             # deepest seek reached (about 175-177 s); catchup.HARD_CAP_S (180) still caps the route
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback

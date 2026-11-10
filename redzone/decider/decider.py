@@ -50,6 +50,7 @@ from redzone.noggin.lookahead import ahead
 from redzone.noggin.priority import NO_MOMENT as P_NO_MOMENT
 from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage, league_index
 from redzone import config as _config
+from redzone import measured_timing
 from redzone.decider import core
 from redzone.decider.core import BreakView, CoreState, DecisionCore, Knobs, MomentView, Option, SwitchPath
 from redzone.scoring.engine import Scored
@@ -967,7 +968,8 @@ class Decider:
         if cap <= 0 or self.cfg.get("replay.yttv_seek", "scrub") != "scrub":
             return True
         if self.cfg.get("arbiter.catchup_route", False):   # the route's own reach decides, and catchup.py caps it under 180 s
-            cap = max(cap, float(self.cfg.get("arbiter.catchup_route_reach_s", 95) or 0))
+            meas = measured_timing.route_costs(self.cfg)     # [timing.measured] the measured reach replaces the configured one
+            cap = max(cap, float(self.cfg.get("arbiter.catchup_route_reach_s", 95) or 0) if meas is None else meas["reach_s"])
         if (self.target_of(m.game_id) or "youtubetv:").split(":", 1)[0] != "youtubetv":
             return True
         return now - m.t <= cap
@@ -2225,7 +2227,13 @@ class Decider:
         return True, not (_holds_replays(s) or s.crunch_now or s.high_leverage or self._crunch_on(cands))
 
     def _catchup_route_params(self, p: arbiter.Params) -> catchup.Route:
-        return catchup.Route(reach_s=min(p.catchup_route_reach_s, catchup.HARD_CAP_S), clip_s=p.plan_clip_s, flip_s=float(bj.cfg_get(self.cfg, "flip_s")),
+        """[timing.measured] on: the TV's measured flip, clip load and reach (redzone/measured_timing.py). Off: today's costs, the clip
+        load now named in one place (it was catchup.Route's default 15 s)."""
+        m = measured_timing.route_costs(self.cfg)
+        if m is None:
+            return catchup.Route(reach_s=min(p.catchup_route_reach_s, catchup.HARD_CAP_S), clip_s=p.plan_clip_s, flip_s=float(bj.cfg_get(self.cfg, "flip_s")),
+                                 prep_s=measured_timing.ASSUMED_CLIP_PREP_S, short=p.catchup_route_short)
+        return catchup.Route(reach_s=min(m["reach_s"], catchup.HARD_CAP_S), clip_s=p.plan_clip_s, flip_s=m["flip_s"], prep_s=m["prep_s"],
                              short=p.catchup_route_short)
 
     def _catchup_span(self, cur: Candidate, now: float) -> tuple[float, bool] | None:
