@@ -3225,10 +3225,11 @@ class Decider:
         return self._best_replay(cands, now, self._next_snap_s(gid, cands, now) - back,
                                  allow_seen=bool(self._lc("decider.crunch.instant_replays", gid, True)), exclude=gid)
 
-    def _next_snap_s(self, gid: str, cands, now: float) -> float:
+    def _next_snap_s(self, gid: str, cands, now: float, known_only: bool = False) -> float:
         """Seconds until gid's next scrimmage snap could start airing on your screen (early side
         of the delay's error bars). A play already in the data is exact; otherwise the next one
-        can't happen before its stoppage's shortest usual length is up."""
+        can't happen before its stoppage's shortest usual length is up.
+        known_only [timing.dead_v2]: only a play already in the data counts; with none, inf (the caller's own table answers)."""
         tl, x = self.timelines.get(gid), cands.get(gid)
         if tl is None or x is None:
             return 0.0
@@ -3244,6 +3245,8 @@ class Decider:
             earliest = e.lo if e.play_kind != "kickoff" else e.lo + KICKOFF_TO_SNAP_S
             nxt = earliest if nxt is None else min(nxt, earliest)
         if nxt is None:
+            if known_only:
+                return float("inf")
             nxt = now - UNSEEN_PLAY_LAG_S   # a newer play could already have happened, unseen
             start, end = tl.last("stop_start"), tl.last("stop_end")
             if start is not None and (end is None or end.seen < start.lo):
@@ -3357,10 +3360,18 @@ class Decider:
             return None                  # the stoppage hasn't reached the screen yet
         sigma = d.current_sigma(now)
         lg = x.scored.league.value.lower()
-        sure = min(anchor_mod.guaranteed_s(lg, start.label, elapsed, self.cfg, sigma), max(0.0, self._next_snap_s(gid, cands, now)))
+        what = start.label
+        if anchor_mod.dead_v2(self.cfg):
+            # [timing.dead_v2] the class and elapsed-time table answers, re-read every tick (a stoppage that outlasts a landmark
+            # earns a new bound); only a play already in the data, whose air time is exact, cuts it short
+            sure = min(anchor_mod.guaranteed_s(lg, start.label, elapsed, self.cfg, sigma, start.stop_class, start.spread),
+                       max(0.0, self._next_snap_s(gid, cands, now, known_only=True)))
+            what = f"{start.label}{f' ({start.stop_class})' if start.stop_class not in ('', start.label) else ''}, {elapsed:.0f} s in"
+        else:
+            sure = min(anchor_mod.guaranteed_s(lg, start.label, elapsed, self.cfg, sigma), max(0.0, self._next_snap_s(gid, cands, now)))
         c = anchor_mod.costs(self.cfg)
         budget = max(0.0, sure - 2.0 * c.flip - anchor_mod.knob(self.cfg, "margin_s")) if sure > 0 else 0.0
-        return budget, now + sure, f"{start.label}: {sure:.0f} s sure, {budget:.0f} s away"
+        return budget, now + sure, f"{what}: {sure:.0f} s sure, {budget:.0f} s away"
 
     def _anchor_fill(self, cands, now: float, gid: str) -> Missed | None:
         """The gap plan's first clip, when the hidden stick has it ready now; None keeps the screen on the anchor. Rule #1: the

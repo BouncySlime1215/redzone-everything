@@ -6,6 +6,7 @@ input flip, and every risk reduces to one number: how much dead time the anchor 
 
     a = pick_anchor(games, current, cfg)                 # the anchor's game id, or None (hysteresis keeps the show from ping-ponging)
     b = gap_budget("nfl", "timeout", 0.0, cfg)           # away seconds this stoppage surely holds: q10 - 2 x flip_max - margin
+    b = gap_budget("nfl", "timeout", 0.0, cfg, cls="official")   # [timing.dead_v2] ...by break class and elapsed time, at anchor.alpha
     p = plan_gap(b, ready_at, now, clips, visits, cfg)   # the exact best ordered fill; p.away_s <= b always
     keep, last, dropped = late_queue(clips, now, history, cfg)   # past 180 s: dropped, unless big (then it airs after the anchor)
 
@@ -32,16 +33,23 @@ from redzone import measured_timing
 from redzone.decider import buffered as bj
 from redzone.moments import value2
 from redzone.noggin.catchup import HARD_CAP_S, Route
-from redzone.scoring.dead_left import guaranteed_left
+from redzone.scoring.dead_left import guaranteed_left, guaranteed_left_v2_within
 
 ANCHOR_FLAG = "anchor.enabled"
+DEAD_V2_FLAG = "timing.dead_v2"     # off: the pooled quantile less the elapsed time (anchor.quantile), exactly as before
 # The priors (default_config.yaml anchor.*), used when a config lacks a key. None of them is fitted yet.
-PRIORS = {"hysteresis": 1.3, "margin_s": 3.0, "quantile": 0.10, "late_big_pct": 5.0, "max_items": 6, "lead_doubt_s": 0.0}
+PRIORS = {"hysteresis": 1.3, "margin_s": 3.0, "quantile": 0.10, "late_big_pct": 5.0, "max_items": 6, "lead_doubt_s": 0.0,
+          "alpha": 0.01}
 NO_GAP_KINDS = frozenset({"none", "whistle", "unknown", ""})   # v1: not used, whatever the table says (spec section 3)
 
 
 def on(cfg) -> bool:
     return bool(cfg is not None and hasattr(cfg, "get") and cfg.get(ANCHOR_FLAG, False))
+
+
+def dead_v2(cfg) -> bool:
+    """[timing.dead_v2] The gap's sure dead time comes from the class and elapsed-time table (dead_left.guaranteed_left_v2)."""
+    return bool(cfg is not None and hasattr(cfg, "get") and cfg.get(DEAD_V2_FLAG, False))
 
 
 def knob(cfg, key: str) -> float:
@@ -115,18 +123,28 @@ def pick_anchor(games: Iterable[Game], current: str | None, cfg=None) -> str | N
 
 # ----- how much of a gap is surely dead -------------------------------------------------------------------------------------------
 
-def guaranteed_s(league: str, stoppage_kind: str, elapsed_s: float, cfg=None, sigma_s: float = 0.0) -> float:
+def guaranteed_s(league: str, stoppage_kind: str, elapsed_s: float, cfg=None, sigma_s: float = 0.0, cls: str | None = None,
+                 spread_s: float = 0.0) -> float:
     """Seconds of this stoppage surely still to come on screen: its `anchor.quantile` length less what already ran, less 2 sigma
-    of the stream-delay estimate. 0 for a plain dead ball or a whistle (v1)."""
+    of the stream-delay estimate. 0 for a plain dead ball or a whistle (v1).
+    [timing.dead_v2] The remaining time of stoppages of this break class (`cls`) that outlasted `elapsed_s`, at the risk level
+    `anchor.alpha`. The elapsed time is only known to a window: `elapsed_s` is its late side (the stoppage's earliest start);
+    it may have run `spread_s` (the doubt of that start) + 2 sigma less, or 2 sigma more. The least bound over the window counts,
+    because past a landmark the table can promise more than just before it."""
     kind = str(getattr(stoppage_kind, "value", stoppage_kind) or "")
     if kind in NO_GAP_KINDS:
         return 0.0
+    if dead_v2(cfg):
+        doubt = 2.0 * max(0.0, sigma_s)
+        return guaranteed_left_v2_within(league, kind, elapsed_s - max(0.0, spread_s) - doubt, elapsed_s + doubt,
+                                         knob(cfg, "alpha"), cls or None)
     return max(0.0, guaranteed_left(league, kind, elapsed_s, knob(cfg, "quantile")) - 2.0 * max(0.0, sigma_s))
 
 
-def gap_budget(league: str, stoppage_kind: str, elapsed_s: float, cfg=None, sigma_s: float = 0.0) -> float:
+def gap_budget(league: str, stoppage_kind: str, elapsed_s: float, cfg=None, sigma_s: float = 0.0, cls: str | None = None,
+               spread_s: float = 0.0) -> float:
     """Away seconds one gap holds: guaranteed dead time - flip out - flip back - anchor.margin_s, never below 0."""
-    g = guaranteed_s(league, stoppage_kind, elapsed_s, cfg, sigma_s)
+    g = guaranteed_s(league, stoppage_kind, elapsed_s, cfg, sigma_s, cls, spread_s)
     return max(0.0, g - 2.0 * costs(cfg).flip - knob(cfg, "margin_s")) if g > 0 else 0.0
 
 
