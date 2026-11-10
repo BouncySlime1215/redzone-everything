@@ -218,7 +218,7 @@ def _leave(f: Flip) -> bool:
     else:
         ok = f.host.safe_to_leave(f.before, required_s=8.0)   # the value cut_veto has always used
         if not ok and getattr(f.d, "leave_held", False):       # [legal.leave_low_leverage] a held pick may go at a low-leverage moment
-            ok = f.host.decider.held_low_leverage_exit(f.before, f.live, f.now)
+            ok = not _ending_airing(f) and f.host.decider.held_low_leverage_exit(f.before, f.live, f.now)
     return not ok or _leaves_high_leverage_play(f)
 
 

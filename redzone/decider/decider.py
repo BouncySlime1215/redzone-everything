@@ -4122,14 +4122,14 @@ class Decider:
         """[legal.leave_low_leverage, off] May a held pick leave this game mid-play? Only in the listed leagues, and only by every rule
         of _leavable: redzone/lab/leverage.py's high-leverage floor (live as scoring.engine.high_leverage and _high_lev_at while
         it may still be on screen), your team, crunch or its run-up, a locked moment, late and close. A pick that isn't held never reads this.
-        Never without screen timing (no timeline, or one with no events) or while the last thing seen is still airing: those are
-        gate.leave_open's own refusals, and this exit must not overrule them."""
+        Never without screen timing (no timeline, or one with no events): that is gate.leave_open's own refusal, and this exit must not overrule it.
+        A live game's last play is nearly always still airing, so that alone refuses nothing here; gate._leave refuses it for a game that ended."""
         lgs = self.cfg.get("legal.leave_low_leverage") or []
         cur = live.get(gid or "")
         if not lgs or cur is None:
             return False
         tl = self.timelines.get(gid)
-        if tl is None or not tl.events or self._ending_still_airing(gid, now) > 0:
+        if tl is None or not tl.events:
             return False
         return self._leavable(cur, now, self.delays.get(cur.target or "unknown"), leagues=lgs)
 

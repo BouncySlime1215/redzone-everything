@@ -11,7 +11,7 @@ import pytest
 from redzone.decider import gate
 from redzone.decider.decider import Candidate, Decider, Decision, FocusMode, Missed, State
 from redzone.decider.screen import Delay, Event, Timeline
-from redzone.models import League
+from redzone.models import League, Phase
 from redzone.noggin import arbiter as A
 from redzone.noggin import catchup as C
 from redzone.scoring.engine import Scored
@@ -40,14 +40,13 @@ class Cfg:
 
 
 def host(leagues=("nfl",), **kw):
-    """A decider whose last play has aired while the feed went quiet (no data covers the screen, so the plain leave says no): the one
-    state the held exit can open since it refuses while anything is still airing. Only the new rule can open the leave."""
+    """A decider at a mid-play moment on screen (no dead window): only the new rule can open the leave."""
     d = Decider.__new__(Decider)
     d.cfg = Cfg(**{"legal.leave_low_leverage": list(leagues), "legal.leave_at_flip": True, "decider.uncalibrated_sigma_s": 8.0,
                    "decider.crunch.hold_personal": 5, "decider.leave.sticky_closeness": 0.5, **kw})
     tl = Timeline(League.NFL)
-    tl.fresh_at = 150.0
-    tl.events.append(Event(150.0, "play"))        # aired on screen around 185 at a 35 s delay; nothing from the feed since
+    tl.fresh_at = 200.0
+    tl.events.append(Event(165.0, "play"))        # airing on screen around 200 at a 35 s delay: mid-play, the leave gate is shut
     d.timelines, d.delays, d.current, d.replaying, d.after_replay, d.safe_mode = {"on": tl}, NS(get=lambda t: Delay(35.0, 1.0), held={}), "on", False, False, False
     d._yours, d._high_lev_at, d._known, d._target_of, d._crunch_tail = set(), {}, {}, {}, {}
     d.entry_cost, d.user = None, NS(paused=False, locked_game=None, manual_until=0.0, focus_mode=FocusMode.AUTOPILOT)
@@ -55,9 +54,11 @@ def host(leagues=("nfl",), **kw):
     return d
 
 
-def flip(d, cands, *, held=True, now=200.0):
+def flip(d, cands, *, held=True, now=200.0, game_on_screen=None):
     dec = Decision(now, "switch", "a", "", State.WATCHING, kind="better", leave_held=held)
     h = gate.DeciderHost(d, {**cands, "a": cands["a"]}, now)
+    if game_on_screen is not None:
+        game_on_screen(h.merger.games)
     return gate._leave(gate.Flip(h, dec, "on", "yt:a", cands, None, now))
 
 
@@ -80,12 +81,28 @@ def test_a_held_pick_never_leaves_without_screen_timing(break_it):
     assert d.held_low_leverage_exit("on", cands, 200.0) is False
 
 
-def test_a_held_pick_never_leaves_while_the_last_play_is_still_airing():
-    """Rule #1 side: seen at 165, airing until about 207 at a 35 s delay (leave_open's _ending_still_airing)."""
+def _ended(games):
+    games["on"].phase = Phase.POST
+
+
+def _lost(games):
+    del games["on"]
+
+
+@pytest.mark.parametrize("game_on_screen", [_ended, _lost])
+def test_a_held_pick_never_leaves_an_ended_game_whose_last_play_is_still_airing(game_on_screen):
+    """Rule #1 side, the commit gate's ending_airing test: an ended game (or one the merger lost) waits for its last play."""
     d = host(("nfl",))
-    d.timelines["on"].events.append(Event(165.0, "play"))
     assert d._ending_still_airing("on", 200.0) > 0
-    assert d.held_low_leverage_exit("on", {"on": cand(), "a": cand()}, 200.0) is False
+    assert flip(d, {"on": cand(), "a": cand()}, game_on_screen=game_on_screen) is True
+
+
+def test_a_live_game_mid_play_still_gets_the_low_leverage_exit_and_high_leverage_does_not():
+    """Still airing is true of nearly every live game (tests/test_commit_gate.py), so it must not close this exit."""
+    d = host(("nfl",))
+    assert d._ending_still_airing("on", 200.0) > 0
+    assert flip(d, {"on": cand(), "a": cand()}) is False
+    assert flip(d, {"on": cand(high_leverage=True), "a": cand()}) is True
 
 
 def test_a_pick_that_was_not_held_never_reads_the_new_rule():
