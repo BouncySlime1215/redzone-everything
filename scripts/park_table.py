@@ -22,6 +22,14 @@ the feed says it still runs, the brain value the feed has already reported ahead
 feed has reported ahead, and how far behind live the picture is. A stick that sits behind live gets more of these for free,
 which is the point of parking. Columns are prefixed s_ (screen game), h_ (hidden stick's game), a_ (the action's game).
 
+`--landings out.csv` writes the second table (no rollouts, so it is quick): per decision second, every LEGAL LANDING the two
+sticks could make next, one row each. A landing is a dead stretch (or, with the any-shot rule, the walk after a shot) of
+another game that a stick can be parked on inside the reach. Per row: `wait_s` until the jump could go (the later of the
+stick being set up there and the screen game's next legal leave), `visit_s` from the landing to that game's next legal
+leave, the `value`, must-see value and live seconds that visit shows, the value the screen game shows over the same span
+if the viewer stays (`stay_value`), and what of it the feed had already reported at the decision (`value_known`,
+`visit_known`). `best` marks the landing with the highest value gained per second of screen time: the pick to learn.
+
 `ModelBrain` wraps any function of those features as a park_sim brain, so a trained model is scored by the same simulator.
 
 Why: the AI has to learn "which game to park next" and "jump now or wait" on what the two sticks can really do; a label
@@ -30,8 +38,10 @@ from an unconstrained hindsight view would teach it to ask for things the TV can
 from __future__ import annotations
 
 import argparse
+import bisect
 import copy
 import csv
+import math
 import random
 import sys
 from dataclasses import asdict
@@ -118,6 +128,81 @@ def table(night: ps.Night, s: ps.Setting, *, every: int, hold: int, horizon: int
         t += every
 
 
+def guard_of(s: ps.Setting) -> int:
+    """The padding park_sim.run keeps from every edge under this setting (the same arithmetic)."""
+    sd = 0.6 * s.pos_err if s.pos_sd < 0 else s.pos_sd
+    if s.pad_k > 0:
+        return max(1, int(round(s.pad_k * math.sqrt(sd ** 2 + s.delay_sd ** 2 + s.stamp_sd ** 2 + s.key_sd ** 2))))
+    return int(round(s.pos_err if s.guard < 0 else s.guard))
+
+
+def landings(night: ps.Night, s: ps.Setting, *, every: int, per_game: int = 4):
+    """Yield one dict per (decision second, legal landing). The night is played by the hindsight brain; nothing is tried."""
+    brain = ps.Hindsight()
+    A = night.arrs(s.shots, s.value, s.live_w)
+    a, b = night.span
+    guard, flip = guard_of(s), max(1, int(round(s.flip)))
+    lattice = 0 if s.pause_holds else int(ps.pc.SKIP_STEP_S)
+    need = max(int(s.min_dead), 2 * guard + lattice)
+    low = s.leave_rule == "low_leverage"
+    st, S = ps.run(night, brain, s, t0=a, t1=a + every)
+    t = a + every
+    while t + every < b:
+        xs = A[S.sg]
+        known = min(night.n - 1, t + int(s.feed_lead))
+        s_bel = min(night.n - 1, max(0, int(t - S.sb + S.se)))
+        leave_wait = xs.leave_in(guard, low)[s_bel]
+        rows = []
+        for g, x in enumerate(A):
+            if g == S.sg or not (x.a0 <= t <= x.a1):
+                continue
+            held = g == S.hg
+            cur = int(t - S.hb + S.he) if held else None
+            load = s.load_s + s.load_slow_s + (0 if lattice else ps.pc.SKIP_STEP_S / 2.0)
+            lo, hi = (max(cur, t - int(s.max_behind)), t - ps.SAME_BEHIND_S) if held else (int(t + load - s.max_behind), int(t + load - s.min_behind))
+            j = bisect.bisect_right(x.ends, hi + guard)
+            n_out = 0
+            for k in range(j - 1, -1, -1):
+                p = x.ends[k] - guard if s.park_at == "end" else x.starts[k] + guard
+                if p < lo or n_out >= per_game:
+                    break
+                if x.ends[k] - x.starts[k] < need or x.ends[k] > known or p > hi:
+                    continue
+                if held:
+                    d = max(0, p - cur)
+                    ready = 0.0 if (d == 0 and t >= S.h_ready) else max(0.0, S.h_ready - t) + 2.0 + ps.pc.PRESS_S * math.floor(d / ps.pc.SKIP_STEP_S) + d % ps.pc.SKIP_STEP_S
+                else:
+                    ready = load
+                wait = max(ready, float(leave_wait))
+                end = x.ends[k]                                   # the play starts here
+                out = end + x.leave_in(guard, low)[min(night.n - 1, end)]   # and this is the next legal leave after it
+                out = min(out, night.n - 1)
+                visit = out - p
+                span_end = min(night.n - 1, s_bel + int(wait) + flip + visit)
+                value = x.cumv[out + 1] - x.cumv[p + 1]
+                rows.append({"t": t - a, "game": g, "held": float(held), "behind_s": float(t - p), "ready_s": round(ready, 1),
+                             "leave_wait_s": float(leave_wait), "wait_s": round(wait, 1), "visit_s": float(visit),
+                             "dead_before_play_s": float(end - p), "value": round(value, 3),
+                             "must": round(sum(v for i, v in x.mom.items() if p < i <= out), 3),
+                             "live_s": float(sum(1 for i in range(p, out) if not x.dead[i])),
+                             "stay_value": round(xs.cumv[span_end + 1] - xs.cumv[s_bel + 1], 3),
+                             "value_known": round(x.cumv[min(out, known) + 1] - x.cumv[p + 1], 3), "visit_known": float(out <= known),
+                             "lev": x.lev[min(p, known)], "margin": float(x.margin[min(p, known)]), "left_s": float(x.left_s[min(p, known)]),
+                             "s_lev": xs.lev[min(s_bel, known)], "s_margin": float(xs.margin[min(s_bel, known)]),
+                             "s_left_s": float(xs.left_s[min(s_bel, known)]), "s_on_screen_s": float(t - S.s_land),
+                             "s_behind_s": float(t - s_bel), "games_live": float(sum(1 for y in A if y.a0 <= t <= y.a1))})
+                n_out += 1
+        for r in rows:
+            r["gain_per_s"] = round((r["value"] - r["stay_value"]) / max(1.0, r["wait_s"] + flip + r["visit_s"]), 5)
+        top = max((r["gain_per_s"] for r in rows), default=0.0)
+        for r in rows:
+            r["n_landings"] = len(rows)
+            r["best"] = int(r["gain_per_s"] == top and top > 0)
+            yield r
+        st, S = ps.run(night, brain, s, t0=t, t1=t + every, state=S, stats=st)
+        t += every
+
+
 class ModelBrain:
     """Any function of the feature dict as a park_sim brain: predict(features) -> the game's score. The features are built
     from the position being scored alone (role 0), so the same model scores the screen game, the parked game and the rest."""
@@ -145,8 +230,9 @@ class ModelBrain:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--leagues", nargs="+", default=["nba"])
-    ap.add_argument("--games", nargs="+", type=int, default=[4])
+    ap.add_argument("--slates", nargs="+", default=["nba 4"], help='Nick\'s slates by name: "nba 4" "mnf+3" (the mixed one is synthetic)')
+    ap.add_argument("--landings", default=None, help="also write the legal-landings table to this CSV (no rollouts)")
+    ap.add_argument("--no-actions", action="store_true", help="skip the action-value table (the slow one)")
     ap.add_argument("--cap", type=int, default=2, help="dev nights per league")
     ap.add_argument("--every", type=int, default=20, help="seconds between decisions")
     ap.add_argument("--hold", type=int, default=30, help="seconds the tried action is held before the brain takes over")
@@ -156,19 +242,27 @@ def main() -> int:
     ap.add_argument("--csv", required=True)
     a = ap.parse_args()
     s = ps.Setting(**{"guard": 10.0, **ps.parse_sets(a.set)})
-    n_rows, w = 0, None
-    with open(a.csv, "w", newline="") as fh:
-        for lg in a.leagues:
-            for ng in a.games:
-                for k, night in enumerate(ps.nights_for(lg, ng, a.cap, Path(a.cache) if a.cache else None)):
-                    for row in table(night, s, every=a.every, hold=a.hold, horizon=a.horizon):
-                        row = {"league": lg, "games": ng, "night": k, **row}
-                        if w is None:
-                            w = csv.DictWriter(fh, fieldnames=list(row))
-                            w.writeheader()
-                        w.writerow(row)
-                        n_rows += 1
-    print(f"rows {n_rows} -> {a.csv}; setting {asdict(s)}")
+    cache = Path(a.cache) if a.cache else None
+    nights = [(name, k, night) for name in a.slates for k, night in enumerate(ps.slate_nights(name, a.cap, cache))]
+
+    def write(path: str, make) -> int:
+        n_rows, w = 0, None
+        with open(path, "w", newline="") as fh:
+            for name, k, night in nights:
+                for row in make(night):
+                    row = {"league": name, "games": len(night.games), "night": k, **row}
+                    if w is None:
+                        w = csv.DictWriter(fh, fieldnames=list(row))
+                        w.writeheader()
+                    w.writerow(row)
+                    n_rows += 1
+        return n_rows
+
+    if not a.no_actions:
+        print(f"action rows {write(a.csv, lambda night: table(night, s, every=a.every, hold=a.hold, horizon=a.horizon))} -> {a.csv}")
+    if a.landings:
+        print(f"landing rows {write(a.landings, lambda night: landings(night, s, every=a.every))} -> {a.landings}")
+    print(f"setting {asdict(s)}")
     return 0
 
 

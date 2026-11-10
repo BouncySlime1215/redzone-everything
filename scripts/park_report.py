@@ -16,8 +16,10 @@ import csv
 import statistics
 from collections import defaultdict
 
-KNOBS = ("pause_holds", "load_s", "pos_err", "guard", "delay_error", "min_dead", "max_behind", "ping_pong", "min_stay", "margin",
-         "repark_margin", "lookahead_s", "skip_dead", "clips", "leave_rule", "park_at", "park_target", "shots", "prepark", "live_w")
+KNOBS = ("pause_holds", "load_s", "pos_sd", "delay_sd", "stamp_sd", "key_sd", "pad_k", "delay_error", "min_dead", "max_behind", "ping_pong",
+         "min_stay", "min_live_s", "land_wait_max", "margin", "repark_margin", "lookahead_s", "bore_w", "skip_dead", "clips", "leave_rule",
+         "park_at", "park_target", "shots", "prepark", "live_w")
+TODAY_SD, SPEC_SD = 2.5, 0.75      # total error sd: the TV as measured (about 3 s) and the TV the next session has to prove (0.5 s)
 WINDOWS = (5, 10, 20, 30, 45, 60)
 
 
@@ -32,9 +34,21 @@ def breaks(r: dict) -> int:
     return int(num(r["mid_entry"]) + num(r["mid_leave"]) + num(r["hl_leave"]))
 
 
+def total_sd(r: dict) -> float:
+    """The four error parts together (root of the summed squares), plus the fixed delay error when the row has one."""
+    return (num(r["pos_sd"]) ** 2 + num(r["delay_sd"]) ** 2 + num(r["stamp_sd"]) ** 2 + num(r["key_sd"]) ** 2) ** 0.5 + abs(num(r["delay_error"]))
+
+
+def served(r: dict) -> float:
+    """Jumps a minute times the yes-rate: pace that was asked for and delivered."""
+    y = num(r["yes_rate"])
+    return num(r["jumps_per_min"]) * (y if y == y else 0.0)
+
+
 def line(r: dict) -> str:
     win = "  ".join(f"{w}m {r[f'per_{w}m_med']}/{r[f'per_{w}m_p10']}/{r[f'per_{w}m_max']}" for w in WINDOWS)
-    return (f"{r['tag']:14s} {num(r['jumps_per_min']):.2f}/min  {win}  yes {100 * num(r['yes_rate']):.0f}%  asks {r['wanted_s_per_min']} s/min  "
+    return (f"{r['tag']:14s} {num(r['jumps_per_min']):.2f}/min  {win}  yes {100 * num(r['yes_rate']):.0f}% (leave-rule ceiling {100 * num(r['yes_ceiling']):.0f}%)  "
+            f"asks {r['wanted_s_per_min']} s/min  play-visits {r['play_visit_share']}  "
             f"big {100 * num(r['big_seen']):.0f}% (live {100 * num(r['big_live']):.0f} parked {100 * num(r['big_parked']):.0f} clip {100 * num(r['big_clip']):.0f})  "
             f"v2 {100 * num(r['v2_seen']):.0f}%  live-share {r['live_share']}  ads {r['commercial_share']}  behind {r['behind_med_s']}/{r['behind_p90_s']} s  "
             f"R1 {r['mid_entry']}/{r['mid_leave']}/{r['hl_leave']}  visit {r['visit_med_s']} s")
@@ -58,17 +72,20 @@ def main() -> int:
         groups[(r["league"], int(r["games"]), r["brain"])].append(r)
     for (lg, ng, brain), rs in sorted(groups.items()):
         base = [r for r in rs if r["tag"] == "baseline_live"]
-        cand = [r for r in rs if r["mode"] == "park" and r["value"] == a.value]
+        cand = [r for r in rs if r["mode"] == "park" and r["value"] == a.value and r["tag"] != "default"]
         safe = [r for r in cand if breaks(r) == 0 and r["leave_rule"] == "dead"]
-        real = [r for r in safe if num(r["pos_err"]) >= 5.0]          # the position error the TV has today, or worse
-        print(f"\n== {lg} {ng} games, brain {brain}: {len(rs)} rows, {len(cand)} park rows on value={a.value}, {len(safe)} safe, {len(real)} safe at error >= 5 s")
+        real = [r for r in safe if total_sd(r) >= TODAY_SD]          # the error the TV has today
+        spec = [r for r in safe if total_sd(r) <= SPEC_SD]           # the error the next TV session has to prove
+        print(f"\n== {lg} ({ng} games), brain {brain}: {len(rs)} rows, {len(cand)} park rows on value={a.value}, {len(safe)} safe, "
+              f"{len(real)} safe at today's error, {len(spec)} safe at the spec error")
         for r in base:
-            print("  today  " + line(r))
-        for title, pool, key in (("most jumps, safe, error >= 5 s", real, lambda r: num(r["jumps_per_min"])),
-                                 ("best yes-rate, safe, error >= 5 s", real, lambda r: num(r["yes_rate"])),
-                                 ("most value seen, safe, error >= 5 s", real, lambda r: num(r["brain_value"])),
-                                 ("most jumps, safe, any error", safe, lambda r: num(r["jumps_per_min"])),
-                                 ("best yes-rate, safe, any error", safe, lambda r: num(r["yes_rate"]))):
+            print("  today's physics  " + line(r))
+        for title, pool, key in (("TODAY'S ERROR, safe: most served pace (jumps x yes)", real, served),
+                                 ("TODAY'S ERROR, safe: most jumps", real, lambda r: num(r["jumps_per_min"])),
+                                 ("TODAY'S ERROR, safe: best yes-rate", real, lambda r: num(r["yes_rate"]) if r["yes_rate"] != "" else -1.0),
+                                 ("SPEC ERROR (sd 0.5 s), safe: most served pace", spec, served),
+                                 ("SPEC ERROR, safe: most jumps", spec, lambda r: num(r["jumps_per_min"])),
+                                 ("SPEC ERROR, safe: best yes-rate", spec, lambda r: num(r["yes_rate"]) if r["yes_rate"] != "" else -1.0)):
             print(f"  -- {title}")
             for r in sorted(pool, key=key, reverse=True)[:a.top]:
                 print("     " + line(r))

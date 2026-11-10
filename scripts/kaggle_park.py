@@ -8,6 +8,11 @@ brain value the hindsight planner's screen showed over the next 180 s after taki
 flip and position error (see park_table.py). The model learns Q(state, action); at run time the action with the highest
 predicted value is "stay", "jump" or "park this game next".
 
+`--kind landings` trains on the second table instead (park_table.py --landings: one row per legal landing of a decision,
+labelled with the value it gains per second of screen time): the model scores each landing from what the feed had reported
+(a visit length the feed could not yet know is hidden from it), the top-scored landing of each decision is the pick, and the
+report is the gain lost against the best landing, beside two stand-ins (the shortest wait; the most reported value).
+
 What it does: whole nights are split oldest to newest (the last `--test-frac` of each league's nights are the test nights,
 never fitted on); the target is the action's value less the mean value of that decision's actions, so the model ranks the
 actions of one decision and is not paid for knowing that a night was exciting; any action whose horizon held a Rule #1
@@ -92,13 +97,55 @@ def judge(df, score) -> dict:
             "rule1_picked": int((pick["q_rule1"] > 0).sum())}
 
 
+LANDING_FEATURES = ("held", "behind_s", "ready_s", "leave_wait_s", "wait_s", "dead_before_play_s", "value_known", "visit_known", "visit_seen_s",
+                    "lev", "margin", "left_s", "s_lev", "s_margin", "s_left_s", "s_on_screen_s", "s_behind_s", "games_live", "n_landings")
+
+
+def judge_landings(df, score) -> dict:
+    d = df.assign(_s=score)
+    pick = d.loc[d.groupby("decision")["_s"].idxmax()].set_index("decision")["gain_per_s"]
+    best = d.groupby("decision")["gain_per_s"].max()
+    return {"decisions": int(len(best)), "mean_gain_lost": round(float((best - pick).mean()), 5),
+            "picked_best": round(float((best - pick <= 1e-9).mean()), 4), "mean_gain_picked": round(float(pick.mean()), 5),
+            "mean_gain_best": round(float(best.mean()), 5)}
+
+
+def main_landings(a) -> int:
+    import pandas as pd
+    df = pd.concat([pd.read_csv(p) for pat in a.tables for p in sorted(glob.glob(pat))], ignore_index=True)
+    df["decision"] = df[list(KEYS)].astype(str).agg("|".join, axis=1)
+    df["visit_seen_s"] = df["visit_s"].where(df["visit_known"] > 0, -1.0)     # a visit the feed has not finished reporting is not a feature
+    feats = list(LANDING_FEATURES)
+    train, test = split(df, a.test_frac)
+    if train.empty or test.empty:
+        raise SystemExit("need at least two nights per league: one to fit, one to test")
+    model, kind = fit(train[feats], train["gain_per_s"])
+    report = {"model": kind, "kind": "landings", "rows_train": int(len(train)), "rows_test": int(len(test)), "features": len(feats),
+              "test": {"model": judge_landings(test, model.predict(test[feats])), "shortest_wait": judge_landings(test, -test["wait_s"]),
+                       "most_reported_value": judge_landings(test, test["value_known"])}}
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    if kind == "lightgbm":
+        model.booster_.save_model(str(out / "landings_model.txt"))
+    else:
+        import joblib
+        joblib.dump(model, out / "landings_model.joblib")
+    (out / "landings_features.json").write_text(json.dumps(feats, indent=1))
+    (out / "landings_report.json").write_text(json.dumps(report, indent=1))
+    print(json.dumps(report, indent=1))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--tables", nargs="+", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--kind", choices=("actions", "landings"), default="actions")
     ap.add_argument("--test-frac", type=float, default=0.25)
     ap.add_argument("--rule1-penalty", type=float, default=5.0)
     a = ap.parse_args()
+    if a.kind == "landings":
+        return main_landings(a)
     df = load(a.tables)
     feats = [c for c in df.columns if c.startswith(("s_", "h_", "a_", "act_")) or c in ("on_screen_s", "games_live", "n_actions")]
     train, test = split(df, a.test_frac)
