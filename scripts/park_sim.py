@@ -79,7 +79,9 @@ class Setting:
     min_behind: float = 45.0      # smallest rewind
     ping_pong: bool = True        # the stick being left stays on its game, paused where the viewer left
     min_stay: float = 0.0         # seconds on a game before the next jump
-    margin: float = 0.0           # brain points the wanted game must lead by before the controller acts
+    margin: float = 0.0           # brain points the parked game must lead the screen game by before a jump
+    repark_margin: float = 1.0    # brain points another game must lead the parked one by before the hidden stick moves
+    lookahead_s: float = 0.0      # the hidden stick is parked on the game the brain will score highest this many seconds on
     skip_dead: bool = True        # the left stick skips its dead time forward to the next play
     clips: bool = False           # park back to a play the feed already reported (up to the 175 s reach)
     leave_rule: str = "dead"      # dead | low_leverage
@@ -91,13 +93,15 @@ class Setting:
     prepark: bool = True          # while the brain is content, keep the hidden stick on its second choice
     load_fail_p: float = 0.0      # a load fails and is retried (twice the time)
     load_slow_s: float = 0.0      # every load is this much slower (an app change, a slow night)
+    value: str = "dense"          # what the brain values: dense = value2 grades + 2 x must-sees + live action | v1 = must-sees only
+    live_w: float = 0.05          # dense: brain points per second of live play (30 s of play = 1.5, about one good basket)
     seed: int = 0
 
 
 class Arr:
     """One game on the night's 1 s grid (index = seconds since the night's base)."""
 
-    def __init__(self, g: dict, base: int, n: int, shots: bool):
+    def __init__(self, g: dict, base: int, n: int, shots: bool, value: str = "dense", live_w: float = 0.05):
         self.a0, self.a1 = int(g["t0"] - base), min(n - 1, int(g["t1"] - base))
         dead, brk, prev = bytearray(b"\x01") * n, bytearray(n), self.a0
         for (s, e), b in zip(g["dead"], g["brk"]):
@@ -146,9 +150,17 @@ class Arr:
             i = int(t - base)
             if 0 <= i < n:
                 self.mom[i] = self.mom.get(i, 0.0) + v
+        self.v2: dict[int, float] = {}          # value2 live value of the graded plays (dead ones are negative)
+        for t, v, _ in g.get("v2", ()):
+            i = int(t - base)
+            if 0 <= i < n:
+                self.v2[i] = self.v2.get(i, 0.0) + v
         self.cumv, self.cumvt = [0.0] * (n + 1), [0.0] * (n + 1)
+        dense = value == "dense"
         for i in range(n):
             v = self.mom.get(i, 0.0)
+            if dense:
+                v = 2.0 * v + self.v2.get(i, 0.0) + (live_w if not dead[i] else 0.0)
             self.cumv[i + 1] = self.cumv[i] + v
             self.cumvt[i + 1] = self.cumvt[i] + v * i
             self.hlc[i + 1] = self.hlc[i] + hl[i]
@@ -180,15 +192,19 @@ class Night:
         self.n = int(max(g["t1"] for g in games) - self.base) + PAD_S
         a, b = pc.span(games)
         self.span = (int(a - self.base), int(b - self.base))
-        self._arrs: dict[bool, list[Arr]] = {}
-        self.big_total = 0.0
+        self._arrs: dict[tuple, list[Arr]] = {}
+        self.big_total = self.v2_total = 0.0
 
-    def arrs(self, shots: bool) -> list[Arr]:
-        if shots not in self._arrs:
-            self._arrs[shots] = [Arr(g, self.base, self.n, shots) for g in self.games]
+    def arrs(self, shots: bool, value: str = "dense", live_w: float = 0.05) -> list[Arr]:
+        key = (shots, value, live_w)
+        if key not in self._arrs:
+            if len(self._arrs) > 6:
+                self._arrs.clear()
+            self._arrs[key] = [Arr(g, self.base, self.n, shots, value, live_w) for g in self.games]
             a, b = self.span
-            self.big_total = sum(v for x in self._arrs[shots] for i, v in x.mom.items() if a <= i < b)
-        return self._arrs[shots]
+            self.big_total = sum(v for x in self._arrs[key] for i, v in x.mom.items() if a <= i < b)
+            self.v2_total = sum(v for x in self._arrs[key] for i, v in x.v2.items() if a <= i < b and v > 0)
+        return self._arrs[key]
 
 
 # ---- brains: anything with score(g, c, t, on_screen, back) -> float ------------------------------------------------
@@ -244,13 +260,14 @@ class Stats:
         self.pic = self.live_s = self.dead_s = self.brk_s = 0
         self.mid_entry = self.mid_leave = self.hl_leave = self.walk_entry = self.walk_leave = 0
         self.parks = self.load_fail = self.ticks = 0
+        self.v2_seen = self.brain_value = 0.0
 
 
 def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | None = None, state: State | None = None,
         stats: Stats | None = None, force: tuple | None = None) -> tuple[Stats, State]:
     """Play the night (or t0..t1 from a saved state). `force` = (kind, game, until): until that second the controller is told
     what to do ('stay', 'park' the hidden stick on a game, or 'jump' to it) instead of asking the brain."""
-    A = night.arrs(s.shots)
+    A = night.arrs(s.shots, s.value, s.live_w)
     N, n = len(A), night.n
     a, b = night.span
     t0, t1 = (a if t0 is None else t0), (b if t1 is None else t1)
@@ -261,7 +278,7 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
     lattice = 0 if (s.pause_holds or live) else int(pc.SKIP_STEP_S)
     fresh = 0 if live else int(s.min_behind)
     reach = int(pc.REACH_S if s.clips else s.max_behind)
-    back = 0 if live else max(0, reach - fresh)
+    back, la = 0, int(s.lookahead_s)
     need = max(int(s.min_dead), 2 * guard + lattice + 1)
     st = stats or Stats()
     brain.bind(A, s)
@@ -332,6 +349,7 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
         h_bel = int(t - S.hb + S.he) if S.hg >= 0 else 0
         # the brain
         stay, best, best_sc, sc_h = -1e9, -1, -1e9, -1e9
+        pk, pk_sc, pk_h = -1, -1e9, -1e9          # the same question asked `lookahead_s` on: which game to have parked by then
         for g in range(N):
             x = A[g]
             if g == S.sg:
@@ -344,26 +362,31 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                 sc_h = v
             if v > best_sc:
                 best, best_sc = g, v
+            if la:
+                v = brain.score(g, t - fresh + la, t, False, back)
+                if g == S.hg:
+                    pk_h = v
+                if v > pk_sc:
+                    pk, pk_sc = g, v
+        if not la:
+            pk, pk_sc, pk_h = best, best_sc, sc_h
         want = best if best >= 0 and best_sc > stay + 1e-9 else -1
-        target = want if want >= 0 and best_sc - stay >= s.margin else -1
-        desire = None
+        # the jump goes to the game the hidden stick holds, whenever the brain scores it above the screen by the margin
+        target = S.hg if S.hg >= 0 and sc_h > stay + 1e-9 and sc_h - stay >= s.margin else -1
+        desire = S.hg
         if force is not None and t < force[2]:
             kind, fg = force[0], force[1]
             target = fg if kind == "jump" else -1
             desire = fg if kind in ("jump", "park") else S.hg
-        elif want >= 0:
-            st.wants.append((t, want))
-        # the hidden stick
-        if desire is None:
-            if target >= 0:
-                desire = target
-            elif S.hg < 0 or not (A[S.hg].a0 <= t <= A[S.hg].a1 + fresh):
-                desire = best
-            elif s.prepark and not (s.ping_pong and S.h_kind == "pp") and best >= 0 and best != S.hg and best_sc > sc_h + max(s.margin, 0.5):
-                desire = best
-            else:
-                desire = S.hg
-        if desire is not None and desire >= 0 and desire != S.hg:
+        else:
+            if want >= 0:
+                st.wants.append((t, want))
+            # the hidden stick: a load in progress is finished; an idle stick moves to the brain's top other game
+            if S.hg < 0 or not (A[S.hg].a0 <= t <= A[S.hg].a1 + fresh):
+                desire = pk if (s.prepark or want >= 0) else -1
+            elif h_ok and pk >= 0 and pk != S.hg and (s.prepark or want >= 0) and pk_sc > pk_h + s.repark_margin:
+                desire = pk
+        if desire >= 0 and desire != S.hg:
             start_park(desire, t)
         elif h_ok and not live:
             x = A[S.hg]
@@ -372,12 +395,11 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                 if x.legal[hb_i] and x.left[hb_i] <= guard + 1 and x.since[hb_i] - int(pc.SKIP_STEP_S) > guard:
                     S.hb += pc.SKIP_STEP_S          # one step back holds the stick in its dead stretch
                     S.h_ready = t + 3
-                elif not x.legal[hb_i] and x.left[min(n - 1, hb_i + 20)] == 0 and x.since[hb_i] == 0 and S.h_kind != "pp":
-                    pass
             if (S.hb - S.he) > reach + 1 or (S.h_paused and not (x.since[hb_i] > guard and x.left[hb_i] > guard)):
                 start_park(S.hg, t)             # parked too long, or on a spot that cannot be landed on: set it up again
         # the jump
-        if target >= 0 and S.hg == target and t >= S.h_ready and t >= S.black and t - S.s_land >= s.min_stay:
+        if target >= 0 and S.hg == target and t >= S.h_ready and t >= S.black and t - S.s_land >= s.min_stay \
+                and (live or S.hb - S.he <= reach + flip):
             xs, xh = A[S.sg], A[target]
             i = min(n - 1, max(0, s_bel))
             calm = xs.hlc[min(n, i + guard + 1)] - xs.hlc[max(0, i - guard)] == 0
@@ -432,9 +454,14 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
             else:
                 st.live_s += 1
             st.behind.append(S.sb)
-            v = xs.mom.get(ti)
-            if v and S.s_from <= ti - SEEN_LEAD_S:
-                st.seen["clip" if S.s_kind == "clip" else "live" if S.sb <= LIVE_BEHIND_S else "parked"] += v
+            if S.s_from <= ti - SEEN_LEAD_S:
+                v = xs.mom.get(ti)
+                if v:
+                    st.seen["clip" if S.s_kind == "clip" else "live" if S.sb <= LIVE_BEHIND_S else "parked"] += v
+                v = xs.v2.get(ti)
+                if v and v > 0:
+                    st.v2_seen += v
+            st.brain_value += xs.cumv[ti + 1] - xs.cumv[ti]
     return st, S
 
 
@@ -473,7 +500,9 @@ def summarize(runs: list[tuple[Night, Stats]]) -> dict:
     for k in ("live", "parked", "clip"):
         out[f"big_{k}"] = round(sum(x.seen[k] for _, x in runs) / big, 4) if big else ""
     out["big_seen"] = round(sum(sum(x.seen.values()) for _, x in runs) / big, 4) if big else ""
-    out["value_seen"] = round(sum(sum(x.seen.values()) for _, x in runs), 1)
+    v2 = sum(n.v2_total for n, _ in runs)
+    out["v2_seen"] = round(sum(x.v2_seen for _, x in runs) / v2, 4) if v2 else ""
+    out["brain_value"] = round(sum(x.brain_value for _, x in runs), 1)
     beh = sorted(v for _, x in runs for v in x.behind)
     out["behind_med_s"] = round(beh[len(beh) // 2], 1) if beh else ""
     out["behind_p90_s"] = round(beh[int(0.9 * (len(beh) - 1))], 1) if beh else ""
@@ -510,11 +539,12 @@ def evaluate(nights: list[Night], brain_name: str, s: Setting) -> dict:
 
 
 GRID = {
-    "pause_holds": [True, False], "load_s": [18.5, 25.0, 30.0], "pos_err": [1.0, 3.0, 5.0, 8.0], "guard_x": [1.0, 1.5, 2.0],
+    "pause_holds": [True, False], "load_s": [18.5, 25.0, 30.0], "pos_err": [1.0, 3.0, 5.0, 8.0], "guard_x": [1.0, 1.5, 2.0, 2.5],
     "min_dead": [8.0, 12.0, 20.0, 30.0], "max_behind": [60.0, 90.0, 120.0, 175.0], "ping_pong": [True, False],
     "min_stay": [0.0, 8.0, 15.0, 30.0], "margin": [0.0, 1.0, 3.0], "skip_dead": [True, False], "clips": [True, False],
     "leave_rule": ["dead", "low_leverage"], "park_at": ["end", "start"], "park_target": ["value", "recent"],
-    "shots": [False, True], "prepark": [True, False], "delay_error": [0.0, 3.0],
+    "shots": [False, True], "prepark": [True, False], "delay_error": [0.0, 3.0], "live_w": [0.0, 0.05, 0.15],
+    "repark_margin": [0.0, 1.0, 3.0], "value": ["dense", "v1"], "lookahead_s": [0.0, 15.0, 30.0, 45.0],
 }
 
 
