@@ -15,6 +15,11 @@
 
 `yes-rate` (new lines after the tables): of the ticks the brain wanted another game, the share where that game's picture was up
 within 20 s, and the share that instead got a finished catch-up clip of that game within 60 s (the route at the 180 s reach, SIMULATED).
+`jumps` (the lines after the yes-rate): a jump is a cut that went (the screen switched to another game); catch-up clips are counted
+apart as `clips` (the route at the 180 s reach, SIMULATED). Per league and brain: jumps per minute over the time two or more games were
+live, and for windows of 5, 10, 20, 30, 45 and 60 minutes slid by one minute over that live time on each night, the median, the 10th
+percentile (the slow stretches) and the most jumps in a window, pooled over nights; a night with less live time than the window is
+skipped and the count of nights used is printed. A yes-rate that rises while jumps fall means the brain asked for less, not that it got more.
 `gate:leave by sub-cause`: which part of the leave rule said no (gate.leave_cause): unaired_row is "the newest data row of a LIVE
 game has not aired yet", window is the leave window itself.
 
@@ -60,7 +65,9 @@ import contextlib
 import dataclasses
 import io
 import json
+import math
 import runpy
+import statistics
 import sys
 import time
 from collections import Counter, defaultdict
@@ -104,6 +111,7 @@ REACH_CAP_S = float("inf")   # --timing measured: no reach column goes deeper th
 TIMINGS, DEADS = ("assumed", "measured"), ("hindsight", "floor")
 TIMING, DEAD = TIMINGS[0], DEADS[0]   # this run's --timing and --dead (defaults: today's numbers)
 PAST_CAP_S = 600.0   # `past_cap`: how long after the 180 s cap a later opening is still looked for (info only)
+JUMP_WINDOWS_MIN = (5, 10, 20, 30, 45, 60)   # jumps: the window lengths, minutes; each slides by one minute over the time two or more games were live
 YES_S, CLIP_YES_S = 20.0, 60.0   # yes-rate: the wanted game's picture up this soon after the tick; else a catch-up clip of it this soon
 DELAY_ERROR_KEY = "audit.delay_error_s"   # --delay-error: rides on the job's sets (no product flag); the true delay is the believed one plus this
 SIGMA_KEY = "audit.sigma_s"               # --sigma: rides on the job's sets (no product flag); the doubt the replayed app states for its delay estimate
@@ -296,6 +304,10 @@ class Tally:
     held_ticks: int = 0      # ticks a remembered pick waited
     over: Counter = field(default_factory=Counter)        # why a remembered pick was let go
     wants: list = field(default_factory=list)             # (t, game) for every tick the top pick was a cut: the yes-rate's denominator
+    tick_at: list = field(default_factory=list)           # [jumps] every tick's time
+    live2: list = field(default_factory=list)             # [jumps] the ticks two or more games were live
+    jumps: list = field(default_factory=list)             # [jumps] the tick of every cut that went
+    clips: int = 0                                        # [jumps] catch-up clips the route aired whole this night (reach 180 s, SIMULATED)
     bucket: int = 0          # [basketball.join_after_bucket] cuts that went on a made-basket landing (the plan's landing kind "bucket")
     leave_sub: dict = field(default_factory=lambda: {k: Counter() for k in LEAVE_SUB_KEYS})   # gate:leave split by gate.leave_cause
 
@@ -376,6 +388,7 @@ class AuditDecider(Decider):
 
     def _go(self, d: Decision, now: float) -> Decision:
         self.tally.went += 1
+        self.tally.jumps.append(now)
         self.tally.bucket += int(self.land_kind == "bucket")
         self._commit(d.target, kind=d.kind)
         self._land_behind(d.target, d.rewind_s)
@@ -454,6 +467,9 @@ class AuditDecider(Decider):
         base = super().decide(cands, redzone, commit=False, reel=reel)
         now, t = self._clock(), self.tally
         t.ticks += 1
+        t.tick_at.append(now)
+        if sum(1 for g, x in cands.items() if g not in arbiter.NOT_GAMES and getattr(x, "target", None)) >= 2:
+            t.live2.append(now)
         if base.action in ("switch", "replay"):
             self.reject(base, backoff=False)
         self.base_state, self.base_owner = base.state, base.owner
@@ -487,6 +503,7 @@ class AuditDecider(Decider):
             self._note_route(cands, now)
             return stay
         t.went += 1
+        t.jumps.append(now)
         self._commit(d.target, kind=d.kind)
         self._land_behind(d.target, d.rewind_s)
         t.screen.append((now + self.truth.tune_s, d.target))
@@ -781,6 +798,8 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
             league_row["route"][str(r)]["max_late_s"] = late
     else:
         shown = {r: catchup_shown(unseen, t, truth, r) for r in REACHES}
+    t.clips = len(clips) if t.route_on else len(shown[REACHES[-1]])
+    league_row["jumps"]["nights"].append(jump_night(t))
     live, clip = yes_counts(t.wants, t.screen, clips)
     for k, n in (("wanted", len(t.wants)), ("live", live), ("clip", clip)):
         league_row["yes"][k] += n
@@ -814,13 +833,73 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
                 league_row["not_asked"] += m.value
 
 
+def jump_night(t: Tally) -> dict:
+    """One night's jumps on its live-time axis: the minutes two or more games were live, laid end to end (a stretch with one game
+    live takes no room), and the minute on that axis of every cut that went on such a tick. A cut on a tick with one game live
+    (the last game still on) is in `went` and not here."""
+    step = (t.tick_at[-1] - t.tick_at[0]) / (len(t.tick_at) - 1) if len(t.tick_at) > 1 else 0.0
+    at = []
+    for j in t.jumps:
+        i = bisect.bisect_left(t.live2, j)
+        if i < len(t.live2) and t.live2[i] == j:
+            at.append(round(i * step / 60.0, 3))
+    return {"live_min": round(len(t.live2) * step / 60.0, 3), "at_min": at, "clips": t.clips}
+
+
+def window_counts(live_min: float, at_min: list, n: int) -> list[int]:
+    """Jumps in every window of n minutes slid by one minute over one night's live time; [] when the night is shorter than n."""
+    if live_min < n:
+        return []
+    at = sorted(at_min)
+    return [bisect.bisect_left(at, s + n) - bisect.bisect_left(at, s) for s in range(int(math.floor(live_min - n + 1e-9)) + 1)]
+
+
+def quantile(xs: list, q: float) -> float:
+    """Nearest-rank quantile of a list (0 for an empty one)."""
+    xs = sorted(xs)
+    return xs[min(len(xs) - 1, max(0, math.ceil(q * len(xs) - 1e-9) - 1))] if xs else 0.0
+
+
+def jump_stats(rows: list[dict]) -> dict:
+    """Over these rows' nights: live minutes, jumps and clips with their rates per minute, and per window length the median, 10th
+    percentile and most jumps in a window, with how many nights were long enough to count."""
+    nights = [n for r in rows for n in r.get("jumps", {}).get("nights", [])]
+    live = sum(n["live_min"] for n in nights)
+    jumps, clips = sum(len(n["at_min"]) for n in nights), sum(n["clips"] for n in nights)
+    out = {"live_min": round(live, 1), "jumps": jumps, "per_min": round(jumps / live, 4) if live else 0.0, "clips": clips,
+           "clips_per_min": round(clips / live, 4) if live else 0.0, "windows": {}}
+    for n in JUMP_WINDOWS_MIN:
+        per = [c for c in (window_counts(x["live_min"], x["at_min"], n) for x in nights) if c]
+        pool = [v for c in per for v in c]
+        out["windows"][str(n)] = {"median": statistics.median(pool) if pool else 0.0, "p10": quantile(pool, 0.10), "max": max(pool, default=0),
+                                  "nights": len(per), "windows": len(pool)}
+    return out
+
+
+def jump_lines(rows: list[dict]) -> list[str]:
+    """Jumps per league and brain, per brain and in total: the rate, then median / 10th percentile / most per window (nights counted)."""
+    if not any(r.get("jumps", {}).get("nights") for r in rows):
+        return []
+    lines = ["", "jumps: cuts that went while two or more games were live; clips: catch-up clips, counted apart (SIMULATED, reach "
+                 f"{REACHES[-1]} s). Per window of N minutes slid by one minute over that live time: median / 10th percentile / most (nights long enough)",
+             f"{'league/brain':<22}{'live min':>9}{'jumps':>7}{'/min':>7}{'/hour':>7}{'clips':>7}{'/min':>7}"
+             + "".join(f"{str(n) + ' min':>18}" for n in JUMP_WINDOWS_MIN)]
+    brains = list(dict.fromkeys(r["brain"] for r in rows))
+    groups = [(f"{r['league']}/{r['brain']}", [r]) for r in rows] + [(f"TOTAL {b}", [r for r in rows if r["brain"] == b]) for b in brains]
+    for name, part in groups:
+        j = jump_stats(part)
+        cells = "".join("{:>18}".format("{median:g} / {p10:g} / {max:g} ({nights})".format(**w)) for w in j["windows"].values())
+        lines.append(f"{name:<22}{j['live_min']:>9.0f}{j['jumps']:>7}{j['per_min']:>7.3f}{60.0 * j['per_min']:>7.1f}{j['clips']:>7}{j['clips_per_min']:>7.3f}{cells}")
+    return lines
+
+
 def new_row() -> dict:
     return {"must_total": 0.0, "must_seen": 0.0, "not_asked": 0.0, "lost": Counter(), "lost_alone": Counter(), "moments": Counter(),
             "ticks": 0, "wanted": 0, "went": 0, "held": 0, "released": 0, "held_ticks": 0, "bucket": 0, "over": Counter(), "refused": Counter(), "alone": Counter(), "any_rule": Counter(), "protected": Counter(), "high": Counter(),
             "lost_after_catchup": {str(r): Counter() for r in REACHES}, "route": {str(r): Counter() for r in REACHES}, "avoidable_lost": {str(r): 0.0 for r in REACHES},
             "residual": {str(r): Counter() for r in REACHES}, "residual_by_rule": {str(r): Counter() for r in REACHES},
             "past_cap": {str(r): Counter() for r in REACHES},
-            "yes": Counter(), "leave_sub": {k: Counter() for k in LEAVE_SUB_KEYS}}
+            "yes": Counter(), "leave_sub": {k: Counter() for k in LEAVE_SUB_KEYS}, "jumps": {"nights": []}}
 
 
 class Graded(list):
@@ -927,6 +1006,7 @@ def run_one(job: tuple) -> dict:
     else:
         del row["bucket"]
     row["league"], row["brain"] = league, brain_name
+    row["jumps"]["summary"] = jump_stats([row])
     return json.loads(json.dumps(row))
 
 
@@ -963,7 +1043,7 @@ def table(rows: list[dict], *, top: int = 25) -> str:
                      f"wanted {r['wanted']} went {r['went']}, mid-play {c['entries_mid_play']}/{c['entries']}, high-lev leaves {c['cuts_high']}, all mid-play leaves {c['mid_play_leaves']}"
                      + (f", bucket joins {r.get('bucket', 0)} (grader: {c['entries_after_bucket']} entries right after a made basket, strict mid-play {c['entries_mid_play_strict']})"
                         if "entries_after_bucket" in c else ""))
-    return "\n".join(lines + catchup_lines(rows) + residual_lines(rows) + leave_lines(rows) + yes_lines(rows))
+    return "\n".join(lines + catchup_lines(rows) + residual_lines(rows) + leave_lines(rows) + yes_lines(rows) + jump_lines(rows))
 
 
 def leave_lines(rows: list[dict]) -> list[str]:
@@ -1137,9 +1217,10 @@ def main() -> int:
     if arms:
         print(f"\ndelay error {a.delay_error:g} s: the TRUE picture delay shifted from what the app believes; the table above is the worse arm ({worse} s)")
         for name, arm in arms.items():
-            c, y = rule1_counters(arm), yes_rate(arm)
+            c, y, j = rule1_counters(arm), yes_rate(arm), jump_stats(arm)
             print(f"  true delay {name} s: entries_mid_play {c['entries_mid_play']}, mid_play_leaves {c['mid_play_leaves']}, high-leverage leaves {c['cuts_high']}, "
-                  f"yes {y['yes_pct']:.1f}%, clip {y['clip_pct']:.1f}%, went {sum(r['went'] for r in arm)} of {sum(r['wanted'] for r in arm)}")
+                  f"yes {y['yes_pct']:.1f}%, clip {y['clip_pct']:.1f}%, went {sum(r['went'] for r in arm)} of {sum(r['wanted'] for r in arm)}"
+                  + (f", jumps per hour {60.0 * j['per_min']:.1f}" if j["live_min"] else ""))
     if doubt:
         print(f"stated timing doubt {a.sigma:g} s at the night's start (default {DEFAULT_SIGMA_S:g} s), "
               + ("held all night" if a.sigma_hold else "growing 1 s per 15 minutes, up to 6 s more (the replay's own drift)"))
@@ -1161,7 +1242,7 @@ def main() -> int:
             out["dead"] = a.dead
         if arms:
             out["delay_error_s"], out["worse_arm"] = a.delay_error, worse
-            out["arms"] = {name: {"rows": arm, "rule1": rule1_counters(arm), "yes": yes_rate(arm)} for name, arm in arms.items()}
+            out["arms"] = {name: {"rows": arm, "rule1": rule1_counters(arm), "yes": yes_rate(arm), "jumps": jump_stats(arm)} for name, arm in arms.items()}
         a.json.write_text(json.dumps(out, indent=1))
     return 0
 
