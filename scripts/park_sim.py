@@ -60,6 +60,7 @@ import park_ceiling as pc  # noqa: E402
 RUN_UP_S = 75        # veto_audit.RUN_UP_S: how far ahead a brain's value looks
 SEEN_LEAD_S = 7      # veto_audit.PLAY_LEN_S: the picture must be up this long before a moment to have seen it
 YES_S = 20           # veto_audit.YES_S
+PLAN_OK_S = 2        # a planner's scheduled jump is delivered when it happens within this of the planned second
 FEED_LEAD_S = 27     # the feed runs this far ahead of the stream's live edge (stream delay 35 s less feed lag 8 s)
 TUNE_TICKS = 3       # a tune within YouTube TV: 2.3-3.0 s
 LIVE_BEHIND_S = 60   # a big play seen this close to the live edge counts as seen live
@@ -67,7 +68,9 @@ LONG_STOP_S = 20     # a stoppage the feed says still has this long to run may b
 SAME_BEHIND_S = 10   # a stick already behind live may skip forward to this close to the live edge
 PAD_S = 400
 WHY = ("other_game_parked", "nothing_parked", "loading", "margin", "flip_in_progress", "min_stay", "past_reach", "screen_high_leverage",
-       "screen_mid_play", "landing_not_dead", "landing_long_wait")
+       "screen_mid_play", "landing_not_dead", "landing_long_wait",
+       # a planner's own reasons (park_plan.Planner.why): what its search found in the way
+       "no_leave_reported", "no_landing_reported", "late_cap", "plan_other_game", "plan_stays", "plan_waits")
 
 
 @dataclass(frozen=True)
@@ -91,6 +94,8 @@ class Setting:
     pad_k: float = 0.0            # > 0: guard = pad_k x the root of the summed squares of the four (overrides guard)
     min_dead: float = 10.0        # shortest dead stretch worth parking on
     max_behind: float = 175.0     # how far behind the live edge a paused stick may sit (315 s was held on the TV)
+    late_cap: float = 145.0       # Nick's lateness cap: no picture comes up further behind the stream's live edge than this
+    #                               (180 s behind real life less about 35 s of stream delay). 0 = no cap (the sweeps before Nov 10)
     min_behind: float = 45.0      # the smallest rewind lands about this far behind
     ping_pong: bool = True        # the stick being left stays on its game, paused where the viewer left
     min_stay: float = 0.0         # seconds on a game before the next jump
@@ -295,13 +300,20 @@ class Stats:
         self.parks = self.load_fail = self.ticks = self.rolls = self.leave_soon = self.play_visits = 0
         self.v2_seen = self.brain_value = 0.0
         self.why: dict[str, int] = {}          # per second the brain wanted another game and no jump went: the first thing in the way
+        self.why_t: dict[int, str] = {}        # the same, by second (so the refused seconds can be counted apart)
         self.shown: set[tuple[int, int]] = set()   # (game, second) of every valued moment already counted: a play watched twice counts once
+        self.flips: list[tuple[int, int, int]] = []   # every flip: (second, game joined, Rule #1 breaks on this one)
+        self.sched: list[tuple[int, int, int]] = []   # a planner's scheduled jumps: (second it was scheduled, planned second, game)
+        self.firm: list[tuple[int, int, int]] = []    # the same, logged when the jump came inside the planner's commit window
 
 
 def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | None = None, state: State | None = None,
-        stats: Stats | None = None, force: tuple | None = None) -> tuple[Stats, State]:
+        stats: Stats | None = None, force: tuple | None = None, planner=None) -> tuple[Stats, State]:
     """Play the night (or t0..t1 from a saved state). `force` = (kind, game, until): until that second the controller is told
-    what to do ('stay', 'park' the hidden stick on a game, or 'jump' to it) instead of asking the brain."""
+    what to do ('stay', 'park' the hidden stick on a game, or 'jump' to it) instead of asking the brain.
+    `planner` (park_plan.Planner) replaces the rule set: each second it says whether to jump and what the hidden stick does
+    (tune to a game, pause at a spot, skip forward to one, or roll). The physics, the padding tests and the counters below are
+    the same ones; the brain is then only asked what it WANTS, for the audit's yes-rate."""
     A = night.arrs(s.shots, s.value, s.live_w)
     N, n = len(A), night.n
     a, b = night.span
@@ -319,6 +331,11 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
     reach = int(s.max_behind)                                # a paused stick
     rw_reach = int(pc.REACH_S if s.clips else min(s.max_behind, pc.REACH_S))   # a rewind
     lead, know = int(round(s.resume_lead_s)), int(s.feed_lead)
+    if s.late_cap > 0 and not live:
+        # the lateness cap: a jump needs the stick within reach + flip of the live edge, and its picture then comes up
+        # flip - lead later, so this keeps every landing within late_cap
+        reach = min(reach, int(s.late_cap) - 2 * flip + lead)
+        rw_reach = min(rw_reach, reach)
     sd_rw = math.sqrt(sd ** 2 + s.rewind_sd ** 2)
     back, la = 0, int(s.lookahead_s)
     need = max(int(s.min_dead), 2 * guard + lattice)
@@ -397,14 +414,21 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
         got = choose_park(S.hg, t, t, lo=max(cur + 1, t - reach), hi=t - SAME_BEHIND_S)
         if got is None:
             return False
-        p = got[0] - (rng.randrange(lattice) if lattice else 0)
-        d = max(0, p - cur)
+        move_to(got[0] - (rng.randrange(lattice) if lattice else 0), t)
+        return True
+
+    def move_to(p: int, t: int) -> None:
+        """15 s skips and then play, to believed position p on the game the hidden stick holds (it then sits paused one
+        second short of p)."""
+        d = max(0, p - int(t - S.hb + S.he))
         cost = 2.0 + pc.PRESS_S * math.floor(d / pc.SKIP_STEP_S) + (0 if lattice else d % pc.SKIP_STEP_S)
         ready = int(math.ceil(t + cost))
         S.he = rng.gauss(0.0, sd) + s.delay_error + S.gd[S.hg]
         S.h_ready, S.h_paused, S.hb = ready, not lattice, (ready - p) + S.he
         st.rolls += 1
-        return True
+
+    if planner is not None:
+        planner.bind(A, s, guard=guard, reach=reach, flip=flip, lead=lead, know=know, n=n, stats=st)
 
     for t in range(t0, t1):
         st.ticks += 1
@@ -440,11 +464,17 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
         want = best if best >= 0 and best_sc > stay + 1e-9 else -1
         # the jump goes to the game the hidden stick holds, whenever the brain scores it above the screen by the margin
         target = S.hg if S.hg >= 0 and sc_h > stay + 1e-9 and sc_h - stay >= s.margin else -1
-        desire = S.hg
+        desire, act = S.hg, None
         if force is not None and t < force[2]:
             kind, fg = force[0], force[1]
             target = fg if kind == "jump" else -1
             desire = fg if kind in ("jump", "park") else S.hg
+        elif planner is not None:
+            if want >= 0:
+                st.wants.append((t, want))
+            act = planner.act(t, S)          # (jump now, the hidden stick's game, the spot to pause at, "" | "tune" | "move")
+            target = S.hg if act[0] else -1
+            desire = act[1] if act[1] >= 0 else S.hg
         else:
             if want >= 0:
                 st.wants.append((t, want))
@@ -453,8 +483,18 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                 desire = pk if (s.prepark or want >= 0) else -1
             elif h_ok and target < 0 and pk >= 0 and pk != S.hg and (s.prepark or want >= 0) and pk_sc > pk_h + s.repark_margin:
                 desire = pk
-        if desire >= 0 and desire != S.hg:
+        if desire >= 0 and (desire != S.hg or (act is not None and act[3] == "tune")):
             start_park(desire, t)
+        elif h_ok and act is not None:
+            # a planner's hidden stick: skip forward to the spot, or play on to it and stop there with one pause key
+            x = A[S.hg]
+            hb_i = min(n - 1, max(0, h_bel))
+            if act[3] == "move" and act[2] > hb_i:
+                move_to(act[2], t)
+            elif act[2] < 0 or hb_i < act[2]:
+                S.h_paused = False
+            elif not S.h_paused and x.since[hb_i] > guard and x.left[hb_i] >= guard and hb_i + guard <= t + know:
+                S.h_paused = True
         elif h_ok and not live:
             x = A[S.hg]
             hb_i = min(n - 1, max(0, h_bel))
@@ -491,6 +531,8 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
             why = ("other_game_parked" if S.hg >= 0 and S.hg != want else "nothing_parked" if S.hg < 0 else "loading" if t < S.h_ready
                    else "margin" if target < 0 else "flip_in_progress" if t < S.black else "min_stay" if t - S.s_land < s.min_stay
                    else "past_reach" if not (live or S.hb - S.he <= reach + flip) else None)
+            if act is not None and target < 0:
+                why = planner.why(t, S, want)
         if target >= 0 and S.hg == target and t >= S.h_ready and t >= S.black and t - S.s_land >= s.min_stay \
                 and (live or S.hb - S.he <= reach + flip):
             xs, xh = A[S.sg], A[target]
@@ -510,6 +552,7 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                        else "landing_long_wait" if xh.left[j] > s.land_wait_max else None)
             if leave and xh.since[j] > guard and s.land_wait_max >= xh.left[j] >= guard:
                 ti = min(n - 1, max(0, s_true if not edge_sd else int(t - S.sb + rng.gauss(0.0, edge_sd))))
+                bad = st.mid_leave + st.hl_leave + st.mid_entry
                 if not xs.dead[ti]:
                     if xs.legal[ti]:
                         st.walk_leave += 1
@@ -526,6 +569,7 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                     else:
                         st.mid_entry += 1
                 st.hops.append(t)
+                st.flips.append((t, target, st.mid_leave + st.hl_leave + st.mid_entry - bad))
                 if S.s_live >= 3 and st.hops[:-1] and S.s_land - flip == st.hops[-2]:
                     st.jumps.append(st.hops[-2])       # the flip that began the visit now ending: it showed play, so it counts
                 st.ups.append((up, target))
@@ -536,9 +580,9 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
                 S.sg, S.sb, S.se, S.s_land, S.s_from, S.s_kind, S.black = target, new_sb, S.he, up, ei, S.h_kind, up
                 if live:
                     S.hg, S.hb, S.he, S.h_ready, S.h_paused, S.h_kind = old[0], old[1], old[2], t, False, "pp"
-                elif s.ping_pong:
+                elif s.ping_pong or act is not None:
                     S.hg, S.hb, S.he, S.h_ready, S.h_paused, S.h_kind = old[0], old[1], old[2], t, not lattice, "pp"
-                    if s.skip_dead and not lattice:
+                    if s.skip_dead and not lattice and act is None:
                         end = i + xs.left[i]
                         p = end - guard - lead
                         if end <= t + int(s.feed_lead) and p - i >= pc.SKIP_STEP_S and end - xs.starts[bisect.bisect_right(xs.starts, i) - 1] >= need:
@@ -554,6 +598,7 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
             st.leave_soon += int(ok[min(n - 1, max(0, s_bel))] <= YES_S - flip)
         if why:
             st.why[why] = st.why.get(why, 0) + 1
+            st.why_t[t] = why
         # what the screen shows this second
         if t >= S.black:
             xs = A[S.sg]
@@ -581,16 +626,35 @@ def run(night: Night, brain, s: Setting, *, t0: int | None = None, t1: int | Non
     return st, S
 
 
-def yes_rate(st: Stats) -> tuple[int, int]:
+def served(st: Stats) -> list[bool]:
+    """Per wanted second: was that game's picture up within YES_S (the audit's yes)."""
     ups: dict[int, list[int]] = {}
     for at, g in st.ups:
         ups.setdefault(g, []).append(at)
-    yes = 0
+    out = []
     for t, g in st.wants:
         u = ups.get(g, ())
         i = bisect.bisect_right(u, t)
-        yes += int(i < len(u) and u[i] <= t + YES_S)
-    return yes, len(st.wants)
+        out.append(i < len(u) and u[i] <= t + YES_S)
+    return out
+
+
+def yes_rate(st: Stats) -> tuple[int, int]:
+    return sum(served(st)), len(st.wants)
+
+
+def delivered(st: Stats, sched: list | None = None) -> int:
+    """A planner's scheduled jumps that happened: onto the planned game, within PLAN_OK_S of the planned second, with no
+    Rule #1 break on that flip."""
+    by: dict[int, list[tuple[int, int]]] = {}
+    for t, g, bad in st.flips:
+        by.setdefault(g, []).append((t, bad))
+    n = 0
+    for _, at, g in (st.sched if sched is None else sched):
+        fl = by.get(g, ())
+        i = bisect.bisect_left(fl, (at - PLAN_OK_S, -1))
+        n += int(any(bad == 0 for t, bad in fl[i:i + 4] if t <= at + PLAN_OK_S))
+    return n
 
 
 def summarize(runs: list[tuple[Night, Stats]]) -> dict:
@@ -623,6 +687,13 @@ def summarize(runs: list[tuple[Night, Stats]]) -> dict:
     beh = sorted(v for _, x in runs for v in x.behind)
     out["behind_med_s"] = round(beh[len(beh) // 2], 1) if beh else ""
     out["behind_p90_s"] = round(beh[int(0.9 * (len(beh) - 1))], 1) if beh else ""
+    out["behind_max_s"] = round(beh[-1], 1) if beh else ""
+    sched = sum(len(x.sched) for _, x in runs)
+    out["planned_jumps"] = sched          # a planner's scheduled jumps, and the share that happened as planned
+    out["planned_delivered"] = round(sum(delivered(x) for _, x in runs) / sched, 4) if sched else ""
+    firm = sum(len(x.firm) for _, x in runs)
+    out["firm_jumps"] = firm              # those logged inside the commit window (a few seconds ahead), and their share
+    out["firm_delivered"] = round(sum(delivered(x, x.firm) for _, x in runs) / firm, 4) if firm else ""
     pic = sum(x.pic for _, x in runs) or 1
     out["live_share"] = round(sum(x.live_s for _, x in runs) / pic, 3)
     out["dead_share"] = round(sum(x.dead_s for _, x in runs) / pic, 3)
@@ -640,6 +711,16 @@ def summarize(runs: list[tuple[Night, Stats]]) -> dict:
             why[k] = why.get(k, 0) + v
     for k in WHY:
         out[f"why_{k}"] = why.get(k, 0)
+    # the same reasons counted over the REFUSED seconds only (wanted, and that game's picture was not up within YES_S)
+    ref: dict[str, int] = {}
+    for _, x in runs:
+        for (t, _g), ok in zip(x.wants, served(x)):
+            if not ok:
+                k = x.why_t.get(t, "jumped_elsewhere")
+                ref[k] = ref.get(k, 0) + 1
+    out["refused_s"] = sum(ref.values())
+    for k in WHY + ("jumped_elsewhere",):
+        out[f"ref_{k}"] = ref.get(k, 0)
     return out
 
 

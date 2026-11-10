@@ -72,9 +72,15 @@ def line(slate: str, brain: str, err: str, name: str, r: dict) -> str:
 
 
 def setting_of(r: dict) -> ps.Setting:
+    """The Setting of a sweep row. A row written before a knob existed gets the value that leaves the run as it was
+    (the sweeps before Nov 10 had no lateness cap)."""
     kw = {}
     for f in fields(ps.Setting):
-        v = r[f.name]
+        v = r.get(f.name, "")
+        if v == "":
+            if f.name == "late_cap":
+                kw[f.name] = 0.0
+            continue
         kw[f.name] = (v == "True") if f.type == "bool" else float(v) if f.type == "float" else int(float(v)) if f.type == "int" else v
     return ps.Setting(**kw)
 
