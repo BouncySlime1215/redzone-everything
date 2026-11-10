@@ -9,7 +9,7 @@ import yaml
 from redzone import measured_timing as mt
 from redzone.decider import gate
 from redzone.decider.decider import PSEUDO, Decision, State
-from redzone.decider.screen import leave_window
+from redzone.decider.screen import Event, leave_window
 from redzone.models import Phase
 from tests.test_exits_catchup import cand, host
 from tests.test_timing_truth import _night_decisions
@@ -20,7 +20,7 @@ CONFIG = yaml.safe_load((Path(mt.__file__).parent / "default_config.yaml").read_
 ALL = ["nfl", "cfb", "nba", "cbb", "nhl", "mlb"]
 # The fixture night with the arbiter choosing and a held pick allowed to wait: the paths the flags live on.
 CTX = {"arbiter.enabled": True, "legal.leave_at_flip": True, "legal.leave_low_leverage": ALL}
-OFF = {"gate.leave_unaired_row_only_ended": False}        # every new flag at its shipped default
+OFF = {"gate.leave_unaired_row_only_ended": False, "gate.leave_margin_measured": False}        # every new flag at its shipped default
 
 
 def night(ctx=None, **sets):
@@ -108,4 +108,53 @@ def test_flag_on_a_game_that_ended_or_is_missing_still_waits_for_its_last_row(ph
 def test_flag_off_the_night_decides_as_the_old_leave_rule(monkeypatch):
     after = night()
     monkeypatch.setattr(gate, "leave_refusal", lambda *a, **k: "" if _old_leave_open(*a, **k) else "refused")
+    assert night() == after
+
+
+# ----- step 3: gate.leave_margin_measured ---------------------------------------------------------------------------------------------
+
+NEED = "gate.leave_margin_measured"
+
+
+def snap_coming(**cfg):
+    """Between plays at 230 with the next snap already in the data (logged 215, on air from 240): open for a 3.2 s flip, shut for 8 s."""
+    d = between_plays(**{ROW: True, **cfg})
+    d.timelines["on"].events.append(Event(215.0, "play"))
+    d.timelines["on"].fresh_at = 230.0
+    return d
+
+
+def test_flag_off_the_leave_window_is_asked_for_8_s():
+    d = snap_coming()
+    f = flip(d, CANDS, now=230.0)
+    assert gate._leave_need(f, 8.0) == 8.0 and gate._leave(f) is True and gate.leave_cause(f) == "window"
+    assert leave_window(d.timelines["on"], d.delays.get("yt:on"), 230.0, 8.0, 3.2).safe
+
+
+def test_flag_on_it_is_asked_for_the_flips_own_bound():
+    d = snap_coming(**{NEED: True})
+    f = flip(d, CANDS, now=230.0)
+    assert gate._leave_need(f, 8.0) == f.host._leave_margin() == 3.2
+    assert gate._leave(f) is False and gate.leave_cause(f) == ""
+    late = flip(d, CANDS, now=235.0)                         # 235 + 3.2 reaches the snap's doubt band (240 - 2 sigma - 1)
+    assert gate._leave(late) is True and gate.leave_cause(late) == "window"
+    d.entry_cost = lambda target: 5.0                        # a slower measured switch asks for more, never less than the flip
+    assert gate._leave_need(flip(d, CANDS, now=230.0), 8.0) == 5.0
+
+
+def test_flag_on_the_host_is_asked_with_its_own_margin_and_a_jump_is_untouched():
+    from tests.test_commit_gate import AT, T, _d, _host
+    seen = []
+    for cfg in ({}, {NEED: True}):
+        h = _host(**cfg)
+        h.safe_to_leave = lambda gid, required_s=0.0: seen.append(required_s) or True
+        h.decider.jump_may_leave = lambda gid, live, now, req: seen.append(("jump", req)) or True
+        assert gate._leave(gate.Flip(h, _d(), "a", T, {}, None, AT)) is False
+        assert gate._leave(gate.Flip(h, _d(kind="jump"), "a", T, {}, None, AT)) is False
+    assert seen == [8.0, ("jump", 3.2), 3.2, ("jump", 3.2)]
+
+
+def test_flag_off_the_night_decides_as_with_the_8_s_window(monkeypatch):
+    after = night()
+    monkeypatch.setattr(gate, "_leave_need", lambda f, usual: usual)
     assert night() == after

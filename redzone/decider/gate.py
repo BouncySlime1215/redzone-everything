@@ -216,7 +216,7 @@ def _leave(f: Flip) -> bool:
     if f.jump:
         ok = f.host.decider.jump_may_leave(f.before, f.live, f.now, f.host._leave_margin())
     else:
-        ok = f.host.safe_to_leave(f.before, required_s=8.0)   # the value cut_veto has always used
+        ok = f.host.safe_to_leave(f.before, required_s=_leave_need(f, 8.0))   # the value cut_veto has always used
         if not ok and getattr(f.d, "leave_held", False):       # [legal.leave_low_leverage] a held pick may go at a low-leverage moment
             ok = not _ending_airing(f) and f.host.decider.held_low_leverage_exit(f.before, f.live, f.now)
     return not ok or _leaves_high_leverage_play(f)
@@ -321,7 +321,7 @@ def leave_cause(f: Flip, usual: float = 8.0) -> str:
     host, before = f.host, f.before or ""
     g = host.merger.games.get(before)
     why = leave_refusal(host.decider, f.before, getattr(host.where.get(before), "target", None), g.phase if g is not None else None,
-                        f.now, host.cfg.get("decider.uncalibrated_sigma_s"), usual)
+                        f.now, host.cfg.get("decider.uncalibrated_sigma_s"), _leave_need(f, usual))
     return why or "high_leverage"
 
 
@@ -355,6 +355,15 @@ def leave_veto(dec: Any, d: Any, cands: dict, now: float) -> str:
 
 
 # ----- facts a rule reads that aren't one poll's measurements (kept out of Flip so a rule stays a one-liner) -----------
+
+def _leave_need(f: Flip, usual: float) -> float:
+    """Seconds the plain leave window must stay open for this flip. `usual` is cut_veto's 8.0, a guess nobody measured. With
+    gate.leave_margin_measured (off) it is the flip's own bound, the one a jump's leave already uses (Engine._leave_margin: the
+    configured flip, never less than the measured slow end of a flip; 1.9 s median and 2.2 s max on Nick's TV, Nov 9)."""
+    if f.host.cfg.get("gate.leave_margin_measured", False):
+        return float(f.host._leave_margin())
+    return usual
+
 
 def _own_frame(f: Flip) -> bool:
     """A real resume or skip lands on a frame its own tune already fixed, so an entry plan doesn't apply. "Real" is read from

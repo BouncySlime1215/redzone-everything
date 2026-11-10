@@ -1201,6 +1201,7 @@ commit_gate:               # [build plan WP-05] one named-veto gate at the flip 
 
 gate:                      # [YES-1, Nick Nov 10: "a no is rare"] logic fixes to the leave half of the commit gate (decider/gate.py). Each ships OFF: simulated on recorded nights only
   leave_unaired_row_only_ended: false   # the "newest data row has not aired yet" check refuses a leave only for a game that ended or left the list; a LIVE game goes straight to the leave window, which guards every play
+  leave_margin_measured: false          # a non-tap leave's window must stay open for the flip's own bound (Engine._leave_margin, what a jump's leave uses) instead of 8 s, a guess nobody measured. Taps and the old cut_veto path keep 8 s
 
 discovery:                 # [build plan WP-01]
   espn_on_yttv: false      # [build plan WP-22] ESPN events through YouTube TV; unproven until a TV night answers its unknowns
