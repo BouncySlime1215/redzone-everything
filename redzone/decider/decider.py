@@ -418,6 +418,8 @@ class Decider:
     _leave_pick: LeaveHold | None = None
     _route_doing: tuple[Missed, float] | None = None   # [arbiter.catchup_route] the clip in pieces: (the play, seconds of it already aired)
     _route_clip: tuple[Missed, float] | None = None    # [arbiter.catchup_route_short] (the play, its clip's own length) of the piece last offered
+    _route_stick_at: float = float("-inf")   # [arbiter.catchup_route] when the hidden stick's last job began (a cut, a replay or piece that
+                                             # ended): it is loading until this + the route's prep_s. Read only by the route
     _LAZY = {"owner_m": M.OWNER, "screen_m": M.DECIDER_SCREEN, "start_m": M.START, "gone_m": M.SCREEN_GONE, "home_m": M.DECIDER_HOME,
              "safe_m": M.SAFE, "override_m": M.OVERRIDE, "lock_m": M.LOCK_WAIT, "entry_m": M.ENTRY_WAIT, "leave_m": M.LEAVE_WAIT,
              "catchup_m": M.CATCHUP_ROUTE}
@@ -693,6 +695,7 @@ class Decider:
             elif now >= self.replay_until and self._route_piece_ended(now):
                 pass
             elif now >= self.replay_until:
+                self._route_stick_at = now     # [catchup_route] the hidden stick is free to load the next clip from here
                 self._clip.replayed = True
                 self.done_replays.append(self._clip)
                 self._clip = None
@@ -1296,6 +1299,7 @@ class Decider:
             return
         if not m.replayed and not m.seen_live and m not in self.queue:
             self.queue.append(m)
+        self._route_stick_at = self._clock()    # [arbiter.catchup_route] the stick that showed it re-seeks from here
         if m.piece_s > 0:         # [arbiter.catchup_route] interrupted: the clip starts over from the top if the cap allows
             m.offset_s, m.piece_s, self._route_doing = 0.0, 0.0, None
             self.catchup_m.to("idle", "the piece was interrupted")
@@ -2268,14 +2272,16 @@ class Decider:
         ready = {f"{m.game_id}:{m.pid}": m for m in self.queue
                  if m.game_id != self.current and not (m.seen_live or m.replayed) and m.retry_at <= now
                  and self._replayable(games.get(m.game_id)) and self._arbiter_missed_rank(m, p) != arbiter.NOT_FLOOR}
+        free = self._route_stick_at + r.prep_s      # the hidden stick is still loading until then (the audit's `ready`)
         if doing is not None and doing[0] is not None:
             mine = moment(doing[0])
             if catchup.overdue(mine, doing[1], now, r):
                 self._route_end(doing[0], "past the 180 s cap or the reach: dropped, counted lost", now)
                 return None
-            piece = catchup.next_piece((), now, span[0], doing=(mine, doing[1]), known=lambda x: self._catchup_seen(x.game_id, x.aired - x.play_s, now), r=r)
+            piece = catchup.next_piece((), now, span[0], doing=(mine, doing[1]), ready_at=free,
+                                       known=lambda x: self._catchup_seen(x.game_id, x.aired - x.play_s, now), r=r)
         else:
-            piece = catchup.next_piece([moment(m) for m in ready.values()], now, span[0],
+            piece = catchup.next_piece([moment(m) for m in ready.values()], now, span[0], ready_at=free,
                                        known=lambda x: self._catchup_seen(x.game_id, x.aired - x.play_s, now), r=r)
         if piece is None:
             return None
@@ -2295,6 +2301,7 @@ class Decider:
         m = self._clip
         if m is None or m.piece_s <= 0:
             return False
+        self._route_stick_at = now      # the hidden stick re-seeks (the next piece) or loads another clip from here
         cut = self._route_clip
         clip = cut[1] if cut is not None and cut[0] is m and cut[1] > 0 else self._arbiter_params().plan_clip_s
         offset = m.offset_s + m.piece_s
@@ -4655,6 +4662,7 @@ class Decider:
         TV already shows it, so the screen log gets the game once, at now)."""
         now = self._clock()
         self.replay_exit_after = 0.0   # a live switch replaces the old replay picture
+        self._route_stick_at = now     # [arbiter.catchup_route] a cut takes the hidden stick: a clip loads only after it
         if kind == "return" and self.stack and self.stack[-1] == target:
             # Popped even when we're already on it (a "return" confirmed as "already on it"): left on
             # the stack, the same return was proposed again every tick, 348 times on the e2e night test.

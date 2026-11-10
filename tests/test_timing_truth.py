@@ -62,3 +62,79 @@ def test_flag_on_the_parkable_reach_is_the_measured_one():
         d = route_decider(**base, **kw)
         d.target_of = lambda gid: "youtubetv:x"
         assert d._parkable(NS(game_id="b", t=1000.0), 1150.0) is ok           # 150 s old: past 95, inside the measured 175
+
+
+# ----- the hidden stick is busy while it loads (ready_at) ----------------------------------------------------------------------------
+
+def _one_piece_ended(d, m, at):
+    """Clip m aired whole as one piece and just ended on screen at `at`: the hidden stick now re-seeks for whatever is next."""
+    from collections import Counter
+    d.arbiter_log, d.cfg.v["arbiter.plan_clip_s"] = Counter(), 30.0
+    m.piece_s, m.offset_s = 30.0, 0.0
+    d._clip, d._current = m, "b"
+    d.screen_m.to("replaying", "t", now=at - 30.0)
+    d.catchup_m.to("airing", "t", now=at - 30.0)
+    assert not d._route_piece_ended(at)
+    d._current = "on"                                              # the picture is back on the live game
+
+
+def test_the_route_waits_for_the_hidden_stick_after_a_piece():
+    d, done, nxt = route_decider(), miss(), miss(1050.0, "p2")
+    _one_piece_ended(d, done, 1080.0)
+    d.queue = [nxt]
+    assert d._catchup_route(CANDS, 1085.0, P) is None             # 5 s into a 15 s load: the stick is not on the clip yet
+    assert d._catchup_route(CANDS, 1095.0, P) is nxt
+
+
+def test_the_route_waits_for_the_hidden_stick_after_a_cut():
+    d, m = route_decider(), miss()
+    d.queue, d._route_stick_at = [m], 1030.0                       # a cut at 1030 took the hidden stick
+    assert d._catchup_route(CANDS, 1040.0, P) is None
+    assert d._catchup_route(CANDS, 1045.0, P) is m
+    d, m = route_decider(**{"timing.measured": True}), miss()
+    d.queue, d._route_stick_at = [m], 1030.0
+    assert d._catchup_route(CANDS, 1045.0, P) is None and d._catchup_route(CANDS, 1049.0, P) is m     # the measured 19 s load
+
+
+def test_an_interrupted_piece_also_takes_the_stick():
+    d, m = route_decider(), miss()
+    d._clock = lambda: 1060.0
+    d.replaying, d._clip, m.piece_s = True, m, 12.0
+    d.screen_m.to("replaying", "t", now=1050.0)
+    d.catchup_m.to("airing", "t", now=1050.0)
+    d.abort_replay()
+    assert d._route_stick_at == 1060.0
+
+
+# ----- flag off: a whole small night decides exactly as before ----------------------------------------------------------------------
+
+def _night_decisions(**sets):
+    import json
+
+    from redzone.config import Config, _deep_merge
+    from redzone.lab import backtest
+    from redzone.lab.backtest import Replay
+    from redzone.models import League
+    fix = Path(__file__).parent / "fixtures" / "your_team_crunch"         # the NBA night tests/test_hidden_stick.py replays
+    evs = json.loads((fix / "espn_nba_scoreboard_20251212.json").read_text())["events"]
+    reps = [r for r in (Replay.load(League.NBA, fix / f"espn_nba_summary_{e['id']}.json") for e in evs) if r]
+    targets = {r.gid: ("prime:" if i % 3 == 0 else "youtubetv:") + r.gid for i, r in enumerate(reps)}
+    cfg = Config(user_path=fix / "eval_config.yaml")
+    for k, v in sets.items():
+        node = v
+        for part in reversed(k.split(".")):
+            node = {part: node}
+        cfg.data = _deep_merge(cfg.data, node)
+    rep = backtest.run(reps, cfg, {"WSH"}, targets=targets, seed=1, **backtest.feed_lag_knobs(70.0, 90.0))
+    return [repr(d) for d in rep.decisions], [vars(s) for s in rep.switches]
+
+
+def test_flag_off_a_night_decides_as_before_the_change(monkeypatch):
+    """After: as shipped. Before: the new bookkeeping inert (the stick time is never written) and the measured reader never called."""
+    from redzone.decider.decider import Decider
+    after = _night_decisions()
+    assert len(after[0]) > 500 and after[1]
+    assert _night_decisions(**{"timing.measured": True}) == after           # without the route, the measured timings change nothing
+    monkeypatch.setattr(mt, "route_costs", lambda cfg: (_ for _ in ()).throw(AssertionError("read with the route off")))
+    monkeypatch.setattr(Decider, "_route_stick_at", property(lambda self: float("-inf"), lambda self, v: None), raising=False)
+    assert _night_decisions() == after
