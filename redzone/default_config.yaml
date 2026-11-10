@@ -1206,7 +1206,7 @@ gate:                      # [YES-1, Nick Nov 10: "a no is rare"] logic fixes to
   ending_last_play: false               # football and baseball: "its last play is still airing" runs from the last PLAY row plus the usual 3 s after-play buffer, not from any row (the final horn included) plus 5 s. Basketball and hockey keep the old timer
 
 cuts:                      # [YES-1] decider/cuts.py, the dead-window tracker. Ships OFF: simulated on recorded nights only
-  floor_from_marks: false  # an open dead window is surely dead until the latest (entry stamp + that entry's own measured floor) over the entries in it. Off: the first entry's stamp + the strongest kind's floor, so a free throw 1 of 2 or a timeout logged after the foul only renames the window
+  floor_from_marks: false  # an open dead window is surely dead until the latest (entry stamp + that entry's own measured floor) over the entries in it; with noggin.timing on (NBA) the bound is read given the dead time the latest entry's stamp proves. Off: the first entry's stamp + the strongest kind's floor, so a free throw 1 of 2 or a timeout logged after the foul only renames the window
 
 discovery:                 # [build plan WP-01]
   espn_on_yttv: false      # [build plan WP-22] ESPN events through YouTube TV; unproven until a TV night answers its unknowns

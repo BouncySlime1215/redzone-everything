@@ -336,7 +336,8 @@ class DeadTracker:
         # decider): until a game's lag is measured it reads 10 s, but NHL's real feed lag runs ~50 s.
         self.lag_floor = 0.0
         # [cuts.floor_from_marks, off] an open window is surely dead until the latest (entry stamp + that entry's own floor) over
-        # its entries, not the first entry's stamp + the strongest kind's floor. Set by the decider from config.
+        # its entries, not the first entry's stamp + the strongest kind's floor; a noggin bound is read given the dead time the
+        # latest entry's stamp proves. Set by the decider from config.
         self.floor_from_marks = False
         self._walks: dict[Walk, list[Window]] = {}
 
@@ -485,15 +486,18 @@ class DeadTracker:
         if w.start <= self.frozen_until:
             return w.start     # the feed's wallclock froze around here: nothing is certain
         covered = self._covered()
+        # [cuts.floor_from_marks] the ball was dead at the stamp of every dead-ball entry in the window: a free throw 1 of 2 or a
+        # timeout logged after the foul proves it dead that much longer, where a later entry used to only rename the window
+        marked = max(at for at, _ in w.marks) if self.floor_from_marks and w.marks else None
         if self.noggin is not None:
-            nb = self.noggin.lower_until(self, w, self._proven(w, covered))
+            proven = self._proven(w, covered) if marked is None else max(self._proven(w, covered), marked - w.start)
+            nb = self.noggin.lower_until(self, w, proven)     # the bound given it has been dead at least `proven` seconds
             if nb is not None:
-                return max(nb, w.start if covered is None else covered)
+                until = max(nb, w.start if covered is None else covered)
+                return until if marked is None else max(until, marked)
         floor = w.start + FLOOR_S.get(lg, {}).get(w.kind, 0.0)
-        if self.floor_from_marks and w.marks:
-            # each floor was measured from its own entry's stamp to the restart: a free throw 1 of 2 or a timeout logged after the
-            # foul proves the ball dead that much longer, where the line above only renames the window
-            table = FLOOR_S.get(lg, {})
+        if marked is not None:
+            table = FLOOR_S.get(lg, {})     # each floor was measured from its own entry's stamp to the restart
             floor = max(at + table.get(kind, 0.0) for at, kind in w.marks)
         if covered is None:
             return floor

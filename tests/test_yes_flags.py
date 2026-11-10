@@ -514,6 +514,36 @@ def test_flag_on_fresh_data_past_the_floor_still_wins():
     assert dead.dead_until(101.0) == 164.0
 
 
+class Bound:
+    """A stand-in for noggin.live.TimingHook: 5 s more than whatever is already proven, or no reading."""
+
+    def __init__(self, reads=True):
+        self.asked, self.reads = [], reads
+
+    def lower_until(self, dt, w, e):
+        self.asked.append(e)
+        return w.start + e + 5.0 if self.reads else None
+
+
+def test_flag_on_a_noggin_bound_is_read_given_what_the_marks_prove():
+    off, on = tracker(League.NBA, FOUL_THEN_FT), tracker(League.NBA, FOUL_THEN_FT, on=True)
+    off.noggin, on.noggin = Bound(), Bound()
+    assert off.dead_until(101.0) == 105.0 and off.noggin.asked == [0.0]            # as before: nothing proven, anchored at the foul
+    assert on.dead_until(101.0) == 115.0 and on.noggin.asked == [10.0]             # the free throw at 110 proves 10 s
+    on.seen(200.0, 10.0)                                                           # fresh data proves more than the marks: it wins
+    assert on.dead_until(101.0) == 100.0 + 64.0 + 5.0
+
+
+def test_flag_on_a_noggin_bound_below_the_last_stamp_or_missing_falls_back_safely():
+    low = tracker(League.NBA, FOUL_THEN_FT, on=True)
+    low.noggin = Bound()
+    low.noggin.lower_until = lambda dt, w, e: w.start + 2.0                         # a bound under what the data already shows
+    assert low.dead_until(101.0) == 110.0                                          # never earlier than the last dead-ball stamp
+    none = tracker(League.NBA, FOUL_THEN_FT, on=True)
+    none.noggin = Bound(reads=False)
+    assert none.dead_until(101.0) == 122.0 and none.noggin.asked == [10.0]         # no reading: the table floor from the marks
+
+
 def test_the_decider_sets_the_trackers_switch_from_config(cfg, clock):
     assert _dec(cfg, clock).timeline("a", League.NBA).dead.floor_from_marks is False
     cfg.data = _deep_merge(cfg.data, {"cuts": {"floor_from_marks": True}})
