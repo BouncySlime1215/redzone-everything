@@ -5,6 +5,12 @@ version: 1
 leagues: {nfl: football, cfb: football, nba: hoops, wnba: hoops, cbb: hoops}
 regulation: {nfl: [4, 900], cfb: [4, 900], nba: [4, 720], wnba: [4, 600], cbb: [2, 1200]}   # periods, seconds each
 
+# Replay value: what a moment is worth aired later as a short catch-up clip, not cut to live.
+# replay = base x leverage ** replay_leverage_exponent x stakes; dead value replays at 0. At 0.3 a garbage-time
+# interception (base 5, leverage 0.3) is live 1.5 but replay 3.48 (Nick, Nov 9: "notable play... replay worthy").
+# A prior to be fitted on what RedZone and league highlight lists replay. Nothing reads it at runtime.
+replay_leverage_exponent: 0.3
+
 football:
   base:
     td_off: 5.0              # offensive touchdown
@@ -40,6 +46,8 @@ football:
     turnover_inside_20: 1.0  # snapped inside either 20
     turnover_return_20: 1.0  # returned 20+ yards
     sack_late_down: 0.5      # on 3rd or 4th down
+    two_point_ties_or_leads: 2.0   # a made two-point try that ties the game or takes the lead (play text "ATTEMPT SUCCEEDS");
+                                   # a failed try keeps the plain two_point points (Nick, Nov 9: TD + failed try stays top 3)
   limits:
     td_long: 20
     td_very_long: 50

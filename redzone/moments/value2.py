@@ -7,6 +7,10 @@ section 4 that the summary really carries. v1 (detect.py, tiers.yaml) is not tou
 
     for m in grade("nfl", summary, game_id):      # [Graded(t, play_id, kind, base, leverage, stakes, value, ...), ...]
         m.value == m.base * m.leverage * m.stakes  # dead value (kneel-downs, non-clutch free throws) is flat and negative
+        m.replay == m.base * m.leverage ** a * m.stakes   # a = value2.yaml replay_leverage_exponent; dead moments 0
+
+`value` is the LIVE value (worth cutting to now; the training label's source). `replay` is the value of airing the play
+later as a short catch-up clip (Nick, Nov 9: a garbage-time interception is "replay worthy" though never worth a live cut).
 
 Pure: no clock, no network, no TV. Every number comes from value2.yaml so it can be fitted later (section 5).
 Published win probability never enters: `winprobability` is not read (it was fit across seasons, see value_shards.py).
@@ -57,6 +61,8 @@ class Graded:
     grades: tuple[str, ...] = ()
     dead: bool = False
     text: str = ""
+    replay: float = 0.0      # base x leverage**a x stakes (a = replay_leverage_exponent); 0 for dead value. Default keeps old callers
+                             # and pickles working (a pickle from before this field reads 0.0 from the class default)
 
 
 @lru_cache(maxsize=1)
@@ -166,9 +172,27 @@ class _Play:
             base = self.c["dead"][kind] if dead else self.c["base"][kind]
         base = float(base) + sum(float(self.c["bonus"][g]) for g in grades)
         lev, stk = (1.0, 1.0) if dead else (self.lev, self.stk)
+        rep = 0.0 if dead else base * lev ** float(self.cfg["replay_leverage_exponent"]) * stk
         self.out.append(Graded(self.t, str(self.p.get("id") or ""), kind, base, lev, stk, base * lev * stk,
                                abs(self.before[0] - self.before[1]), abs(self.after[0] - self.after[1]), self.left, self.period,
-                               self.gid, tuple(grades), dead, " ".join(str(self.p.get("text") or "").split())[:_TEXT_KEEP]))
+                               self.gid, tuple(grades), dead, " ".join(str(self.p.get("text") or "").split())[:_TEXT_KEEP], rep))
+
+
+def two_point_ties_or_leads(text: str, before: tuple[int, int], after: tuple[int, int]) -> bool:
+    """True when the play text says the two-point try succeeded and it tied the game or took the lead.
+
+    ESPN's wording on the archived NFL dev nights is "TWO-POINT CONVERSION ATTEMPT. ... ATTEMPT SUCCEEDS." or "... ATTEMPT
+    FAILS.", and the row's score already includes the try (a made try moves one side by 8, a failed one by 6). A text with
+    both words (a reviewed and reversed try) or neither, or a row where both sides or no side scored, is ambiguous: False.
+    Ties or leads: the scoring side is level or ahead after the try and was level or behind without its 2 points."""
+    tx = text.upper()
+    if "ATTEMPT SUCCEEDS" not in tx or "ATTEMPT FAILS" in tx:
+        return False
+    dh, da = after[0] - before[0], after[1] - before[1]
+    if (dh > 0) == (da > 0) or min(dh, da) < 0:
+        return False
+    mine = (after[0] - after[1]) * (1 if dh > 0 else -1)
+    return 0 <= mine <= 2
 
 
 def _row_score(p: dict, prev: tuple[int, int]) -> tuple[int, int]:
@@ -236,7 +260,8 @@ def _football(league: str, gid: str, d: dict, cfg: dict, st: Stakes, fixed: floa
             if "disqualification" in tx or "ejected" in tx:
                 play.add("ejection")
             if "two-point conversion attempt" in tx and not nopl:
-                play.add("two_point")
+                tie = two_point_ties_or_leads(tx, play.before, play.after)
+                play.add("two_point", grades=("two_point_ties_or_leads",) if tie else ())
             if nopl:
                 continue
             last_play = clk == 0 and (per == regs // 2 or per >= regs)
