@@ -45,11 +45,13 @@ if ROOT.as_posix() not in sys.path:
     sys.path.insert(0, ROOT.as_posix())
 
 from redzone.grading import dead_at, raw_type  # noqa: E402
-from redzone.lab import splits  # noqa: E402
+from redzone.lab import leverage, splits  # noqa: E402
 from redzone.lab.backtest import Replay  # noqa: E402
 from redzone.models import League  # noqa: E402
+from redzone.moments import value2  # noqa: E402
 from redzone.moments.detect import detect as detect_moments  # noqa: E402
 from redzone.noggin import arbiter  # noqa: E402
+from redzone.sources import espn  # noqa: E402
 
 FLIP_S, TUNE_S = 2.05, 2.5          # measured medians (50 of 50, 30 of 30)
 LOAD_1_S, PRESS_S = 19.3, 1.28      # park / clip load at one rewind press, and each further press (18.5-20.2 ... 28.8-30.2 at 9)
@@ -57,6 +59,7 @@ RESCRUB_1_S = LOAD_1_S - TUNE_S - 3.0   # a fresh scrub on the channel the stick
 POS_ERR_S = 5.0                     # the rewind label is right within about 5 s
 REACH_S, MIN_BEHIND_S = 175.0, 45.0  # deepest and shallowest a stick sits behind live
 SKIP_STEP_S = 15.0
+HIGH_PLAY_S = 7.0                   # veto_audit.PLAY_LEN_S: a high-leverage play covers this long before its stamp
 SHOT_WINDOW_S = 4.0                 # R2: this long after any shot counts as a legal point (the grader gives a made basket 4 s)
 WINDOWS_MIN = (5, 10, 20, 30, 45, 60)
 SPREAD_S = 9000.0                   # the N games of one slate start within this long of each other (the tightest such group is used)
@@ -71,27 +74,46 @@ def value_of(kind: str) -> float:
 def truth_of(r: Replay) -> dict:
     """One game's facts: dead stretches (1 s grid), shot times (basketball), must-see moments."""
     t0, t1 = r.wall[0], r.wall[-1]
-    dead, cur = [], None
+    dead, brk, cur, ad = [], [], None, False
     for k in range(int(t1 - t0) + 1):
         st = t0 + k
-        d = dead_at(r.league, r.wall, r.plays, st)[0]
+        d, b, _ = dead_at(r.league, r.wall, r.plays, st)
         if d and cur is None:
-            cur = st
+            cur, ad = st, False
         elif not d and cur is not None:
             dead.append((cur, st))
+            brk.append(ad)
             cur = None
+        ad = ad or (d and b)
     if cur is not None:
         dead.append((cur, t1))
+        brk.append(ad)
+    lg, cfg2 = r.league.value, value2.config()
+    hl = [(w - HIGH_PLAY_S, w) for w, p in zip(r.wall, r.plays) if leverage.high_leverage(r.league, p)]
+    lev = []                                  # (time, value2 leverage of the score and clock): what a no-future brain can read
+    for w, p in zip(r.wall, r.plays):
+        hs, as_ = espn._int(p.get("homeScore")), espn._int(p.get("awayScore"))
+        if hs is None or as_ is None:
+            continue
+        try:
+            left, ot = value2.seconds_left(lg, espn._int(espn._get(p, "period", "number")) or 0, espn._clock_s(espn._get(p, "clock", "displayValue")), cfg2)
+            lev.append((w, float(value2.leverage(lg, abs(hs - as_), left, ot, cfg2)), abs(hs - as_), left))
+        except (KeyError, TypeError, ValueError):
+            lev.append((w, 1.0, abs(hs - as_), -1.0))
+    try:
+        v2 = [(m.t, float(m.value), float(m.replay)) for m in value2.grade(lg, r.data, r.gid, cfg=cfg2)]
+    except (KeyError, TypeError, ValueError):
+        v2 = []
     shots = [w for w, p in zip(r.wall, r.plays) if p.get("shootingPlay") and "free throw" not in raw_type(p)] \
         if r.league.base == League.NBA else []
     big = [(m.t, value_of(m.kind)) for m in detect_moments(r.league.value, r.data, r.gid).moments
            if arbiter.trigger_rank(r.league.value, m.kind) != arbiter.NOT_FLOOR]
-    return {"gid": r.gid, "t0": t0, "t1": t1, "dead": dead, "shots": shots, "big": sorted(big)}
+    return {"gid": r.gid, "t0": t0, "t1": t1, "dead": dead, "brk": brk, "shots": shots, "big": sorted(big), "hl": hl, "lev": lev, "v2": sorted(v2)}
 
 
 def load_nights(league: str, cap: int, cache: Path | None) -> list[list[dict]]:
     """The `cap` dev nights with the most games, each a list of game truths. Cached outside the repo when asked."""
-    key = cache / f"park_truth_{league}_{cap}.pkl" if cache else None
+    key = cache / f"park_truth3_{league}_{cap}.pkl" if cache else None
     if key and key.exists():
         return pickle.loads(key.read_bytes())
     d = ROOT / "data/archive" / league
