@@ -13,11 +13,14 @@ from redzone import measured_timing as mt
 from redzone.decider import cuts as cuts_mod
 from redzone.decider import gate
 from redzone.decider.cuts import EntryPlan
+from collections import Counter
+
 from redzone.config import _deep_merge
 from redzone.decider.decider import PSEUDO, Candidate, Decider, Decision, State
 from redzone.decider.screen import Event, Timeline, leave_window
 from redzone.models import League, Phase
-from redzone.noggin import legal
+from redzone.contracts import brain
+from redzone.noggin import arbiter, legal
 from tests.test_exits_catchup import cand, host
 from tests.test_legal import _c, _dec
 from tests.test_timing_truth import _night_decisions
@@ -30,7 +33,8 @@ ALL = ["nfl", "cfb", "nba", "cbb", "nhl", "mlb"]
 CTX = {"arbiter.enabled": True, "legal.leave_at_flip": True, "legal.leave_low_leverage": ALL}
 OFF = {"gate.leave_unaired_row_only_ended": False, "gate.leave_margin_measured": False, "gate.leave_dead_window": False,
        "legal.lock_dead_ball": False, "legal.facts_urgent": False,
-       "gate.ending_last_play": False, "cuts.floor_from_marks": False}        # every new flag at its shipped default
+       "gate.ending_last_play": False, "cuts.floor_from_marks": False,
+       "arbiter.caution_rules": True}        # every new flag at its shipped default
 
 
 def night(ctx=None, **sets):
@@ -519,4 +523,86 @@ def test_the_decider_sets_the_trackers_switch_from_config(cfg, clock):
 def test_flag_off_the_night_decides_as_the_old_floor(monkeypatch):
     after = night()
     monkeypatch.setattr(cuts_mod.DeadTracker, "_open_until", _old_open_until)
+    assert night() == after
+
+
+# ----- step 9: arbiter.caution_rules --------------------------------------------------------------------------------------------------
+
+CAUTION = "arbiter.caution_rules"
+STAY, CUT_B, CUT_C = legal.STAY, brain.Option("cut:b", "cut", "b"), brain.Option("cut:c", "cut", "c")
+CALM = arbiter.Params(caution_rules=False)
+# what each caution rule refuses today: the show's state, and the brain's scores
+CAUTIONS = {
+    "ceiling": (arbiter.Show(cuts_60s=3), {"stay": 10.0, "cut:b": 60.0}),
+    "late_narrow": (arbiter.Show(late=True, close=frozenset({"c"})), {"stay": 10.0, "cut:b": 60.0, "cut:c": 20.0}),
+    "visit_budget": (arbiter.Show(visits=Counter({"b": 9})), {"stay": 10.0, "cut:b": 60.0, "cut:c": 20.0}),
+    "margin": (arbiter.Show(), {"stay": 58.0, "cut:b": 60.0}),
+}
+
+
+def _old_thin(pool, floor, show, p):
+    """arbiter._thin as it was before YES-1, word for word."""
+    out = []
+    for o in pool:
+        if o.verb == "stay" or o.id in floor:
+            out.append(o)
+            continue
+        if p.late_narrow and show.late and o.game_id not in show.close:
+            continue
+        if p.visit_budget > 0 and o.game_id is not None:
+            room = p.visit_budget if o.game_id in show.final_two else p.visit_budget - p.visit_reserve
+            if show.visits.get(o.game_id, 0) >= room:
+                continue
+        out.append(o)
+    return out
+
+
+def _ask(show, scores, p, opts=(STAY, CUT_B, CUT_C), musts=()):
+    inp = brain.BrainInput(tick=1, now=1000.0, options=tuple(opts))
+    out = brain.BrainOutput(tick=1, model_id="t", made_at=1000.0, ttl_s=5.0, scores=scores)
+    return arbiter.choose(inp, out, musts=musts, show=show, p=p), arbiter.refused_by(inp, out, "cut:b", musts=musts, show=show, p=p)
+
+
+@pytest.mark.parametrize("rule", sorted(CAUTIONS))
+def test_each_caution_rule_refuses_today_and_not_with_the_flag_off(rule):
+    show, scores = CAUTIONS[rule]
+    show = dataclasses.replace(show, live_games=3)
+    ch, why = _ask(show, scores, arbiter.DEFAULT_PARAMS)
+    assert why == rule and (ch.option.id, ch.why) != ("cut:b", "brain")
+    ch, why = _ask(show, scores, CALM)
+    assert (ch.option.id, ch.why, why) == ("cut:b", "brain", "")
+
+
+def test_flag_off_a_cut_the_brain_scores_below_staying_still_stays():
+    """The class order can put a cut up that the brain itself scores under staying: with no margin rule that is still a no, and it is
+    named for what it is (the class order), not for a caution."""
+    mine = brain.Option("cut:c", "cut", "c", l1_class=0)
+    show = arbiter.Show(live_games=3, current_class=2)
+    ch, why = _ask(show, {"stay": 50.0, "cut:b": 60.0, "cut:c": 40.0}, CALM, opts=(STAY, CUT_B, mine))
+    assert (ch.option.id, ch.why, why) == ("stay", "brain", "l1_class")
+    assert CALM.stay_margin == 0.0 and arbiter.DEFAULT_PARAMS.stay_margin == arbiter.DEFAULT_PARAMS.brain_margin == 3.0
+
+
+def test_flag_off_the_floor_the_class_order_and_the_last_game_rule_are_untouched():
+    show = arbiter.Show(live_games=3, current="a")
+    must = arbiter.must_of("nfl", "td", "c", 1010.0, "m1")
+    scores = {"stay": 10.0, "cut:b": 60.0, "cut:c": 20.0}
+    for p in (arbiter.DEFAULT_PARAMS, CALM):
+        ch, why = _ask(show, scores, p, musts=(must,))
+        assert (ch.option.id, ch.why, why) == ("cut:c", "floor:td", "floor")                 # a touchdown owed elsewhere beats the brain's pick
+        ch, why = _ask(dataclasses.replace(show, current_class=0), scores, p)
+        assert (ch.option.id, why) == ("stay", "l1_class")                                   # your team on screen: an open game does not take it
+        ch, why = _ask(arbiter.Show(live_games=1), scores, p)
+        assert (ch.option.id, ch.why) == ("stay", "last_game")
+
+
+def test_the_flag_is_read_from_config_and_ships_on():
+    assert arbiter.DEFAULT_PARAMS.caution_rules is True and flag(CAUTION) is True
+    assert arbiter.Params.from_config(lambda k, d=None: False if k == CAUTION else d).caution_rules is False
+    assert arbiter.Params.from_config(lambda k, d=None: "no" if k == CAUTION else d).caution_rules is True      # a bad value keeps the default
+
+
+def test_flag_on_the_night_decides_as_the_old_thinning(monkeypatch):
+    after = night()
+    monkeypatch.setattr(arbiter, "_thin", _old_thin)
     assert night() == after

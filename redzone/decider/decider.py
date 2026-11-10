@@ -2197,7 +2197,7 @@ class Decider:
         if out is None or not brain.valid(out, inp) or not out.scores:
             return now - h.at <= float(self.cfg.get("legal.leave_silent_s", 5.0))
         s = out.scores
-        return s.get(h.option_id, -math.inf) - s.get(arbiter.STAY_ID, -math.inf) >= p.brain_margin
+        return s.get(h.option_id, -math.inf) - s.get(arbiter.STAY_ID, -math.inf) >= p.stay_margin
 
     def _leave_blocker(self, cut: Decision, facts: legal.Facts, cands: dict[str, Candidate], now: float) -> str:
         """What stops this cut this tick ("" = nothing): no dead-ball landing, else the flip's leave rules."""

@@ -87,6 +87,14 @@ class Params:
     class_bonus: bool = False         # [P1] brain's pick: L1 class adds points instead of filtering. The floor keeps its filter
     class_bonus_pts: float = 20.0     # per class: your team +40, crunch +20, open 0 (scores run 0..100). A judgment, not fitted
     class_tie_pts: float = 2.0        # within this many points it's a tie: class first, then league order
+    caution_rules: bool = True        # [YES-1] False: the four old limits with no Rule #1 reason stop refusing a cut: the ceiling, late
+                                      # narrowing, the visit budget and the margin (a cut the brain scores below staying still stays).
+                                      # The must-show floor, the L1 class order and last_game are untouched
+
+    @property
+    def stay_margin(self) -> float:
+        """Points a brain's cut must beat staying by: brain_margin, or 0 with the caution rules off."""
+        return self.brain_margin if self.caution_rules else 0.0
 
     @classmethod
     def from_config(cls, get: Callable[..., object]) -> "Params":
@@ -353,7 +361,9 @@ def must_show_floor(pool: Sequence[brain.Option], musts: Iterable[Must], current
 
 
 def _thin(pool: Sequence[brain.Option], floor: Mapping[str, object], show: Show, p: Params) -> list[brain.Option]:
-    """Late narrowing and the visit budget. Stay and floor options are never thinned."""
+    """Late narrowing and the visit budget. Stay and floor options are never thinned. [arbiter.caution_rules] off: nothing is."""
+    if not p.caution_rules:
+        return list(pool)
     out = []
     for o in pool:
         if o.verb == "stay" or o.id in floor:
@@ -399,7 +409,7 @@ def choose(inp: brain.BrainInput, out: brain.BrainOutput | None, baseline: str =
         pool.insert(0, stay)
     if not _cuts(pool):
         return Choice(_base(baseline, pool, stay), "no_cuts")
-    if p.ceiling_per_min > 0 and show.cuts_60s >= p.ceiling_per_min:
+    if p.caution_rules and p.ceiling_per_min > 0 and show.cuts_60s >= p.ceiling_per_min:
         return Choice(stay, "ceiling")
     if p.last_game and show.live_games <= 1 and not (p.last_game_to_live and any(o.verb == "cut" and o.game_id not in NOT_GAMES for o in pool)):
         return Choice(stay, "last_game")
@@ -428,8 +438,10 @@ def choose(inp: brain.BrainInput, out: brain.BrainOutput | None, baseline: str =
         best = max(l1thin, key=lambda o: (out.scores.get(o.id, -float("inf")), o.id))
         s_best, s_stay = out.scores.get(best.id, -float("inf")), out.scores.get(stay.id, -float("inf"))
     if best.verb != "stay":
-        if s_best - s_stay < p.brain_margin:
+        if p.caution_rules and s_best - s_stay < p.brain_margin:
             return Choice(stay, "margin")
+        if not p.caution_rules and s_best < s_stay:
+            return Choice(stay, "brain")      # no margin rule, but the brain itself scores staying higher: its own no
     return Choice(best, "brain")
 
 
@@ -456,6 +468,8 @@ def refused_by(inp: brain.BrainInput, out: brain.BrainOutput | None, pick: str, 
         return "not_offered"
     if p.decide_last and me.earliest_s > 0.0:
         return "decide_last"
+    if not p.caution_rules:
+        return "l1_class" if me.l1_class > min([o.l1_class for o in _cuts(inp.options)] + [show.current_class]) else "outscored"
     if p.late_narrow and show.late and me.game_id not in show.close:
         return "late_narrow"
     if p.visit_budget > 0 and me.game_id is not None:

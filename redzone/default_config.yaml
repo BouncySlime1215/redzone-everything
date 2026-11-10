@@ -1222,6 +1222,7 @@ arbiter:                   # [build plan WP-17] picks among legal options, with 
   catchup_route_short: true   # [ZERO-LOSS-4, Nick yes Nov 9: "thats the whole point"; no effect while catchup_route is off] with another missed must-see waiting, a catch-up clip is just the play (lead-in, play, 1 s), so the one hidden stick clears more of the queue inside the 180 s cap. Needs catchup_route. Simulated only
   class_bonus: false       # [P1] a brain's pick: your team and crunch add points instead of filtering; the must-show floor is unchanged
   class_bonus_pts: 20.0    # [P1] per class: your team +40, crunch +20, open 0
+  caution_rules: true      # [YES-1] false: the cut ceiling, late narrowing, the visit budget and the brain margin stop refusing a cut (Nick, Nov 10: "ofc switch if its better"). The must-show floor and the class order are untouched. Simulated on recorded nights only
 
 legal:                     # [LEAVE-AT-FLIP] noggin/legal.py. Needs arbiter.enabled: nothing else reads this list
   leave_at_flip: false     # a cut stays listed with the leave gate shut or no landing yet; it waits (decider.leave_wait) and goes only when the flip's leave rules and a dead-ball landing both allow it
