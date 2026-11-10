@@ -4,6 +4,7 @@
     --plan horizon=120 --plan depth=3       one Plan knob for this run (repeatable); --set key=value sets a park_sim.Setting knob
     --model park_unknown.npz                value the seconds the feed has not reported with a trained model (park_table.ModelBrain)
     --baseline                              also print live-edge physics under the same padding
+    --report curve.csv                      print the trade-off curve of a CSV written by --csv, one table per slate and error
 
 No TV, no adb, no engine, no network, no training. Dev (`fit`) nights only. A night runs in well under a second.
 
@@ -551,6 +552,40 @@ def evaluate(nights: list, s: ps.Setting, plan: Plan, brain: str = "hindsight", 
     return row
 
 
+DROP = 0.15          # the curve is read up to the point where graded value seen has fallen this far below its best
+
+
+def report(path: str) -> None:
+    """The trade-off curve as markdown, one table per slate and error. A row past the 15% fall in graded value is marked."""
+    rows = list(csv.DictReader(open(path)))
+
+    def f(r: dict, k: str) -> float:
+        try:
+            return float(r[k])
+        except (KeyError, ValueError):
+            return float("nan")
+
+    def pc_(r: dict, k: str) -> str:
+        v = f(r, k)
+        return f"{100 * v:.0f}%" if v == v else "-"
+    for slate, err in dict.fromkeys((r["slate"], r["error"]) for r in rows):
+        part = [r for r in rows if (r["slate"], r["error"]) == (slate, err)]
+        top = max(f(r, "v2_seen") for r in part if r["tag"].startswith("planner"))
+        print(f"\n**{slate}, {err}: {part[0]['nights']} dev nights, {f(part[0], 'minutes'):.0f} minutes"
+              f"{', SYNTHETIC slate' if '+' in slate else ''}. Simulated.**\n")
+        print("| row | jumps/min | 5 / 10 / 20 / 30 / 45 / 60 min (median) | graded value seen | big plays seen | yes-rate (audit) | planned jump "
+              "delivered (all / firm) | behind live s (median / p90) | mid-play joins / leaves / high-leverage leaves | flips | live share |")
+        print("|---|---|---|---|---|---|---|---|---|---|---|")
+        for r in part:
+            past = r["tag"].startswith("planner") and f(r, "v2_seen") < (1.0 - DROP) * top
+            win = " / ".join(r[f"per_{w}m_med"] for w in pc.WINDOWS_MIN)
+            deliv = f"{pc_(r, 'planned_delivered')} / {pc_(r, 'firm_delivered')}" if r["tag"].startswith("planner") else "-"
+            print(f"| {r['tag']}{' (past the 15% fall)' if past else ''} | {f(r, 'jumps_per_min'):.2f} | {win} | {pc_(r, 'v2_seen')} | "
+                  f"{pc_(r, 'big_seen')} | {pc_(r, 'yes_rate')} | {deliv} | {f(r, 'behind_med_s'):.0f} / {f(r, 'behind_p90_s'):.0f} | "
+                  f"{r['mid_entry']} / {r['mid_leave']} / {r['hl_leave']} | "
+                  f"{round(f(r, 'hops_per_min') * f(r, 'minutes'))} | {pc_(r, 'live_share')} |")
+
+
 def parse_plan(items: list[str]) -> dict:
     out, types = {}, {f.name: f.type for f in fields(Plan)}
     for it in items or ():
@@ -572,7 +607,11 @@ def main() -> int:
     ap.add_argument("--baseline", action="store_true", help="also run live-edge physics under the same padding")
     ap.add_argument("--cache", default=None, help="a folder OUTSIDE the repo for the per-game facts")
     ap.add_argument("--csv", default=None)
+    ap.add_argument("--report", default=None, help="print the curve tables of a CSV written by --csv, and stop")
     a = ap.parse_args()
+    if a.report:
+        report(a.report)
+        return 0
     cache = Path(a.cache) if a.cache else None
     base_plan = Plan(**parse_plan(a.plan))
     sets = ps.parse_sets(a.set)
@@ -594,7 +633,8 @@ def main() -> int:
                     r = ps.evaluate(nights, a.brain, replace(s, mode="live"))
                 else:
                     r = evaluate(nights, s, plan, a.brain, unknown)
-                row = {"slate": name, "error": err, "delay_sd": ERRORS[err], "tag": tag, "brain": a.brain,
+                row = {"slate": name, "error": err, "tag": tag, "brain": a.brain,
+                       **{k: getattr(s, k) for k in ("delay_sd", "pos_sd", "stamp_sd", "key_sd", "pad_k", "late_cap", "max_behind", "feed_lead", "shots")},
                        **(asdict(plan) if plan is not None else {f.name: "" for f in fields(Plan)}), **r}
                 print(f"{name:6s} {err:6s} {tag:22s} {r['jumps_per_min']:5.2f}/min  yes {_pc(r['yes_rate'])}  delivered {_pc(r['planned_delivered'])}"
                       f"  value {_pc(r['v2_seen'])}  big {_pc(r['big_seen'])}  behind {r['behind_med_s']}/{r['behind_p90_s']}/{r['behind_max_s']}"
