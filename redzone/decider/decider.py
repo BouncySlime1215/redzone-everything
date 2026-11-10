@@ -2832,9 +2832,16 @@ class Decider:
         tl = self.timelines.get(gid)
         if tl is None or not tl.events:
             return 0.0
-        last = max(e.seen for e in tl.events)
+        last, after = max(e.seen for e in tl.events), 5.0
+        if tl.league.base in (League.NFL, League.MLB) and self.cfg.get("gate.ending_last_play", False):
+            # [gate.ending_last_play, off] football and baseball: the last thing to air is the last PLAY row, with the buffer every
+            # other play-on-screen check uses (screen.final_play_aired). The timer above runs from any row, the final horn or an
+            # end-of-period marker included, plus 5 s nobody measured. Basketball and hockey log no play ends: they keep it
+            plays = [e.seen for e in tl.events if e.kind == "play"]
+            if plays:
+                last, after = max(plays), AFTER_PLAY_BUFFER_S
         d = self.delays.get(self._target_of.get(gid) or "unknown")
-        until = last + d.mu + 2 * d.current_sigma(now) + 5.0
+        until = last + d.mu + 2 * d.current_sigma(now) + after
         if now - last > cap_s + d.mu:
             return 0.0
         return max(0.0, until - now)

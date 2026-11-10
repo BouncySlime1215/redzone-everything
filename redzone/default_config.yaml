@@ -1203,6 +1203,7 @@ gate:                      # [YES-1, Nick Nov 10: "a no is rare"] logic fixes to
   leave_unaired_row_only_ended: false   # the "newest data row has not aired yet" check refuses a leave only for a game that ended or left the list; a LIVE game goes straight to the leave window, which guards every play
   leave_margin_measured: false          # a non-tap leave's window must stay open for the flip's own bound (Engine._leave_margin, what a jump's leave uses) instead of 8 s, a guess nobody measured. Taps and the old cut_veto path keep 8 s
   leave_dead_window: false              # a non-tap leave of a live game may also go inside a play-by-play dead window (the bar a jump's leave uses: fouls, free throws, timeouts, huddles), never with the game clock proven running, at any leverage
+  ending_last_play: false               # football and baseball: "its last play is still airing" runs from the last PLAY row plus the usual 3 s after-play buffer, not from any row (the final horn included) plus 5 s. Basketball and hockey keep the old timer
 
 discovery:                 # [build plan WP-01]
   espn_on_yttv: false      # [build plan WP-22] ESPN events through YouTube TV; unproven until a TV night answers its unknowns

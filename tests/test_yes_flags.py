@@ -28,7 +28,8 @@ ALL = ["nfl", "cfb", "nba", "cbb", "nhl", "mlb"]
 # The fixture night with the arbiter choosing and a held pick allowed to wait: the paths the flags live on.
 CTX = {"arbiter.enabled": True, "legal.leave_at_flip": True, "legal.leave_low_leverage": ALL}
 OFF = {"gate.leave_unaired_row_only_ended": False, "gate.leave_margin_measured": False, "gate.leave_dead_window": False,
-       "legal.lock_dead_ball": False, "legal.facts_urgent": False}        # every new flag at its shipped default
+       "legal.lock_dead_ball": False, "legal.facts_urgent": False,
+       "gate.ending_last_play": False}        # every new flag at its shipped default
 
 
 def night(ctx=None, **sets):
@@ -371,4 +372,75 @@ def test_flag_on_the_plan_is_the_flips_own_replan(cfg, clock, monkeypatch):
 def test_flag_off_the_night_never_builds_a_flip_for_the_list(monkeypatch):
     after = night()
     monkeypatch.setattr(Decider, "_flip_plan", lambda *a: (_ for _ in ()).throw(AssertionError("read with the flag off")))
+    assert night() == after
+
+
+# ----- step 7: gate.ending_last_play --------------------------------------------------------------------------------------------------
+
+ENDING = "gate.ending_last_play"
+
+
+def _old_ending_still_airing(self, gid, now, cap_s=150.0):
+    """Decider._ending_still_airing as it was before YES-1, word for word."""
+    tl = self.timelines.get(gid)
+    if tl is None or not tl.events:
+        return 0.0
+    last = max(e.seen for e in tl.events)
+    d = self.delays.get(self._target_of.get(gid) or "unknown")
+    until = last + d.mu + 2 * d.current_sigma(now) + 5.0
+    if now - last > cap_s + d.mu:
+        return 0.0
+    return max(0.0, until - now)
+
+
+def final_horn(league=League.NFL, **cfg):
+    """The last play logged at 165, the end-of-game row at 185; a 35 s delay, sigma 1."""
+    d = host((), **cfg)
+    tl = Timeline(league)
+    tl.fresh_at = 200.0
+    tl.events.extend([Event(165.0, "play"), Event(185.0, "stop_start", "end_period")])
+    d.timelines["on"] = tl
+    return d
+
+
+@pytest.mark.parametrize("league", [League.NFL, League.CFB, League.MLB, League.NBA, League.NHL])
+def test_flag_off_the_timer_runs_from_the_newest_row_of_any_kind(league):
+    d = final_horn(league)
+    assert d._ending_still_airing("on", 200.0) == 185.0 + 35.0 + 2.0 + 5.0 - 200.0 == _old_ending_still_airing(d, "on", 200.0)
+
+
+@pytest.mark.parametrize("league", [League.NFL, League.CFB, League.MLB])
+def test_flag_on_football_and_baseball_wait_for_the_last_play_and_its_buffer(league):
+    d = final_horn(league, **{ENDING: True})
+    assert d._ending_still_airing("on", 200.0) == 165.0 + 35.0 + 2.0 + 3.0 - 200.0
+    assert d._ending_still_airing("on", 204.9) > 0 and d._ending_still_airing("on", 205.0) == 0      # never before the play is off the screen
+
+
+@pytest.mark.parametrize("league", [League.NBA, League.CBB, League.NHL])
+def test_flag_on_basketball_and_hockey_keep_the_old_timer(league):
+    d = final_horn(league, **{ENDING: True})
+    assert d._ending_still_airing("on", 200.0) == _old_ending_still_airing(d, "on", 200.0) == 27.0
+
+
+def test_flag_on_a_game_with_no_play_row_keeps_the_old_timer_and_the_cap_still_frees_it():
+    d = final_horn(**{ENDING: True})
+    tl = d.timelines["on"]
+    tl.events.clear()
+    tl.events.append(Event(185.0, "stop_start", "end_period"))
+    assert d._ending_still_airing("on", 200.0) == 27.0
+    tl.events.append(Event(10.0, "play"))                    # a play long ago: past the 150 s cap it holds nothing
+    assert d._ending_still_airing("on", 200.0) == 0
+
+
+def test_flag_on_the_ending_rule_frees_an_ended_game_when_its_last_play_has_aired():
+    cands = {"a": cand()}                                    # the game on screen has left the list: ended
+    for cfg, veto in (({}, True), ({ENDING: True}, False)):
+        d = final_horn(**cfg)
+        assert gate._ending_airing(flip(d, cands, now=206.0)) is veto
+    assert gate._ending_airing(flip(final_horn(**{ENDING: True}), cands, now=204.0)) is True
+
+
+def test_flag_off_the_night_decides_as_the_old_timer(monkeypatch):
+    after = night()
+    monkeypatch.setattr(Decider, "_ending_still_airing", _old_ending_still_airing)
     assert night() == after
