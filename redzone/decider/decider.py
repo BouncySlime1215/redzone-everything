@@ -614,6 +614,7 @@ class Decider:
         tl = self.timelines[game_id]
         # [quiet break] read every poll so a /api/settings change applies to games already on
         tl.quiet_cfg = _config.for_league(self.cfg, "decider.leave.quiet_break", league.value, None)
+        tl.dead.floor_from_marks = bool(self.cfg.get("cuts.floor_from_marks", False))   # [cuts.floor_from_marks, off] see DeadTracker._open_until
         return tl
 
     def _pick_on(self, league: League) -> bool:

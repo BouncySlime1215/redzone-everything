@@ -25,7 +25,7 @@ give or take 2 sigma. Unsure intervals are always taken on the unsafe side.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from redzone.models import PERIOD_S, REGULATION, ByLeague, League
 from redzone.sources.espn import OT_S
@@ -278,6 +278,7 @@ class Window:
     end: float | None
     kind: str
     exact: bool = False     # end worked out from the game clock / a logged faceoff / the next snap
+    marks: list = field(default_factory=list)   # (stamp, kind) of each dead-ball entry in it, the opener first (floor_from_marks)
 
 
 @dataclass
@@ -334,6 +335,9 @@ class DeadTracker:
         # [EXP-211] the feed lag a landing assumes at least (decider.entry.lag_floor_s, set per plan by the
         # decider): until a game's lag is measured it reads 10 s, but NHL's real feed lag runs ~50 s.
         self.lag_floor = 0.0
+        # [cuts.floor_from_marks, off] an open window is surely dead until the latest (entry stamp + that entry's own floor) over
+        # its entries, not the first entry's stamp + the strongest kind's floor. Set by the decider from config.
+        self.floor_from_marks = False
         self._walks: dict[Walk, list[Window]] = {}
 
     # ---- input
@@ -420,7 +424,8 @@ class DeadTracker:
                 start = m.hi + (AFTER_PLAY_S if _is_action(lg, m) else 0.0)
                 end = ms[j].lo - plen if j < len(ms) else None
                 if end is None or end > start:
-                    out.append(Window(start, end, kind or "huddle", exact=end is not None))
+                    out.append(Window(start, end, kind or "huddle", exact=end is not None,
+                                      marks=[(start, m.after)] + [(x.hi, x.after) for x in ms[i + 1:j]]))
                 i = j
         else:
             cur: Window | None = None
@@ -448,10 +453,11 @@ class DeadTracker:
                         out.append(cur)
                         cur = None
                 if cur is None and m.after is not None and not (self.confirmed_only and m.after in WEAK_OPEN):
-                    cur = Window(m.hi, None, m.after)
+                    cur = Window(m.hi, None, m.after, marks=[(m.hi, m.after)])
                     c0, p0 = m.clock, m.period
                 elif cur is not None and m.after is not None:
                     cur.kind = _strongest(cur.kind, m.after)
+                    cur.marks.append((m.hi, m.after))
             if cur is not None:
                 out.append(cur)
         if self.frozen_until > float("-inf"):
@@ -484,6 +490,11 @@ class DeadTracker:
             if nb is not None:
                 return max(nb, w.start if covered is None else covered)
         floor = w.start + FLOOR_S.get(lg, {}).get(w.kind, 0.0)
+        if self.floor_from_marks and w.marks:
+            # each floor was measured from its own entry's stamp to the restart: a free throw 1 of 2 or a timeout logged after the
+            # foul proves the ball dead that much longer, where the line above only renames the window
+            table = FLOOR_S.get(lg, {})
+            floor = max(at + table.get(kind, 0.0) for at, kind in w.marks)
         if covered is None:
             return floor
         return max(floor, covered)

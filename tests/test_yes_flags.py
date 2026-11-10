@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 from redzone import measured_timing as mt
+from redzone.decider import cuts as cuts_mod
 from redzone.decider import gate
 from redzone.decider.cuts import EntryPlan
 from redzone.config import _deep_merge
@@ -29,7 +30,7 @@ ALL = ["nfl", "cfb", "nba", "cbb", "nhl", "mlb"]
 CTX = {"arbiter.enabled": True, "legal.leave_at_flip": True, "legal.leave_low_leverage": ALL}
 OFF = {"gate.leave_unaired_row_only_ended": False, "gate.leave_margin_measured": False, "gate.leave_dead_window": False,
        "legal.lock_dead_ball": False, "legal.facts_urgent": False,
-       "gate.ending_last_play": False}        # every new flag at its shipped default
+       "gate.ending_last_play": False, "cuts.floor_from_marks": False}        # every new flag at its shipped default
 
 
 def night(ctx=None, **sets):
@@ -443,4 +444,79 @@ def test_flag_on_the_ending_rule_frees_an_ended_game_when_its_last_play_has_aire
 def test_flag_off_the_night_decides_as_the_old_timer(monkeypatch):
     after = night()
     monkeypatch.setattr(Decider, "_ending_still_airing", _old_ending_still_airing)
+    assert night() == after
+
+
+# ----- step 8: cuts.floor_from_marks --------------------------------------------------------------------------------------------------
+
+MARKS = "cuts.floor_from_marks"
+
+
+def _old_open_until(self, w):
+    """DeadTracker._open_until as it was before YES-1, word for word."""
+    lg = cuts_mod._lg(self.league)
+    if w.start <= self.frozen_until:
+        return w.start
+    covered = self._covered()
+    if self.noggin is not None:
+        nb = self.noggin.lower_until(self, w, self._proven(w, covered))
+        if nb is not None:
+            return max(nb, w.start if covered is None else covered)
+    floor = w.start + cuts_mod.FLOOR_S.get(lg, {}).get(w.kind, 0.0)
+    if covered is None:
+        return floor
+    return max(floor, covered)
+
+
+def tracker(league, rows, on=False):
+    dead = cuts_mod.DeadTracker(league)
+    dead.floor_from_marks = on
+    for i, (at, ttext, text) in enumerate(rows):
+        dead.add(str(i), at, at, "", text, ttext, 500.0, 1)
+    return dead
+
+
+FOUL_THEN_FT = [(100.0, "Personal Foul", "foul on A"), (110.0, "Free Throw - 1 of 2", "A makes free throw 1 of 2")]
+FOUL_THEN_TIMEOUT = [(100.0, "Personal Foul", "foul on A"), (120.0, "Full Timeout", "B timeout")]
+RUN_THEN_TV = [(100.0, "Rush", "run for 3 yards"), (125.0, "Official Timeout", "tv timeout")]
+
+
+@pytest.mark.parametrize("league,rows,old,new", [
+    (League.NBA, FOUL_THEN_FT, 100.0 + 12.0, 110.0 + 12.0),          # the window is renamed free_throw (12 s), anchored at the foul
+    (League.NBA, FOUL_THEN_TIMEOUT, 100.0 + 15.0, 120.0 + 15.0),     # a short timeout's 15 s, from the foul or from its own stamp
+    (League.NFL, RUN_THEN_TV, 103.0 + 40.0, 125.0 + 40.0),           # the TV timeout's 40 s, from the play's whistle or from its own stamp
+])
+def test_the_floor_runs_from_each_marks_own_stamp_only_with_the_flag(league, rows, old, new):
+    assert tracker(league, rows).dead_until(101.0 if league == League.NBA else 104.0) == old
+    dead = tracker(league, rows, on=True)
+    assert dead.dead_until(101.0 if league == League.NBA else 104.0) == new
+    assert dead.windows()[-1].marks[0][0] == dead.windows()[-1].start and len(dead.windows()[-1].marks) == 2
+
+
+def test_flag_on_the_opener_keeps_its_own_floor_when_it_is_the_longest():
+    rows = [(100.0, "Shooting Foul", "shooting foul on A"), (104.0, "Substitution", "B enters for C")]     # 22 s from the foul; a sub proves nothing
+    assert tracker(League.NBA, rows, on=True).dead_until(101.0) == tracker(League.NBA, rows).dead_until(101.0) == 122.0
+
+
+def test_flag_on_a_window_the_data_closed_is_not_stretched():
+    rows = FOUL_THEN_FT + [(118.0, "Jump Shot", "A makes 20-foot jumper")]
+    off, on = tracker(League.NBA, rows), tracker(League.NBA, rows, on=True)
+    assert on.windows()[0].end == off.windows()[0].end is not None and on.dead_until(101.0) == off.dead_until(101.0)
+
+
+def test_flag_on_fresh_data_past_the_floor_still_wins():
+    dead = tracker(League.NBA, FOUL_THEN_FT, on=True)
+    dead.seen(200.0, 10.0)                                   # covered to 200 - 10 - 24 - 2 = 164
+    assert dead.dead_until(101.0) == 164.0
+
+
+def test_the_decider_sets_the_trackers_switch_from_config(cfg, clock):
+    assert _dec(cfg, clock).timeline("a", League.NBA).dead.floor_from_marks is False
+    cfg.data = _deep_merge(cfg.data, {"cuts": {"floor_from_marks": True}})
+    assert _dec(cfg, clock).timeline("a", League.NBA).dead.floor_from_marks is True
+
+
+def test_flag_off_the_night_decides_as_the_old_floor(monkeypatch):
+    after = night()
+    monkeypatch.setattr(cuts_mod.DeadTracker, "_open_until", _old_open_until)
     assert night() == after
