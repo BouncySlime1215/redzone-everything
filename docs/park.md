@@ -141,5 +141,5 @@ It reports Rule #1 counts, jumps a minute and the warranted share, judged where 
   the in-app version is proven only in replay with fake sticks. The flip path is SmartThings; its free access ends 2026-12-15.
 - A pause held longer than 180 s, or on other channels, has not been read back. The 40-minute hold test and a muted 10-minute Prime test are still to do.
 - Prime football timing, football K and the play-clock gate rest on one replay and priors.
-- Pace is a replay result (about 0.5 jumps a minute on 2 games, 0.8 on 4); live results are lower.
+- Pace is a replay result with fake sticks: the app's own controller on 3 recorded NBA nights with 4 games made about 0.52 jumps a minute at 3 s padding and 0.39 at 8 s, with the frozen grader at 0 / 0 / 0. The real TV will use 8 s until enough measured whistles exist. Live results are unmeasured.
 - The Mac runs `42e2ee8f`, which lacks this code.
