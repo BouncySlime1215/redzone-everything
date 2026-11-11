@@ -80,7 +80,7 @@ def _replay(monkeypatch, cls_fn):
     return [repr(s) for s in rep.switches], rep.mid_play_cuts, rep.dead_air_s, repr(rep.decisions)
 
 
-@pytest.mark.skipif(not (ARCH / NIGHT[0]).exists(), reason="needs the pinned eval data (scripts/fetch_eval_data.py)")
+@pytest.mark.skipif(not (ARCH / NIGHT[0]).exists(), reason="pinned eval data not fetched (scripts/fetch_eval_data.py)")
 def test_the_class_changes_no_decision_on_a_recorded_night(monkeypatch):
     """Nothing reads Event.stop_class yet (timing.dead_v2 off): a whole recorded NFL night decides exactly the same whether the
     class is read or every event carries "" as before the salvage."""

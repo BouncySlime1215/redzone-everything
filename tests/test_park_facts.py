@@ -30,7 +30,7 @@ from redzone.noggin import park_facts as pf  # noqa: E402
 from redzone.noggin import park_timing as pt  # noqa: E402
 
 ARCHIVE = ROOT / "data/archive/nba"
-needs_archive = pytest.mark.skipif(not ARCHIVE.exists(), reason="no recorded dev nights")
+needs_archive = pytest.mark.skipif(not ARCHIVE.exists(), reason="pinned eval data not fetched (scripts/fetch_eval_data.py)")
 T = 1_800_000_000.0        # hand-made rows start here (feed seconds); nothing real
 
 
