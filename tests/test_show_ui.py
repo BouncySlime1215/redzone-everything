@@ -82,7 +82,8 @@ def test_turned_off_while_running_answers_404(engine, tmp_path):
 
 
 def test_full_state_only_contract_fields(engine, tmp_path):
-    (tmp_path / "state.json").write_text(json.dumps(FULL))
+    # stamped when the test runs, not when the file was imported: in a long run NOW can be minutes old by here
+    (tmp_path / "state.json").write_text(json.dumps({**FULL, "updated": time.time() - 1}))
     (tmp_path / "eyes_state.json").write_text(json.dumps(EYES))
     s = _app(engine, True, tmp_path).get("/api/show").json()
     assert s["on_screen"]["game"] == "MSU @ DUKE" and s["sound"]["volume"] == 0 and s["pace"]["windows"]["45"] is None
@@ -105,7 +106,7 @@ def test_eyes_read_from_sibling_folder(engine, tmp_path):
 
 
 def test_only_updated(engine, tmp_path):
-    (tmp_path / "state.json").write_text(json.dumps({"updated": NOW - 2}))
+    (tmp_path / "state.json").write_text(json.dumps({"updated": time.time() - 2}))   # at run time, as above
     s = _app(engine, True, tmp_path).get("/api/show").json()
     assert set(s) == {"updated", "eyes", "stale_s"} and s["eyes"] is None and 1 <= s["stale_s"] < 10
 
