@@ -22,11 +22,13 @@ import math
 import time
 from dataclasses import dataclass
 
+from redzone.config import default as _shipped
 from redzone.sync_edge import parse_uptime, position_now
+from redzone.tuners.adb import EDGE_READ   # the session and the clock its `updated` counts in, one call
 
-LEFT_STEP_S = 15.000            # one committed LEFT, measured exactly (69 of 69 single steps; x3 45.000, x6 90.000)
-LABEL_SD_S = 0.29               # one label read: a whole-second floor (uniform over 1 s)
-EDGE_READ = "cat /proc/uptime; dumpsys media_session"   # the session and the clock its `updated` counts in, one call
+# one committed LEFT, measured exactly (69 of 69 single steps; x3 45.000, x6 90.000): default_config.yaml timing.yttv_left_step_s
+LEFT_STEP_S = float(_shipped("timing.yttv_left_step_s"))
+LABEL_SD_S = round(1.0 / math.sqrt(12.0), 2)   # one label read: a whole-second floor, uniform over 1 s (0.29)
 
 FLAGS = ("label_stamp_at_pause", "playback_with_package", "no_right_probe_at_live", "per_tune_offset",
          "stats_for_nerds", "key_constants", "game_offset")

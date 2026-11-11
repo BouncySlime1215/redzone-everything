@@ -4201,6 +4201,7 @@
     "redzone/crunch.py",
     "redzone/decider/decider.py",
     "redzone/decider/screen.py",
+    "redzone/decider/tune_offset.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
     "redzone/lab/backtest.py",
@@ -4214,6 +4215,7 @@
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/tune.py",
+    "redzone/platform/sound_guard.py",
     "redzone/standby.py",
     "redzone/supervisor.py",
     "redzone/sync_probe.py",
@@ -4222,6 +4224,8 @@
     "redzone/tuners/join_calib.py",
     "redzone/tuners/providers.py",
     "redzone/tuners/yttv_edge_probe.py",
+    "redzone/tuners/yttv_nerds.py",
+    "redzone/tuners/yttv_timing.py",
     "redzone/tv.py",
     "redzone/web/phone_v2.py",
     "redzone/web/server.py",
@@ -5950,14 +5954,20 @@
    ]
   },
   "redzone/decider/tune_offset.py": {
-   "calls": [],
+   "calls": [
+    "redzone/config.py:default"
+   ],
    "contracts": [],
    "data": {
     "reads": [],
     "uses": [],
     "writes": []
    },
-   "inputs": [],
+   "inputs": [
+    "redzone/config.py",
+    "redzone/tuners/yttv_nerds.py",
+    "redzone/tuners/yttv_timing.py"
+   ],
    "kind": "module",
    "machines": {
     "declares": [],
@@ -10610,6 +10620,7 @@
   },
   "redzone/platform/sound_guard.py": {
    "calls": [
+    "redzone/config.py:default",
     "redzone/machines/platform.py:SOUND_GUARD",
     "redzone/tv.py:silent"
    ],
@@ -10622,6 +10633,7 @@
     "writes": []
    },
    "inputs": [
+    "redzone/config.py",
     "redzone/machines/platform.py",
     "redzone/tv.py"
    ],
@@ -12862,7 +12874,9 @@
    ]
   },
   "redzone/tuners/yttv_nerds.py": {
-   "calls": [],
+   "calls": [
+    "redzone/config.py:default"
+   ],
    "contracts": [],
    "data": {
     "reads": [],
@@ -12870,6 +12884,7 @@
     "writes": []
    },
    "inputs": [
+    "redzone/config.py",
     "redzone/tuners/yttv_label.py"
    ],
    "kind": "module",
@@ -12877,7 +12892,9 @@
     "declares": [],
     "drives": []
    },
-   "outputs": [],
+   "outputs": [
+    "redzone/decider/tune_offset.py"
+   ],
    "owner": "SWITCHING",
    "role": "[POSITION-FIX item 5] YouTube TV's \"Stats for nerds\" panel on the hidden stick -> Live Latency as this tune's offset.",
    "serves": [
@@ -12986,6 +13003,7 @@
   },
   "redzone/tuners/yttv_timing.py": {
    "calls": [
+    "redzone/config.py:default",
     "redzone/sync_edge.py:parse_uptime",
     "redzone/sync_edge.py:position_now",
     "redzone/tuners/adb.py:parse_playback"
@@ -12997,6 +13015,7 @@
     "writes": []
    },
    "inputs": [
+    "redzone/config.py",
     "redzone/sync_edge.py",
     "redzone/tuners/adb.py"
    ],
@@ -13007,6 +13026,7 @@
    },
    "outputs": [
     "redzone/control.py",
+    "redzone/decider/tune_offset.py",
     "redzone/sync_probe.py",
     "redzone/tuners/yttv_label.py",
     "redzone/tuners/yttv_seek.py"
@@ -19055,11 +19075,11 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2229,
+  "calls": 2233,
   "data_files": 205,
   "machines": 52,
   "modules": 475,
-  "orphans": 35,
+  "orphans": 34,
   "unowned": 273,
   "untagged": 403
  },

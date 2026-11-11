@@ -24,10 +24,15 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from redzone.config import default as _shipped
+from redzone.tuners.yttv_nerds import LL_SD_S
+from redzone.tuners.yttv_timing import LABEL_SD_S
+
 log = logging.getLogger("redzone.tune_offset")
 
-TUNE_SD_DEFAULT_S = 2.0      # the larger measured spread (fs1 1.98 s); espn 1.24 s
-READ_SD_S = {"label": 0.29, "live_latency": 0.19}
+# the larger measured spread (fs1 1.98 s; espn 1.24 s): default_config.yaml timing.per_tune_offset_sd_s.default
+TUNE_SD_DEFAULT_S = float(_shipped("timing.per_tune_offset_sd_s")["default"])
+READ_SD_S = {"label": LABEL_SD_S, "live_latency": LL_SD_S}   # each reader's own doubt, defined by that reader
 
 
 @dataclass(frozen=True)

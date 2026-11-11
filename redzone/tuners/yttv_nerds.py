@@ -24,13 +24,16 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Awaitable, Callable, Iterable
 
-FLAG = "timing.stats_for_nerds"
+from redzone.config import default as _shipped
+
+NERDS_FLAG = "timing.stats_for_nerds"
 TOGGLE_KEYS = ("DPAD_DOWN", "DPAD_DOWN", "DPAD_LEFT", "DPAD_LEFT", "DPAD_LEFT", "DPAD_LEFT", "DPAD_DOWN",
                "DPAD_RIGHT", "DPAD_RIGHT", "DPAD_RIGHT", "DPAD_RIGHT", "DPAD_RIGHT", "DPAD_RIGHT", "DPAD_CENTER")
-SHOTS_AFTER_LANDING_S = (11.0, 17.0, 22.0)   # when Live Latency is readable after a fresh tune (11-23 s)
-LATEST_S = 23.0                              # past this after the landing the value reads 0.00 again
-LL_BIAS_S = 0.34                             # Live Latency - label U, mean (espn +0.29 n=6, fs1 +0.42 n=4)
-LL_SD_S = 0.19                               # ... its spread: the per-tune offset is known to this after one read
+# The measured numbers live in default_config.yaml (timing.nerds_*), read once here.
+SHOTS_AFTER_LANDING_S = tuple(float(x) for x in _shipped("timing.nerds_shots_s"))   # when Live Latency is readable
+LATEST_S = float(_shipped("timing.nerds_latest_s"))   # past this after the landing the value reads 0.00 again
+LL_BIAS_S = float(_shipped("timing.nerds_bias_s"))    # Live Latency - label U, mean
+LL_SD_S = float(_shipped("timing.nerds_sd_s"))        # ... its spread: the per-tune offset is known to this after one read
 
 # Lines that may carry an id (playback id, content id): dropped before any parsing. Matched case-insensitively.
 _MASK = re.compile(r"cpn|video\s*id|docid|\bvid\b|\bid\s*[:=]", re.IGNORECASE)
@@ -96,7 +99,7 @@ class LiveLatencyResult:
 
 def enabled(cfg) -> bool:
     try:
-        return bool(cfg.get(FLAG, False)) if cfg is not None and hasattr(cfg, "get") else False
+        return bool(cfg.get(NERDS_FLAG, False)) if cfg is not None and hasattr(cfg, "get") else False
     except Exception:
         return False
 

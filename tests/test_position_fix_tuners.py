@@ -375,7 +375,7 @@ def nerds(st, cfg, **kw):
 
 def test_live_latency_is_read_once_and_the_panel_is_switched_off():
     st = NerdStick(landed=1000.0)
-    r = nerds(st, Cfg({N.FLAG: True}))
+    r = nerds(st, Cfg({N.NERDS_FLAG: True}))
     assert r.reason == "measured" and r.u_s == round(24.31 - N.LL_BIAS_S, 2) and r.sd_s == 0.19
     assert len(st.cmds) == 3 and st.cmds[0] == st.cmds[1] and st.cmds[2].endswith("KEYCODE_BACK")
     assert len(N.TOGGLE_KEYS) == 14 and not st.panel and r.panel_off and not N.panel_on(st)
@@ -384,16 +384,16 @@ def test_live_latency_is_read_once_and_the_panel_is_switched_off():
 def test_live_latency_refusals_press_nothing():
     st = NerdStick(landed=1000.0)
     assert nerds(st, Cfg({})).reason == "disabled" and st.cmds == []
-    assert nerds(st, Cfg({N.FLAG: True}), behind_s=60.0).reason.startswith("not at the live edge") and st.cmds == []
+    assert nerds(st, Cfg({N.NERDS_FLAG: True}), behind_s=60.0).reason.startswith("not at the live edge") and st.cmds == []
     st.now = 1030.0
-    assert nerds(st, Cfg({N.FLAG: True})).reason.startswith("too long after") and st.cmds == []
+    assert nerds(st, Cfg({N.NERDS_FLAG: True})).reason.startswith("too long after") and st.cmds == []
     st.now = 1000.0
-    assert nerds(st, Cfg({N.FLAG: True}), still_hidden=lambda: False).reason == "stick is not hidden" and st.cmds == []
+    assert nerds(st, Cfg({N.NERDS_FLAG: True}), still_hidden=lambda: False).reason == "stick is not hidden" and st.cmds == []
 
 
 def test_no_value_in_the_window_still_switches_off():
     st = NerdStick(landed=1000.0, ll_from=99.0)
-    r = nerds(st, Cfg({N.FLAG: True}))
+    r = nerds(st, Cfg({N.NERDS_FLAG: True}))
     assert r.u_s is None and r.reason.startswith("no Live Latency") and len(r.reads) == 3 and not st.panel
 
 
@@ -404,7 +404,7 @@ def test_visible_stick_is_never_pressed_to_switch_off_and_blocks_the_label():
     def hidden():
         seen.append(1)
         return len(seen) < 2
-    r = nerds(st, Cfg({N.FLAG: True}), still_hidden=hidden)
+    r = nerds(st, Cfg({N.NERDS_FLAG: True}), still_hidden=hidden)
     assert r.reason == "stick became visible" and len(st.cmds) == 1 and N.panel_on(st)
     # with the panel marked, the label probe refuses before any key (the panel covers the label: 3 of 3 failed)
     fs = SessionStick()

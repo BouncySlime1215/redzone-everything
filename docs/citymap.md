@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**475 modules**, 403 untagged, 273 unowned, 35 orphans (no importer); 2229 call edges, 205 data files, 52 machines.
+**475 modules**, 403 untagged, 273 unowned, 34 orphans (no importer); 2233 call edges, 205 data files, 52 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -129,10 +129,10 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/tuners/tuners.py` | Tuners: one class per streaming app. | channels, discovery.providers, discovery.yttv, fsm, machines.control, screen_ocr +6 -> autonomy, canary, control, discovery.runtime, platform.faults, tuners.providers +9 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_edge_probe.py` | [edge prior, Nick Nov 7] Measure YouTube TV's live-edge delay on the HIDDEN stick, numbers only. | config, tuners.yttv_label -> engine, scripts.edge_probe_try | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_label.py` | [YTTV scrub buffer, item 2] Read YouTube TV's overlay time label -> numbers only. | screen_ocr, tuners.adb, tuners.yttv_seek, tuners.yttv_timing -> canary, control, engine, tuners.yttv_edge_probe, tuners.yttv_nerds, scripts.replay_park_try +2 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tuners/yttv_nerds.py` | [POSITION-FIX item 5] YouTube TV's "Stats for nerds" panel on the hidden stick -> Live Latency as this tune's offset. | tuners.yttv_label -> - | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
+| `redzone/tuners/yttv_nerds.py` | [POSITION-FIX item 5] YouTube TV's "Stats for nerds" panel on the hidden stick -> Live Latency as this tune's offset. | config, tuners.yttv_label -> decider.tune_offset | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_search.py` | Bounded YouTube TV library inspection using observed menu geometry. | discovery.providers, discovery.stickio, discovery.yttv, machines.control, screen_ocr, tuners.adb +3 -> tuners.tuners, scripts.find_yttv_code | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_seek.py` | [YTTV scrub buffer, item 1] Put a YouTube TV stick a set time behind live by scrubbing the player overlay. | screen_ocr, tuners.yttv_timing -> control, tuners.join, tuners.prime_pause, tuners.replay_park, tuners.yttv_label, scripts.session_drill +1 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tuners/yttv_timing.py` | [POSITION-FIX] Which content second a YouTube TV stick shows: the Nov 10 timing findings as small, flagged helpers. | sync_edge, tuners.adb -> control, sync_probe, tuners.yttv_label, tuners.yttv_seek | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
+| `redzone/tuners/yttv_timing.py` | [POSITION-FIX] Which content second a YouTube TV stick shows: the Nov 10 timing findings as small, flagged helpers. | config, sync_edge, tuners.adb -> control, decider.tune_offset, sync_probe, tuners.yttv_label, tuners.yttv_seek | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tv.py` | Samsung TV: switch HDMI inputs (two-stick mode) and duck the volume (announcer). | config, machines.control, platform.breaker, platform.sound_guard -> control, fantasy, lab.night.run, platform.sound_guard, tvsetup, scripts.fault_drill +1 | Switch time p95 (SmartThings input change), TV-01, TV-02 |
 | `redzone/tvsetup.py` | One-time TV setup for instant switching (scripts/tv_setup.py is the command; this is the logic, with every network/device touch in one `Home` object that tes... | autonomy, network, tuners.adb, tv -> scripts.stick_cec, scripts.tv_setup | untagged |
 | `scripts/find_yttv_code.py` (entry) | Find the YouTube TV watch code (tv.youtube.com/watch/<code>) of a channel we lack, on a SPARE stick. | channels, config, discovery.lounge, discovery.yttv, recorded, screen_ocr +3 -> - | untagged |
@@ -184,7 +184,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/platform/health.py` | Runtime invariants and the Health report (contracts/health.py), checked every supervisor tick. | contracts.health, models, uses:Fault, uses:Fix, uses:HealthReport, uses:Severity -> supervisor, scripts.fault_drill | untagged |
 | `redzone/platform/mac_health.py` | Mac health alerts: tell Nick's phone when the Mac itself is about to cost him the night. | - -> supervisor | untagged |
 | `redzone/platform/night_ops.py` | Night ops report: joins, errors, fallbacks, drift and Mac health for one night (Nick's Nov 7 order, item 7). | supervisor -> supervisor | untagged |
-| `redzone/platform/sound_guard.py` | Sound guard: the TV stays muted at volume 0, proven by reading it back (sound_guard.*, all off by default). | machines.platform, tv -> tv | untagged |
+| `redzone/platform/sound_guard.py` | Sound guard: the TV stays muted at volume 0, proven by reading it back (sound_guard.*, all off by default). | config, machines.platform, tv -> tv | untagged |
 | `redzone/platform/wake.py` | The Mac slept, or moved networks: everything that held a connection is stale (hardening.mac). | - -> engine, supervisor | untagged |
 | `redzone/recorded.py` | Explicit recorded-game navigation, isolated from live decisions and calibration. | machines.platform, screen_ocr, tuners.adb, tuners.prime_search -> engine, scripts.find_yttv_code | untagged |
 | `redzone/recorder.py` | Flight recorder: the real-world numbers the simulator needs. | models, sources.espn, sources.leagues -> engine, lab.night.run | untagged |
@@ -216,7 +216,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, buffer_rc8, control, crunch +52 | untagged |
+| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, buffer_rc8, control, crunch +56 | untagged |
 | `redzone/contracts/__init__.py` (package) | Interfaces every thread codes against. | contracts.brain, contracts.breaks, contracts.budget, contracts.clock, contracts.events, contracts.feeds +62 -> - | untagged |
 | `redzone/contracts/brain.py` | Brain contract: the typed input and output of the brain, and `valid()`. | - -> agent.kaggle.qwen_common, agent.kaggle.qwen_eval, contracts, decider.decider, noggin.arbiter, noggin.legal +1 | untagged |
 | `redzone/contracts/breaks.py` | BreakModel contract: when a stoppage starts, what kind it is, how long it runs, when play restarts. | models -> contracts, contracts.legacy, contracts.views, contracts.world, scoring.brain3 | untagged |
@@ -281,7 +281,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/decider/playbooks.py` | Safety playbooks SAFE-01/02/03/05 (docs/playbooks.md, family flag `playbooks.safe.enabled`, OFF). | - -> decider.decider, decider.scenarios | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), SAFE-01, SAFE-02, SAFE-03, SAFE-05, Your-team crunch live |
 | `redzone/decider/scenarios.py` | Scenario-tree lookup on the Mac (idea #19, Mac half; docs/playbooks.md GAME-*). | decider.playbooks -> decider.decider | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), GAME-01, GAME-02, GAME-03, GAME-21, GAME-22, Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/sync.py` | Automatic per-channel sync: each channel's screen delay tracked by a small Kalman filter, no taps. | contracts.sync, uses:SyncEstimate -> decider.screen, engine, screen.scorebug, sync_probe, scripts.timing_replay | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
-| `redzone/decider/tune_offset.py` | [POSITION-FIX items 4 and 7] A YouTube TV picture's delay as three numbers kept apart, not one. | - -> engine | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
+| `redzone/decider/tune_offset.py` | [POSITION-FIX items 4 and 7] A YouTube TV picture's delay as three numbers kept apart, not one. | config, tuners.yttv_nerds, tuners.yttv_timing -> engine | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/whistle.py` | [EXP-610] A basketball clock-stopped dead ball, judged from play-by-play (wall time, period, game clock, type). | - -> decider.gate, engine, lab.backtest | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/fallback_ladder.py` | Per-stick fallback ladder (Nick's Nov 7 sync order, item 2). | - -> control | untagged |
 | `redzone/fsm.py` | Explicit state machines: one named state, declared transitions, a reason and a history. | - -> __main__, autonomy, control, decider.decider, decider.screen, engine +10 | untagged |
@@ -939,7 +939,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/yttv_scrub_try.py`
 - `scripts/yttv_search_tune_try.py`
 
-## Orphans (no importer) (35)
+## Orphans (no importer) (34)
 
 - `agent/install.py`
 - `agent/kaggle/build_moments_kaggle.py`
@@ -975,7 +975,6 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/context/schedules.py`
 - `redzone/lab/night/presses.py`
 - `redzone/tuners/identity.py`
-- `redzone/tuners/yttv_nerds.py`
 
 ## Most-called symbols (top 25 of 1161)
 
@@ -987,9 +986,9 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/tuners/adb.py:Stick` | 23 |
 | `redzone/lab/backtest.py:Replay` | 21 |
 | `redzone/channels.py:ChannelMap` | 19 |
+| `redzone/config.py:default` | 19 |
 | `redzone/sources/espn.py:_ts` | 17 |
 | `redzone/sources/espn.py:stoppage_for` | 16 |
-| `redzone/config.py:default` | 15 |
 | `redzone/lab/splits.py:archive_nights` | 15 |
 | `redzone/sources/espn.py:_int` | 15 |
 | `agent/kaggle/data_fetch.py:SourceSpec` | 12 |

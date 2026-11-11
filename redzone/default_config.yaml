@@ -654,6 +654,7 @@ sound_guard:               # [Nick, Nov 10: "Volume must be 1000% off"] the TV's
   unreadable_max: 3        # this many readbacks in a row without mute or volume is an incident ("no readback, no test")
   silence_tries: 4         # volume 0 + mute + read back, this many tries, before the first switch of a session
   on_incident: off_tv      # off_tv: power the TV off, then block switching until cleared by hand; block: only block
+  settle_s: 0.7            # after volume 0 + mute, wait this long before the readback (tvctl.py); read once at import
 
 two_stick:
   unavailable_backoff_s: 0  # [Nick live test Nov 7] a standby tune that stopped at an account/payment/UNAVAILABLE screen keeps
@@ -1013,6 +1014,12 @@ timing:
     "Fire TV Stick 4K Plus": {pause_s: 0.60, resume_s: 0.53, sd_s: 0.08}     # n=6 each
   game_offset: false             # per-game K (feed time minus YouTube's clock) from game_offset_file; no K = delay unknown
   game_offset_file: ""           # JSON {"games": {id: {night, k_s, sd_s, spread_s}}}; empty = off (redzone/decider/tune_offset.py)
+  # [POSITION-FIX] measured numbers the helpers above read once from this file (not live settings; Nov 10 TV, hidden 2023 stick)
+  yttv_left_step_s: 15.0         # one committed LEFT lands exactly this far back (69 of 69 single steps)
+  nerds_shots_s: [11.0, 17.0, 22.0]   # Stats for nerds: Live Latency is readable about 11-23 s after a fresh tune
+  nerds_latest_s: 23.0           # ...past this after the landing it reads 0.00 again
+  nerds_bias_s: 0.34             # Live Latency minus the label's U, mean (espn +0.29 n=6, fs1 +0.42 n=4)
+  nerds_sd_s: 0.19               # ...its spread: one Live Latency read knows the tune's offset to this
   dead_v2: false           # [DEAD-V2] OFF: true = a caller sizes an open stoppage's sure dead time by break class (an NFL timeout
                            # the feed calls official is a commercial, "Timeout #n by TEAM" is short) and by the time already run
                            # (scoring/dead_left_lite.guaranteed_left, table broadcast/dead_left_table.json, train nights only).

@@ -31,18 +31,26 @@ import json
 import logging
 import re
 import time
+import types
 from pathlib import Path
 from typing import Callable
 
 from redzone import tv as tvmod
+from redzone.config import default as _shipped
 from redzone.machines.platform import SOUND_GUARD
 
 log = logging.getLogger(__name__)
 
 MARKER = tvmod.DATA / "sound_guard" / "incident.json"
-SETTLE_S = 0.7                  # after volume 0 + mute, before the readback (tvctl.py)
+SETTLE_S = float(_shipped("sound_guard.settle_s"))   # after volume 0 + mute, before the readback (tvctl.py); read once
 _POWER = {"on", "off"}
 _MUTE = {"muted", "unmuted"}
+
+
+@types.coroutine
+def _yield_to_loop():
+    """One pass of the event loop and no time at all: what asyncio.sleep(0) does inside."""
+    yield
 
 
 def silent(s: dict | None) -> bool:
@@ -262,7 +270,7 @@ class SoundGuard:
         once, so it can never spin a core or outlive a cancel."""
         while not self._stopped and self.enabled():
             await self.sleep(self.period_s())
-            await asyncio.sleep(0)
+            await _yield_to_loop()
             if self._stopped or self.blocked:
                 return
             await self._safe_check("watch")
