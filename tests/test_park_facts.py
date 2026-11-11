@@ -338,3 +338,45 @@ def test_only_the_park_shows_own_modules_import_them():
         assert "park_facts" not in text and "park_timing" not in text, f
     for name in show:
         assert "park_timing" in next((ROOT / "redzone").rglob(name)).read_text()
+
+
+# ------------------------------------------------------------------------------------------ silence after a short dead ball
+def test_silence_after_a_short_dead_ball_is_unknown_past_the_possession_cap():
+    """Night 20261023 LAC @ LAL, Q1 7:21 (park.possession_cap_s): a timeout, a challenge ruled 32 s later, the plays it
+    ruled on re-logged at the same clock, then 149 s with no row (the next play row had been re-stamped 19 minutes late).
+    With the review cap alone (420 s) that silence read as dead and the show left a game in play. Silence after a row that
+    leaves only a short dead ball is dead for possession_cap_s from that row; the rest is unknown, never a place to cut."""
+    rows = [row(0, "Jump Shot", "7:28", shooting=True, scoring=True), row(7, "Full Timeout", "7:21"),
+            row(39, "Coach's Challenge (Overturned)", "7:21"), row(39, "Defensive Rebound", "7:21")]
+    caps = (("review", 420.0), ("timeout", 300.0), ("whistle", 240.0))
+    old = pf.GameFacts("nba", "g1", pf.FactsParams(stop_max=caps))
+    new = pf.GameFacts("nba", "g1", pf.FactsParams(stop_max=caps, possession_cap_s=30.0))
+    for g in (old, new):
+        for p in rows:
+            g.add(p)
+    end = T + 2000
+    dead_old = old.planner_view(end, T + 188, with_value=False)[0]["dead"]
+    dead_new = new.planner_view(end, T + 188, with_value=False)[0]["dead"]
+    assert max(b for a, b in dead_old) >= T + 188                 # the old reading: dead right up to the cut
+    assert max(b for a, b in dead_new) <= T + 39 + 30              # now: dead 30 s past the last row, then unknown
+    tmo = pf.GameFacts("nba", "g1", pf.FactsParams(stop_max=caps, possession_cap_s=30.0))
+    for p in rows[:2]:
+        tmo.add(p)                                                 # a timeout with nothing after it is an explained long stoppage
+    assert max(b for a, b in tmo.planner_view(end, T + 188, with_value=False)[0]["dead"]) >= T + 188
+
+
+def test_a_row_stamped_past_the_feeds_edge_is_a_late_edit_and_dates_nothing_ahead():
+    """Same night, same moment: the play that ended the review (Q1 7:03) is in the feed, but stamped 19 minutes on. Read
+    as stamped it dated the restart 19 minutes ahead, so the stoppage looked open. Stamped past what the feed has been read
+    up to, it is a late edit: it takes the stamp of the row before it, and the restart is dated from its clock as the
+    grader dates it (7:21 -> 7:03: 18 s before it)."""
+    late = row(1178, "Turnaround Fade Away Jump Shot", "7:03", shooting=True)
+    rows = [row(0, "Jump Shot", "7:28", shooting=True, scoring=True), row(7, "Full Timeout", "7:21"),
+            row(39, "Coach's Challenge (Overturned)", "7:21"), row(39, "Defensive Rebound", "7:21"), late]
+    g = pf.GameFacts("nba", "g1", pf.FactsParams(late_row_s=60.0))
+    g.edge_hint = T + 100
+    for p in rows:
+        g.add(p)
+    assert g.wall[-1] == T + 39 and g.dragged == [T + 39] and g.restamped == 1
+    dead = g.planner_view(T + 2000, T + 100, with_value=False)[0]["dead"]
+    assert all(b <= T + 39 for a, b in dead)                                  # nothing dead past the re-stamped row

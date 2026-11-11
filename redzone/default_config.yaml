@@ -1369,6 +1369,10 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
     input_reread_s: 0.7    # ...this far apart
   leagues: [nba, cbb]      # [PARK-CONTROLLER, unit 8] the leagues whose live games the PARK show takes (its facts are basketball's)
   session_min: 240         # one show plans on a grid this many minutes long; the engine starts the next one when it ends
+  possession_cap_s: 30     # after a review's RULING the stoppage is over: silence after it (and the plays it re-logs) is dead only
+                           # this long from the last row; the rest is UNKNOWN, never a place to cut. 24 s shot clock + 6 s
+                           # (inbound, stamp slack). Night 20261023 LAC @ LAL Q1 7:21: a timeout, a challenge ruled 32 s later,
+                           # then 149 s of silence trusted as dead up to the review cap (420 s): a mid-play leave
   late_row_s: 60           # a feed row stamped more than this after a row that FOLLOWS it in the feed's order is a late edit (a
                            # substitution re-stamped half an hour on; 30 such rows in four games on Nov 10): it takes the stamp
                            # of the row before it instead of dragging every later row up to its own (live run 4, flip 4)

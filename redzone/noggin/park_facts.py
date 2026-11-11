@@ -64,6 +64,10 @@ class FactsParams:
     stop_max: tuple = ()            # the sanity gate: ((stoppage kind, seconds), ...) = the longest a dead ball of each kind can
     #                                 plausibly last; what a dead stretch holds past that is UNKNOWN, not dead. () = no gate (the
     #                                 loader's and the grader's own reading); the show sets park.show.stop_max
+    possession_cap_s: float = 0.0   # a dead stretch holding a review's RULING (the stoppage is over), with no row after its last
+    #                                 one yet or the next one stamped more than late_row_s later, is dead only this long from its
+    #                                 last row; the rest is UNKNOWN (the feed lost or late-stamped the plays that followed). 0 =
+    #                                 off (the loader's and the grader's own reading); the show sets park.possession_cap_s
     late_row_s: float = float("inf")   # a row stamped more than this after a row that FOLLOWS it in the feed's order is a late
     #                                 edit (a substitution row re-stamped half an hour on): it takes the stamp of the row before
     #                                 it. The show sets 60 (park.late_row_s). Off here (inf) = the repo loader's own stamps, row
@@ -183,6 +187,7 @@ class GameFacts:
         if self.league.base != League.NBA:
             raise ValueError(f"PARK facts are written for basketball only, not {self.league.value}")
         self.gid, self.p = str(gid), params
+        self.edge_hint: float | None = None       # the feed time the feed has been read up to (FactsFeed sets it before each poll)
         self.data: dict | None = None
         self._cfg2 = value2.config()
         self._reset()
@@ -240,6 +245,14 @@ class GameFacts:
                 self.restamped = len(fixed)
                 return
         t = stamp_of(p, self.wall[-1] if self.wall else None) if at is None else at
+        if (at is None and own is not None and self.wall and self.edge_hint is not None
+                and own > self.edge_hint + self.p.late_row_s):
+            # a row stamped well past what the feed has been read up to cannot be on time: it is a late edit (night 20261023
+            # LAC @ LAL Q1 7:03, re-stamped 19 minutes on, dated the end of a ruled review that far ahead). It takes the
+            # stamp of the row before it, and what rests on it is not known (dragged)
+            t = self.wall[-1]
+            self.dragged.append(t)
+            self.restamped += 1
         self.raw.append(p)
         if t is None or self.unplaced:
             self.unplaced = True
@@ -451,7 +464,7 @@ class GameFacts:
             # stamped it is UNKNOWN, not dead (never a place to cut)
             keep = [k for k, (a, b) in enumerate(dead) if not any(a - 1.0 <= w <= b for w in self.dragged)]
             dead, brk = [dead[k] for k in keep], [brk[k] for k in keep]
-        if self.p.stop_max and not self.final:
+        if (self.p.stop_max or self.p.possession_cap_s > 0) and not self.final:
             dead = self._capped(dead)
         g["dead"], g["brk"] = dead, brk
         return g, (None if self.final else next((a for a, b in dead if b > sett), None))
@@ -461,14 +474,31 @@ class GameFacts:
         stopped" for as long as a stoppage of its kind can plausibly last. A stretch longer than that (the feed went quiet,
         lost a row, or its stamps were dragged by a late edit) is dead only up to the cap; the rest is unknown."""
         caps = dict(self.p.stop_max)
-        least = caps.get("whistle", min(caps.values()))
+        least = caps.get("whistle", min(caps.values())) if caps else float("inf")
+        pos = self.p.possession_cap_s
         out, lg = [], self.league
         for a, b in dead:
             i0, i1 = bisect.bisect_left(self.wall, a - 1.0), bisect.bisect_right(self.wall, b)
             kinds = {espn.stoppage_for(lg, self.plays[i]).value for i in range(i0, i1)}
             cap = max([caps.get(k, least) for k in kinds if k != "none"] or [least])
-            out.append((a, min(b, a + cap)))
+            end = min(b, a + cap)
+            if pos > 0 and i1 - 1 >= i0 and any(self._ruled(i) for i in range(i0, i1)):
+                nxt = self.wall[i1] if i1 < len(self.wall) else float("inf")
+                if nxt - self.wall[i1 - 1] > self.p.late_row_s or nxt == float("inf"):
+                    # silence after a short dead ball's last row, with no row yet (or the next one stamped implausibly
+                    # late): dead only possession_cap_s from that row, the rest unknown
+                    end = min(end, max(a, self.wall[i1 - 1] + pos))
+            out.append((a, end))
         return out
+
+    def _ruled(self, i: int) -> bool:
+        """Is row i a review's ruling (a challenge overturned, upheld or standing)? The stoppage it explained is over: what
+        follows is the inbound and play, so silence after the ruling and the plays it re-logs is not a dead ball for long."""
+        p = self.plays[i]
+        if espn.stoppage_for(self.league, p) != Stoppage.REVIEW:
+            return False
+        t = (raw_type(p) + " " + str(p.get("text") or "")).lower()
+        return any(w in t for w in ("overturned", "upheld", "stands", "confirmed"))
 
 
 def _runs(flags: list[int], t0: float) -> list[tuple[int, float, float | None]]:

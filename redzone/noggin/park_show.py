@@ -309,6 +309,7 @@ class FactsFeed:
     def offer(self, g: int, summary: dict, at: int, final: bool | None = None) -> bool:
         """A summary of game g read at grid second `at`. True when it changed that game's facts."""
         try:
+            self.fx[g].edge_hint = self.night.base + at + self.leads[g] - self.shifts[g]
             self.fx[g].update(summary, final)
         except (KeyError, TypeError, ValueError):
             self.errors += 1
@@ -318,6 +319,7 @@ class FactsFeed:
     def offer_rows(self, g: int, rows: list, at: int, final: bool = False, data: dict | None = None) -> bool:
         """The same from rows handed over one by one (the replay: `rows` are the game's NEW rows, in feed order)."""
         fx = self.fx[g]
+        fx.edge_hint = self.night.base + at + self.leads[g] - self.shifts[g]
         if data is not None and fx.data is None:
             fx.data = data
         for p in rows:

@@ -439,7 +439,9 @@ def test_a_first_stream_that_was_never_placed_is_never_left(loaded):
     lost, _, rows = run(loaded, minutes=30, first="live")
     placed, _, _ = run(loaded, minutes=30)
     assert lost.jumps_done == 0 and placed.jumps_done >= 2 and rule1(lost) == rule1(placed) == (0, 0, 0)
-    assert lost.refused.get("the cut is too close to the feed's edge: the rows that date it may not be in yet", 0) >= 1
+    # either the edge guard refuses, or (since the late-edit fix) the facts already re-stamped the row from the future
+    assert lost.refused.get("the cut is too close to the feed's edge: the rows that date it may not be in yet", 0) >= 1 \
+        or any(fx.restamped for fx in lost.feed.fx)
     assert "the cut is too close to the feed's edge: the rows that date it may not be in yet" not in placed.refused
 
 
@@ -713,3 +715,23 @@ async def test_a_pause_that_back_undid_is_no_park_and_is_never_jumped_onto(world
     assert rig.game[1] == 1 and rig.read[1]                                    # it still plays its game, its place stands
     w.b.hold_fails = False
     assert (await rig.pause(1, None))[0] and rig.paused[1]                     # a pause that holds is a park again
+
+
+# ---------------------------------------------------------------------------------------------- B. silence trusted as dead (fix)
+@needs_archive
+def test_a_slow_second_tune_no_longer_exposes_a_leave_into_silence_after_a_ruled_review(loaded):
+    """Regression (night 20261023, 2 games, 45 minutes, the second game's tunes 54.5 s as a Prime game's would be): the
+    show left LAC @ LAL at 7:21 of Q1 into 149 s of feed silence after a ruled challenge, trusted as dead up to the review
+    cap (420 s); the frozen grader called it a mid-play leave. park.possession_cap_s makes that silence unknown."""
+    show = pr.replay(NIGHT, 2, loaded=loaded, minutes=45, rig_kw={"tune_s": {1: 54.5}})
+    g = pr.graded(show)
+    assert (g["grader_entries_mid_play"], g["grader_entries_mid_play_strict"], g["grader_leaves_mid_play"]) == (0, 0, 0)
+    assert (show.judge.mid_entry, show.judge.mid_leave, show.judge.hl_leave) == (0, 0, 0)
+
+
+@needs_archive
+@pytest.mark.parametrize("night", ["20261023", "20261028", "20261021"])
+def test_three_four_game_nights_hold_the_frozen_graders_zero(night):
+    row = pr.result(pr.replay(night, 4))
+    assert (row["grader_entries_mid_play"], row["grader_entries_mid_play_strict"], row["grader_leaves_mid_play"]) == (0, 0, 0)
+    assert row["warranted"] == row["warrant_n"]
