@@ -385,6 +385,7 @@ class Engine:
         self.fast_feeds = fastfeeds.FastFeeds(self.cfg, lambda: self.merger.games, self.recorder.fast_feed)
         from redzone.sync_probe import SyncProbe
         self.sync_probe = SyncProbe(self.cfg, self.control, lambda: self.recorder.root)   # [SYNC] read-only stick probe
+        self.park = None   # [park.enabled] the PARK show (redzone/park_run.ParkRun), made by _park_loop only once the flag is on
         self.sync_probe.on_condition = self._sync_condition
         self.sync_probe.on_screen_event = self._break_event
         # [SYNC A] the sync filter's (mu, sd) for a target, logged beside each live-edge read
@@ -635,7 +636,17 @@ class Engine:
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
                              self._boundary_loop(), self._scorebug_loop(), self._league_fast_loop(), self.tonight.run(),
                              self.supervisor.run(), self.network.run(), self.governor.run(),
-                             self.sync_probe.run(), self.fast_feeds.run())
+                             self.sync_probe.run(), self.fast_feeds.run(), self._park_loop())
+
+    async def _park_loop(self) -> None:
+        """[park.enabled] The PARK show: the app runs the two-stick show itself (redzone/park_run.py, unit 8). With the
+        flag off this loop only sleeps: nothing of PARK is imported or made, and no decision can change."""
+        while not self.cfg.get("park.enabled", False):
+            await asyncio.sleep(float(self.cfg.get("park.idle_poll_s", 5.0) or 5.0))
+        from redzone.park_run import ParkRun
+        self.park = ParkRun(self)
+        self.decider.park_show = self.park.owns   # the decider's owner `park`: the other deciders' switches become stays
+        await self.park.loop()
 
     def _delay_estimate(self, target: str) -> tuple[float, float]:
         d = self.delays.get(target)
@@ -2339,6 +2350,10 @@ class Engine:
         if not self.control.two_stick or dec.user.paused:
             self._plan_owner("idle", "one stick" if not self.control.two_stick else "paused")
             self._game_queue = None
+            return
+        if self.park is not None and self.park.owns():
+            # [park.enabled] the PARK show holds the hidden stick: no other plan may tune, scrub or un-park it (risk R4)
+            self._plan_owner("park", "the PARK show holds the hidden stick")
             return
         queue_on = bool(self.cfg.get("queue.enabled", False))
         queue_plan = self._queue_plan(cands, redzone) if queue_on else None

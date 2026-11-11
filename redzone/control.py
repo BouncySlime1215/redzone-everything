@@ -4359,14 +4359,43 @@ class Controller:
     def _park_refused(self, step: str, target: str | None, why: str) -> ParkStep:
         return ParkStep(step, "refused", why=why, target=target or "")
 
-    async def park_tune(self, target: str) -> ParkStep:
-        """Tune the hidden stick to `target` and read its place (ParkHands.tune). It is then PARK's (park_held)."""
+    async def park_start(self) -> ParkStep:
+        """[PARK-CONTROLLER] Place the stream ON SCREEN (ParkHands.tune on the visible stick). A stream PARK did not tune
+        is never taken to be at its live edge: its place is read (the picture steps back once, by the read gesture) or
+        it is tuned afresh. The show cannot leave a game whose stream has no place."""
+        why = self.park_why()
+        vis, target = self.main, self.on_target
+        if why or vis is None or not target:
+            return self._park_refused("start", target, why or "nothing is on screen")
+        hands = self.park_hands()
+        async with self._lock:
+            out = await hands.tune(vis, target)
+            out.step = "start"
+            return out
+
+    async def park_resume(self, target: str) -> ParkStep:
+        """[PARK-CONTROLLER] Let the hidden stick, parked on `target`, play on unseen (ParkHands.resume): the plan moved
+        its landing to a later dead ball. Its place stands."""
+        why = self.park_why()
+        hid = self.hidden
+        if why or hid is None:
+            return self._park_refused("resume", target, why or "no hidden stick")
+        hands = self.park_hands()
+        async with self._lock:
+            out = await hands.resume(hid, target)
+            if self.hidden is hid and hands.place_of(hid) is None and self.hidden_target == target:
+                self._set_hidden(None, False, why="PARK: lost its place")
+            return out
+
+    async def park_tune(self, target: str, fresh: bool = False) -> ParkStep:
+        """Tune the hidden stick to `target` and read its place (ParkHands.tune). It is then PARK's (park_held).
+        fresh: reload the stream even when the stick already holds this game (one held too long is far behind live)."""
         why = self.park_why()
         if why:
             return self._park_refused("tune", target, why)
         hands, hid = self.park_hands(), self.hidden
         async with self._lock:
-            out = await hands.tune(hid, target)
+            out = await hands.tune(hid, target, fresh=fresh)
             if out.ok and self.hidden is hid:
                 self._set_hidden(target, False, state="park_held", why=f"PARK: {out.way}")
             elif self.hidden is hid and self.hidden_target == target:
@@ -5724,13 +5753,18 @@ class ParkHands:
         return lab
 
     # --- 1. TUNE ----------------------------------------------------------------------------------------------
-    async def tune(self, stick: Stick, target: str) -> ParkStep:
+    async def tune(self, stick: Stick, target: str, fresh: bool = False) -> ParkStep:
         """Put `stick` on `target` and learn its place. A stream PARK itself tuned there, still playing it, is kept.
         A stream already on the game that PARK did not tune is NEVER taken to be at its live edge (one was 120 s
         behind, run 6): it is kept only if the read gesture reads its place; otherwise it is tuned fresh. A fresh
         tune: the direct code, then local-station search, then search; a way the tuner calls failed still counts
-        when the media session then names the game. Then the read gesture (place)."""
+        when the media session then names the game. Then the read gesture (place). `fresh` = nothing is kept: the
+        stream is reloaded (the PARK controller asks this for a stream held so long that it is far behind live)."""
         t0, st = self.now(), ParkStep("tune", "failed", stick=self.label(stick), target=target)
+        if fresh:
+            self._drop(stick, "a fresh tune asked")
+            st.way = "fresh: "
+            return await self._tune_fresh(stick, target, st, t0)
         pb = await stick.playback(self._pkg(stick))
         place = self.places.get(stick.host)
         if place is not None and place.target == target and self.names(pb, target) and not place.paused:
@@ -5988,6 +6022,30 @@ class ParkHands:
         place.paused_at = pz.event_wall if pz.event_wall is not None else key_at + self.pause_lead(stick)
         self._to(stick, "parked", "paused, banner cleared, read back")
         return True, ""
+
+    async def resume(self, stick: Stick, target: str) -> ParkStep:
+        """[PARK-CONTROLLER] Let a parked stick play on, unseen: the resume key, then its playing report. Its place (the
+        tune's read) stands; only where it is on its own clock moves on."""
+        t0, st = self.now(), ParkStep("resume", "failed", stick=self.label(stick), target=target,
+                                      way="resume key, read back")
+        place = self.places.get(stick.host)
+        if place is None or place.target != target or not place.paused:
+            st.outcome, st.why = "refused", "the stick is not parked on this game"
+            return self._done(st, t0)
+        self._to(stick, "resuming", "resume: the park moves on")
+        if not await self._key(stick, "KEYCODE_MEDIA_PLAY_PAUSE"):
+            self._to(stick, "parked", "resume key not sent")
+            st.why = "the resume key was not sent"
+            return self._done(st, t0)
+        e = await self._wait(stick, "playing", self.step_s("replay_wait_s"), since=t0)
+        if e is None:
+            self._drop(stick, "it did not start playing after the resume key")
+            st.why = "no playing report after the resume key"
+            return self._done(st, t0)
+        place.paused, place.ref_wall, place.ref_pos = False, e.wall, e.pos_now_s
+        self._to(stick, "playing", "resumed: it plays on unseen")
+        st.outcome, st.numbers = "ok", self._place_numbers(place, e)
+        return self._done(st, t0)
 
     def stale(self, stick: Stick) -> str:
         """Why the stick's park should be made again ("" = it holds): paused longer than park.max_park_s, or its
