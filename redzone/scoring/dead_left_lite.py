@@ -1,6 +1,8 @@
 """[timing.dead_v2, off] The dead-time-left reader: seconds of an open stoppage surely still to come, from its break class
 and the time it has already run. Standard library only and no `redzone` import, so a script outside the app can load this one
 file by its path (tools/park_live does; see DEAD_V2_NOTE.md there).
+Why: decision DEAD-V2 (2026-11-10, research ledger L1/L5): the pooled dead-time quantile promised 0 s on most NFL timeouts;
+conditioning on break class and elapsed time recovers room for a clip, so the table and this reader ship behind timing.dead_v2 (off).
 
     guaranteed_left("nba", "timeout", 30.0, 0.01)      # 54.0: a timeout 30 s in still has 54 s left at the 99% level
     guaranteed_left("nfl", "official", 0.0, 0.05)      # an NFL timeout the feed calls official, at its start, 95% level
