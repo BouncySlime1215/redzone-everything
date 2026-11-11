@@ -39,7 +39,7 @@ from redzone.models import League
 from redzone.noggin import park_core
 from redzone.noggin.park_core import PARK_PARAMS, Arr, Night, Setting, State, Stats
 from redzone.noggin.park_facts import FACTS, FactsParams, GameFacts, merge_eyes, pad_arr, refusal, shift
-from redzone.noggin.park_plan import BIG, FAR, FRESH_BEHIND, Plan, Planner
+from redzone.noggin.park_plan import NO_TUNE, FAR, FRESH_BEHIND, Plan, Planner
 from redzone.noggin.park_timing import TIMING, ErrorParts, GameTiming, TimingParams
 from redzone.sources import espn
 
@@ -460,9 +460,9 @@ class Show:
     # ---- what the planner asks the show ----------------------------------------------------------------------------
     def tune_cost(self, g: int, default: int) -> int:
         if self.keep is not None and self.keep == 1 - self.on:
-            return BIG                                           # the hidden stream is the kept one: no tune is on offer
+            return NO_TUNE                                           # the hidden stream is the kept one: no tune is on offer
         if self.last_t is not None and self.last_t < self.block.get(g, -1):
-            return BIG                                           # its tune has just failed
+            return NO_TUNE                                           # its tune has just failed
         v = self.tunes.get(g)
         return default if not v else int(math.ceil(sorted(v)[int(0.8 * (len(v) - 1) + 0.5)]))     # the slow side of what its tunes have taken
 

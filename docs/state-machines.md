@@ -29,7 +29,7 @@ Only `Machine.to()` moves a state; an undeclared move fails tests and logs a war
 | [decider.leave_wait](#decider.leave_wait) | `decider.Decider.leave_m` | [legal.leave_at_flip] the arbiter's cut, remembered until the flip's leave rules and a dead-ball landing both allow it | 2 |
 | [decider.lock_wait](#decider.lock_wait) | `decider.Decider.lock_m` | [lock wait] your locked game can't be reached: wait with a reason and a retry, then give the lock up | 3 |
 | [decider.override](#decider.override) | `decider.Decider.override_m` | Your strongest override this tick, in the order the decider honours them (a view of UserState + safe mode) | 6 |
-| [decider.owner](#decider.owner) | `decider.Decider.owner_m` | Which decider owns the TV this tick: set once per decide(), the others' gates read it | 8 |
+| [decider.owner](#decider.owner) | `decider.Decider.owner_m` | Which decider owns the TV this tick: set once per decide(), the others' gates read it | 9 |
 | [decider.safe](#decider.safe) | `decider.Decider.safe_m` | Safe mode: three errors in five minutes hold the TV still until Resume (or the timed auto-resume) | 2 |
 | [decider.screen](#decider.screen) | `decider.Decider.screen_m` | What the TV picture is: nothing known, a tune landing, a live game, a replay, or old replay footage | 5 |
 | [decider.screen_gone](#decider.screen_gone) | `decider.Decider.gone_m` | [buffered jump] the screen's game is unknown/gone and a buffered standby is held from a start/ended switch | 3 |
@@ -40,7 +40,7 @@ Only `Machine.to()` moves a state; an undeclared move fails tests and logs a war
 | [engine.hold](#engine.hold) | `engine.Engine.hold_m` | 'Watch this' / lock from the phone: one fact (engine.hold mirrors decider.user.locked_game) | 3 |
 | [engine.pending](#engine.pending) | `engine.Engine.pending_m` | The one switch in flight: submitted to the controller until its done() resolves it (or it's superseded) | 2 |
 | [engine.skip](#engine.skip) | `engine.Engine.skip_m` | A skipped game: muted for SKIP_S from when the TV leaves it, then unmuted | 3 |
-| [engine.standby_plan](#engine.standby_plan) | `engine.Engine.standby_m` | Who decided what the hidden stick holds this tick (one owner per tick) | 6 |
+| [engine.standby_plan](#engine.standby_plan) | `engine.Engine.standby_m` | Who decided what the hidden stick holds this tick (one owner per tick) | 7 |
 | [governor.level](#governor.level) | `governor.Governor.m` | How much optional work the Mac can take (reels, lab, archive, OCR, local model). Up at once, down only after calm_s. | 3 |
 | [platform.sound_guard](#platform.sound_guard) | `platform.sound_guard.SoundGuard.m` | The TV's sound by readback (sound_guard.enabled): muted and volume 0 when sound_guard.must_be_silent is on. An incident turns the TV off and blocks every input switch and key until it is cleared by hand. | 4 |
 | [recorded.session](#recorded.session) | `recorded.RecordedPlayback.session` | A recorded-game session on one stick. While it is anything but idle, live switching, the supervisor and background device work stay off. | 5 |
@@ -726,6 +726,7 @@ Owner: `decider.Decider.owner_m`. Which decider owns the TV this tick: set once 
 | `normal` | the normal decider (jump mode off, or the screen's game isn't in the rotation) | any |
 | `jump` | jump mode's rotation: it decides every optional switch; the normal decider's become stays | any |
 | `buffered` | buffered jump (both sticks behind live): the editor decides, incl. the screen-gone free cut | any |
+| `park` | [park.enabled] the PARK show holds both sticks (redzone/park_run.py): it alone jumps; every other decider's switch becomes a stay. A user, safe-mode or replay owner still comes first | any |
 
 ```mermaid
 stateDiagram-v2
@@ -738,6 +739,7 @@ stateDiagram-v2
     normal --> any
     jump --> any
     buffered --> any
+    park --> any
 ```
 
 ## decider.safe
@@ -946,6 +948,7 @@ Owner: `engine.Engine.standby_m`. Who decided what the hidden stick holds this t
 | `buffered` | buffered jump: the rotation picks the game, the park step scrubs / parks it | any |
 | `planner` | the standby planner (redzone/standby.py): break returns, replays, the likely next switch | any |
 | `queue` | the game queue (redzone/noggin/gamequeue.py, queue.enabled) chose it | any |
+| `park` | [park.enabled] the PARK show holds it (tuned, paused on a dead-ball frame, or held after a jump) | any |
 
 ```mermaid
 stateDiagram-v2
@@ -956,6 +959,7 @@ stateDiagram-v2
     buffered --> any
     planner --> any
     queue --> any
+    park --> any
 ```
 
 ## governor.level

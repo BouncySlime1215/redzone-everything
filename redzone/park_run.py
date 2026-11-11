@@ -36,7 +36,7 @@ from redzone.noggin.park_timing import GameTiming, TimingParams, k_for
 from redzone.showboard import Board
 
 log = logging.getLogger(__name__)
-MAX_GAMES = 6                      # the show's slate: at most this many games (the planner was run on 2 to 6)
+SLATE_MAX = 6                      # the show's slate: at most this many games (the planner was run on 2 to 6)
 OTHER_OWNERS = ("user", "safe", "replay")
 
 
@@ -282,7 +282,7 @@ class ParkRun:
             self.seen[gid] = id(data)
             self.show.feed.offer(g, data, t)
 
-    def pick(self) -> tuple[list, str]:
+    def slate(self) -> tuple[list, str]:
         """The games the show takes: live, in park.leagues, on a YouTube TV channel, with a summary; the game on screen
         first. ([], why) when there are fewer than two or the screen's game is not among them."""
         e, dec = self.e, self.e.decider
@@ -297,14 +297,14 @@ class ParkRun:
         if not first:
             return [], "the game on screen is not a live game the show can take"
         rest = [x for x in out if x[2] != on and x[2] not in {y[2] for y in first}]
-        chosen = (first[:1] + rest)[:MAX_GAMES]
+        chosen = (first[:1] + rest)[:SLATE_MAX]
         if len(chosen) < 2:
             return [], "fewer than two live games the show can take"
         return chosen, ""
 
     async def begin(self) -> None:
         e, ctl, cfg = self.e, self.e.control, self.e.cfg
-        games, why = self.pick()
+        games, why = self.slate()
         if not games:
             self._set("waiting", why)
             return

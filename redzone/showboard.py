@@ -20,7 +20,7 @@ from pathlib import Path
 from redzone.noggin.park_core import delivered
 
 log = logging.getLogger(__name__)
-WINDOWS = (1, 5, 10, 20, 30, 45, 60)
+PACE_MINUTES = (1, 5, 10, 20, 30, 45, 60)
 
 
 def write_whole(path: Path, obj) -> None:
@@ -135,7 +135,7 @@ class Board:
             "session": {"started": round(self.started, 1), "minutes": round(mins, 1), "planned_minutes": self.planned},
             "sound": sound, "on_screen": on, "parked": parked, "next": nxt,
             "pace": {"jumps": len(ja), "per_min_now": round(last(5) / min(5.0, mins), 2), "per_min_session": round(len(ja) / mins, 2),
-                     "windows": {str(w): (last(w) if mins >= w else None) for w in WINDOWS}},
+                     "windows": {str(w): (last(w) if mins >= w else None) for w in PACE_MINUTES}},
             "planned": {"scheduled": len(st.sched), "delivered": delivered(st)},
             "rule1": rule1,
             "timing": {"padding_s": show.pad[S.sg], "show_delay_s": show.delay, "channels": chans},

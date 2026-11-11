@@ -26,7 +26,7 @@ HOLD, ROLL, MOVE, TUNE = 0, 1, 2, 3  # how the hidden stick gets to a landing
 ROUTES = ("hold", "roll", "skip", "tune")
 FRESH_BEHIND = 20                    # a stick is re-tuned onto its own game only when it sits at least this far behind
 JOIN_SLACK = 5                       # a leave the feed has not reported is assumed to stay open this long
-BIG = 10 ** 6                        # a tune that cannot be made costs this (a show says so per game)
+NO_TUNE = 10 ** 6                        # a tune that cannot be made costs this (a show says so per game)
 ANCHOR_W = 1.0                       # brain points per second of the anchor game's live play (crunch time: it outweighs any other game)
 WARRANT_LOOK = 30                    # a warrant compares what the next this-many seconds are worth there and here (about a possession and a half)
 WARRANT_GAIN = 5                     # "live play sooner": by at least this many seconds, the jump's own flip counted against it
@@ -423,7 +423,7 @@ class Planner:
             for g in range(N):                                      # a tune puts the stick at the show's edge (less tune_lag)
                 x = A[g]
                 own = g == hg and wr - cr < gap                   # its own game, about where a fresh tune would put it
-                if g == scr or cost[g] >= BIG or x.a0 > t or (x.a1 <= K and tc > x.a1) or (own and not back):
+                if g == scr or cost[g] >= NO_TUNE or x.a0 > t or (x.a1 <= K and tc > x.a1) or (own and not back):
                     continue
                 w1 = tc + cost[g]
                 c1 = w1 - tlag[g]
@@ -621,7 +621,7 @@ class Planner:
             # nothing to land on yet: an idle stick, or one that can no longer be landed on, goes to the live edge of the
             # game with the most leverage and waits there for a spot
             pros = [1.0 if show is None else show.prospect(g) for g in range(N)]      # [show] how soon a landing can come on each game
-            cands = [g for g in range(N) if g != scr and A[g].a0 <= t and u[g] > 0 and cost[g] < BIG and pros[g] > 0]
+            cands = [g for g in range(N) if g != scr and A[g].a0 <= t and u[g] > 0 and cost[g] < NO_TUNE and pros[g] > 0]
             idle = hg < 0 or (hp and t - c0 > cap) or c0 > A[hg].a1
             if not idle and pros[hg] <= 0 and any(g != hg for g in cands):
                 idle = True                                         # [show] it sits on a game in a long break: go where play is
