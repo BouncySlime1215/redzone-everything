@@ -263,5 +263,5 @@ startStream({ state: applyState, conn });
 setTimeout(() => loadTeams().then(() => render()), 1500);
 conn(MOCK ? "mock" : "wait");
 setInterval(tick, 1000);
-if (MOCK && Q.has("show")) import("./rz-show.js?v=1");   // the server adds this script itself when show.ui is on
+if (MOCK && Q.has("show")) import("./rz-show.js?v=4");   // the server adds this script itself when show.ui is on
 window.addEventListener("hashchange", () => { const t = location.hash.slice(1); if (TABS.includes(t) && t !== app.tab) go(t); });

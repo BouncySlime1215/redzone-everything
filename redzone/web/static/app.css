@@ -1337,7 +1337,10 @@ button.v2-held { width: 100%; text-align: left; font: inherit; font-size: 13px; 
 .sh .badge::before { animation: none; }
 .sh .screen-head { margin-bottom: var(--sp-2); }
 .sh-fresh i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); flex: none; }
-.sh-fresh[data-s="fresh"] i { background: var(--success); }
+.sh-fresh[data-s="live"] { color: var(--success-ink); border-color: color-mix(in srgb, var(--success) 35%, transparent); background: color-mix(in srgb, var(--success) 10%, transparent); }
+.sh-fresh[data-s="live"] i { background: var(--success); }
+.sh-fresh[data-s="replay"] { color: var(--replay-ink); border-color: color-mix(in srgb, var(--replay) 35%, transparent); }
+.sh-fresh[data-s="replay"] i { background: var(--replay); }
 .sh-fresh[data-s="stale"] { color: var(--break-ink); border-color: color-mix(in srgb, var(--break) 35%, transparent); }
 .sh-fresh[data-s="stale"] i { background: var(--break); }
 .sh-prog { height: 4px; border-radius: 99px; background: var(--surface-3); overflow: hidden; margin: 0 2px var(--sp-2); }
@@ -1456,3 +1459,15 @@ button.v2-held { width: 100%; text-align: left; font: inherit; font-size: 13px; 
 .sh-log .tl-top .m { font-size: 15px; }
 .sh-log-i.warn .tl-node { color: var(--break-ink); }
 .sh-log-i.bad .tl-node { color: var(--danger-ink); }
+
+.sh-js { padding: 2px 0; }
+.sh-j { display: flex; align-items: flex-start; gap: 12px; padding: 11px 14px; }
+.sh-j + .sh-j { border-top: 1px solid var(--line-1); }
+.sh-j-t { flex: none; width: 62px; padding-top: 2px; font: 700 13px/1.2 var(--font-display); letter-spacing: .04em; color: var(--text-3); }
+.sh-j-g { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; row-gap: 2px; min-width: 0; font-size: 14px; line-height: 1.35; color: var(--text-2); }
+.sh-j-to { display: inline-flex; align-items: baseline; gap: 6px; }
+.sh-j-to .ico { align-self: center; }
+.sh-j-g .ico { color: var(--text-3); flex: none; }
+.sh-j-g b { color: var(--text-1); font-weight: 700; box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--g) 70%, transparent); }
+.sh-j-w { margin-top: 3px; font-size: 12.5px; line-height: 1.35; color: var(--text-3); }
+.chip--break .ico { color: var(--break-ink); }
