@@ -6831,6 +6831,7 @@
     "redzone/lab/timing.py",
     "redzone/noggin/pick.py",
     "scripts/bucket_join_measure.py",
+    "scripts/park_ceiling.py",
     "scripts/thread_replay.py",
     "scripts/veto_audit.py"
    ],
@@ -7015,6 +7016,7 @@
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
     "scripts/noggin_selfplay.py",
+    "scripts/park_ceiling.py",
     "scripts/queue_replay.py",
     "scripts/queue_trace.py",
     "scripts/scrub_flip_replay.py",
@@ -7456,6 +7458,7 @@
     "redzone/lab/outcome_label.py",
     "redzone/lab/sportsgrade.py",
     "scripts/buffered_jump_sim.py",
+    "scripts/park_ceiling.py",
     "scripts/redzone_reconstruct.py",
     "scripts/veto_audit.py"
    ],
@@ -8235,6 +8238,7 @@
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
     "scripts/moment_rates.py",
+    "scripts/park_ceiling.py",
     "scripts/queue_replay.py",
     "scripts/queue_trace.py",
     "scripts/switch_eval_pin.py",
@@ -8849,6 +8853,7 @@
     "scripts/measure_break_lengths.py",
     "scripts/noggin_factory.py",
     "scripts/noggin_tokens.py",
+    "scripts/park_ceiling.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
     "scripts/queue_replay.py",
@@ -8910,7 +8915,9 @@
     "redzone/reasoner/head.py",
     "redzone/scoring/brain.py",
     "redzone/scoring/brain3.py",
-    "scripts/kaggle_gamevalue.py"
+    "scripts/kaggle_gamevalue.py",
+    "scripts/kaggle_park.py",
+    "scripts/park_table.py"
    ],
    "owner": "unowned",
    "role": "[one brain, step 4] One tree walker and one model loader (docs/onebrain-migration.md).",
@@ -9002,6 +9009,7 @@
     "redzone/noggin/wide_features.py",
     "scripts/buffered_jump_sim.py",
     "scripts/moment_rates.py",
+    "scripts/park_ceiling.py",
     "scripts/redzone_reconstruct.py",
     "scripts/show_scorecard.py",
     "scripts/value2_report.py",
@@ -9157,6 +9165,7 @@
    },
    "outputs": [
     "redzone/noggin/value_shards.py",
+    "scripts/park_ceiling.py",
     "scripts/value2_report.py"
    ],
    "owner": "unowned",
@@ -9243,6 +9252,7 @@
     "redzone/decider/decider.py",
     "redzone/noggin/catchup.py",
     "scripts/buffered_jump_sim.py",
+    "scripts/park_ceiling.py",
     "scripts/veto_audit.py"
    ],
    "owner": "unowned",
@@ -10764,7 +10774,8 @@
     "redzone/noggin/predict_fit.py",
     "redzone/noggin/timing.py",
     "redzone/scoring/brain.py",
-    "scripts/kaggle_gamevalue.py"
+    "scripts/kaggle_gamevalue.py",
+    "scripts/kaggle_park.py"
    ],
    "owner": "unowned",
    "role": "Brain v3: one compact model per league, numpy only at runtime.",
@@ -11255,6 +11266,7 @@
     "scripts/measure_break_lengths.py",
     "scripts/noggin_factory.py",
     "scripts/noggin_tokens.py",
+    "scripts/park_ceiling.py",
     "scripts/plan_tonight.py",
     "scripts/queue_replay.py",
     "scripts/queue_trace.py",
@@ -15478,6 +15490,33 @@
     "untagged"
    ]
   },
+  "scripts/kaggle_park.py": {
+   "calls": [
+    "redzone/models_rt/forest.py:Nodes",
+    "redzone/scoring/brain3.py:flatten"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models_rt/forest.py",
+    "redzone/scoring/brain3.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Train the PARK models on Kaggle CPU from the two scripts/park_table.py tables.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/kaggle_pbp_crew.py": {
    "calls": [],
    "contracts": [],
@@ -16131,6 +16170,185 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Pack the code the Kaggle factory notebook needs into rz_factory_code.tar.gz (no data, no secrets).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/park_ceiling.py": {
+   "calls": [
+    "redzone/grading.py:dead_at",
+    "redzone/grading.py:raw_type",
+    "redzone/lab/backtest.py:Replay",
+    "redzone/lab/leverage.py:high_leverage",
+    "redzone/lab/splits.py:archive_nights",
+    "redzone/lab/splits.py:nights_for",
+    "redzone/models.py:League",
+    "redzone/moments/detect.py:detect",
+    "redzone/moments/value2.py:config",
+    "redzone/moments/value2.py:grade",
+    "redzone/moments/value2.py:leverage",
+    "redzone/moments/value2.py:seconds_left",
+    "redzone/noggin/arbiter.py:trigger_rank",
+    "redzone/sources/espn.py:_clock_s",
+    "redzone/sources/espn.py:_get",
+    "redzone/sources/espn.py:_int"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/grading.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/leverage.py",
+    "redzone/lab/splits.py",
+    "redzone/models.py",
+    "redzone/moments/detect.py",
+    "redzone/moments/value2.py",
+    "redzone/noggin/arbiter.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "PARK step 0: the supply ceiling.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/park_compare.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "One table per slate and timing error: live-edge physics, the last sweep's best pick, the planner, the greedy ceiling.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/park_pick.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Pick the best safe PARK setting per slate from a park_sim sweep, print it beside today's physics, then vary one thing at a time.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/park_plan.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "PARK-BRAIN: a planning controller for the two-stick show, run inside park_sim (its nights, physics, padding and counters).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/park_report.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Read a park_sim sweep CSV: the best safe settings beside today's physics, and what each knob does on average.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/park_sim.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "PARK step 1: a fast simulator of the two-stick show on recorded nights, driven by the grader's own facts.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/park_table.py": {
+   "calls": [
+    "redzone/models_rt/forest.py:Nodes",
+    "redzone/models_rt/forest.py:load_npz"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models_rt/forest.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "PARK step 5: the training tables, made from the PLANNER's own decisions (scripts/park_plan.py), and the model hook.",
    "serves": [
     "untagged"
    ]
@@ -18305,13 +18523,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2124,
+  "calls": 2144,
   "data_files": 202,
   "machines": 51,
-  "modules": 454,
+  "modules": 462,
   "orphans": 34,
-  "unowned": 256,
-  "untagged": 385
+  "unowned": 264,
+  "untagged": 393
  },
  "version": 2
 }
