@@ -6957,6 +6957,7 @@
     "scripts/bucket_join_measure.py",
     "scripts/park_ceiling.py",
     "scripts/park_facts_check.py",
+    "scripts/park_replay.py",
     "scripts/thread_replay.py",
     "scripts/veto_audit.py"
    ],
@@ -7410,6 +7411,7 @@
     "scripts/measure_break_lengths.py",
     "scripts/measure_dead_left.py",
     "scripts/northstar.py",
+    "scripts/park_replay.py",
     "scripts/veto_audit.py"
    ],
    "owner": "INTEGRATION",
@@ -9744,6 +9746,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/noggin/park_facts.py",
     "redzone/noggin/park_plan.py",
     "redzone/noggin/park_show.py",
     "redzone/park_run.py",
@@ -9775,6 +9778,7 @@
     "redzone/moments/value2.py:leverage",
     "redzone/moments/value2.py:seconds_left",
     "redzone/noggin/arbiter.py:trigger_rank",
+    "redzone/noggin/park_core.py:stretches",
     "redzone/scoring/engine.py:high_leverage",
     "redzone/sources/espn.py:_clock_s",
     "redzone/sources/espn.py:_get",
@@ -9796,6 +9800,7 @@
     "redzone/moments/detect.py",
     "redzone/moments/value2.py",
     "redzone/noggin/arbiter.py",
+    "redzone/noggin/park_core.py",
     "redzone/noggin/park_timing.py",
     "redzone/scoring/engine.py",
     "redzone/sources/espn.py"
@@ -9807,7 +9812,9 @@
    },
    "outputs": [
     "redzone/noggin/park_show.py",
-    "scripts/park_facts_check.py"
+    "redzone/park_run.py",
+    "scripts/park_facts_check.py",
+    "scripts/park_replay.py"
    ],
    "owner": "unowned",
    "role": "PARK facts: one LIVE basketball game's facts for the PARK planner, built row by row from the ESPN feed, honestly.",
@@ -10413,6 +10420,7 @@
   "redzone/park_run.py": {
    "calls": [
     "redzone/noggin/k_table.py:read_k_table",
+    "redzone/noggin/park_facts.py:FactsParams",
     "redzone/noggin/park_show.py:FactsFeed",
     "redzone/noggin/park_show.py:LiveNight",
     "redzone/noggin/park_show.py:Show",
@@ -10434,6 +10442,7 @@
     "redzone/models.py",
     "redzone/noggin/k_table.py",
     "redzone/noggin/park_core.py",
+    "redzone/noggin/park_facts.py",
     "redzone/noggin/park_show.py",
     "redzone/noggin/park_timing.py",
     "redzone/showboard.py"
@@ -17095,13 +17104,19 @@
   "scripts/park_replay.py": {
    "calls": [
     "redzone/config.py:default",
+    "redzone/grading.py:SwitchLog",
+    "redzone/grading.py:dead_at",
     "redzone/lab/backtest.py:Replay",
+    "redzone/lab/cutgrade.py:after_bucket",
+    "redzone/lab/cutgrade.py:grade",
     "redzone/lab/splits.py:archive_nights",
     "redzone/lab/splits.py:nights_for",
     "redzone/models.py:League",
     "redzone/noggin/park_core.py:Night",
     "redzone/noggin/park_core.py:run",
     "redzone/noggin/park_core.py:summarize",
+    "redzone/noggin/park_facts.py:FactsParams",
+    "redzone/noggin/park_facts.py:stamps_of",
     "redzone/noggin/park_plan.py:Plan",
     "redzone/noggin/park_show.py:FactsFeed",
     "redzone/noggin/park_show.py:LiveNight",
@@ -17120,10 +17135,13 @@
    },
    "inputs": [
     "redzone/config.py",
+    "redzone/grading.py",
     "redzone/lab/backtest.py",
+    "redzone/lab/cutgrade.py",
     "redzone/lab/splits.py",
     "redzone/models.py",
     "redzone/noggin/park_core.py",
+    "redzone/noggin/park_facts.py",
     "redzone/noggin/park_plan.py",
     "redzone/noggin/park_show.py"
    ],
@@ -19393,7 +19411,7 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2295,
+  "calls": 2303,
   "data_files": 207,
   "machines": 53,
   "modules": 482,
