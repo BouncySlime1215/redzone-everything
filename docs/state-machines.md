@@ -41,6 +41,7 @@ Only `Machine.to()` moves a state; an undeclared move fails tests and logs a war
 | [engine.skip](#engine.skip) | `engine.Engine.skip_m` | A skipped game: muted for SKIP_S from when the TV leaves it, then unmuted | 3 |
 | [engine.standby_plan](#engine.standby_plan) | `engine.Engine.standby_m` | Who decided what the hidden stick holds this tick (one owner per tick) | 6 |
 | [governor.level](#governor.level) | `governor.Governor.m` | How much optional work the Mac can take (reels, lab, archive, OCR, local model). Up at once, down only after calm_s. | 3 |
+| [platform.sound_guard](#platform.sound_guard) | `platform.sound_guard.SoundGuard.m` | The TV's sound by readback (sound_guard.enabled): muted and volume 0 when sound_guard.must_be_silent is on. An incident turns the TV off and blocks every input switch and key until it is cleared by hand. | 4 |
 | [recorded.session](#recorded.session) | `recorded.RecordedPlayback.session` | A recorded-game session on one stick. While it is anything but idle, live switching, the supervisor and background device work stay off. | 5 |
 | [deploy.lifecycle](#deploy.lifecycle) | `scripts.deploy.Deployer.m` | The safe-deploy lifecycle, persisted in data/deploy/state.json ('machine'). The deploy gate, the watchdog marker and `deploy.py status` all read this one state. | 11 |
 | [fastcast.connection](#fastcast.connection) | `sources.fastcast.FastcastClient.conn` | The one ESPN Fastcast websocket. | 5 |
@@ -913,6 +914,32 @@ stateDiagram-v2
     eco --> critical
     critical --> normal
     critical --> eco
+```
+
+## platform.sound_guard
+
+Owner: `platform.sound_guard.SoundGuard.m`. The TV's sound by readback (sound_guard.enabled): muted and volume 0 when sound_guard.must_be_silent is on. An incident turns the TV off and blocks every input switch and key until it is cleared by hand.
+
+| State | Meaning | Can move to |
+|---|---|---|
+| `unchecked` (initial) | no readback yet this session, or the TV was off: the next switch silences it and reads back first | ok, unreadable, blocked |
+| `ok` | the last readback was silent, or silence is not required | unchecked, unreadable, blocked |
+| `unreadable` | the last readback had no mute or volume (unreadable_max in a row is an incident) | unchecked, ok, blocked |
+| `blocked` | sound incident: TV powered off (on_incident off_tv), no switch or key until cleared by hand | unchecked |
+
+```mermaid
+stateDiagram-v2
+    [*] --> unchecked
+    unchecked --> ok
+    unchecked --> unreadable
+    unchecked --> blocked
+    ok --> unchecked
+    ok --> unreadable
+    ok --> blocked
+    unreadable --> unchecked
+    unreadable --> ok
+    unreadable --> blocked
+    blocked --> unchecked
 ```
 
 ## recorded.session

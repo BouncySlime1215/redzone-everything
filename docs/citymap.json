@@ -921,6 +921,13 @@
     "scripts/deploy.py"
    ]
   },
+  "incident.json": {
+   "readers": [],
+   "users": [
+    "redzone/platform/sound_guard.py"
+   ],
+   "writers": []
+  },
   "joins.jsonl": {
    "readers": [
     "redzone/platform/night_ops.py"
@@ -2037,6 +2044,13 @@
     "redzone/web/phone_v2.py"
    ],
    "owner": "web.phone_v2.CrunchTracker"
+  },
+  "platform.sound_guard": {
+   "declared_in": "redzone/machines/platform.py",
+   "driven_by": [
+    "redzone/platform/sound_guard.py"
+   ],
+   "owner": "platform.sound_guard.SoundGuard.m"
   },
   "recorded.session": {
    "declared_in": "redzone/machines/platform.py",
@@ -8667,6 +8681,7 @@
      "governor.level",
      "merge.feed",
      "phone.crunch",
+     "platform.sound_guard",
      "recorded.session",
      "supervisor.app",
      "supervisor.condition",
@@ -8682,6 +8697,7 @@
     "redzone/discovery/runtime.py",
     "redzone/governor.py",
     "redzone/machines/__init__.py",
+    "redzone/platform/sound_guard.py",
     "redzone/recorded.py",
     "redzone/sources/fastcast.py",
     "redzone/sources/merge.py",
@@ -10385,6 +10401,39 @@
    ],
    "owner": "PLATFORM",
    "role": "Night ops report: joins, errors, fallbacks, drift and Mac health for one night (Nick's Nov 7 order, item 7).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/platform/sound_guard.py": {
+   "calls": [
+    "redzone/machines/platform.py:SOUND_GUARD",
+    "redzone/tv.py:silent"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [
+     "incident.json"
+    ],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/machines/platform.py",
+    "redzone/tv.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": [
+     "platform.sound_guard"
+    ]
+   },
+   "outputs": [
+    "redzone/tv.py"
+   ],
+   "owner": "PLATFORM",
+   "role": "Sound guard: the TV stays muted at volume 0, proven by reading it back (sound_guard.*, all off by default).",
    "serves": [
     "untagged"
    ]
@@ -12656,8 +12705,10 @@
   },
   "redzone/tv.py": {
    "calls": [
+    "redzone/config.py:Config",
     "redzone/config.py:default",
-    "redzone/machines/control.py:SMARTTHINGS"
+    "redzone/machines/control.py:SMARTTHINGS",
+    "redzone/platform/sound_guard.py:SoundGuard"
    ],
    "contracts": [],
    "data": {
@@ -12672,7 +12723,8 @@
    "inputs": [
     "redzone/config.py",
     "redzone/machines/control.py",
-    "redzone/platform/breaker.py"
+    "redzone/platform/breaker.py",
+    "redzone/platform/sound_guard.py"
    ],
    "kind": "module",
    "machines": {
@@ -12685,6 +12737,7 @@
     "redzone/control.py",
     "redzone/fantasy.py",
     "redzone/lab/night/run.py",
+    "redzone/platform/sound_guard.py",
     "redzone/tvsetup.py",
     "scripts/fault_drill.py",
     "scripts/tv_local_probe.py"
@@ -18523,13 +18576,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2144,
-  "data_files": 202,
-  "machines": 51,
-  "modules": 462,
+  "calls": 2148,
+  "data_files": 203,
+  "machines": 52,
+  "modules": 463,
   "orphans": 34,
   "unowned": 264,
-  "untagged": 393
+  "untagged": 394
  },
  "version": 2
 }
