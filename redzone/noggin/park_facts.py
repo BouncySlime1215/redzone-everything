@@ -81,10 +81,12 @@ class FactsParams:
     #                                 (the 7 s play the grader gives a row, plus the show's 8 s feed lag)
     play_clock_s: float = 40.0      # [PARK-NFL] NFL play clock: the next snap comes within this of a whistle unless a row says why
     snap_slack_s: float = 5.0       # [PARK-NFL] ... plus this (spotting the ball, the stamp's own slack)
-    play_after_s: float = 15.0      # [PARK-NFL] picture model: ESPN's NFL stamp marks the SNAP (watcher, Nov 11, Prime replay:
-    #                                 snap = stamp + 0.57 s sd 0.23 n=4, dead ball = stamp + 5.49 s sd 0.35 n=3), so the
-    #                                 seconds after a stamp are play on the picture. Not legal for this long after an action
-    #                                 stamp (cautious until the watcher's distribution by play type arrives)
+    play_after_s: float = 12.0      # [PARK-NFL] picture model: ESPN's NFL stamp marks the SNAP (Eyes, Prime TNF replay JAX @ BAL,
+    #                                 Nov 11: snap - stamp mean +0.02 s, sd 0.40, worst +1.39, n=41), so the seconds after a
+    #                                 stamp are play on the picture. Scrimmage plays, snap to dead ball: run n=20 longest
+    #                                 9.54 s, pass complete n=6 longest 9.85, incomplete n=4 longest 5.11. Not legal for this
+    #                                 long after a scrimmage stamp (worst snap + longest play, rounded up)
+    play_after_special_s: float = 15.0   # [PARK-NFL] kickoffs, punts, field goals, extra points, two-point tries: NOT measured
 
     def lead(self, league: League) -> float:
         if is_football(league):
@@ -359,11 +361,18 @@ class GameFacts:
             return 0                                         # past the play clock unexplained, or the play after a snap stamp
         return 2 if d and b else 1 if d else 0
 
+    def play_after(self, p: dict) -> float:
+        """[football, picture model] How long after this action row's stamp (its snap) the play may still run."""
+        t = raw_type(p)
+        special = any(k in t for k in ("kickoff", "punt", "field goal", "extra point", "two-point", "2pt"))
+        return self.p.play_after_special_s if special else self.p.play_after_s
+
     def _after_snap(self, ws: list[float], ps: list[dict], st: float) -> bool:
-        """[football, picture model] Is st within play_after_s after an action row's stamp (the stamp is the snap)?"""
+        """[football, picture model] Is st within its play's play_after after an action row's stamp (the stamp is the snap)?"""
         i = idx(ws, st)
-        while i >= 0 and st - ws[i] <= self.p.play_after_s:
-            if is_action(self.league, ps[i]):
+        top = max(self.p.play_after_s, self.p.play_after_special_s)
+        while i >= 0 and st - ws[i] <= top:
+            if is_action(self.league, ps[i]) and st - ws[i] <= self.play_after(ps[i]):
                 return True
             i -= 1
         return False
@@ -478,7 +487,7 @@ class GameFacts:
             a = i
             while a >= 0 and not is_action(lg, self.plays[a]):
                 a -= 1
-            since = max(w, self.wall[a] + self.p.play_after_s) if a >= 0 else w     # the play after its snap stamp is not dead
+            since = max(w, self.wall[a] + self.play_after(self.plays[a])) if a >= 0 else w     # its play after the snap stamp is not dead
             soon = max(since, (self.wall[j] if j is not None else edge) - lead)
             return OpenStop(since, w, soon if cap is None else min(soon, cap), "row" if j is not None else "edge", False)
         only_basket = espn.stoppage_for(lg, p) == Stoppage.NONE and held_stop(lg, self.wall, self.plays, i) == Stoppage.NONE

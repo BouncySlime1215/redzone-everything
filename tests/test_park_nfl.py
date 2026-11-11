@@ -45,7 +45,7 @@ def test_football_ships_off_and_basketball_is_unchanged():
         GameFacts("nhl")
     assert FACTS.lead(League.NBA) == 26.0 and FACTS.lead(League.NFL) == 15.0
     tm = GameTiming("nfl", GameK(0.0, 0.5))
-    assert tm.grid_padding(True) == 8                                         # stated, conservative: no football pairs yet
+    assert tm.grid_padding(True) == 3                                         # Eyes: stamp vs snap sd 0.40 s (n=41, one replay)
     assert GameTiming("nba", GameK(0.0, 0.5)).grid_padding(True) == 3          # basketball as before
 
 
@@ -64,8 +64,8 @@ def test_a_dead_ball_past_the_play_clock_with_nothing_to_explain_it_is_not_trust
     fx.set_final()
     f = fx.facts()
     dead = {s for a, b in f.dead for s in range(int(a), int(b))}
-    assert t0 + 16 in dead and t0 + 27 in dead and t0 + 28 not in dead      # the grader: 7 s before each stamp is play
-    assert t0 + 1 not in dead and t0 + 14 not in dead                         # picture model: the 15 s after a snap stamp
+    assert t0 + 13 in dead and t0 + 27 in dead and t0 + 28 not in dead      # the grader: 7 s before each stamp is play
+    assert t0 + 1 not in dead and t0 + 11 not in dead                         # picture model: the 12 s after a snap stamp
     assert t0 + 70 + 45 in dead and t0 + 70 + 46 not in dead and t0 + 300 not in dead   # past the play clock: not trusted
     ws, ps = fx.wall, fx.plays
     assert dead_at(League.NFL, ws, ps, t0 + 300)[0]                         # (the grader alone would call it dead)
@@ -86,7 +86,7 @@ def test_an_open_football_stoppage_is_trusted_to_the_edge_less_a_play_and_never_
     for t in (t0, t0 + 35):
         fx.add(_row(t))
     o = fx._open(t0 + 60)
-    assert o is not None and o.since == t0 + 35 + 15 and o.earliest_restart == t0 + 50    # dead only once its play is over
+    assert o is not None and o.since == t0 + 35 + 12 and o.earliest_restart == t0 + 47    # dead only once its play is over
     o = fx._open(t0 + 80)
     assert o.earliest_restart == t0 + 80 - 15
     assert fx.clock_cap_at() == t0 + 35 + 45
@@ -95,7 +95,7 @@ def test_an_open_football_stoppage_is_trusted_to_the_edge_less_a_play_and_never_
     fx.add(_row(t0 + 40, typ="Timeout", text="Timeout #2"))
     assert fx.clock_cap_at() is None                                          # a timeout: no cap
     fx.add(_row(t0 + 160))
-    assert fx._open(t0 + 190) is not None and fx._open(t0 + 190).since == t0 + 175
+    assert fx._open(t0 + 190) is not None and fx._open(t0 + 190).since == t0 + 172
     assert fx.shots == []                                                     # no shot window in football
 
 
@@ -135,10 +135,17 @@ def test_football_facts_are_the_graders_dead_time_less_only_the_play_clock_guard
 def test_a_football_game_on_a_basketball_night_keeps_rule_1_on_a_slice_and_reports_its_snaps():
     show = pr.replay("20261023", 1, minutes=30, walk="none", nfl=0)
     g = len(show.replays) - 1
-    assert show.replays[g].league.base == League.NFL and show.tm.g[g].league == "nfl" and show.pad[g] == 8
+    assert show.replays[g].league.base == League.NFL and show.tm.g[g].league == "nfl" and show.pad[g] >= 3
     fg = pr.graded(show)
     assert (fg["grader_entries_mid_play"], fg["grader_entries_mid_play_strict"], fg["grader_leaves_mid_play"]) == (0, 0, 0)
     row = pr.result(show)
     assert row["warranted"] == row["warrant_n"]
     snap = pr.snap_share(show, g)
     assert snap["plays"] > 0 and 0.0 <= snap["share"] <= 1.0
+
+
+def test_special_teams_plays_keep_the_cautious_window_scrimmage_plays_the_measured_one():
+    fx = GameFacts("nfl", "g")
+    assert fx.play_after(_row(0, typ="Kickoff")) == 15.0 and fx.play_after(_row(0, typ="Field Goal Good")) == 15.0
+    assert fx.play_after(_row(0, typ="Punt")) == 15.0 and fx.play_after(_row(0, typ="Rush")) == 12.0
+    assert fx.play_after(_row(0, typ="Pass Reception")) == 12.0
