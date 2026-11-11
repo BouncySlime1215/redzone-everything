@@ -327,9 +327,14 @@ def test_what_eyes_saw_goes_over_the_feeds():
         [(1100.0, 1130.0), (1160, 1170), (1300.0, end)]
 
 
-def test_nothing_in_the_app_imports_them_yet():
+def test_only_the_park_shows_own_modules_import_them():
+    """Unit 8 (PARK-CONTROLLER) wired them in behind `park.enabled`: the show's controller and the engine's side of it
+    are the only readers, and the engine imports those only once the flag is on (tests/test_park_flag_off.py)."""
+    show = {"park_show.py", "park_run.py"}
     for f in (ROOT / "redzone").rglob("*.py"):
-        if f.name in ("park_facts.py", "park_timing.py"):
+        if f.name in ("park_facts.py", "park_timing.py") or f.name in show:
             continue
         text = f.read_text()
         assert "park_facts" not in text and "park_timing" not in text, f
+    for name in show:
+        assert "park_timing" in next((ROOT / "redzone").rglob(name)).read_text()
