@@ -23,7 +23,7 @@ for _p in (ROOT.as_posix(), (ROOT / "scripts").as_posix()):
 import park_replay as pr  # noqa: E402
 from redzone.noggin.park_show import SHOW  # noqa: E402
 
-needs_archive = pytest.mark.skipif(not (ROOT / "data/archive/nba").exists(), reason="no recorded dev nights")
+needs_archive = pytest.mark.skipif(not (ROOT / "data/archive/nba").exists(), reason="pinned eval data not fetched (scripts/fetch_eval_data.py)")
 
 
 def rig_on(clock, **kw):

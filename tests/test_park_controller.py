@@ -32,7 +32,7 @@ from redzone.noggin.park_show import NoModel, NoWatcher, ShowParams  # noqa: E40
 from test_park_hands import world  # noqa: E402,F401  (the fake sticks and TV of the park steps' own tests)
 
 NIGHT = "20261023"
-needs_archive = pytest.mark.skipif(not (ROOT / "data/archive/nba").exists(), reason="no recorded dev nights")
+needs_archive = pytest.mark.skipif(not (ROOT / "data/archive/nba").exists(), reason="pinned eval data not fetched (scripts/fetch_eval_data.py)")
 P0 = ShowParams.from_config(config.default)
 WARRANTS = {"that game is over", "left a break for live play", "left dead time for live play", "the better play is there"}
 
