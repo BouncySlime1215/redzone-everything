@@ -1752,6 +1752,8 @@ class Controller:
 
     def standby_ready(self, target: str | None) -> bool:
         """[jump mode] The hidden stick is playing this target live, ready for a flip."""
+        if self.cfg.get("timing.stats_for_nerds", False) and getattr(self.hidden, "nerds_panel_on", False):
+            return False   # [timing.stats_for_nerds] its Stats for nerds panel may still be up: never flip onto it
         return bool(target) and self.two_stick and self._live_on_hidden(target)
 
     def slow_tune(self, target: str | None) -> bool:
@@ -2401,6 +2403,7 @@ class Controller:
             if self.hidden is not stick or self.hidden_target != target:
                 out["end"] = "displaced"
                 return False
+            t_pause_key = time.time()
             sent = await stick.key("KEYCODE_MEDIA_PAUSE")
             pb = await stick.playback(pkg) if sent and sent.ok else {}
             if pb.get("state") != "paused":
@@ -2439,6 +2442,7 @@ class Controller:
                 return False      # flipped, retargeted or re-tuned meanwhile: whoever did that owns the stick
             if not locked:
                 log.info("buffer: resuming %s on %s on time; a switch holds the lock", target, stick.host)
+            t_play_key = time.time()
             sent = await stick.key("KEYCODE_MEDIA_PLAY")
             pb = await stick.playback(pkg) if sent and sent.ok else {}
             # [overseer Nov 7 23:14] Prime on the hidden stick reads 'stopped' for a moment after PLAY (re-buffering):
@@ -2466,7 +2470,8 @@ class Controller:
                 out["relinked"] = res.ok
                 self._set_hidden(target if res.ok else None, res.ok)
                 return False
-            held = self._held_for(stick, target, pb, time.monotonic() - paused_at)
+            held = self._held_for(stick, target, pb, time.monotonic() - paused_at,
+                                  keys=(t_pause_key, t_play_key))
             # Re-anchor the stream here: the pause broke its position from the tune's, so without this
             # still_on fails and the next flip re-tunes it at the live edge, throwing the hold away.
             stick.remember(target, pb)
@@ -2509,7 +2514,8 @@ class Controller:
                 log.debug("could not append to %s", self.seek_log_path)
         return landed
 
-    def _held_for(self, stick: Stick, target: str, pb: dict, span_s: float) -> float:
+    def _held_for(self, stick: Stick, target: str, pb: dict, span_s: float,
+                  keys: tuple[float, float] | None = None) -> float:
         """[hold calibration] How far behind live a hold really left the stream. Best: the stick's own
         clock against its position since the last anchor (clock elapsed - position elapsed: what the
         live lab used, error under 0.5 s). Only this pause: the caller adds base_s, what the stream already
@@ -2524,6 +2530,10 @@ class Controller:
             lag = ((un - ua) - (pn - pa)) / 1000.0
             if 0.0 < lag <= span_s + 5.0:
                 return round(lag, 1)
+        from redzone.tuners import yttv_timing
+        kc = yttv_timing.key_constants(self.cfg, stick)   # [timing.key_constants] off: None, the span as before
+        if kc is not None and keys is not None:
+            return round(yttv_timing.paused_span(keys[0], keys[1], kc), 1)
         over = float(self.cfg.get("timing.behind_live_s.hold_overreport_s", 0.0) or 0.0)
         return round(max(0.0, span_s - over), 1)
 
@@ -4184,11 +4194,14 @@ class Controller:
         def ours() -> bool:
             return self.hidden is hid and self.hidden_target == target and self.hidden_ready and not self._flipping \
                 and self.parked is None
+        from redzone.tuners import yttv_timing
+        kc = yttv_timing.key_constants(self.cfg, hid)   # [timing.key_constants] None = off: the key at `at`, as before
+        send_at = at - kc.pause_s if kc is not None else at
         try:
-            while time.time() < at:
+            while time.time() < send_at:
                 if not ours():
                     return
-                await asyncio.sleep(min(0.1, max(0.0, at - time.time())))
+                await asyncio.sleep(min(0.1, max(0.0, send_at - time.time())))
             if not ours() or self._busy():
                 return
             async with self._lock:
@@ -4196,7 +4209,7 @@ class Controller:
                     return
                 t_key = time.time()
                 sent = await hid.key("KEYCODE_MEDIA_PAUSE")
-                t_pause = (t_key + time.time()) / 2.0
+                t_pause = (t_key + time.time()) / 2.0 if kc is None else t_key + kc.pause_s
                 if not sent or not getattr(sent, "ok", False):
                     log.info("buffered jump: PAUSE not sent to %s on %s", target, hid.host)
                     return
@@ -4232,11 +4245,14 @@ class Controller:
         if pb.get("state") != "paused":
             log.info("buffered jump: the park of %s on %s reads %s, not paused", target, hid.host, pb.get("state"))
             return False
+        from redzone.tuners import yttv_timing
+        kc = yttv_timing.key_constants(self.cfg, hid)   # [timing.key_constants] None = off
+        t_play_key = time.time()
         sent = await hid.key("KEYCODE_MEDIA_PLAY")
         if not sent or not getattr(sent, "ok", False):
             return False
         self._mark("snap_play")
-        paused = max(0.0, time.time() - sp.at)
+        paused = max(0.0, time.time() - sp.at) if kc is None else max(0.0, t_play_key + kc.resume_s - sp.at)
         behind = round(self.held.get(target, 0.0) + paused, 1)
         self._set_held(target, behind)
         if self.on_label is not None:

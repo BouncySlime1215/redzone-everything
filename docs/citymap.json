@@ -5147,6 +5147,8 @@
     "redzone/tuners/tuners.py:channel_matcher",
     "redzone/tuners/yttv_label.py:LabelProbe",
     "redzone/tuners/yttv_seek.py:enter_buffer",
+    "redzone/tuners/yttv_timing.py:key_constants",
+    "redzone/tuners/yttv_timing.py:paused_span",
     "redzone/tv.py:SamsungTV"
    ],
    "contracts": [
@@ -5181,6 +5183,7 @@
     "redzone/tuners/tuners.py",
     "redzone/tuners/yttv_label.py",
     "redzone/tuners/yttv_seek.py",
+    "redzone/tuners/yttv_timing.py",
     "redzone/tv.py",
     "uses:flip_bound",
     "uses:seek_model"
@@ -11751,7 +11754,8 @@
     "drives": []
    },
    "outputs": [
-    "redzone/sync_probe.py"
+    "redzone/sync_probe.py",
+    "redzone/tuners/yttv_timing.py"
    ],
    "owner": "unowned",
    "role": "[SYNC program A, EXP-800/801] Where each stick is against its stream's live edge, read every second.",
@@ -11766,7 +11770,8 @@
     "redzone/sync_edge.py:parse_uptime",
     "redzone/sync_edge.py:position_now",
     "redzone/sync_edge.py:write_rows",
-    "redzone/tuners/adb.py:parse_playback"
+    "redzone/tuners/adb.py:parse_playback",
+    "redzone/tuners/yttv_timing.py:yttv_package"
    ],
    "contracts": [],
    "data": {
@@ -11780,7 +11785,8 @@
     "redzone/config.py",
     "redzone/decider/sync.py",
     "redzone/sync_edge.py",
-    "redzone/tuners/adb.py"
+    "redzone/tuners/adb.py",
+    "redzone/tuners/yttv_timing.py"
    ],
    "kind": "module",
    "machines": {
@@ -11910,6 +11916,7 @@
     "redzone/tuners/tuners.py",
     "redzone/tuners/yttv_label.py",
     "redzone/tuners/yttv_search.py",
+    "redzone/tuners/yttv_timing.py",
     "redzone/tvsetup.py",
     "scripts/doctor.py",
     "scripts/edge_probe_try.py",
@@ -12525,7 +12532,11 @@
     "redzone/tuners/adb.py:Stick",
     "redzone/tuners/yttv_seek.py:band_png",
     "redzone/tuners/yttv_seek.py:overlay_band",
-    "redzone/tuners/yttv_seek.py:parse_overlay"
+    "redzone/tuners/yttv_seek.py:parse_overlay",
+    "redzone/tuners/yttv_timing.py:TuneClock",
+    "redzone/tuners/yttv_timing.py:on",
+    "redzone/tuners/yttv_timing.py:pause_stamp",
+    "redzone/tuners/yttv_timing.py:read_session"
    ],
    "contracts": [],
    "data": {
@@ -12536,7 +12547,8 @@
    "inputs": [
     "redzone/screen_ocr.py",
     "redzone/tuners/adb.py",
-    "redzone/tuners/yttv_seek.py"
+    "redzone/tuners/yttv_seek.py",
+    "redzone/tuners/yttv_timing.py"
    ],
    "kind": "module",
    "machines": {
@@ -12548,12 +12560,39 @@
     "redzone/control.py",
     "redzone/engine.py",
     "redzone/tuners/yttv_edge_probe.py",
+    "redzone/tuners/yttv_nerds.py",
     "scripts/replay_park_try.py",
     "scripts/watchdog_try.py",
     "scripts/yttv_scrub_try.py"
    ],
    "owner": "SWITCHING",
    "role": "[YTTV scrub buffer, item 2] Read YouTube TV's overlay time label -> numbers only.",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/yttv_nerds.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/tuners/yttv_label.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "SWITCHING",
+   "role": "[POSITION-FIX item 5] YouTube TV's \"Stats for nerds\" panel on the hidden stick -> Live Latency as this tune's offset.",
    "serves": [
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -12621,7 +12660,10 @@
    ]
   },
   "redzone/tuners/yttv_seek.py": {
-   "calls": [],
+   "calls": [
+    "redzone/tuners/yttv_timing.py:on",
+    "redzone/tuners/yttv_timing.py:yttv_package"
+   ],
    "contracts": [],
    "data": {
     "reads": [],
@@ -12629,7 +12671,8 @@
     "writes": []
    },
    "inputs": [
-    "redzone/screen_ocr.py"
+    "redzone/screen_ocr.py",
+    "redzone/tuners/yttv_timing.py"
    ],
    "kind": "module",
    "machines": {
@@ -12647,6 +12690,42 @@
    ],
    "owner": "SWITCHING",
    "role": "[YTTV scrub buffer, item 1] Put a YouTube TV stick a set time behind live by scrubbing the player overlay.",
+   "serves": [
+    "Flips PLAYING within 3 s",
+    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+    "STK-03",
+    "STK-04"
+   ]
+  },
+  "redzone/tuners/yttv_timing.py": {
+   "calls": [
+    "redzone/sync_edge.py:parse_uptime",
+    "redzone/sync_edge.py:position_now",
+    "redzone/tuners/adb.py:parse_playback"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/sync_edge.py",
+    "redzone/tuners/adb.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/control.py",
+    "redzone/sync_probe.py",
+    "redzone/tuners/yttv_label.py",
+    "redzone/tuners/yttv_seek.py"
+   ],
+   "owner": "SWITCHING",
+   "role": "[POSITION-FIX] Which content second a YouTube TV stick shows: the Nov 10 timing findings as small, flagged helpers.",
    "serves": [
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -18523,11 +18602,11 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2144,
+  "calls": 2156,
   "data_files": 202,
   "machines": 51,
-  "modules": 462,
-  "orphans": 34,
+  "modules": 464,
+  "orphans": 35,
   "unowned": 264,
   "untagged": 393
  },

@@ -990,6 +990,19 @@ timing:
   seek_base_s: 28.7        # a seek lands this far behind live with no LEFT press (time label, 6 of 6, two games)
   seek_per_press_s: 16.5   # ...plus this much per LEFT press
   reach_s: 175             # deepest seek reached (about 175-177 s); catchup.HARD_CAP_S (180) still caps the route
+  # [POSITION-FIX, Nov 10 TV, research/position FINDINGS] each OFF; flag off = today's behaviour (redzone/tuners/yttv_timing.py)
+  label_stamp_at_pause: false    # a label read is timed at the media session's pause event, paired with the position the commit lands on
+  playback_with_package: false   # YouTube TV playback reads pass the app's package (a paused YouTube TV session is invisible without it)
+  no_right_probe_at_live: false  # at the live edge no RIGHT after the LEFT probe (it does not undo it); the LEFT is booked as 15.000 s
+  per_tune_offset: false         # a fresh YouTube TV tune's own lag is unknown (sd 1.2-2.0 s) until one absolute read on that tune
+  per_tune_offset_sd_s: {default: 2.0, espn: 1.24, fs1: 1.98}   # that spread per channel (n=21 espn, n=10 fs1, one night)
+  stats_for_nerds: false         # read Live Latency off the Stats for nerds panel at the live edge (redzone/tuners/yttv_nerds.py)
+  key_constants: false           # pause/resume timed with each stick's own key delays below, not the round trip
+  key_constants_by_stick:        # MEDIA_PLAY_PAUSE: frozen frame this long after the key; playing this long after the resume key
+    "Fire TV Stick 4K (2023)": {pause_s: 0.70, resume_s: 0.69, sd_s: 0.13}   # n=11 each
+    "Fire TV Stick 4K Plus": {pause_s: 0.60, resume_s: 0.53, sd_s: 0.08}     # n=6 each
+  game_offset: false             # per-game K (feed time minus YouTube's clock) from game_offset_file; no K = delay unknown
+  game_offset_file: ""           # JSON {"games": {id: {night, k_s, sd_s, spread_s}}}; empty = off (redzone/decider/tune_offset.py)
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
