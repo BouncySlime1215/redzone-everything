@@ -55,6 +55,14 @@ def _score(p: dict):
     return num(p.get("homeScore")), num(p.get("awayScore"))
 
 
+def _same_kind(a: str, b: str) -> bool:
+    """Play types that say the same thing. ESPN refines a play's type in place after the fact
+    (live Nov 4, wcbb: polled "Shot" 21 s after the play, the same play pushed later as "LayUpShot"),
+    so a generic type that the other one contains is a refinement, not a disagreement."""
+    a, b = a.lower().replace(" ", ""), b.lower().replace(" ", "")
+    return not a or not b or a == b or a in b or b in a
+
+
 def _type(p: dict) -> str:
     t = p.get("type")
     return str((t.get("text") if isinstance(t, dict) else t) or "")
@@ -143,7 +151,7 @@ class FastcastCheck:
             if f.t != f.t:                                            # in FastCast's first batch
                 continue
             leads.append(s.t - f.t)
-            if (f.score != s.score and None not in f.score + s.score) or (f.kind and s.kind and f.kind != s.kind):
+            if (f.score != s.score and None not in f.score + s.score) or not _same_kind(f.kind, s.kind):
                 disagree += 1
                 if len(examples) < 5:
                     examples.append({"game": game, "play": pid, "polled": [s.score, s.kind],
