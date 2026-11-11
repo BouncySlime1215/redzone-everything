@@ -1201,6 +1201,15 @@ queue:                     # [build plan P-BUILD] one queue owns the hidden stic
 commit_gate:               # [build plan WP-05] one named-veto gate at the flip for every non-tap switch (decider/gate.py)
   enabled: false
 
+gate:                      # [YES-1, Nick Nov 10: "a no is rare"] logic fixes to the leave half of the commit gate (decider/gate.py). Each ships OFF: simulated on recorded nights only
+  leave_unaired_row_only_ended: false   # the "newest data row has not aired yet" check refuses a leave only for a game that ended or left the list; a LIVE game goes straight to the leave window, which guards every play
+  leave_margin_measured: false          # a non-tap leave's window must stay open for the flip's own bound (Engine._leave_margin, what a jump's leave uses) instead of 8 s, a guess nobody measured. Taps and the old cut_veto path keep 8 s
+  leave_dead_window: false              # a non-tap leave of a live game may also go inside a play-by-play dead window (the bar a jump's leave uses: fouls, free throws, timeouts, huddles), never with the game clock proven running, at any leverage
+  ending_last_play: false               # football and baseball: "its last play is still airing" runs from the last PLAY row plus the usual 3 s after-play buffer, not from any row (the final horn included) plus 5 s. Basketball and hockey keep the old timer
+
+cuts:                      # [YES-1] decider/cuts.py, the dead-window tracker. Ships OFF: simulated on recorded nights only
+  floor_from_marks: false  # an open dead window is surely dead until the latest (entry stamp + that entry's own measured floor) over the entries in it; with noggin.timing on (NBA) the bound is read given the dead time the latest entry's stamp proves. Off: the first entry's stamp + the strongest kind's floor, so a free throw 1 of 2 or a timeout logged after the foul only renames the window
+
 discovery:                 # [build plan WP-01]
   espn_on_yttv: false      # [build plan WP-22] ESPN events through YouTube TV; unproven until a TV night answers its unknowns
   st_wait: false           # an NFL Sunday game waits for its Sunday Ticket slot; local CBS and FOX games keep their local route
@@ -1215,11 +1224,14 @@ arbiter:                   # [build plan WP-17] picks among legal options, with 
   catchup_route_short: true   # [ZERO-LOSS-4, Nick yes Nov 9: "thats the whole point"; no effect while catchup_route is off] with another missed must-see waiting, a catch-up clip is just the play (lead-in, play, 1 s), so the one hidden stick clears more of the queue inside the 180 s cap. Needs catchup_route. Simulated only
   class_bonus: false       # [P1] a brain's pick: your team and crunch add points instead of filtering; the must-show floor is unchanged
   class_bonus_pts: 20.0    # [P1] per class: your team +40, crunch +20, open 0
+  caution_rules: true      # [YES-1] false: the cut ceiling, late narrowing, the visit budget and the brain margin stop refusing a cut (Nick, Nov 10: "ofc switch if its better"). The must-show floor and the class order are untouched. Simulated on recorded nights only
 
 legal:                     # [LEAVE-AT-FLIP] noggin/legal.py. Needs arbiter.enabled: nothing else reads this list
   leave_at_flip: false     # a cut stays listed with the leave gate shut or no landing yet; it waits (decider.leave_wait) and goes only when the flip's leave rules and a dead-ball landing both allow it
   leave_low_leverage: []   # leagues where a held cut may leave mid-play at a low-leverage moment (Decider._leavable: redzone/lab/leverage.py's floor, your team, crunch, a locked moment). Needs leave_at_flip. [] = only at a dead window: today's rule
   leave_wait_s: 45         # the longest a cut waits (per league: league_overrides); it also ends when the target stops being worth it or can't be entered at all
+  lock_dead_ball: false    # [YES-1] a moment lock (red-zone drive, power play, at-bat) stops hiding every cut for as long as the game state holds: only a lock at a high-leverage moment (close and late, overtime) hides cuts, and it lets one through at a proven dead ball when the cut outranks it by decider.locked_override_lead. The leave gate still decides when
+  facts_urgent: false      # [YES-1] the list plans each landing as the flip gate does (gate.Flip.replan: the urgent margin of a crunch or sticky entry, a possession-start cue). Off: the list plans with neither and is stricter than the gate
 
 slate:                     # [build plan WP-18] blocks of a few games, then catch-up, late narrowing; NBA misses its exit bar
   enabled: false

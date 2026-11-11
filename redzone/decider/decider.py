@@ -614,6 +614,7 @@ class Decider:
         tl = self.timelines[game_id]
         # [quiet break] read every poll so a /api/settings change applies to games already on
         tl.quiet_cfg = _config.for_league(self.cfg, "decider.leave.quiet_break", league.value, None)
+        tl.dead.floor_from_marks = bool(self.cfg.get("cuts.floor_from_marks", False))   # [cuts.floor_from_marks, off] see DeadTracker._open_until
         return tl
 
     def _pick_on(self, league: League) -> bool:
@@ -779,10 +780,15 @@ class Decider:
         cur = cands.get(self.current) if self.current else None
         gate = self._gate(cur, now) if cur is not None else None
         hold = c.get("decider.crunch.hold_personal", 5)
+        lock = (cur.scored.lock or "") if cur is not None else ""
+        lock_rule = bool(c.get("legal.lock_dead_ball", False))       # off: any lock hides every cut (legal.lock_hides)
+        lead = float(c.get("decider.locked_override_lead", 20)) if lock_rule and lock else 0.0
+        # [legal.facts_urgent, off] plan each landing as the flip gate will (the urgent and possession bars): one helper, gate.Flip.replan
+        flip_host = flip_gate().DeciderHost(self, cands, now) if c.get("legal.facts_urgent", False) else None
         rows = []
         for gid, x in cands.items():
             s = x.scored
-            plan = None if gid in PSEUDO else self.entry_plan(gid, cands, now)
+            plan = None if gid in PSEUDO else self.entry_plan(gid, cands, now) if flip_host is None else self._flip_plan(flip_host, gid, x, cands, now)
             cost = (self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target)) if x.target else 0.0
             resume = plan.landing.resume if plan is not None and plan.landing is not None else None
             big = cur is not None and legal.must_see(s.score, cur.scored.score, c.get("decider.must_see_score"),
@@ -791,7 +797,8 @@ class Decider:
                 game_id=gid, app=(x.target or "").split(":", 1)[0], tunable=legal.tunable(gid, x, u.muted),
                 dark=self._entry_dark(gid, x, now), landable=gid in PSEUDO or bool(plan and plan.ok), reel=gid == REEL,
                 l1_class=0 if (gid in self._yours or s.personal >= hold) else 1 if s.crunch else 2, must_see=big,
-                latest_s=max(0.0, resume - now) if resume is not None else 0.0, needs_prep_s=cost if math.isfinite(cost) else 0.0))
+                latest_s=max(0.0, resume - now) if resume is not None else 0.0, needs_prep_s=cost if math.isfinite(cost) else 0.0,
+                over_lock=bool(lock_rule and lock and s.score >= cur.scored.score + lead)))
         on_game = bool(self.current) and self.current not in PSEUDO
         return legal.Facts(
             now=now, current=self.current, safe_mode=self.safe_mode, paused=u.paused, locked_game=u.locked_game,
@@ -801,10 +808,31 @@ class Decider:
             last_switch_at=self.history[-1][0] if self.history else None,
             min_gap_s=float(c.get("noggin.pick.min_gap_s", 0.0)),
             gate_ok=bool(gate and gate.safe), leave_at_flip=self._leave_at_flip(),
-            moment_lock=(cur.scored.lock or "") if cur is not None else "",
+            moment_lock=lock, lock_dead_ball=lock_rule, lock_high=bool(lock_rule and lock and self._high_leverage_on_screen(cur, now)),
             focus_game=u.focus_game if u.focus_mode != FocusMode.AUTOPILOT else None,
             focus_must_see=u.focus_mode == FocusMode.FOCUS_MUST_SEE,
             banned_apps=HardRules.from_config(c).banned_apps, games=tuple(rows))
+
+    def _flip_plan(self, host, gid: str, x: Candidate, cands: dict[str, Candidate], now: float) -> EntryPlan | None:
+        """[legal.facts_urgent] The landing plan for a brain's cut to gid as the commit gate itself makes it at the flip
+        (gate.Flip.replan, on the list's own switch cost): a crunch or sticky entry of a whistle-timed league lands on the
+        urgent margin, a possession-start entry on its cue. The list planned every landing with neither, so it refused cuts the
+        gate passes. An entry the flip does not time keeps the list's plan."""
+        d = Decision(now, "switch", gid, "", State.WATCHING, kind=legal.kind_of("cut") or "better")
+        timed, plan = flip_gate().Flip(host, d, self.current, x.target, cands, None, now).replan
+        return plan if timed else self.entry_plan(gid, cands, now)
+
+    def _high_leverage_on_screen(self, cur: Candidate, now: float) -> bool:
+        """[legal.lock_dead_ball] The game on screen is at a high-leverage moment (close and late, or overtime: scoring.engine's copy
+        of redzone/lab/leverage.py), by the feed now or by the feed of a stream delay ago that the picture may still be showing
+        (the same horizon as _leavable)."""
+        if getattr(cur.scored, "high_leverage", False):
+            return True
+        hl = self._high_lev_at.get(self.current or "")
+        if hl is None:
+            return False
+        d = self.delays.get(cur.target or "unknown")
+        return now - hl <= d.mu + 2 * d.current_sigma(now)
 
     def legal_options(self, cands: dict[str, Candidate], now: float | None = None) -> tuple:
         """[WP-16] What the show may do right now (brain.Option), stay first."""
@@ -2169,7 +2197,7 @@ class Decider:
         if out is None or not brain.valid(out, inp) or not out.scores:
             return now - h.at <= float(self.cfg.get("legal.leave_silent_s", 5.0))
         s = out.scores
-        return s.get(h.option_id, -math.inf) - s.get(arbiter.STAY_ID, -math.inf) >= p.brain_margin
+        return s.get(h.option_id, -math.inf) - s.get(arbiter.STAY_ID, -math.inf) >= p.stay_margin
 
     def _leave_blocker(self, cut: Decision, facts: legal.Facts, cands: dict[str, Candidate], now: float) -> str:
         """What stops this cut this tick ("" = nothing): no dead-ball landing, else the flip's leave rules."""
@@ -2805,9 +2833,16 @@ class Decider:
         tl = self.timelines.get(gid)
         if tl is None or not tl.events:
             return 0.0
-        last = max(e.seen for e in tl.events)
+        last, after = max(e.seen for e in tl.events), 5.0
+        if tl.league.base in (League.NFL, League.MLB) and self.cfg.get("gate.ending_last_play", False):
+            # [gate.ending_last_play, off] football and baseball: the last thing to air is the last PLAY row, with the buffer every
+            # other play-on-screen check uses (screen.final_play_aired). The timer above runs from any row, the final horn or an
+            # end-of-period marker included, plus 5 s nobody measured. Basketball and hockey log no play ends: they keep it
+            plays = [e.seen for e in tl.events if e.kind == "play"]
+            if plays:
+                last, after = max(plays), AFTER_PLAY_BUFFER_S
         d = self.delays.get(self._target_of.get(gid) or "unknown")
-        until = last + d.mu + 2 * d.current_sigma(now) + 5.0
+        until = last + d.mu + 2 * d.current_sigma(now) + after
         if now - last > cap_s + d.mu:
             return 0.0
         return max(0.0, until - now)
@@ -3367,6 +3402,17 @@ class Decider:
             # the low-leverage exception
             return Gate(False, "dead balls only (buffered: no mid-play leave)")
         return g
+
+    def dead_window_leave(self, gid: str | None, target: str | None, now: float, required_s: float) -> bool:
+        """[gate.leave_dead_window] The picture of gid is inside a play-by-play dead window from now until required_s from now,
+        with the jump's delay doubt on both sides: _jump_gate's dead-window test and nothing else of it. Read by gate._dead_window_leave."""
+        tl = self.timelines.get(gid or "")
+        if tl is None or not tl.dead.marks:
+            return False
+        d = self.delays.get(target or "unknown")
+        m = self._jump_margin(d, now)
+        until = tl.dead.dead_until(now - d.mu - m)
+        return until is not None and until >= now + required_s - d.mu + m
 
     def _jump_break_on_screen(self, gid: str, cur: Candidate, tl: Timeline, d, now: float) -> bool:
         """[overseer Nov 8 01:16Z: a timeout on MIA@ND held the screen 46 s with the standby ready] A break

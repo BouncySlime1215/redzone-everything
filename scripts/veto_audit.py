@@ -8,6 +8,12 @@
                   flip 2.2 s, load 19 s, reach capped at 175 s, so the 180 s column reads 175). Default `assumed`: today's 3.2 / 15 / column reach
     --dead floor  size every catch-up piece with the dead time the live code could count on in advance (scoring/dead_left.guaranteed_left,
                   q10 of the stoppage's measured length less what already ran), not the real length known afterwards. Default `hindsight`
+    --delay-error 3   the TRUE picture delay is 3 s more, then 3 s less, than the app believes (two whole runs); the table is the worse arm's
+
+`yes-rate` (new lines after the tables): of the ticks the brain wanted another game, the share where that game's picture was up
+within 20 s, and the share that instead got a finished catch-up clip of that game within 60 s (the route at the 180 s reach, SIMULATED).
+`gate:leave by sub-cause`: which part of the leave rule said no (gate.leave_cause): unaired_row is "the newest data row of a LIVE
+game has not aired yet", window is the leave window itself.
 
 Dev nights only (`--split` takes fit and nothing else; a locked night is never opened). No TV, no adb, no engine.
 
@@ -95,6 +101,8 @@ REACH_CAP_S = float("inf")   # --timing measured: no reach column goes deeper th
 TIMINGS, DEADS = ("assumed", "measured"), ("hindsight", "floor")
 TIMING, DEAD = TIMINGS[0], DEADS[0]   # this run's --timing and --dead (defaults: today's numbers)
 PAST_CAP_S = 600.0   # `past_cap`: how long after the 180 s cap a later opening is still looked for (info only)
+YES_S, CLIP_YES_S = 20.0, 60.0   # yes-rate: the wanted game's picture up this soon after the tick; else a catch-up clip of it this soon
+DELAY_ERROR_KEY = "audit.delay_error_s"   # --delay-error: rides on the job's sets (no product flag); the true delay is the believed one plus this
 
 # Why the catch-up route did not air a lost moment: the furthest step any tick got inside the moment's window, in this order.
 CAUSES = ("no_stay_tick",        # no tick in the window at all: the replay was cutting, or the night ended
@@ -281,6 +289,11 @@ class Tally:
     released: int = 0        # ...that went
     held_ticks: int = 0      # ticks a remembered pick waited
     over: Counter = field(default_factory=Counter)        # why a remembered pick was let go
+    wants: list = field(default_factory=list)             # (t, game) for every tick the top pick was a cut: the yes-rate's denominator
+    leave_sub: dict = field(default_factory=lambda: {k: Counter() for k in LEAVE_SUB_KEYS})   # gate:leave split by gate.leave_cause
+
+
+LEAVE_SUB_KEYS = ("any", "first", "real", "lost")   # per sub-cause: ticks it said no, was the first refuser, a play really was on screen; value lost
 
 
 def judge(host: Decider, pick: str, cands: dict, now: float) -> tuple[list[str], arbiter.Choice | None, list[str], Decision | None]:
@@ -301,19 +314,24 @@ def judge(host: Decider, pick: str, cands: dict, now: float) -> tuple[list[str],
     why = arbiter.refused_by(inp, out, f"cut:{pick}", musts=musts, show=show, p=p) if not refused else ""
     if why:
         named.append(f"arbiter:{why}")
-    d = Decision(now, "switch", pick, f"brain {host.brain.name}", host.base_state, kind="better", owner=host.base_owner)
+    # [audit fix H] with legal.leave_at_flip the product's cut is a held pick (leave_held), which may leave at a low-leverage moment:
+    # judged without it, gate:leave was charged on ticks where the cut went anyway
+    d = Decision(now, "switch", pick, f"brain {host.brain.name}", host.base_state, kind="better", owner=host.base_owner,
+                 leave_held=host._leave_at_flip())
     x = cands[pick]
     flip = gate.Flip(ReplayHost(host, cands), d, host.current, x.target, cands, None, now)
     timed, plan = flip.replan
     if timed and plan is not None and plan.ok:
         d.rewind_s = plan.rewind_s
     vetoes = [f"gate:{n}" for n, rule in gate.GATE_RULES if rule(flip)]
+    host.leave_sub = gate.leave_cause(flip) if "gate:leave" in vetoes else ""
     return named, arb, vetoes, d
 
 
 class AuditDecider(Decider):
     """decide() throws the decider's own proposal away and walks the brain's top pick down the real chain."""
     brain, tally, truth, sets, base_state, base_owner, pick_scores = None, None, None, {}, None, None, {}
+    leave_sub = ""      # gate.leave_cause of the last flip judged, when its leave rule said no
 
     def __init__(self, cfg, delays, clock=None):
         super().__init__(Overlay(cfg, self.sets), delays, clock=clock)
@@ -343,7 +361,9 @@ class AuditDecider(Decider):
         timed, plan = f.replan
         if timed and plan is not None and plan.ok:
             d.rewind_s = plan.rewind_s
-        return [n for n, rule in gate.GATE_RULES if rule(f)]
+        names = [n for n, rule in gate.GATE_RULES if rule(f)]
+        self.leave_sub = gate.leave_cause(f) if "leave" in names else ""
+        return names
 
     def _go(self, d: Decision, now: float) -> Decision:
         self.tally.went += 1
@@ -360,9 +380,12 @@ class AuditDecider(Decider):
             t.over[veto.split(":")[0]] += 1
             return None
         t.wanted += 1
+        t.wants.append((now, h.target))
         t.held_ticks += 1
         d = Decision(now, "switch", h.target, f"brain {self.brain.name}: held", self.base_state, kind=h.kind, owner=self.base_owner, leave_held=True)
         vetoes = self._flip_vetoes(d, cands[h.target].target, cands, now)
+        if veto == "leave" and "leave" not in vetoes:
+            self.leave_sub = "decider_only"     # the decider's own view of the leave (gate.DeciderHost) said no, the flip's did not
         blockers = ([f"legal:{veto}"] if veto == "no_landing" else [f"gate:{veto}"] if veto else []) + [f"gate:{v}" for v in vetoes if f"gate:{v}" != f"gate:{veto}"]
         if status == "wait" or vetoes:
             self._charge(h.target, blockers, now)
@@ -383,6 +406,7 @@ class AuditDecider(Decider):
             return stay
         pick = top.removeprefix("cut:")
         t.wanted += 1
+        t.wants.append((now, pick))
         named, ch, vetoes, d = judge(self, pick, cands, now)
         blockers = named + vetoes
         if not self._landable(pick, cands, now):
@@ -424,6 +448,7 @@ class AuditDecider(Decider):
             return stay
         pick = top.removeprefix("cut:")
         t.wanted += 1
+        t.wants.append((now, pick))
         named, ch, vetoes, d = judge(self, pick, cands, now)
         blockers = named + vetoes
         chosen = ch.option if ch is not None else None
@@ -490,7 +515,12 @@ class AuditDecider(Decider):
             t.any_rule[b] += 1
             t.protected[b] += int(mid if b in LEAVE_RULES else lands)
             t.high[b] += int(high and b in LEAVE_RULES)
-        t.log[pick].append((now, first, len(blockers) == 1, bool(mid if first in LEAVE_RULES else lands)))
+        sub = f"gate:leave_{self.leave_sub or 'unnamed'}" if "gate:leave" in blockers else ""
+        if sub:
+            t.leave_sub["any"][sub] += 1
+            t.leave_sub["first"][sub] += int(first == "gate:leave")
+            t.leave_sub["real"][sub] += int(mid)
+        t.log[pick].append((now, first, len(blockers) == 1, bool(mid if first in LEAVE_RULES else lands), sub))
 
 
 def seen(air: Air, screen: list) -> bool:
@@ -576,13 +606,14 @@ def catchup_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> se
     return shown
 
 
-def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: dict | None = None) -> tuple[dict[Air, bool], Counter]:
+def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: dict | None = None,
+                aired: list | None = None) -> tuple[dict[Air, bool], Counter]:
     """SIMULATED arbiter.catchup_route (redzone/noggin/catchup.py) on the replay's own screen, at this rewind reach: which unseen moments
     air before the hard cap, each piece inside dead time on the game on screen (truth, with a margin) on a tick the route was open.
     Causal: a clip starts without knowing the next dead ball is coming. {moment: airs marked as a replay}, and what became of the rest.
     Clips can't move the replay's own cuts; a cut on the way ends the dead time and takes the hidden stick for its prep.
     `why` (info only, it changes no choice): filled with {moment not shown: (its cause from CAUSES, an opening came within PAST_CAP_S
-    after the cap)}."""
+    after the cap)}. `aired` (info only): gets (when its last piece came up, game) for every clip that aired whole."""
     r = catchup.Route(reach_s=min(reach, catchup.HARD_CAP_S, REACH_CAP_S), clip_s=t.route_clip_s or CLIP_S, flip_s=FLIP_S, prep_s=PREP_S, lead_s=3.0, margin_s=2.0,
                       short=t.route_short)
     moments = {f"{m.game_id}:{m.at}:{m.kind}:{i}": m for i, m in enumerate(unseen)}
@@ -675,6 +706,8 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: di
         if p.last:
             marked = p.moment.id in marked_ids or p.marked
             shown[moments[p.moment.id]] = marked
+            if aired is not None:
+                aired.append((now + r.flip_s, p.moment.game_id))
             stats["clips"] += 1
             stats["value"] += moments[p.moment.id].value
             stats["marked_value"] += moments[p.moment.id].value if marked else 0.0
@@ -696,12 +729,32 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: di
     return shown, stats
 
 
+def yes_counts(wants: list, screen: list, clips: list = ()) -> tuple[int, int]:
+    """Of the ticks the brain wanted another game (t, game): how many had that game's picture up within YES_S, and how many of the
+    rest had a catch-up clip of that game come up within CLIP_YES_S. `screen` is (picture up at, game), `clips` (clip up at, game)."""
+    ups, cls = defaultdict(list), defaultdict(list)
+    for at, g in sorted(screen):
+        ups[g].append(at)
+    for at, g in sorted(clips):
+        cls[g].append(at)
+    live = clip = 0
+    for t, g in wants:
+        i = bisect.bisect_right(ups[g], t)
+        if i < len(ups[g]) and ups[g][i] <= t + YES_S:
+            live += 1
+            continue
+        j = bisect.bisect_right(cls[g], t)
+        clip += int(j < len(cls[g]) and cls[g][j] <= t + CLIP_YES_S)
+    return live, clip
+
+
 def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
     """Charge every unseen must-see moment to the last refusal of its game in the run-up. Seen and uncharged are counted."""
     unseen = [m for ms in truth.moments.values() for m in ms if not seen(m, t.screen)]
     why: dict = {r: {} for r in REACHES}
+    clips: list = []
     if t.route_on:
-        results = {r: route_shown(unseen, t, truth, r, why[r]) for r in REACHES}
+        results = {r: route_shown(unseen, t, truth, r, why[r], clips if r == REACHES[-1] else None) for r in REACHES}
         shown = {r: set(results[r][0]) for r in REACHES}
         for r in REACHES:
             late = max(league_row["route"][str(r)].get("max_late_s", 0.0), results[r][1].pop("max_late_s", 0.0))
@@ -709,6 +762,9 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
             league_row["route"][str(r)]["max_late_s"] = late
     else:
         shown = {r: catchup_shown(unseen, t, truth, r) for r in REACHES}
+    live, clip = yes_counts(t.wants, t.screen, clips)
+    for k, n in (("wanted", len(t.wants)), ("live", live), ("clip", clip)):
+        league_row["yes"][k] += n
     for gid, ms in truth.moments.items():
         log = t.log.get(gid, [])
         times = [e[0] for e in log]
@@ -721,6 +777,8 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
             if i >= 0 and times[i] >= m.at - RUN_UP_S:
                 _, rule, only, *real = log[i]
                 league_row["lost"][rule] += m.value
+                if rule == "gate:leave" and len(real) > 1 and real[1]:
+                    league_row["leave_sub"]["lost"][real[1]] += m.value
                 league_row["moments"][rule] += 1
                 if only:
                     league_row["lost_alone"][rule] += m.value
@@ -742,7 +800,8 @@ def new_row() -> dict:
             "ticks": 0, "wanted": 0, "went": 0, "held": 0, "released": 0, "held_ticks": 0, "over": Counter(), "refused": Counter(), "alone": Counter(), "any_rule": Counter(), "protected": Counter(), "high": Counter(),
             "lost_after_catchup": {str(r): Counter() for r in REACHES}, "route": {str(r): Counter() for r in REACHES}, "avoidable_lost": {str(r): 0.0 for r in REACHES},
             "residual": {str(r): Counter() for r in REACHES}, "residual_by_rule": {str(r): Counter() for r in REACHES},
-            "past_cap": {str(r): Counter() for r in REACHES}}
+            "past_cap": {str(r): Counter() for r in REACHES},
+            "yes": Counter(), "leave_sub": {k: Counter() for k in LEAVE_SUB_KEYS}}
 
 
 def card(script: str, *args: str) -> dict:
@@ -776,6 +835,9 @@ def replay(brain_name: str, sets: dict, row: dict, cap: int | None):
             self.tally = current[-1]
 
     def run(replays, cfg, my_teams, **kw):
+        err = float(sets.get(DELAY_ERROR_KEY, 0.0) or 0.0)
+        if err:     # [--delay-error] the picture really runs this much later (or earlier) than the app believes; the app is not told
+            kw["true_delay"] = (kw.get("delay", 35.0) if kw.get("true_delay") is None else kw["true_delay"]) + err
         lag = kw.get("feed_lag", 8.0) + (kw.get("delay", 35.0) if kw.get("true_delay") is None else kw["true_delay"])
         truth.bind(replays, lag, kw.get("tune_s", 5.0))
         t = Tally()
@@ -787,6 +849,8 @@ def replay(brain_name: str, sets: dict, row: dict, cap: int | None):
         row["over"].update(t.over)
         for k in ("refused", "alone", "any_rule", "protected", "high"):
             row[k].update(getattr(t, k))
+        for k in ("any", "first", "real"):
+            row["leave_sub"][k].update(t.leave_sub[k])
         return rep
 
     def nights_for(league_dir, which, end=None):
@@ -864,7 +928,52 @@ def table(rows: list[dict], *, top: int = 25) -> str:
         c, pct = r["card"], 100.0 * r["must_seen"] / r["must_total"] if r["must_total"] else 0.0
         lines.append(f"{r['league']}/{r['brain']}: must-see seen {pct:.1f}% of {r['must_total']:.0f}, not asked {r['not_asked']:.0f}, "
                      f"wanted {r['wanted']} went {r['went']}, mid-play {c['entries_mid_play']}/{c['entries']}, high-lev leaves {c['cuts_high']}, all mid-play leaves {c['mid_play_leaves']}")
-    return "\n".join(lines + catchup_lines(rows) + residual_lines(rows))
+    return "\n".join(lines + catchup_lines(rows) + residual_lines(rows) + leave_lines(rows) + yes_lines(rows))
+
+
+def leave_lines(rows: list[dict]) -> list[str]:
+    """gate:leave split by which part of the leave rule said no (gate.leave_cause), most ticks first."""
+    tot = {k: Counter() for k in LEAVE_SUB_KEYS}
+    for r in rows:
+        for k in LEAVE_SUB_KEYS:
+            tot[k].update(r.get("leave_sub", {}).get(k, {}))
+    if not tot["any"]:
+        return []
+    lines = ["", "gate:leave by sub-cause (said no = any tick; first = it was the first refuser; real% = a play really was on screen)",
+             f"{'sub-cause':<28}{'said no':>8}{'first':>8}{'real%':>7}{'lost':>8}"]
+    for sub, n in sorted(tot["any"].items(), key=lambda kv: (-kv[1], kv[0])):
+        lines.append(f"{sub:<28}{n:>8}{tot['first'][sub]:>8}{100.0 * tot['real'][sub] / n:>6.0f}%{tot['lost'][sub]:>8.1f}")
+    return lines
+
+
+def yes_rate(rows: list[dict]) -> dict:
+    """{wanted, live, clip, yes_pct, clip_pct} over these rows: see yes_counts. Percentages are of `wanted` (0 when nothing was)."""
+    y = Counter()
+    for r in rows:
+        y.update(r.get("yes", {}))
+    n = y["wanted"]
+    return {"wanted": n, "live": y["live"], "clip": y["clip"], "yes_pct": round(100.0 * y["live"] / n, 1) if n else 0.0,
+            "clip_pct": round(100.0 * y["clip"] / n, 1) if n else 0.0}
+
+
+def yes_lines(rows: list[dict]) -> list[str]:
+    """The yes-rate per league and brain, per brain, and in total."""
+    if not yes_rate(rows)["wanted"]:
+        return []
+    lines = ["", f"yes-rate: of the ticks the brain wanted another game, its picture was up within {YES_S:g} s; else a catch-up clip of it "
+                 f"within {CLIP_YES_S:g} s (SIMULATED, reach {REACHES[-1]} s)",
+             f"{'league/brain':<22}{'wanted':>8}{'yes':>8}{'yes%':>7}{'clip':>8}{'clip%':>7}{'either%':>9}"]
+    brains = list(dict.fromkeys(r["brain"] for r in rows))
+    groups = [(f"{r['league']}/{r['brain']}", [r]) for r in rows] + [(f"TOTAL {b}", [r for r in rows if r["brain"] == b]) for b in brains]
+    for name, part in groups + ([("TOTAL", rows)] if len(brains) > 1 else []):
+        y = yes_rate(part)
+        lines.append(f"{name:<22}{y['wanted']:>8}{y['live']:>8}{y['yes_pct']:>6.1f}%{y['clip']:>8}{y['clip_pct']:>6.1f}%{y['yes_pct'] + y['clip_pct']:>8.1f}%")
+    return lines
+
+
+def rule1_counters(rows: list[dict]) -> dict:
+    """The Rule #1 counters of a run, summed over its rows."""
+    return {k: sum(r["card"].get(k, 0) or 0 for r in rows) for k in ("entries_mid_play", "mid_play_leaves", "cuts_high")}
 
 
 def residual_lines(rows: list[dict], reach: int = REACHES[-1]) -> list[str]:
@@ -921,6 +1030,13 @@ def avoidable(rows: list[dict], reach: int) -> float:
     return sum(row["avoidable_lost"][str(reach)] for row in rows)
 
 
+def worse_key(rows: list[dict]) -> tuple:
+    """Orders the arms of --delay-error: more Rule #1 harm is worse (mid-play entries and high-leverage leaves, then every mid-play
+    leave), then the lower yes-rate."""
+    c = rule1_counters(rows)
+    return (c["entries_mid_play"] + c["cuts_high"], c["mid_play_leaves"], -yes_rate(rows)["yes_pct"])
+
+
 def parse_sets(items) -> dict:
     out = {}
     for s in items or ():
@@ -946,10 +1062,14 @@ def main() -> int:
     ap.add_argument("--timing", default=TIMINGS[0], choices=TIMINGS, help="catch-up flip, clip load and reach: assumed (today) or measured (timing.*)")
     ap.add_argument("--dead", default=DEADS[0], choices=DEADS, help="catch-up pieces sized by the real dead time (hindsight, today) or the floor "
                                                                    "the live code could know (floor)")
+    ap.add_argument("--delay-error", type=float, default=0.0, metavar="S",
+                    help="run twice, with the TRUE picture delay S s more and S s less than the app believes; print the worse arm (default 0: one run)")
     ap.add_argument("--json", type=Path, default=None)
     a = ap.parse_args()
     if a.prep_s is not None and a.prep_s < 0:
         ap.error("--prep-s must be 0 or more")
+    if a.delay_error < 0:
+        ap.error("--delay-error must be 0 or more")
     sets = parse_sets(a.set)
     if a.timing == "measured":
         sets.setdefault(measured_timing.TIMING_FLAG, True)      # the replayed decider reads the same timings
@@ -957,12 +1077,27 @@ def main() -> int:
     a.prep_s = PREP_S
     jobs = [(lg, b, sets, a.cap, a.prep_s) + ((a.timing, a.dead) if (a.timing, a.dead) != (TIMINGS[0], DEADS[0]) else ())
             for lg in a.leagues for b in a.brains]
-    if a.workers == 1 or len(jobs) == 1:
-        rows = [run_one(j) for j in jobs]
-    else:
+    def run_all(todo: list[tuple]) -> list[dict]:
+        if a.workers == 1 or len(todo) == 1:
+            return [run_one(j) for j in todo]
         with ProcessPoolExecutor(max_workers=a.workers) as ex:
-            rows = list(ex.map(run_one, jobs))
+            return list(ex.map(run_one, todo))
+
+    arms: dict[str, list[dict]] = {}
+    if a.delay_error:
+        for err in (a.delay_error, -a.delay_error):
+            arms[f"{err:+g}"] = run_all([(j[0], j[1], {**sets, DELAY_ERROR_KEY: err}, *j[3:]) for j in jobs])
+        worse = max(arms, key=lambda k: worse_key(arms[k]))
+        rows = arms[worse]
+    else:
+        rows = run_all(jobs)
     print(table(rows))
+    if arms:
+        print(f"\ndelay error {a.delay_error:g} s: the TRUE picture delay shifted from what the app believes; the table above is the worse arm ({worse} s)")
+        for name, arm in arms.items():
+            c, y = rule1_counters(arm), yes_rate(arm)
+            print(f"  true delay {name} s: entries_mid_play {c['entries_mid_play']}, mid_play_leaves {c['mid_play_leaves']}, high-leverage leaves {c['cuts_high']}, "
+                  f"yes {y['yes_pct']:.1f}%, clip {y['clip_pct']:.1f}%, went {sum(r['went'] for r in arm)} of {sum(r['wanted'] for r in arm)}")
     if a.prep_s != DEFAULT_PREP_S:
         print(f"what-if: hidden stick load time {a.prep_s:g} s (default {DEFAULT_PREP_S:g} s)")
     if a.timing != TIMINGS[0]:
@@ -977,6 +1112,9 @@ def main() -> int:
             out["timing"] = a.timing
         if a.dead != DEADS[0]:
             out["dead"] = a.dead
+        if arms:
+            out["delay_error_s"], out["worse_arm"] = a.delay_error, worse
+            out["arms"] = {name: {"rows": arm, "rule1": rule1_counters(arm), "yes": yes_rate(arm)} for name, arm in arms.items()}
         a.json.write_text(json.dumps(out, indent=1))
     return 0
 
