@@ -1,0 +1,19 @@
+{
+  "card": "DEAD-V2",
+  "session": "",
+  "branch": "dead-v2",
+  "files": [
+    "redzone/scoring/dead_left.py",
+    "redzone/scoring/dead_left_lite.py",
+    "redzone/scoring/broadcast/dead_left_table.json",
+    "redzone/decider/screen.py",
+    "scripts/measure_dead_left.py",
+    "scripts/dead_left_coverage.py",
+    "tests/test_dead_left_v2.py",
+    "tests/test_stop_class_timeline.py",
+    "tests/test_dead_left_coverage.py",
+    "redzone/default_config.yaml"
+  ],
+  "started": 1794360939,
+  "expires": 1794447339
+}

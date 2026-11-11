@@ -988,6 +988,11 @@ timing:
   seek_base_s: 28.7        # a seek lands this far behind live with no LEFT press (time label, 6 of 6, two games)
   seek_per_press_s: 16.5   # ...plus this much per LEFT press
   reach_s: 175             # deepest seek reached (about 175-177 s); catchup.HARD_CAP_S (180) still caps the route
+  dead_v2: false           # [DEAD-V2] OFF: true = a caller sizes an open stoppage's sure dead time by break class (an NFL timeout
+                           # the feed calls official is a commercial, "Timeout #n by TEAM" is short) and by the time already run
+                           # (scoring/dead_left_lite.guaranteed_left, table broadcast/dead_left_table.json, train nights only).
+                           # Off = dead_left.guaranteed_left, the pooled quantile less the elapsed time, as before. No app code
+                           # reads it yet (salvaged from branch anchor-mode without its anchor mode). Simulated only (ledger L1, L5)
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
