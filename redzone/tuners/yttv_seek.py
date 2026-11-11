@@ -239,6 +239,8 @@ async def enter_buffer(stick, seconds: float, *, cfg=None, pkg: str | None = Non
     clock = clock or time.monotonic
     t0 = clock()
     res = BufferResult(ok=False, asked_s=round(float(seconds), 2))
+    from redzone.tuners import yttv_timing
+    pkg = yttv_timing.yttv_package(stick, None, cfg, pkg)   # [timing.playback_with_package] off: pkg as given
     if read_overlay is None:
         band = overlay_band(cfg)
         read_overlay = ocr_overlay if band is None else partial(ocr_overlay, band_from=band)
@@ -349,6 +351,12 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     at_live = behind_before < step / 2
     blind_closes = 0      # CENTERs sent after a LEFT whose result we could not read: each may have committed a step
     right_probe = at_live and str(_cfg(cfg, "probe_key")).upper() == "RIGHT"
+    # [timing.no_right_probe_at_live, Nov 10 TV] at the live edge a RIGHT does not undo a LEFT and one LEFT commits
+    # exactly 15.000 s back (69 of 69): take the LEFT probe there and book its step. Off: as before.
+    from redzone.tuners import yttv_timing
+    left_books_at_live = at_live and yttv_timing.on(cfg, "no_right_probe_at_live")
+    if left_books_at_live:
+        right_probe = False
     skip_open = right_probe and bool(_cfg(cfg, "skip_open_read"))
     for attempt in range(int(_cfg(cfg, "open_tries"))):
         skip_read = skip_open and attempt == 0   # only the first try: a retry already found something off
@@ -398,7 +406,9 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
             before = await read(stick, "probe")
             read_cost = clock() - r0
             if before is not None and before.bar_focused:
-                probe_moved, left_probe = (0 if at_live else 1), True
+                probe_moved, left_probe = (0 if at_live and not left_books_at_live else 1), True
+                if left_books_at_live:
+                    res.steps.append(f"LEFT probe at the live edge booked as {yttv_timing.LEFT_STEP_S:.3f}s")
                 break
             before = None
             res.presses = 0

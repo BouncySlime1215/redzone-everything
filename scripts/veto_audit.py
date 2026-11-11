@@ -3,11 +3,31 @@
     nice -n 15 python scripts/veto_audit.py --split fit --leagues nba --brains hindsight heuristic --cap 3 --json out.json
     --set arbiter.visit_budget=0   any config value for this run (repeatable), for a before/after
     --set audit.assume_gate_ok=true   what-if: legal_options stops asking for a leave gap at list time (the flip still does)
+    --set audit.flip_at_landing=true  what-if (no product flag): a cut that can't go at the tick's instant goes at the first whole second
+                  inside the tick (10 s in the replay) that its landing plan and every gate rule allow, as a deferred cut (Decision.defer_s,
+                  graded by the replay at that second). It measures what a flip timed to the landing would buy before anyone builds it
     --prep-s 60   what-if: the hidden stick needs this long to tune and seek to a clip (default 15; 60 is a re-tuned stick, buffered.prep_s)
     --timing measured   the catch-up route's flip, clip load and reach as the TV measured them Nov 9 (timing.* via redzone/measured_timing.py:
                   flip 2.2 s, load 19 s, reach capped at 175 s, so the 180 s column reads 175). Default `assumed`: today's 3.2 / 15 / column reach
     --dead floor  size every catch-up piece with the dead time the live code could count on in advance (scoring/dead_left.guaranteed_left,
                   q10 of the stoppage's measured length less what already ran), not the real length known afterwards. Default `hindsight`
+    --delay-error 3   the TRUE picture delay is 3 s more, then 3 s less, than the app believes (two whole runs); the table is the worse arm's
+    --landings    two more tables (info only, no decision reads them): legal:no_landing refusals by what the target's picture would
+                  really show when the cut came up, and how long until the target's next legal landing (a dead ball, or 8 s after a made
+                  basket: the grader's own two tests) when the brain first wants a game. That wait is the floor on "yes within N s"
+    --sigma 1.5   the timing doubt the replayed app STATES for its delay estimate at the night's start (default 3: backtest.run's own, today's
+                  output). The replay's doubt then grows 1 s per 15 minutes, up to 6 s more (Delay.current_sigma): --sigma-hold keeps it at S all
+                  night, a TV that re-measures its delay on every tune. With --delay-error S it is the honest arm: sure to S, wrong by S
+
+`yes-rate` (new lines after the tables): of the ticks the brain wanted another game, the share where that game's picture was up
+within 20 s, and the share that instead got a finished catch-up clip of that game within 60 s (the route at the 180 s reach, SIMULATED).
+`jumps` (the lines after the yes-rate): a jump is a cut that went (the screen switched to another game); catch-up clips are counted
+apart as `clips` (the route at the 180 s reach, SIMULATED). Per league and brain: jumps per minute over the time two or more games were
+live, and for windows of 5, 10, 20, 30, 45 and 60 minutes slid by one minute over that live time on each night, the median, the 10th
+percentile (the slow stretches) and the most jumps in a window, pooled over nights; a night with less live time than the window is
+skipped and the count of nights used is printed. A yes-rate that rises while jumps fall means the brain asked for less, not that it got more.
+`gate:leave by sub-cause`: which part of the leave rule said no (gate.leave_cause): unaired_row is "the newest data row of a LIVE
+game has not aired yet", window is the leave window itself.
 
 Dev nights only (`--split` takes fit and nothing else; a locked night is never opened). No TV, no adb, no engine.
 
@@ -51,7 +71,9 @@ import contextlib
 import dataclasses
 import io
 import json
+import math
 import runpy
+import statistics
 import sys
 import time
 from collections import Counter, defaultdict
@@ -72,8 +94,9 @@ from redzone.engine import Engine  # noqa: E402
 from redzone import measured_timing  # noqa: E402
 from redzone import config as rz_config  # noqa: E402
 from redzone.decider.screen import CONTINUOUS  # noqa: E402
-from redzone.grading import dead_at, held_stop, idx, is_action, lag_of  # noqa: E402
+from redzone.grading import dead_at, held_stop, idx, is_action, lag_of, raw_type  # noqa: E402
 from redzone.lab import backtest, leverage, splits, sportsgrade  # noqa: E402
+from redzone.lab.cutgrade import after_bucket  # noqa: E402
 from redzone.models import League, Phase, Stoppage  # noqa: E402
 from redzone.moments.detect import detect as detect_moments  # noqa: E402
 from redzone.noggin import arbiter, catchup, legal  # noqa: E402
@@ -95,6 +118,16 @@ REACH_CAP_S = float("inf")   # --timing measured: no reach column goes deeper th
 TIMINGS, DEADS = ("assumed", "measured"), ("hindsight", "floor")
 TIMING, DEAD = TIMINGS[0], DEADS[0]   # this run's --timing and --dead (defaults: today's numbers)
 PAST_CAP_S = 600.0   # `past_cap`: how long after the 180 s cap a later opening is still looked for (info only)
+JUMP_WINDOWS_MIN = (5, 10, 20, 30, 45, 60)   # jumps: the window lengths, minutes; each slides by one minute over the time two or more games were live
+YES_S, CLIP_YES_S = 20.0, 60.0   # yes-rate: the wanted game's picture up this soon after the tick; else a catch-up clip of it this soon
+DELAY_ERROR_KEY = "audit.delay_error_s"   # --delay-error: rides on the job's sets (no product flag); the true delay is the believed one plus this
+SIGMA_KEY = "audit.sigma_s"               # --sigma: rides on the job's sets (no product flag); the doubt the replayed app states for its delay estimate
+SIGMA_HOLD_KEY = "audit.sigma_hold"       # --sigma-hold: rides on the job's sets (no product flag); that doubt does not grow through the night
+DEFAULT_SIGMA_S = 3.0                     # backtest.run's own `sigma`: what every audit before --sigma ran with
+FLIP_AT_KEY = "audit.flip_at_landing"     # what-if only (no product flag): a cut goes at the first second inside the tick its landing and the gate allow
+LANDINGS_KEY = "audit.landings"           # --landings: rides on the job's sets (no product flag); the two landing tables are filled
+LANDING_GRAIN_S, LANDING_CAP_S = 0.5, 600.0   # the next legal landing is looked for every half second, this far ahead (the cap = none found)
+WAIT_EDGES = (0.0, 5.0, 15.0, 30.0, 60.0)     # the wait columns; 15 s is the yes-rate's 20 s bar less the 5 s the picture takes to come up
 
 # Why the catch-up route did not air a lost moment: the furthest step any tick got inside the moment's window, in this order.
 CAUSES = ("no_stay_tick",        # no tick in the window at all: the replay was cutting, or the night ended
@@ -167,6 +200,58 @@ class Truth:
     def bind(self, replays, lag, tune_s) -> None:
         self.replays, self.lag, self.tune_s = {r.gid: r for r in replays}, lag, tune_s
         self.moments = must_see(replays, lag)
+        self._legal: dict = {}
+
+    def landing_ok(self, gid: str, st: float) -> tuple[bool, bool]:
+        """[--landings] Rule #1 for a picture that comes up at screen time st, by the grader's own two tests: (a dead ball is on
+        screen, that or the made-basket window of grader v49). An unknown game is never legal."""
+        r = self.replays.get(gid)
+        if r is None:
+            return False, False
+        key = (gid, round(st / LANDING_GRAIN_S))
+        got = self.__dict__.setdefault("_legal", {}).get(key)
+        if got is None:
+            dead = dead_at(r.league, r.wall, r.plays, st)[0]
+            got = self._legal[key] = (dead, dead or after_bucket(r.league, r.wall, r.plays, st))
+        return got
+
+    def landing_wait(self, gid: str, now: float, bucket: bool = True) -> float:
+        """[--landings] Seconds from now until a cut could go and have its picture come up legally (0: a cut made now does);
+        LANDING_CAP_S when none is found that far ahead. bucket: the made-basket window counts too."""
+        st = now + self.tune_s - lag_of(self.lag, gid)
+        for k in range(int(LANDING_CAP_S / LANDING_GRAIN_S)):
+            if self.landing_ok(gid, st + k * LANDING_GRAIN_S)[int(bucket)]:
+                return k * LANDING_GRAIN_S
+        return LANDING_CAP_S
+
+    def doing(self, gid: str, now: float) -> str:
+        """[--landings] What the target's picture would show when a cut made now comes up, in basketball's words, by the grader's
+        facts. Other sports get the plain words: dead ball, live play."""
+        r = self.replays.get(gid)
+        if r is None:
+            return "unknown game"
+        st = now + self.tune_s - lag_of(self.lag, gid)
+        i = idx(r.wall, st)
+        if i < 0 or st > r.wall[-1]:
+            return "not started or ended"
+        dead, brk, _ = dead_at(r.league, r.wall, r.plays, st)
+        if r.league.base != League.NBA:
+            return "dead ball" if dead else "live play"
+        stop = espn.stoppage_for(r.league, r.plays[i])
+        if stop == Stoppage.NONE:
+            stop = held_stop(r.league, r.wall, r.plays, i)
+        free_throw = "freethrow" in raw_type(r.plays[i]).replace(" ", "")
+        if not dead:
+            return "made basket, 4 to 8 s after (clean since grader v49)" if after_bucket(r.league, r.wall, r.plays, st) else "live possession"
+        if stop == Stoppage.NONE:
+            return "last free throw, up to 4 s after" if free_throw else "made basket, up to 4 s after"
+        if stop == Stoppage.TIMEOUT or brk:
+            return "timeout"
+        if stop == Stoppage.REVIEW:
+            return "review"
+        if stop in (Stoppage.END_PERIOD, Stoppage.HALFTIME, Stoppage.INTERMISSION):
+            return "between periods"
+        return "free throws" if free_throw else "whistle (foul, violation, out of bounds)"
 
     def ahead(self, gid: str | None, now: float, lead: float) -> float:
         """Must-see value finishing on this game's picture in [now + lead, now + RUN_UP_S]; sooner counts a bit more."""
@@ -281,6 +366,17 @@ class Tally:
     released: int = 0        # ...that went
     held_ticks: int = 0      # ticks a remembered pick waited
     over: Counter = field(default_factory=Counter)        # why a remembered pick was let go
+    wants: list = field(default_factory=list)             # (t, game) for every tick the top pick was a cut: the yes-rate's denominator
+    tick_at: list = field(default_factory=list)           # [jumps] every tick's time
+    live2: list = field(default_factory=list)             # [jumps] the ticks two or more games were live
+    jumps: list = field(default_factory=list)             # [jumps] the tick of every cut that went
+    clips: int = 0                                        # [jumps] catch-up clips the route aired whole this night (reach 180 s, SIMULATED)
+    want_info: list = field(default_factory=list)         # beside wants: (this want is new: last tick's top pick was not this cut, the target is a crunch or high-leverage game)
+    bucket: int = 0          # [basketball.join_after_bucket] cuts that went on a made-basket landing (the plan's landing kind "bucket")
+    leave_sub: dict = field(default_factory=lambda: {k: Counter() for k in LEAVE_SUB_KEYS})   # gate:leave split by gate.leave_cause
+
+
+LEAVE_SUB_KEYS = ("any", "first", "real", "lost")   # per sub-cause: ticks it said no, was the first refuser, a play really was on screen; value lost
 
 
 def judge(host: Decider, pick: str, cands: dict, now: float) -> tuple[list[str], arbiter.Choice | None, list[str], Decision | None]:
@@ -301,19 +397,26 @@ def judge(host: Decider, pick: str, cands: dict, now: float) -> tuple[list[str],
     why = arbiter.refused_by(inp, out, f"cut:{pick}", musts=musts, show=show, p=p) if not refused else ""
     if why:
         named.append(f"arbiter:{why}")
-    d = Decision(now, "switch", pick, f"brain {host.brain.name}", host.base_state, kind="better", owner=host.base_owner)
+    # [audit fix H] with legal.leave_at_flip the product's cut is a held pick (leave_held), which may leave at a low-leverage moment:
+    # judged without it, gate:leave was charged on ticks where the cut went anyway
+    d = Decision(now, "switch", pick, f"brain {host.brain.name}", host.base_state, kind="better", owner=host.base_owner,
+                 leave_held=host._leave_at_flip())
     x = cands[pick]
     flip = gate.Flip(ReplayHost(host, cands), d, host.current, x.target, cands, None, now)
     timed, plan = flip.replan
     if timed and plan is not None and plan.ok:
         d.rewind_s = plan.rewind_s
     vetoes = [f"gate:{n}" for n, rule in gate.GATE_RULES if rule(flip)]
+    host.leave_sub = gate.leave_cause(flip) if "gate:leave" in vetoes else ""
     return named, arb, vetoes, d
 
 
 class AuditDecider(Decider):
     """decide() throws the decider's own proposal away and walks the brain's top pick down the real chain."""
     brain, tally, truth, sets, base_state, base_owner, pick_scores = None, None, None, {}, None, None, {}
+    leave_sub = ""      # gate.leave_cause of the last flip judged, when its leave rule said no
+    land_kind = ""      # the landing kind of the last flip _flip_vetoes judged ("bucket": right after a made basket)
+    last_want = (-1, "")    # (tick, game) of the last tick the top pick was a cut
 
     def __init__(self, cfg, delays, clock=None):
         super().__init__(Overlay(cfg, self.sets), delays, clock=clock)
@@ -343,14 +446,60 @@ class AuditDecider(Decider):
         timed, plan = f.replan
         if timed and plan is not None and plan.ok:
             d.rewind_s = plan.rewind_s
-        return [n for n, rule in gate.GATE_RULES if rule(f)]
+        self.land_kind = plan.landing.kind if timed and plan is not None and plan.ok and plan.landing is not None else ""
+        names = [n for n, rule in gate.GATE_RULES if rule(f)]
+        self.leave_sub = gate.leave_cause(f) if "leave" in names else ""
+        return names
+
+    def _want(self, pick: str, cands: dict, now: float) -> None:
+        """One more tick the brain's top pick is a cut: the yes-rate's denominator, and whether the want is new this tick."""
+        t = self.tally
+        t.wanted += 1
+        t.wants.append((now, pick))
+        s = getattr(cands.get(pick), "scored", None)
+        t.want_info.append((self.last_want != (t.ticks - 1, pick), bool(s is not None and (getattr(s, "high_leverage", False) or s.crunch or s.crunch_now))))
+        self.last_want = (t.ticks, pick)
 
     def _go(self, d: Decision, now: float) -> Decision:
         self.tally.went += 1
+        self.tally.jumps.append(now)
+        self.tally.bucket += int(self.land_kind == "bucket")
         self._commit(d.target, kind=d.kind)
         self._land_behind(d.target, d.rewind_s)
-        self.tally.screen.append((now + self.truth.tune_s, d.target))
+        self.tally.screen.append((now + float(getattr(d, "defer_s", 0.0) or 0.0) + self.truth.tune_s, d.target))
         return d
+
+    def _flip_at_landing(self, target: str, kind: str, cands: dict, now: float) -> Decision | None:
+        """[audit.flip_at_landing, what-if only: no product flag] The cut can't go at this tick's instant. The first whole second
+        inside the tick at which its landing plan (entry_plan, the list's own test) is good and no gate rule says no: the cut,
+        deferred to that second (Decision.defer_s, which the replay applies and grades there). Every rule is asked with the clock
+        at that second and the feed data this tick holds. None: nothing inside this tick, or the what-if is off."""
+        clock = self._clock
+        if not self.cfg.get(FLIP_AT_KEY, False) or not hasattr(clock, "t") or target not in cands:
+            return None
+        try:
+            for w in range(1, int(float(self.cfg.get("polling.live_s", 10)))):
+                clock.t = now + w
+                plan = self.entry_plan(target, cands, now + w)
+                if plan is None or not plan.ok:
+                    continue
+                d = Decision(now, "switch", target, f"brain {self.brain.name}: flip in {w} s, at the landing", self.base_state, kind=kind,
+                             owner=self.base_owner, leave_held=True)
+                d.defer_s = float(w)
+                if not self._flip_vetoes(d, cands[target].target, cands, now + w):
+                    return d
+        finally:
+            clock.t = now
+        return None
+
+    def _release_later(self, target: str, kind: str, cands: dict, now: float) -> Decision | None:
+        """The what-if's deferred cut for a waiting pick, gone and counted as released; None when there is none."""
+        later = self._flip_at_landing(target, kind, cands, now)
+        if later is None:
+            return None
+        self._leave_end("released", now)
+        self.tally.released += 1
+        return self._go(later, now)
 
     def _held_tick(self, cands: dict, now: float, stay: Decision) -> Decision | None:
         """A pick is waiting: stay and charge what still refuses it, or go. None: it is over, the tick goes on."""
@@ -359,12 +508,16 @@ class AuditDecider(Decider):
         if status == "over":
             t.over[veto.split(":")[0]] += 1
             return None
-        t.wanted += 1
+        self._want(h.target, cands, now)
         t.held_ticks += 1
         d = Decision(now, "switch", h.target, f"brain {self.brain.name}: held", self.base_state, kind=h.kind, owner=self.base_owner, leave_held=True)
         vetoes = self._flip_vetoes(d, cands[h.target].target, cands, now)
+        if veto == "leave" and "leave" not in vetoes:
+            self.leave_sub = "decider_only"     # the decider's own view of the leave (gate.DeciderHost) said no, the flip's did not
         blockers = ([f"legal:{veto}"] if veto == "no_landing" else [f"gate:{veto}"] if veto else []) + [f"gate:{v}" for v in vetoes if f"gate:{v}" != f"gate:{veto}"]
         if status == "wait" or vetoes:
+            if (later := self._release_later(h.target, h.kind, cands, now)) is not None:
+                return later
             self._charge(h.target, blockers, now)
             self._note_route(cands, now)
             return stay
@@ -382,7 +535,7 @@ class AuditDecider(Decider):
             self._note_route(cands, now)
             return stay
         pick = top.removeprefix("cut:")
-        t.wanted += 1
+        self._want(pick, cands, now)
         named, ch, vetoes, d = judge(self, pick, cands, now)
         blockers = named + vetoes
         if not self._landable(pick, cands, now):
@@ -400,6 +553,8 @@ class AuditDecider(Decider):
             first = "no_landing" if not land else names[0]
             self._leave_begin(LeaveHold(chosen.id, chosen.game_id, legal.kind_of(chosen.verb), ch.why, self.current, now), first, now)
             t.held += 1
+            if (later := self._release_later(chosen.game_id, legal.kind_of(chosen.verb), cands, now)) is not None:
+                return later
             self._note_route(cands, now)
             return stay
         if names:
@@ -407,10 +562,22 @@ class AuditDecider(Decider):
             return stay
         return self._go(d, now)
 
+    def _hold_sigma(self, cands: dict) -> None:
+        """[--sigma-hold] The stated doubt stays what the night began with: the replay's 1 s per 15 minutes of drift is switched off for
+        every game's delay estimate. The estimate itself and the true delay are untouched."""
+        for x in cands.values():
+            if getattr(x, "target", None):
+                self.delays.get(x.target).drift_cap = 0.0
+
     def decide(self, cands, redzone=None, *, commit=True, reel=None):
+        if self.sets.get(SIGMA_HOLD_KEY):
+            self._hold_sigma(cands)
         base = super().decide(cands, redzone, commit=False, reel=reel)
         now, t = self._clock(), self.tally
         t.ticks += 1
+        t.tick_at.append(now)
+        if sum(1 for g, x in cands.items() if g not in arbiter.NOT_GAMES and getattr(x, "target", None)) >= 2:
+            t.live2.append(now)
         if base.action in ("switch", "replay"):
             self.reject(base, backoff=False)
         self.base_state, self.base_owner = base.state, base.owner
@@ -423,7 +590,7 @@ class AuditDecider(Decider):
             self._note_route(cands, now)
             return stay
         pick = top.removeprefix("cut:")
-        t.wanted += 1
+        self._want(pick, cands, now)
         named, ch, vetoes, d = judge(self, pick, cands, now)
         blockers = named + vetoes
         chosen = ch.option if ch is not None else None
@@ -443,6 +610,7 @@ class AuditDecider(Decider):
             self._note_route(cands, now)
             return stay
         t.went += 1
+        t.jumps.append(now)
         self._commit(d.target, kind=d.kind)
         self._land_behind(d.target, d.rewind_s)
         t.screen.append((now + self.truth.tune_s, d.target))
@@ -490,7 +658,12 @@ class AuditDecider(Decider):
             t.any_rule[b] += 1
             t.protected[b] += int(mid if b in LEAVE_RULES else lands)
             t.high[b] += int(high and b in LEAVE_RULES)
-        t.log[pick].append((now, first, len(blockers) == 1, bool(mid if first in LEAVE_RULES else lands)))
+        sub = f"gate:leave_{self.leave_sub or 'unnamed'}" if "gate:leave" in blockers else ""
+        if sub:
+            t.leave_sub["any"][sub] += 1
+            t.leave_sub["first"][sub] += int(first == "gate:leave")
+            t.leave_sub["real"][sub] += int(mid)
+        t.log[pick].append((now, first, len(blockers) == 1, bool(mid if first in LEAVE_RULES else lands), sub))
 
 
 def seen(air: Air, screen: list) -> bool:
@@ -576,13 +749,14 @@ def catchup_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float) -> se
     return shown
 
 
-def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: dict | None = None) -> tuple[dict[Air, bool], Counter]:
+def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: dict | None = None,
+                aired: list | None = None) -> tuple[dict[Air, bool], Counter]:
     """SIMULATED arbiter.catchup_route (redzone/noggin/catchup.py) on the replay's own screen, at this rewind reach: which unseen moments
     air before the hard cap, each piece inside dead time on the game on screen (truth, with a margin) on a tick the route was open.
     Causal: a clip starts without knowing the next dead ball is coming. {moment: airs marked as a replay}, and what became of the rest.
     Clips can't move the replay's own cuts; a cut on the way ends the dead time and takes the hidden stick for its prep.
     `why` (info only, it changes no choice): filled with {moment not shown: (its cause from CAUSES, an opening came within PAST_CAP_S
-    after the cap)}."""
+    after the cap)}. `aired` (info only): gets (when its last piece came up, game) for every clip that aired whole."""
     r = catchup.Route(reach_s=min(reach, catchup.HARD_CAP_S, REACH_CAP_S), clip_s=t.route_clip_s or CLIP_S, flip_s=FLIP_S, prep_s=PREP_S, lead_s=3.0, margin_s=2.0,
                       short=t.route_short)
     moments = {f"{m.game_id}:{m.at}:{m.kind}:{i}": m for i, m in enumerate(unseen)}
@@ -675,6 +849,8 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: di
         if p.last:
             marked = p.moment.id in marked_ids or p.marked
             shown[moments[p.moment.id]] = marked
+            if aired is not None:
+                aired.append((now + r.flip_s, p.moment.game_id))
             stats["clips"] += 1
             stats["value"] += moments[p.moment.id].value
             stats["marked_value"] += moments[p.moment.id].value if marked else 0.0
@@ -696,12 +872,32 @@ def route_shown(unseen: list[Air], t: Tally, truth: Truth, reach: float, why: di
     return shown, stats
 
 
+def yes_counts(wants: list, screen: list, clips: list = ()) -> tuple[int, int]:
+    """Of the ticks the brain wanted another game (t, game): how many had that game's picture up within YES_S, and how many of the
+    rest had a catch-up clip of that game come up within CLIP_YES_S. `screen` is (picture up at, game), `clips` (clip up at, game)."""
+    ups, cls = defaultdict(list), defaultdict(list)
+    for at, g in sorted(screen):
+        ups[g].append(at)
+    for at, g in sorted(clips):
+        cls[g].append(at)
+    live = clip = 0
+    for t, g in wants:
+        i = bisect.bisect_right(ups[g], t)
+        if i < len(ups[g]) and ups[g][i] <= t + YES_S:
+            live += 1
+            continue
+        j = bisect.bisect_right(cls[g], t)
+        clip += int(j < len(cls[g]) and cls[g][j] <= t + CLIP_YES_S)
+    return live, clip
+
+
 def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
     """Charge every unseen must-see moment to the last refusal of its game in the run-up. Seen and uncharged are counted."""
     unseen = [m for ms in truth.moments.values() for m in ms if not seen(m, t.screen)]
     why: dict = {r: {} for r in REACHES}
+    clips: list = []
     if t.route_on:
-        results = {r: route_shown(unseen, t, truth, r, why[r]) for r in REACHES}
+        results = {r: route_shown(unseen, t, truth, r, why[r], clips if r == REACHES[-1] else None) for r in REACHES}
         shown = {r: set(results[r][0]) for r in REACHES}
         for r in REACHES:
             late = max(league_row["route"][str(r)].get("max_late_s", 0.0), results[r][1].pop("max_late_s", 0.0))
@@ -709,6 +905,11 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
             league_row["route"][str(r)]["max_late_s"] = late
     else:
         shown = {r: catchup_shown(unseen, t, truth, r) for r in REACHES}
+    t.clips = len(clips) if t.route_on else len(shown[REACHES[-1]])
+    league_row["jumps"]["nights"].append(jump_night(t))
+    live, clip = yes_counts(t.wants, t.screen, clips)
+    for k, n in (("wanted", len(t.wants)), ("live", live), ("clip", clip)):
+        league_row["yes"][k] += n
     for gid, ms in truth.moments.items():
         log = t.log.get(gid, [])
         times = [e[0] for e in log]
@@ -721,6 +922,8 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
             if i >= 0 and times[i] >= m.at - RUN_UP_S:
                 _, rule, only, *real = log[i]
                 league_row["lost"][rule] += m.value
+                if rule == "gate:leave" and len(real) > 1 and real[1]:
+                    league_row["leave_sub"]["lost"][real[1]] += m.value
                 league_row["moments"][rule] += 1
                 if only:
                     league_row["lost_alone"][rule] += m.value
@@ -737,12 +940,129 @@ def charge_night(t: Tally, truth: Truth, league_row: dict) -> None:
                 league_row["not_asked"] += m.value
 
 
+def wait_column(wait: float) -> str:
+    """The column a wait falls in: "now", "<=5", ... "later" (WAIT_EDGES)."""
+    return next(("now" if e == 0 else f"<={e:g}" for e in WAIT_EDGES if wait <= e), "later")
+
+
+def landing_rows(t: Tally, truth: Truth, league_row: dict) -> None:
+    """[--landings] After the night, from the truth: every tick legal:no_landing was the first refuser, by what the target's picture
+    would have shown and how long until its next legal landing; and that wait at every NEW want, under both of the grader's tests.
+    Info only: nothing here is read by a decision."""
+    out = league_row.setdefault("landings", {"refused": {}, "first": []})
+    for gid, log in t.log.items():
+        for now, rule, *_ in log:
+            if rule == "legal:no_landing":
+                cell = out["refused"].setdefault(truth.doing(gid, now), {})
+                col = wait_column(truth.landing_wait(gid, now))
+                cell[col] = cell.get(col, 0) + 1
+    info = t.want_info if len(t.want_info) == len(t.wants) else [(True, False)] * len(t.wants)
+    for (now, gid), (new, tight) in zip(t.wants, info):
+        if new:
+            out["first"].append([truth.doing(gid, now), bool(tight), truth.landing_wait(gid, now, bucket=False), truth.landing_wait(gid, now)])
+
+
+def landing_lines(rows: list[dict]) -> list[str]:
+    """[--landings] The two tables. Truth only: what a perfect clock and a flip at any instant could do under Rule #1."""
+    if not any(r.get("landings") for r in rows):
+        return []
+    cols = ["now" if e == 0 else f"<={e:g}" for e in WAIT_EDGES] + ["later"]
+    lines = ["", "legal:no_landing by what the target's picture would show when the cut came up, and the wait (s) to its next legal landing "
+                 "(a dead ball, or 8 s after a made basket; the grader's facts)",
+             f"{'league/brain':<16}{'the picture':<52}{'refused':>8}" + "".join(f"{c:>7}" for c in cols)]
+    for r in rows:
+        ref = r.get("landings", {}).get("refused", {})
+        for state, cell in sorted(ref.items(), key=lambda kv: -sum(kv[1].values())):
+            lines.append(f"{r['league'] + '/' + r['brain']:<16}{state:<52}{sum(cell.values()):>8}" + "".join(f"{cell.get(c, 0):>7}" for c in cols))
+    lines += ["", "seconds until the target's next legal landing when the brain FIRST wants it (the picture is up 5 s after the cut; "
+                  f"within {YES_S - 5:g} s is the {YES_S:g} s bar)",
+              f"{'league/brain':<16}{'landing':<27}{'targets':<10}{'wants':>6}{'p50':>7}{'p75':>7}{'p90':>7}{'now':>6}{'<=5':>6}{'<=15':>6}{'<=25':>6}{'<=40':>6}{'<=55':>6}"]
+    for r in rows:
+        first = r.get("landings", {}).get("first", [])
+        for name, col in (("dead ball only", 2), ("dead ball or made basket", 3)):
+            for who, keep in (("all", (True, False)), ("crunch", (True,)), ("not crunch", (False,))):
+                xs = [f[col] for f in first if f[1] in keep]
+                if not xs:
+                    continue
+                share = "".join(f"{100.0 * sum(x <= e for x in xs) / len(xs):>5.0f}%" for e in (0.0, 5.0, 15.0, 25.0, 40.0, 55.0))
+                lines.append(f"{r['league'] + '/' + r['brain']:<16}{name:<27}{who:<10}{len(xs):>6}"
+                             + "".join(f"{quantile(xs, q):>7.1f}" for q in (0.5, 0.75, 0.9)) + share)
+    return lines
+
+
+def jump_night(t: Tally) -> dict:
+    """One night's jumps on its live-time axis: the minutes two or more games were live, laid end to end (a stretch with one game
+    live takes no room), and the minute on that axis of every cut that went on such a tick. A cut on a tick with one game live
+    (the last game still on) is in `went` and not here."""
+    step = (t.tick_at[-1] - t.tick_at[0]) / (len(t.tick_at) - 1) if len(t.tick_at) > 1 else 0.0
+    at = []
+    for j in t.jumps:
+        i = bisect.bisect_left(t.live2, j)
+        if i < len(t.live2) and t.live2[i] == j:
+            at.append(round(i * step / 60.0, 3))
+    return {"live_min": round(len(t.live2) * step / 60.0, 3), "at_min": at, "clips": t.clips}
+
+
+def window_counts(live_min: float, at_min: list, n: int) -> list[int]:
+    """Jumps in every window of n minutes slid by one minute over one night's live time; [] when the night is shorter than n."""
+    if live_min < n:
+        return []
+    at = sorted(at_min)
+    return [bisect.bisect_left(at, s + n) - bisect.bisect_left(at, s) for s in range(int(math.floor(live_min - n + 1e-9)) + 1)]
+
+
+def quantile(xs: list, q: float) -> float:
+    """Nearest-rank quantile of a list (0 for an empty one)."""
+    xs = sorted(xs)
+    return xs[min(len(xs) - 1, max(0, math.ceil(q * len(xs) - 1e-9) - 1))] if xs else 0.0
+
+
+def jump_stats(rows: list[dict]) -> dict:
+    """Over these rows' nights: live minutes, jumps and clips with their rates per minute, and per window length the median, 10th
+    percentile and most jumps in a window, with how many nights were long enough to count."""
+    nights = [n for r in rows for n in r.get("jumps", {}).get("nights", [])]
+    live = sum(n["live_min"] for n in nights)
+    jumps, clips = sum(len(n["at_min"]) for n in nights), sum(n["clips"] for n in nights)
+    out = {"live_min": round(live, 1), "jumps": jumps, "per_min": round(jumps / live, 4) if live else 0.0, "clips": clips,
+           "clips_per_min": round(clips / live, 4) if live else 0.0, "windows": {}}
+    for n in JUMP_WINDOWS_MIN:
+        per = [c for c in (window_counts(x["live_min"], x["at_min"], n) for x in nights) if c]
+        pool = [v for c in per for v in c]
+        out["windows"][str(n)] = {"median": statistics.median(pool) if pool else 0.0, "p10": quantile(pool, 0.10), "max": max(pool, default=0),
+                                  "nights": len(per), "windows": len(pool)}
+    return out
+
+
+def jump_lines(rows: list[dict]) -> list[str]:
+    """Jumps per league and brain, per brain and in total: the rate, then median / 10th percentile / most per window (nights counted)."""
+    if not any(r.get("jumps", {}).get("nights") for r in rows):
+        return []
+    lines = ["", "jumps: cuts that went while two or more games were live; clips: catch-up clips, counted apart (SIMULATED, reach "
+                 f"{REACHES[-1]} s). Per window of N minutes slid by one minute over that live time: median / 10th percentile / most (nights long enough)",
+             f"{'league/brain':<22}{'live min':>9}{'jumps':>7}{'/min':>7}{'/hour':>7}{'clips':>7}{'/min':>7}"
+             + "".join(f"{str(n) + ' min':>18}" for n in JUMP_WINDOWS_MIN)]
+    brains = list(dict.fromkeys(r["brain"] for r in rows))
+    groups = [(f"{r['league']}/{r['brain']}", [r]) for r in rows] + [(f"TOTAL {b}", [r for r in rows if r["brain"] == b]) for b in brains]
+    for name, part in groups:
+        j = jump_stats(part)
+        cells = "".join("{:>18}".format("{median:g} / {p10:g} / {max:g} ({nights})".format(**w)) for w in j["windows"].values())
+        lines.append(f"{name:<22}{j['live_min']:>9.0f}{j['jumps']:>7}{j['per_min']:>7.3f}{60.0 * j['per_min']:>7.1f}{j['clips']:>7}{j['clips_per_min']:>7.3f}{cells}")
+    return lines
+
+
 def new_row() -> dict:
     return {"must_total": 0.0, "must_seen": 0.0, "not_asked": 0.0, "lost": Counter(), "lost_alone": Counter(), "moments": Counter(),
-            "ticks": 0, "wanted": 0, "went": 0, "held": 0, "released": 0, "held_ticks": 0, "over": Counter(), "refused": Counter(), "alone": Counter(), "any_rule": Counter(), "protected": Counter(), "high": Counter(),
+            "ticks": 0, "wanted": 0, "went": 0, "held": 0, "released": 0, "held_ticks": 0, "bucket": 0, "over": Counter(), "refused": Counter(), "alone": Counter(), "any_rule": Counter(), "protected": Counter(), "high": Counter(),
             "lost_after_catchup": {str(r): Counter() for r in REACHES}, "route": {str(r): Counter() for r in REACHES}, "avoidable_lost": {str(r): 0.0 for r in REACHES},
             "residual": {str(r): Counter() for r in REACHES}, "residual_by_rule": {str(r): Counter() for r in REACHES},
-            "past_cap": {str(r): Counter() for r in REACHES}}
+            "past_cap": {str(r): Counter() for r in REACHES},
+            "yes": Counter(), "leave_sub": {k: Counter() for k in LEAVE_SUB_KEYS}, "jumps": {"nights": []}}
+
+
+class Graded(list):
+    """What the replay's grader said, night by night: the high-leverage mid-play leaves (the list), and the entries its made-basket
+    window made clean (grader v49's entries_after_bucket: the strict count is entries_mid_play plus these)."""
+    after_bucket = 0
 
 
 def card(script: str, *args: str) -> dict:
@@ -764,7 +1084,7 @@ def replay(brain_name: str, sets: dict, row: dict, cap: int | None):
     saved = (backtest.Decider, backtest.run, engine_mod.time, gate.redzone_on, engine_mod.redzone_on, splits.nights_for, sportsgrade.grade)
     box, truth, real_run, real_nights, real_grade = {}, Truth(), backtest.run, splits.nights_for, sportsgrade.grade
     agent = BRAINS[brain_name](truth)
-    high = []
+    high = Graded()
     current: list[Tally] = []
 
     class Host(AuditDecider):
@@ -776,17 +1096,26 @@ def replay(brain_name: str, sets: dict, row: dict, cap: int | None):
             self.tally = current[-1]
 
     def run(replays, cfg, my_teams, **kw):
+        err = float(sets.get(DELAY_ERROR_KEY, 0.0) or 0.0)
+        if err:     # [--delay-error] the picture really runs this much later (or earlier) than the app believes; the app is not told
+            kw["true_delay"] = (kw.get("delay", 35.0) if kw.get("true_delay") is None else kw["true_delay"]) + err
+        if SIGMA_KEY in sets:   # [--sigma] the doubt the app states for its delay estimate; the delay it believes and the true one are untouched
+            kw["sigma"] = float(sets[SIGMA_KEY])
         lag = kw.get("feed_lag", 8.0) + (kw.get("delay", 35.0) if kw.get("true_delay") is None else kw["true_delay"])
         truth.bind(replays, lag, kw.get("tune_s", 5.0))
         t = Tally()
         current.append(t)
         rep = real_run(replays, cfg, my_teams, **kw)
         charge_night(t, truth, row)
-        for k in ("ticks", "wanted", "went", "held", "released", "held_ticks"):
+        if sets.get(LANDINGS_KEY):
+            landing_rows(t, truth, row)
+        for k in ("ticks", "wanted", "went", "held", "released", "held_ticks", "bucket"):
             row[k] += getattr(t, k)
         row["over"].update(t.over)
         for k in ("refused", "alone", "any_rule", "protected", "high"):
             row[k].update(getattr(t, k))
+        for k in ("any", "first", "real"):
+            row["leave_sub"][k].update(t.leave_sub[k])
         return rep
 
     def nights_for(league_dir, which, end=None):
@@ -801,6 +1130,7 @@ def replay(brain_name: str, sets: dict, row: dict, cap: int | None):
     def grade(*a, **kw):
         c = real_grade(*a, **kw)
         high.extend(c.cuts_high)
+        high.after_bucket += getattr(c.cut, "entries_after_bucket", 0)
         return c
 
     backtest.Decider, backtest.run, splits.nights_for, sportsgrade.grade = Host, run, nights_for, grade
@@ -829,7 +1159,13 @@ def run_one(job: tuple) -> dict:
                    "cuts_high": len(high), "mid_play_leaves": sum(n.get("cuts", 0) for n in nights), "dead_air_pct": c.get("dead_air_pct"),
                    "plays_missed_entry": c.get("plays_missed_entry", sum(n.get("plays_missed_entry", 0) for n in nights)),
                    "switches_per_hour": c.get("switches_per_hour"), "hours": c.get("hours", sum(n.get("hours", 0.0) for n in nights))}
+    if row["bucket"] or getattr(high, "after_bucket", 0):      # only with basketball.join_after_bucket: the default row stays as it was
+        row["card"]["entries_after_bucket"] = getattr(high, "after_bucket", 0)
+        row["card"]["entries_mid_play_strict"] = row["card"]["entries_mid_play"] + row["card"]["entries_after_bucket"]
+    else:
+        del row["bucket"]
     row["league"], row["brain"] = league, brain_name
+    row["jumps"]["summary"] = jump_stats([row])
     return json.loads(json.dumps(row))
 
 
@@ -863,8 +1199,55 @@ def table(rows: list[dict], *, top: int = 25) -> str:
     for r in rows:
         c, pct = r["card"], 100.0 * r["must_seen"] / r["must_total"] if r["must_total"] else 0.0
         lines.append(f"{r['league']}/{r['brain']}: must-see seen {pct:.1f}% of {r['must_total']:.0f}, not asked {r['not_asked']:.0f}, "
-                     f"wanted {r['wanted']} went {r['went']}, mid-play {c['entries_mid_play']}/{c['entries']}, high-lev leaves {c['cuts_high']}, all mid-play leaves {c['mid_play_leaves']}")
-    return "\n".join(lines + catchup_lines(rows) + residual_lines(rows))
+                     f"wanted {r['wanted']} went {r['went']}, mid-play {c['entries_mid_play']}/{c['entries']}, high-lev leaves {c['cuts_high']}, all mid-play leaves {c['mid_play_leaves']}"
+                     + (f", bucket joins {r.get('bucket', 0)} (grader: {c['entries_after_bucket']} entries right after a made basket, strict mid-play {c['entries_mid_play_strict']})"
+                        if "entries_after_bucket" in c else ""))
+    return "\n".join(lines + catchup_lines(rows) + residual_lines(rows) + leave_lines(rows) + yes_lines(rows) + jump_lines(rows) + landing_lines(rows))
+
+
+def leave_lines(rows: list[dict]) -> list[str]:
+    """gate:leave split by which part of the leave rule said no (gate.leave_cause), most ticks first."""
+    tot = {k: Counter() for k in LEAVE_SUB_KEYS}
+    for r in rows:
+        for k in LEAVE_SUB_KEYS:
+            tot[k].update(r.get("leave_sub", {}).get(k, {}))
+    if not tot["any"]:
+        return []
+    lines = ["", "gate:leave by sub-cause (said no = any tick; first = it was the first refuser; real% = a play really was on screen)",
+             f"{'sub-cause':<28}{'said no':>8}{'first':>8}{'real%':>7}{'lost':>8}"]
+    for sub, n in sorted(tot["any"].items(), key=lambda kv: (-kv[1], kv[0])):
+        lines.append(f"{sub:<28}{n:>8}{tot['first'][sub]:>8}{100.0 * tot['real'][sub] / n:>6.0f}%{tot['lost'][sub]:>8.1f}")
+    return lines
+
+
+def yes_rate(rows: list[dict]) -> dict:
+    """{wanted, live, clip, yes_pct, clip_pct} over these rows: see yes_counts. Percentages are of `wanted` (0 when nothing was)."""
+    y = Counter()
+    for r in rows:
+        y.update(r.get("yes", {}))
+    n = y["wanted"]
+    return {"wanted": n, "live": y["live"], "clip": y["clip"], "yes_pct": round(100.0 * y["live"] / n, 1) if n else 0.0,
+            "clip_pct": round(100.0 * y["clip"] / n, 1) if n else 0.0}
+
+
+def yes_lines(rows: list[dict]) -> list[str]:
+    """The yes-rate per league and brain, per brain, and in total."""
+    if not yes_rate(rows)["wanted"]:
+        return []
+    lines = ["", f"yes-rate: of the ticks the brain wanted another game, its picture was up within {YES_S:g} s; else a catch-up clip of it "
+                 f"within {CLIP_YES_S:g} s (SIMULATED, reach {REACHES[-1]} s)",
+             f"{'league/brain':<22}{'wanted':>8}{'yes':>8}{'yes%':>7}{'clip':>8}{'clip%':>7}{'either%':>9}"]
+    brains = list(dict.fromkeys(r["brain"] for r in rows))
+    groups = [(f"{r['league']}/{r['brain']}", [r]) for r in rows] + [(f"TOTAL {b}", [r for r in rows if r["brain"] == b]) for b in brains]
+    for name, part in groups + ([("TOTAL", rows)] if len(brains) > 1 else []):
+        y = yes_rate(part)
+        lines.append(f"{name:<22}{y['wanted']:>8}{y['live']:>8}{y['yes_pct']:>6.1f}%{y['clip']:>8}{y['clip_pct']:>6.1f}%{y['yes_pct'] + y['clip_pct']:>8.1f}%")
+    return lines
+
+
+def rule1_counters(rows: list[dict]) -> dict:
+    """The Rule #1 counters of a run, summed over its rows."""
+    return {k: sum(r["card"].get(k, 0) or 0 for r in rows) for k in ("entries_mid_play", "mid_play_leaves", "cuts_high")}
 
 
 def residual_lines(rows: list[dict], reach: int = REACHES[-1]) -> list[str]:
@@ -921,6 +1304,13 @@ def avoidable(rows: list[dict], reach: int) -> float:
     return sum(row["avoidable_lost"][str(reach)] for row in rows)
 
 
+def worse_key(rows: list[dict]) -> tuple:
+    """Orders the arms of --delay-error: more Rule #1 harm is worse (mid-play entries and high-leverage leaves, then every mid-play
+    leave), then the lower yes-rate."""
+    c = rule1_counters(rows)
+    return (c["entries_mid_play"] + c["cuts_high"], c["mid_play_leaves"], -yes_rate(rows)["yes_pct"])
+
+
 def parse_sets(items) -> dict:
     out = {}
     for s in items or ():
@@ -946,23 +1336,57 @@ def main() -> int:
     ap.add_argument("--timing", default=TIMINGS[0], choices=TIMINGS, help="catch-up flip, clip load and reach: assumed (today) or measured (timing.*)")
     ap.add_argument("--dead", default=DEADS[0], choices=DEADS, help="catch-up pieces sized by the real dead time (hindsight, today) or the floor "
                                                                    "the live code could know (floor)")
+    ap.add_argument("--delay-error", type=float, default=0.0, metavar="S",
+                    help="run twice, with the TRUE picture delay S s more and S s less than the app believes; print the worse arm (default 0: one run)")
+    ap.add_argument("--sigma", type=float, default=DEFAULT_SIGMA_S, metavar="S",
+                    help="the timing doubt the replayed app states for its delay estimate at the night's start (default 3: today's output)")
+    ap.add_argument("--sigma-hold", action="store_true",
+                    help="the stated doubt stays at --sigma all night (default: the replay's grows 1 s per 15 minutes, up to 6 s more)")
+    ap.add_argument("--landings", action="store_true",
+                    help="two more tables: legal:no_landing by what the target's picture really showed, and the wait to the target's next legal "
+                         "landing when the brain first wants it (the floor on yes within N s under Rule #1)")
     ap.add_argument("--json", type=Path, default=None)
     a = ap.parse_args()
     if a.prep_s is not None and a.prep_s < 0:
         ap.error("--prep-s must be 0 or more")
+    if a.delay_error < 0:
+        ap.error("--delay-error must be 0 or more")
+    if a.sigma <= 0:
+        ap.error("--sigma must be more than 0")
     sets = parse_sets(a.set)
     if a.timing == "measured":
         sets.setdefault(measured_timing.TIMING_FLAG, True)      # the replayed decider reads the same timings
     use_timing(a.timing, a.dead, a.prep_s, sets)
     a.prep_s = PREP_S
-    jobs = [(lg, b, sets, a.cap, a.prep_s) + ((a.timing, a.dead) if (a.timing, a.dead) != (TIMINGS[0], DEADS[0]) else ())
+    doubt = ({SIGMA_KEY: a.sigma} if a.sigma != DEFAULT_SIGMA_S else {}) | ({SIGMA_HOLD_KEY: True} if a.sigma_hold else {})
+    extra = doubt | ({LANDINGS_KEY: True} if a.landings else {})
+    jobs = [(lg, b, {**sets, **extra} if extra else sets, a.cap, a.prep_s) + ((a.timing, a.dead) if (a.timing, a.dead) != (TIMINGS[0], DEADS[0]) else ())
             for lg in a.leagues for b in a.brains]
-    if a.workers == 1 or len(jobs) == 1:
-        rows = [run_one(j) for j in jobs]
-    else:
+    def run_all(todo: list[tuple]) -> list[dict]:
+        if a.workers == 1 or len(todo) == 1:
+            return [run_one(j) for j in todo]
         with ProcessPoolExecutor(max_workers=a.workers) as ex:
-            rows = list(ex.map(run_one, jobs))
+            return list(ex.map(run_one, todo))
+
+    arms: dict[str, list[dict]] = {}
+    if a.delay_error:
+        for err in (a.delay_error, -a.delay_error):
+            arms[f"{err:+g}"] = run_all([(j[0], j[1], {**j[2], DELAY_ERROR_KEY: err}, *j[3:]) for j in jobs])
+        worse = max(arms, key=lambda k: worse_key(arms[k]))
+        rows = arms[worse]
+    else:
+        rows = run_all(jobs)
     print(table(rows))
+    if arms:
+        print(f"\ndelay error {a.delay_error:g} s: the TRUE picture delay shifted from what the app believes; the table above is the worse arm ({worse} s)")
+        for name, arm in arms.items():
+            c, y, j = rule1_counters(arm), yes_rate(arm), jump_stats(arm)
+            print(f"  true delay {name} s: entries_mid_play {c['entries_mid_play']}, mid_play_leaves {c['mid_play_leaves']}, high-leverage leaves {c['cuts_high']}, "
+                  f"yes {y['yes_pct']:.1f}%, clip {y['clip_pct']:.1f}%, went {sum(r['went'] for r in arm)} of {sum(r['wanted'] for r in arm)}"
+                  + (f", jumps per hour {60.0 * j['per_min']:.1f}" if j["live_min"] else ""))
+    if doubt:
+        print(f"stated timing doubt {a.sigma:g} s at the night's start (default {DEFAULT_SIGMA_S:g} s), "
+              + ("held all night" if a.sigma_hold else "growing 1 s per 15 minutes, up to 6 s more (the replay's own drift)"))
     if a.prep_s != DEFAULT_PREP_S:
         print(f"what-if: hidden stick load time {a.prep_s:g} s (default {DEFAULT_PREP_S:g} s)")
     if a.timing != TIMINGS[0]:
@@ -971,12 +1395,17 @@ def main() -> int:
         print(f"dead {a.dead}: catch-up pieces sized by the q10 dead time the live code could know in advance, not the real length")
     if a.json:
         out = {"sets": sets, "rows": rows, "rules": merge(rows), "avoidable_lost": {str(r): avoidable(rows, r) for r in REACHES}}
+        if doubt:                           # the default run's file stays byte-identical
+            out["sigma_s"], out["sigma_hold"] = a.sigma, bool(a.sigma_hold)
         if a.prep_s != DEFAULT_PREP_S:      # the default run's file stays byte-identical
             out["prep_s"] = a.prep_s
         if a.timing != TIMINGS[0]:
             out["timing"] = a.timing
         if a.dead != DEADS[0]:
             out["dead"] = a.dead
+        if arms:
+            out["delay_error_s"], out["worse_arm"] = a.delay_error, worse
+            out["arms"] = {name: {"rows": arm, "rule1": rule1_counters(arm), "yes": yes_rate(arm), "jumps": jump_stats(arm)} for name, arm in arms.items()}
         a.json.write_text(json.dumps(out, indent=1))
     return 0
 

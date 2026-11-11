@@ -31,6 +31,12 @@ successful network write alone never confirms which input the viewer sees.
 
 Each attempt is appended to data/tv_input.jsonl with its command and verify latency.
 
+Sound (Nick, Nov 10: "Volume must be 1000% off"). `sound_guard.must_be_silent` stops, inside this class, every key
+and SmartThings command that can raise the volume or unmute (KEY_VOLUP, KEY_MUTE, volumeUp, unmute, setVolume above
+0), and volume_duck with them. `sound_guard.enabled` attaches redzone/platform/sound_guard.py: mute and volume 0
+read back before the first switch and after every switch, a periodic check, and an incident (TV off, switching
+blocked) when silence is required and not read back. Both off = no sound call at all.
+
 SmartThings failure handling (`hardening.smartthings`, off until a live night proves it):
   401          renew the access token once and retry (always on). Still 401, or the refresh token
                refused (400/401): st_fault "auth". The cloud path stops (HOME/CEC flips take over)
@@ -98,6 +104,45 @@ RETRY_AFTER_MAX_S = 300.0    # a 429's Retry-After is honoured up to this
 RETRY_AFTER_DEFAULT_S = 60.0
 AUTH_RETRY_S = 3600.0        # an auth failure is re-tried after this even if the OAuth file never changes
 ST_RETRY_GAP_S = 0.3         # before the one retry of an idempotent GET
+
+# Sound (Nick, Nov 10: "Volume must be 1000% off"). With sound_guard.must_be_silent on, nothing that can raise the
+# volume or unmute leaves this class: these keys (KEY_MUTE toggles, so it can unmute) and these SmartThings commands.
+LOUD_KEYS = frozenset({"KEY_VOLUP", "KEY_MUTE"})
+SILENT_ST_COMMANDS = {"audiovolume": {"setvolume", "volumedown"}, "audiomute": {"mute", "setmute"}}
+
+
+def silent(s: dict | None) -> bool:
+    """Silent means muted AND volume 0, both read back from the TV. Anything unread is not silent."""
+    s = s or {}
+    v = s.get("volume")
+    return s.get("mute") == "muted" and isinstance(v, (int, float)) and not isinstance(v, bool) and v == 0
+
+
+def loud_command(capability: str, command: str, args: list | None) -> str:
+    """Why this SmartThings command could make the TV audible ("" = it cannot). Any audio capability whose
+    command is not on the short silent list counts (volumeUp, unmute, setVolume above 0, unknown ones)."""
+    cap = capability.split(".")[-1].lower()
+    cmd = command.lower()
+    if cap not in SILENT_ST_COMMANDS and not cap.startswith(("audio", "volume", "mute")):
+        return ""
+    if cmd not in SILENT_ST_COMMANDS.get(cap, set()):
+        return f"{capability}.{command}"
+    a = list(args or [])
+    if cmd == "setvolume" and not (a and isinstance(a[0], (int, float)) and not isinstance(a[0], bool) and a[0] == 0):
+        return f"{capability}.setVolume {a[0] if a else '?'}"
+    if cmd == "setmute" and (not a or a[0] != "muted"):
+        return f"{capability}.setMute {a[0] if a else '?'}"
+    return ""
+
+
+def _saved_settings() -> Callable[[str, object], object]:
+    """The saved settings (data/config.yaml over the defaults), read once when the app builds its TV. A file that
+    cannot be read falls back to the shipped defaults (sound guard off)."""
+    try:
+        return _config.Config().get
+    except Exception:
+        log.exception("TV: settings unreadable; sound settings use the shipped defaults")
+        return _config.default
 
 
 def _retry_after(r: httpx.Response) -> float:
@@ -353,6 +398,11 @@ class SamsungTV:
     # Policy: from_devices() reads two_stick.smartthings_cloud (on again since 2026-11-10, Nick; false = dropped);
     # a plain SamsungTV(...) keeps the cloud so the fake-cloud tests and tv_setup.py still work.
     cloud_enabled: bool = True
+    # Sound (sound_guard.*): a settings reader (dotted key, fallback) and the guard. A plain SamsungTV(...) reads the
+    # shipped defaults (all off); from_devices() reads the saved settings once and attaches a guard only when
+    # sound_guard.enabled is on. No guard = no sound call of any kind.
+    sound_settings: Callable[[str, object], object] = _config.default
+    sound_guard: object = None                      # redzone.platform.sound_guard.SoundGuard
     _tv: object = None
     _definite: bool = False                         # the last local key / cloud call certainly was not delivered
     _drop_pending: bool = False                     # close the local socket as soon as its worker thread ends
@@ -378,11 +428,70 @@ class SamsungTV:
         except ValueError:
             d = {}
         tv = d.get("tv") or {}
-        return cls(host=tv.get("ip"), method=tv.get("input_method"),
-                   st_device=tv.get("smartthings_device_id") or tv.get("st_device"),
-                   local_trusted=bool(tv.get("local_input_verified")) and bool(tv.get("network_verified")),
-                   mac=tv.get("mac") or tv.get("wifi_mac"), log_path=Path(INPUT_LOG),
-                   cloud_enabled=bool(_config.default("two_stick.smartthings_cloud", False)))
+        out = cls(host=tv.get("ip"), method=tv.get("input_method"),
+                  st_device=tv.get("smartthings_device_id") or tv.get("st_device"),
+                  local_trusted=bool(tv.get("local_input_verified")) and bool(tv.get("network_verified")),
+                  mac=tv.get("mac") or tv.get("wifi_mac"), log_path=Path(INPUT_LOG),
+                  cloud_enabled=bool(_config.default("two_stick.smartthings_cloud", False)),
+                  sound_settings=_saved_settings())
+        if out.sound_settings("sound_guard.enabled", False):
+            from redzone.platform.sound_guard import SoundGuard
+            out.sound_guard = SoundGuard(out)
+        return out
+
+    # --- sound (sound_guard.*) ---------------------------------------------------------------
+
+    def must_be_silent(self) -> bool:
+        try:
+            return bool(self.sound_settings("sound_guard.must_be_silent", False))
+        except Exception:
+            return True                     # an unreadable setting never lets sound out
+
+    def sound_blocked(self) -> str:
+        """Why no input switch or key may go to the TV ("" = they may): an open sound incident."""
+        g = self.sound_guard
+        return g.blocked_why() if g is not None else ""
+
+    def _refuse_sound(self, what: str) -> str:
+        """Why `what` (a key or a SmartThings command) must not be sent ("" = it may). Sets last_error."""
+        blocked = self.sound_blocked()
+        why = (f"sound incident open ({blocked}): {what} not sent" if blocked else
+               f"sound_guard.must_be_silent: {what} not sent" if self.must_be_silent() else "")
+        if why:
+            self.last_error = why
+            self._definite = True
+            log.warning("TV: %s", why)
+        return why
+
+    async def st_command(self, capability: str, command: str, args: list | None = None) -> bool:
+        """One SmartThings command to the selected TV (sound guard: mute, volume, power). True = accepted."""
+        if not self.st_device:
+            self.last_error = "no SmartThings TV selected"
+            self._definite = True
+            return False
+        r = await self._st("POST", f"/devices/{self.st_device}/commands", {"commands": [{
+            "component": "main", "capability": capability, "command": command, "arguments": list(args or [])}]})
+        return r is not None
+
+    async def _st_value(self, capability: str, attr: str):
+        r = await self._st("GET", f"/devices/{self.st_device}/components/main/capabilities/{capability}/status")
+        try:
+            return r[attr]["value"]
+        except (KeyError, TypeError):
+            return None
+
+    async def sound_state(self, input_timeout_s: float = 10.0) -> dict:
+        """Power, mute, volume and input read back from the TV (SmartThings). None = could not be read."""
+        if not self.st_device or not self.has_readback:
+            return {"power": None, "mute": None, "volume": None, "input": None}
+        power, mute, volume = await asyncio.gather(self._st_value("switch", "switch"),
+                                                   self._st_value("audioMute", "mute"),
+                                                   self._st_value("audioVolume", "volume"))
+        try:
+            inp = await asyncio.wait_for(self.input_status(), input_timeout_s)
+        except Exception:
+            inp = None
+        return {"power": power, "mute": mute, "volume": volume, "input": inp}
 
     # --- which paths can switch right now ------------------------------------------------
 
@@ -507,9 +616,12 @@ class SamsungTV:
     def view(self) -> dict:
         """For the phone's Health card and scripts/rz.py."""
         last = self.last_input
-        return {"local": self.local_ready, "smartthings": self.cloud_ready, "readback": self.has_readback,
-                "method": self.method, "cloud_disabled": self.cloud_disabled, "last_error": self.last_error, "cloud": self.cloud_view(),
-                "last": asdict(last) if last else None}
+        out = {"local": self.local_ready, "smartthings": self.cloud_ready, "readback": self.has_readback,
+               "method": self.method, "cloud_disabled": self.cloud_disabled, "last_error": self.last_error, "cloud": self.cloud_view(),
+               "last": asdict(last) if last else None}
+        if self.sound_guard is not None:
+            out["sound"] = self.sound_guard.view()
+        return out
 
     def reset_backoff(self, method: str | None = None) -> None:
         """Forget a backoff (a wake / network recovery says the TV is reachable again). DEV-07."""
@@ -578,6 +690,10 @@ class SamsungTV:
 
     async def key(self, key: str, times: int = 1) -> bool:
         self._definite = False
+        if self.sound_guard is not None or key.upper() in LOUD_KEYS:
+            # An open sound incident stops every key; must_be_silent stops the keys that can make sound.
+            if (self.sound_blocked() or key.upper() in LOUD_KEYS) and self._refuse_sound(key):
+                return False
         if not self.host:
             self.last_error = "no TV address saved (run scripts/tv_setup.py)"
             self._definite = True
@@ -649,7 +765,11 @@ class SamsungTV:
             return False
 
     async def volume_duck(self, steps: int = 4, hold_s: float = 4.0) -> None:
-        """Lower the volume for an announcer callout, then put it back."""
+        """Lower the volume for an announcer callout, then put it back. Nothing in the app calls it. Refused while
+        sound_guard.must_be_silent is on or a sound incident is open: putting the volume back is KEY_VOLUP."""
+        if self.must_be_silent() or self.sound_blocked():
+            self._refuse_sound("volume_duck (KEY_VOLUP)")
+            return
         if await self.key("KEY_VOLDOWN", steps):
             await asyncio.sleep(hold_s)
             await self.key("KEY_VOLUP", steps)
@@ -663,9 +783,36 @@ class SamsungTV:
             self.last_error = "SmartThings is disabled by policy (local key + CEC)"
             self._definite = True
             return None
+        if method != "GET" and body and self._st_refused(body):
+            return None
         r = await self._st_gated(method, path, body)
         self._st_ok = r is not None
         return r
+
+    def _st_refused(self, body: dict) -> bool:
+        """A SmartThings command that must not go out: one that can make sound while must_be_silent is on, or,
+        while a sound incident is open, anything but power off, volume 0 and mute (no input change, no power on)."""
+        cmds = body.get("commands") if isinstance(body, dict) else None
+        if not isinstance(cmds, list):
+            return False
+        blocked = self.sound_blocked()
+        silent_on = None
+        for c in cmds:
+            if not isinstance(c, dict):
+                continue
+            cap, cmd, args = str(c.get("capability", "")), str(c.get("command", "")), c.get("arguments")
+            loud = loud_command(cap, cmd, args if isinstance(args, list) else None)
+            if blocked:
+                calming = (cap == "switch" and cmd == "off") or (cap.split(".")[-1].lower() in SILENT_ST_COMMANDS
+                                                                 and not loud)
+                if not calming:
+                    return bool(self._refuse_sound(f"{cap}.{cmd}"))
+            if loud:
+                if silent_on is None:
+                    silent_on = self.must_be_silent()
+                if silent_on:
+                    return bool(self._refuse_sound(loud))
+        return False
 
     async def _st_gated(self, method: str, path: str, body: dict | None = None) -> dict | None:
         hard = self._hardened()
@@ -820,6 +967,8 @@ class SamsungTV:
     def maintain_soon(self) -> None:
         """Start maintain() in the background and return at once (DEV-10): a TV in standby or off must not hold
         the stick reconnects, CEC sync and watchdogs that follow in the keepalive. One at a time."""
+        if self.sound_guard is not None:
+            self.sound_guard.ensure_running()       # the periodic sound check (sound_guard.enabled only)
         t = self._maintain_task
         if t is not None and not t.done():
             return
@@ -891,7 +1040,26 @@ class SamsungTV:
         A sent key is not confirmation. An ambiguous delivery never triggers another method,
         since the original command may already have changed the visible input. `methods` limits
         the paths (the controller passes paths(); None = local first, then the cloud when it is enabled).
+
+        With a sound guard (sound_guard.enabled): checked before the first switch of the session (refused unless
+        silence is read back), refused outright while an incident is open, and checked again after every switch.
         """
+        g = self.sound_guard
+        if g is None:
+            return await self._set_input(hdmi, methods)
+        g.ensure_running()
+        if not await g.before_switch():
+            self.last_input = InputEvidence(hdmi.upper().replace(" ", ""),
+                                            detail=f"sound guard: {g.blocked_why() or 'silence not read back'}")
+            self.last_error = self.last_input.detail
+            self._definite = True
+            return False
+        try:
+            return await self._set_input(hdmi, methods)
+        finally:
+            await g.after_switch()
+
+    async def _set_input(self, hdmi: str, methods: list[str] | None = None) -> bool:
         n = hdmi.upper().replace(" ", "")
         self.last_input = evidence = InputEvidence(n)
         t0 = time.monotonic()

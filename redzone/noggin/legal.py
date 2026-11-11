@@ -75,6 +75,19 @@ def may_leave(gate_ok: bool, lock) -> bool:
     return bool(gate_ok) and not lock
 
 
+def lock_hides(lock, dead_ball_rule: bool = False, high: bool = False, dead_ball: bool = False, outranks: bool = False) -> bool:
+    """Does the moment lock on the game on screen keep this cut off the list? Today: any lock hides every cut, for as long as the
+    whole game state holds. [legal.lock_dead_ball] only a lock at a high-leverage moment (close and late, or overtime: the grader's
+    table, redzone/lab/leverage.py) hides cuts, and it lets one through when the screen is at a proven dead ball and that cut
+    outranks the moment by the decider's own override lead ("except for a much bigger one"). Any other lock is a reason a brain
+    can price, not a wall: the leave gate still decides when the screen may be left."""
+    if not lock:
+        return False
+    if not dead_ball_rule:
+        return True
+    return high and not (dead_ball and outranks)
+
+
 def must_see(best_score: float, cur_score: float, min_score: float, lead: float) -> bool:
     """Something huge elsewhere: the only thing that may pull the TV off a must-see focus game."""
     return best_score >= min_score and best_score >= cur_score + lead
@@ -93,6 +106,7 @@ class GameRow:
     must_see: bool = False
     latest_s: float = 0.0
     needs_prep_s: float = 0.0
+    over_lock: bool = False       # [legal.lock_dead_ball] it outranks the locked moment on screen by decider.locked_override_lead
 
 
 @dataclass(frozen=True)
@@ -113,6 +127,8 @@ class Facts:
     gate_ok: bool = True
     leave_at_flip: bool = False       # [LEAVE-AT-FLIP] a shut leave gate or no landing yet doesn't take a cut off the list: the pick waits (Decider._arbiter)
     moment_lock: str = ""
+    lock_dead_ball: bool = False      # [legal.lock_dead_ball] the lock hides cuts only at a high-leverage moment (lock_hides)
+    lock_high: bool = False           # ...and this one is: close and late or overtime, now or still on the delayed picture
     focus_game: str | None = None     # a focus mode is on: only this game (or a must-see, below)
     focus_must_see: bool = False
     banned_apps: frozenset[str] = frozenset({"peacock"})
@@ -132,11 +148,13 @@ def legal_options(f: Facts) -> tuple[brain.Option, ...]:
         return (STAY,)
     if too_soon(f.last_switch_at, f.min_gap_s, f.now):
         return (STAY,)
-    if f.current and not may_leave(f.gate_ok or f.leave_at_flip, f.moment_lock):
+    if f.current and not may_leave(f.gate_ok or f.leave_at_flip, f.moment_lock and not f.lock_dead_ball):
         return (STAY,)
     opts = [STAY]
     for g in f.games:
         if g.game_id == f.current or not g.tunable or g.dark or not (g.landable or f.leave_at_flip) or g.app.lower() in f.banned_apps:
+            continue
+        if f.current and f.lock_dead_ball and lock_hides(f.moment_lock, True, f.lock_high, f.gate_ok, g.over_lock):
             continue
         if f.focus_game and g.game_id != f.focus_game and not (f.focus_must_see and g.must_see):
             continue
@@ -159,9 +177,9 @@ def refusals(f: Facts, game_id: str) -> tuple[str, ...]:
         out.append("too_soon")
     if f.current and not f.gate_ok and not f.leave_at_flip:
         out.append("leave_gate")
-    if f.current and f.moment_lock:
-        out.append("moment_lock")
     g = next((r for r in f.games if r.game_id == game_id), None)
+    if f.current and lock_hides(f.moment_lock, f.lock_dead_ball, f.lock_high, f.gate_ok, g is not None and g.over_lock):
+        out.append("moment_lock")
     if g is None:
         return (*out, "unknown_game")
     out += [n for n, hit in (("on_screen", game_id == f.current), ("not_tunable", not g.tunable), ("dark", g.dark),

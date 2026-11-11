@@ -62,10 +62,10 @@ from typing import Any, Callable
 
 from redzone import config
 from redzone.autonomy import stick_identity
-from redzone.channels import ChannelMap
+from redzone.channels import LOCAL_SEARCH_QUERY, ChannelMap
 from redzone.fsm import MachineMap
-from redzone.machines.control import (ADOPT, CEC, COMMAND, OFFSET, PRELOAD_SLOT, CONTROL_SCREEN, STANDBY, STANDBY_READY,
-                                      TWO_STICK, VISIBLE)
+from redzone.machines.control import (ADOPT, CEC, COMMAND, OFFSET, PARK_STICK, PRELOAD_SLOT, CONTROL_SCREEN, STANDBY,
+                                      STANDBY_READY, TWO_STICK, VISIBLE)
 from redzone.fallback_ladder import FallbackLadder, Step as LadderStep
 from redzone.tuners.adb import STICK_HUNG, Stick, adb_available, playback_ready, same_stream
 from redzone.noggin import gamequeue as gq
@@ -73,7 +73,7 @@ from redzone.tuners import join_watchdog as jw
 from redzone.tuners import prime_multiview as pmv
 from redzone.tuners.join import plan_join
 from redzone.tuners.tuners import TUNERS, PrimeMultiviewTuner, TuneResult, apply_flags, channel_matcher
-from redzone.tv import SamsungTV
+from redzone.tv import SamsungTV, silent as sound_silent
 
 log = logging.getLogger(__name__)
 DEVICES = Path(__file__).resolve().parent.parent / "data" / "devices.json"
@@ -190,6 +190,8 @@ _LAZY: dict[str, Callable[[Any], Any]] = {
     "visible_m": lambda c: VISIBLE.new(clock=_now), "_vis_bad": lambda c: None, "_vis_how": lambda c: "",
     "_resume_kind": lambda c: "", "command_m": lambda c: COMMAND.new(clock=_now),
     "adopt_m": lambda c: ADOPT.new(clock=_now),
+    "_park_hands": lambda c: None,   # [park.enabled] ParkHands, made by the first park_* step with the flag on
+    "_flip_sound_refused": lambda c: False,   # [sound guard] the last _flip_to was refused before any input command
 }
 
 
@@ -903,6 +905,8 @@ class Controller:
         if (self._busy() or self._flipping or not self.live_control or self._reasserts >= REASSERT_MAX
                 or now < self._reassert_at or self.cec_view not in ("none", "both")):
             return
+        if self._sound_blocked():
+            return   # [sound guard] an open sound incident: HOME could turn a TV the guard powered off back on; no try is used up
         stick = self.main
         if stick is None or stick.host not in self.hdmi:
             return
@@ -1752,6 +1756,8 @@ class Controller:
 
     def standby_ready(self, target: str | None) -> bool:
         """[jump mode] The hidden stick is playing this target live, ready for a flip."""
+        if self.cfg.get("timing.stats_for_nerds", False) and getattr(self.hidden, "nerds_panel_on", False):
+            return False   # [timing.stats_for_nerds] its Stats for nerds panel may still be up: never flip onto it
         return bool(target) and self.two_stick and self._live_on_hidden(target)
 
     def slow_tune(self, target: str | None) -> bool:
@@ -2267,6 +2273,12 @@ class Controller:
         tuner = TUNERS.get(app)
         if tuner is None or not ref:
             return TuneResult(False, target, 0.0, [], "channel link not set up yet" if tuner else f"no tuner for {app}")
+        blocked = self._sound_blocked()
+        if blocked:
+            # [sound guard, PARK-HANDS S10] a tune can wake a sleeping stick, and a waking Fire TV takes the TV's input
+            # over CEC: no tune goes out while a sound incident is open (no guard: "" and nothing changes)
+            return TuneResult(False, target, 0.0, [], f"sound incident open ({blocked}): nothing sent",
+                              screen_changed=False)
         br = getattr(stick, "breaker", None)
         if br is not None and br.is_open:
             # Hung stick: fail now (nothing sent) instead of waiting out every adb timeout again.
@@ -2401,6 +2413,7 @@ class Controller:
             if self.hidden is not stick or self.hidden_target != target:
                 out["end"] = "displaced"
                 return False
+            t_pause_key = time.time()
             sent = await stick.key("KEYCODE_MEDIA_PAUSE")
             pb = await stick.playback(pkg) if sent and sent.ok else {}
             if pb.get("state") != "paused":
@@ -2439,6 +2452,7 @@ class Controller:
                 return False      # flipped, retargeted or re-tuned meanwhile: whoever did that owns the stick
             if not locked:
                 log.info("buffer: resuming %s on %s on time; a switch holds the lock", target, stick.host)
+            t_play_key = time.time()
             sent = await stick.key("KEYCODE_MEDIA_PLAY")
             pb = await stick.playback(pkg) if sent and sent.ok else {}
             # [overseer Nov 7 23:14] Prime on the hidden stick reads 'stopped' for a moment after PLAY (re-buffering):
@@ -2466,7 +2480,8 @@ class Controller:
                 out["relinked"] = res.ok
                 self._set_hidden(target if res.ok else None, res.ok)
                 return False
-            held = self._held_for(stick, target, pb, time.monotonic() - paused_at)
+            held = self._held_for(stick, target, pb, time.monotonic() - paused_at,
+                                  keys=(t_pause_key, t_play_key))
             # Re-anchor the stream here: the pause broke its position from the tune's, so without this
             # still_on fails and the next flip re-tunes it at the live edge, throwing the hold away.
             stick.remember(target, pb)
@@ -2509,7 +2524,8 @@ class Controller:
                 log.debug("could not append to %s", self.seek_log_path)
         return landed
 
-    def _held_for(self, stick: Stick, target: str, pb: dict, span_s: float) -> float:
+    def _held_for(self, stick: Stick, target: str, pb: dict, span_s: float,
+                  keys: tuple[float, float] | None = None) -> float:
         """[hold calibration] How far behind live a hold really left the stream. Best: the stick's own
         clock against its position since the last anchor (clock elapsed - position elapsed: what the
         live lab used, error under 0.5 s). Only this pause: the caller adds base_s, what the stream already
@@ -2524,6 +2540,10 @@ class Controller:
             lag = ((un - ua) - (pn - pa)) / 1000.0
             if 0.0 < lag <= span_s + 5.0:
                 return round(lag, 1)
+        from redzone.tuners import yttv_timing
+        kc = yttv_timing.key_constants(self.cfg, stick)   # [timing.key_constants] off: None, the span as before
+        if kc is not None and keys is not None:
+            return round(yttv_timing.paused_span(keys[0], keys[1], kc), 1)
         over = float(self.cfg.get("timing.behind_live_s.hold_overreport_s", 0.0) or 0.0)
         return round(max(0.0, span_s - over), 1)
 
@@ -3289,6 +3309,11 @@ class Controller:
             self._mark("flip_done")
         finally:
             self._screen_settle("flip over")
+        if not flipped and self._flip_sound_refused:
+            # [sound guard, PARK-HANDS S10] nothing was sent to the TV: the input is what it was (still known), and a
+            # sound block is not a broken flip path, so two-stick mode is not degraded
+            return Outcome(False, target, time.time() - t0, self.tv.last_error or "sound guard: no input change sent",
+                           False, path=path, screen_unchanged=True)
         if not flipped:
             self._two_stick_retry_at = time.time() + TWO_STICK_RETRY_S
             self.note = f"Two-stick mode off: couldn't switch TV input ({self.tv.last_error or 'unknown'})"
@@ -3421,6 +3446,14 @@ class Controller:
                        resumed=(how is not None) if (home or tv_flip) else None,
                        settled=settled, stall_s=stall or None)
 
+    def _sound_blocked(self) -> str:
+        """[sound guard] Why no input change may go out ("" = it may): an open sound incident (SamsungTV.sound_blocked).
+        With sound_guard.enabled off the TV has no guard and this is always "": nothing is asked and nothing changes."""
+        tv = self.tv
+        if getattr(tv, "sound_guard", None) is None:
+            return ""
+        return str(tv.sound_blocked() or "")
+
     async def _flip_to(self, stick: Stick) -> bool:
         """Make the TV show this stick.
 
@@ -3438,6 +3471,14 @@ class Controller:
         self._flip_s = None
         self._flip_how = ""
         ok = False
+        self._flip_sound_refused = False
+        blocked = self._sound_blocked()
+        if blocked:
+            # [sound guard] tv.set_input refuses by itself while a sound incident is open, but this function would then
+            # fall back to HOME on the stick, which changes the TV's input without the guard seeing it
+            self.tv.last_error = f"sound incident open ({blocked}): no input change"
+            self._flip_sound_refused = True
+            return False
         requested = self.hdmi.get(stick.host)
         if not requested:
             self.tv.last_error = "no input configured for this stick"
@@ -3462,6 +3503,11 @@ class Controller:
                 if took > TV_FLIP_MAX_S:
                     log.warning("TV input change to %s took %.1fs (%s)", requested, took, ev.how if ev else "")
                 return True
+            if ev is not None and str(ev.detail or "").startswith("sound guard:"):
+                # [sound guard, PARK-HANDS S10] the guard refused the switch before any input command (an open
+                # incident, or silence not read back on the first switch): no HOME fallback either
+                self._flip_sound_refused = True
+                return False
             log.warning("TV input change to %s not confirmed (%s: %s); falling back to HOME on %s",
                         requested, ev.source if ev else "?", self.tv.last_error or (ev.detail if ev else ""),
                         stick.host)
@@ -4184,11 +4230,14 @@ class Controller:
         def ours() -> bool:
             return self.hidden is hid and self.hidden_target == target and self.hidden_ready and not self._flipping \
                 and self.parked is None
+        from redzone.tuners import yttv_timing
+        kc = yttv_timing.key_constants(self.cfg, hid)   # [timing.key_constants] None = off: the key at `at`, as before
+        send_at = at - kc.pause_s if kc is not None else at
         try:
-            while time.time() < at:
+            while time.time() < send_at:
                 if not ours():
                     return
-                await asyncio.sleep(min(0.1, max(0.0, at - time.time())))
+                await asyncio.sleep(min(0.1, max(0.0, send_at - time.time())))
             if not ours() or self._busy():
                 return
             async with self._lock:
@@ -4196,7 +4245,7 @@ class Controller:
                     return
                 t_key = time.time()
                 sent = await hid.key("KEYCODE_MEDIA_PAUSE")
-                t_pause = (t_key + time.time()) / 2.0
+                t_pause = (t_key + time.time()) / 2.0 if kc is None else t_key + kc.pause_s
                 if not sent or not getattr(sent, "ok", False):
                     log.info("buffered jump: PAUSE not sent to %s on %s", target, hid.host)
                     return
@@ -4232,11 +4281,14 @@ class Controller:
         if pb.get("state") != "paused":
             log.info("buffered jump: the park of %s on %s reads %s, not paused", target, hid.host, pb.get("state"))
             return False
+        from redzone.tuners import yttv_timing
+        kc = yttv_timing.key_constants(self.cfg, hid)   # [timing.key_constants] None = off
+        t_play_key = time.time()
         sent = await hid.key("KEYCODE_MEDIA_PLAY")
         if not sent or not getattr(sent, "ok", False):
             return False
         self._mark("snap_play")
-        paused = max(0.0, time.time() - sp.at)
+        paused = max(0.0, time.time() - sp.at) if kc is None else max(0.0, t_play_key + kc.resume_s - sp.at)
         behind = round(self.held.get(target, 0.0) + paused, 1)
         self._set_held(target, behind)
         if self.on_label is not None:
@@ -4271,6 +4323,117 @@ class Controller:
                     self._set_hidden(None, False)
         self._snap_task = asyncio.create_task(roll())
         return True
+
+    # --- [park.enabled] PARK steps (unit PARK-HANDS): the decision-path owner (PARK-CONTROLLER) calls these -------
+    # Each takes the control lock, returns a ParkStep, and refuses (nothing sent) unless park_why() is "". With
+    # park.enabled off nothing calls them, no ParkHands exists and no park.* key is read.
+
+    def park_why(self) -> str:
+        """Why the PARK steps may not run ("" = they may)."""
+        if not self.cfg.get("park.enabled", False):
+            return "park.enabled is off"
+        if not self.live_control:
+            return "dry run, or no stick"
+        if not self.two_stick:
+            return f"two sticks needed ({self.two_stick_why()})"
+        if getattr(self.tv, "sound_guard", None) is None:
+            return "sound_guard.enabled is off: PARK never runs without the sound guard"
+        if not self.tv.must_be_silent():
+            return "sound_guard.must_be_silent is off: PARK needs silence required"
+        blocked = self._sound_blocked()
+        if blocked:
+            return f"sound incident open ({blocked})"
+        hands = self._park_hands
+        if hands is not None and hands.stopped:
+            return f"stopped after a sound stop ({hands.stopped}): cleared by hand only"
+        return ""
+
+    def park_hands(self) -> "ParkHands | None":
+        """The PARK steps, made on first use with park.enabled on (None with it off)."""
+        if not self.cfg.get("park.enabled", False):
+            return None
+        if self._park_hands is None:
+            self._park_hands = ParkHands(self)
+        return self._park_hands
+
+    def _park_refused(self, step: str, target: str | None, why: str) -> ParkStep:
+        return ParkStep(step, "refused", why=why, target=target or "")
+
+    async def park_tune(self, target: str) -> ParkStep:
+        """Tune the hidden stick to `target` and read its place (ParkHands.tune). It is then PARK's (park_held)."""
+        why = self.park_why()
+        if why:
+            return self._park_refused("tune", target, why)
+        hands, hid = self.park_hands(), self.hidden
+        async with self._lock:
+            out = await hands.tune(hid, target)
+            if out.ok and self.hidden is hid:
+                self._set_hidden(target, False, state="park_held", why=f"PARK: {out.way}")
+            elif self.hidden is hid and self.hidden_target == target:
+                self._set_hidden(None, False, why="PARK: tune failed")
+            return out
+
+    async def park_pause(self, target: str, at: float | None = None) -> ParkStep:
+        """Freeze the hidden stick (tuned to `target` by park_tune) on the frame at wall time `at` (ParkHands.park)."""
+        why = self.park_why()
+        if why:
+            return self._park_refused("park", target, why)
+        hands, hid = self.park_hands(), self.hidden
+        async with self._lock:
+            out = await hands.park(hid, target, at)
+            if self.hidden is hid and hands.place_of(hid) is None and self.hidden_target == target:
+                self._set_hidden(None, False, why="PARK: lost its place")
+            return out
+
+    def park_stale(self) -> str:
+        """Why the hidden stick's park should be made again ("" = it holds, or there is none)."""
+        hands, hid = self._park_hands, self.hidden
+        return hands.stale(hid) if hands is not None and hid is not None else ""
+
+    async def park_jump(self, target: str) -> ParkStep:
+        """Show the hidden stick, parked on `target`: resume it, flip, pause the stick left (ParkHands.jump). A flip
+        that does not land keeps the picture that was up ("kept": nothing is degraded, the input was read back).
+        A sound stop ("stop") ends PARK until the incident is cleared by hand."""
+        why = self.park_why()
+        if why:
+            return self._park_refused("jump", target, why)
+        hands, hid, vis = self.park_hands(), self.hidden, self.main
+        hdmi = self.hdmi.get(hid.host) if hid is not None else None
+        if hid is None or vis is None or not hdmi:
+            return self._park_refused("jump", target, "no hidden stick with an input")
+        async with self._lock:
+            was_on, out = self.on_target, None
+            self._flipping = True
+            try:
+                out = await hands.jump(hid, target, vis, hdmi)
+                if out.ok:
+                    self.active = self.sticks.index(hid)
+            finally:
+                self._flipping = False
+            if out.ok:
+                self.on_target = target
+                self._mark("park_jump")
+                self.latency.record("flip", out.numbers["flip_s"])
+                lp = hands.place_of(vis)
+                if lp is not None and lp.paused and vis is self.hidden:
+                    self._set_hidden(lp.target, False, state="park_held", why="PARK: the stick left is held")
+                else:
+                    self._set_hidden(None, False, why="PARK: the stick left is not held")
+            elif out.outcome == "kept":
+                self.on_target = was_on
+            return out
+
+    async def park_finish(self) -> ParkStep:
+        """Never leave a stick paused (ParkHands.finish). Runs with park.enabled on even after a sound stop (it then
+        sends nothing and says so)."""
+        hands = self._park_hands
+        if hands is None:
+            return self._park_refused("finish", None, "nothing to finish")
+        async with self._lock:
+            out = await hands.finish()
+            if self.standby_m.is_("park_held"):
+                self._set_hidden(None, False, why="PARK finished")
+            return out
 
     def _scrub_fallback_live(self) -> bool:
         """After a failed scrub: flip to the stream at the live edge (today's behavior, graded at B=0) or keep
@@ -5348,3 +5511,659 @@ class Controller:
                         "standby_state": self.standby_m.state if s is self.hidden else None,
                         "link": s.link_m.view(history=0) if getattr(s, "link_m", None) is not None else None})
         return out
+
+
+# ============================================================================================================
+# [park.enabled] PARK hands (integration plan unit 7, PARK-HANDS): the device steps of the two-stick show, moved from
+# the local show runner (tools/park_live: RealRig and Stream), which worked on the real sticks and TV on Nov 10.
+#
+#   PARK = the hidden stick is tuned to the next game and PAUSED on a dead-ball frame;
+#   a jump = resume it, flip the TV input, pause the stick that was left.
+#
+# Every step returns a ParkStep (words and numbers only). Nothing here runs unless Controller.park_why() is "":
+# park.enabled, sound_guard.enabled and sound_guard.must_be_silent all on, live control, two sticks. With
+# park.enabled off nothing calls these and nothing in the controller changes (tests/test_park_hands.py).
+# Keys: MEDIA_PLAY_PAUSE, BACK and the D-pad (PARK_KEYS), plus the tuner's own; never volume, mute, power or HOME.
+
+PARK_KEYS = ("KEYCODE_MEDIA_PLAY_PAUSE", "KEYCODE_BACK", "KEYCODE_DPAD_CENTER", "KEYCODE_DPAD_LEFT",
+             "KEYCODE_DPAD_RIGHT")
+
+
+@dataclass
+class ParkStep:
+    """What one PARK step did, for the controller and the Show tab: words and numbers only (no address, device id,
+    account or frame). outcome:
+      ok       done as asked
+      failed   not done; the picture on screen is unchanged (the stick may need a fresh tune: its place says so)
+      kept     a jump whose flip did not land: the picture that was up is still up and playing again
+      stop     sound: an open incident, or silence not read back. Nothing more is sent until it is cleared by hand
+      refused  nothing was sent (flag off, no sound guard, wrong stick state)"""
+    step: str
+    outcome: str
+    took_s: float = 0.0
+    way: str = ""
+    why: str = ""
+    stick: str = ""
+    target: str = ""
+    numbers: dict = field(default_factory=dict)
+
+    @property
+    def ok(self) -> bool:
+        return self.outcome == "ok"
+
+    def view(self) -> dict:
+        return {"step": self.step, "outcome": self.outcome, "took_s": round(self.took_s, 2), "way": self.way,
+                "why": self.why, "stick": self.stick, "target": self.target, "numbers": dict(self.numbers)}
+
+
+@dataclass
+class ParkPlace:
+    """Where one stick's stream sits on YouTube's clock: content time = anchor + media-session position (the same
+    two fields as the PARK timing model's Tune, which the PARK controller builds from them). `read` = the anchor came
+    from a label read on this tune; otherwise it is the nominal guess (the stream was at its live edge, park
+    timing's live_lag behind YouTube's clock) and whoever plans must use the wider unread padding."""
+    target: str
+    anchor: float
+    read: bool
+    tuned_at: float
+    ref_wall: float               # a moment the stream was seen playing at ref_pos (stream seconds)
+    ref_pos: float
+    paused: bool = False
+    frozen_pos: float | None = None
+    paused_at: float | None = None
+    kept: bool = False            # found already on the game (not tuned by PARK): believed only after a read
+
+    def content(self, position: float) -> float:
+        return self.anchor + float(position)
+
+    def position_at(self, wall: float) -> float:
+        """Where the stream is at `wall` (frozen while paused)."""
+        if self.paused and self.frozen_pos is not None:
+            return self.frozen_pos
+        return self.ref_pos + max(0.0, wall - self.ref_wall)
+
+    def behind_s(self, wall: float) -> float:
+        """How far the picture is behind YouTube's clock at `wall` (live edge plus everything paused or seeked)."""
+        return wall - self.content(self.position_at(wall))
+
+
+class ParkHands:
+    """The PARK steps on the controller's own sticks and TV. One per controller, made with park.enabled on.
+    `now` and `sleep` are the wall clock (tests pass a fast fake one); `label_reader(stick)` returns a
+    yttv_label.LabelRead (or None) for the overlay on screen; the default is the repo's own reader."""
+
+    def __init__(self, ctl: "Controller", *, now: Callable[[], float] = time.time, sleep=asyncio.sleep,
+                 label_reader: Callable[[Stick], Any] | None = None):
+        from redzone.decider.tune_offset import TuneOffsets
+        self.ctl, self.now, self.sleep = ctl, now, sleep
+        self.label_reader = label_reader or self._repo_label
+        self.m = MachineMap(PARK_STICK, clock=now)
+        self.places: dict[str, ParkPlace] = {}               # stick host -> its place (never shown: hosts are addresses)
+        self.offsets = TuneOffsets()                          # the same read, for decider/tune_offset (S8)
+        self.stopped = ""                                     # a sound stop: why
+        self.counts = {"reads_tried": 0, "reads_ok": 0, "inferred_start": 0, "tunes": 0, "jumps": 0, "kept": 0}
+        self.last: ParkStep | None = None
+        self._probe = None
+
+    # --- settings -------------------------------------------------------------------------------------------
+    def _num(self, key: str) -> float:
+        v = self.ctl.cfg.get(f"park.{key}", None)
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            v = config.default(f"park.{key}")
+        return float(v)
+
+    def step_s(self, name: str) -> float:
+        return self._num(f"steps.{name}")
+
+    def pause_lead(self, stick: Stick) -> float:
+        """The frozen frame is this far past the pause key on this stick model."""
+        return self.step_s("pause_lead_plus_s" if "plus" in str(getattr(stick, "model", "") or "").lower()
+                           else "pause_lead_s")
+
+    def _live_lag(self) -> float:
+        v = self.ctl.cfg.get("park.timing.live_lag", None)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return float(v)
+        return self.step_s("live_lag_s")
+
+    # --- small helpers --------------------------------------------------------------------------------------
+    def label(self, stick: Stick) -> str:
+        return self.ctl._stick_label(stick.host)
+
+    def _pkg(self, stick: Stick) -> str | None:
+        return (stick.packages or {}).get("youtubetv")
+
+    def _to(self, stick: Stick, state: str, why: str) -> None:
+        self.m[self.label(stick)].to(state, why=why)
+
+    def place_of(self, stick: Stick) -> ParkPlace | None:
+        return self.places.get(stick.host)
+
+    def _drop(self, stick: Stick, why: str) -> None:
+        self.places.pop(stick.host, None)
+        if self.m.state(self.label(stick)) != "stopped":
+            self._to(stick, "idle", why)
+
+    async def _sleep_until(self, wall: float) -> None:
+        d = wall - self.now()
+        if d > 0:
+            await self.sleep(d)
+
+    def _done(self, st: ParkStep, t0: float) -> ParkStep:
+        st.took_s = round(self.now() - t0, 2)
+        self.last = st
+        log.info("park %s %s on %s: %s %s %s", st.step, st.outcome, st.stick, st.target, st.way, st.why)
+        return st
+
+    async def _key(self, stick: Stick, code: str) -> bool:
+        """One key from PARK_KEYS. Refused (False, nothing sent) for any other key, after a sound stop, or while a
+        sound incident is open."""
+        if code not in PARK_KEYS:
+            log.error("park: key %s is not one of PARK's keys: not sent", code)
+            return False
+        if self.stopped or self.ctl._sound_blocked():
+            return False
+        r = await stick.key(code)
+        return bool(r is not None and getattr(r, "ok", False))
+
+    async def _read(self, stick: Stick):
+        """One media-session read with the stick's clock (yttv_timing.SessionRead), or None."""
+        from redzone.tuners import yttv_timing
+        return await yttv_timing.read_session(stick, self._pkg(stick))
+
+    async def _wait(self, stick: Stick, want: str, limit: float, *, min_pos: float = 0.0, since: float | None = None):
+        """The first read in `want` state with a position of at least min_pos, read after `since`; None by `limit`."""
+        end = self.now() + limit
+        while True:
+            r = await self._read(stick)
+            if r is not None and r.state == want and r.position_s is not None and r.position_s >= min_pos \
+                    and (since is None or r.wall >= since):
+                return r
+            if self.now() >= end:
+                return None
+            await self.sleep(self.step_s("poll_s"))
+
+    @staticmethod
+    def names(report: dict, target: str) -> bool:
+        """Does this playback report name the target's channel? The channel table's own check, or the channel's
+        short name or its local station's name as a word (a local NBC names itself WRAL, finding 3)."""
+        if (report or {}).get("state") != "playing":
+            return False
+        match = channel_matcher(target)
+        try:
+            if match is not None and match(report) is True:
+                return True
+        except Exception:
+            log.exception("park: channel check of %s", target)
+        ch = target.split(":", 1)[-1].lower()
+        text = " ".join(str(report.get(x) or "") for x in ("title", "subtitle", "description")).lower()
+        words = [w.lower() for w in (ch, LOCAL_SEARCH_QUERY.get(ch, "")) if w]
+        return any(re.search(rf"(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])", text) for w in words)
+
+    def ways(self, target: str) -> list[tuple[str, str]]:
+        """How to tune: the channel's direct watch code first, then its local-station search, then search."""
+        ch = self.ctl.channels
+        out: list[tuple[str, str]] = []
+        code = ch.yttv_code(target)
+        if code:
+            out.append(("code", code))
+        key = ch.yttv_search_key(target) or (target.split(":", 1)[-1] if target.split(":", 1)[-1] in LOCAL_SEARCH_QUERY
+                                             else None)
+        if key and key in LOCAL_SEARCH_QUERY:
+            out.append(("local search", f"search:local:{key}"))
+        if key:
+            out.append(("search", f"search:{key}"))
+        return out
+
+    async def _repo_label(self, stick: Stick):
+        """The repo's label reader on the overlay that is up (numbers only; it deletes its frame)."""
+        from redzone.tuners import yttv_label
+        if self._probe is None:
+            self._probe = yttv_label.LabelProbe(self.ctl.cfg)
+        _ov, lab = await self._probe._frame(stick, 0.0)
+        return lab
+
+    # --- 1. TUNE ----------------------------------------------------------------------------------------------
+    async def tune(self, stick: Stick, target: str) -> ParkStep:
+        """Put `stick` on `target` and learn its place. A stream PARK itself tuned there, still playing it, is kept.
+        A stream already on the game that PARK did not tune is NEVER taken to be at its live edge (one was 120 s
+        behind, run 6): it is kept only if the read gesture reads its place; otherwise it is tuned fresh. A fresh
+        tune: the direct code, then local-station search, then search; a way the tuner calls failed still counts
+        when the media session then names the game. Then the read gesture (place)."""
+        t0, st = self.now(), ParkStep("tune", "failed", stick=self.label(stick), target=target)
+        pb = await stick.playback(self._pkg(stick))
+        place = self.places.get(stick.host)
+        if place is not None and place.target == target and self.names(pb, target) and not place.paused:
+            r = await self._read(stick)
+            if r is not None and r.state == "playing" and r.pos_now_s is not None \
+                    and abs(r.pos_now_s - place.position_at(r.wall)) <= self.step_s("land_wait_s"):
+                st.outcome, st.way = "ok", "kept: PARK tuned it and it still plays it"
+                st.numbers = self._place_numbers(place, r)
+                return self._done(st, t0)
+        if place is not None and place.target == target and place.paused:
+            r = await self._read(stick)
+            if r is not None and r.state == "paused":
+                st.outcome, st.way = "ok", "kept: already parked on it"
+                st.numbers = self._place_numbers(place, r)
+                return self._done(st, t0)
+        self._drop(stick, "a new tune")
+        if self.names(pb, target) and int(self.step_s("read_steps")) > 0:
+            r = await self._read(stick)
+            if r is not None and r.state == "playing" and r.position_s is not None \
+                    and r.position_s >= self.step_s("min_real_pos_s"):
+                # kept only by a read: its place is whatever the read says, believed up to kept_lag_max_s behind
+                place = ParkPlace(target, 0.0, False, self.now(), r.wall, r.pos_now_s or r.position_s, kept=True)
+                nums = await self._gesture(stick, place)
+                if nums is not None and place.read:
+                    self.places[stick.host] = place
+                    self.offsets.new_tune(target, place.tuned_at)
+                    self.counts["kept"] += 1
+                    st.outcome, st.way, st.numbers = "ok", "kept: already on it, place read", nums
+                    self._to(stick, "playing", "kept: already on it, place read")
+                    return self._done(st, t0)
+                self._drop(stick, "already on it, place not read: tune fresh")
+                st.way = "already on it but its place was not read: tuned fresh; "
+        return await self._tune_fresh(stick, target, st, t0)
+
+    async def _tune_fresh(self, stick: Stick, target: str, st: ParkStep, t0: float) -> ParkStep:
+        app = target.split(":", 1)[0]
+        tuner = TUNERS.get(app)
+        ways = self.ways(target) if app == "youtubetv" else []
+        if tuner is None or not ways:
+            st.outcome, st.why = "refused", "PARK tunes YouTube TV channels with a code or a search only"
+            return self._done(st, t0)
+        stick.tuned = None                       # a real reload: never "already on it, uninterrupted"
+        self._to(stick, "tuning", f"tune {target}")
+        ok, how, why = False, [], ""
+        t_tune = self.now()
+        for way, ref in ways:
+            if self.stopped or self.ctl._sound_blocked():
+                why = "sound stop"
+                break
+            try:
+                res = await asyncio.wait_for(tuner.tune(stick, ref, target), self.step_s("tune_timeout_s"))
+                ok, why = bool(res.ok), str(getattr(res, "error", "") or "")
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                ok, why = False, type(exc).__name__
+            if not ok and self.names(await stick.playback(self._pkg(stick)), target):
+                ok, way = True, way + ", confirmed by what its media session names"
+            how.append(way if ok else way + " failed")
+            if ok:
+                why = ""
+                break
+        st.way += "; ".join(how)
+        self.ctl.session_guard.note_tune(stick.host)
+        self.ctl.tuned_at[stick.host] = time.time()
+        self.counts["tunes"] += 1
+        if not ok:
+            st.why = why or "no way worked"
+            self._drop(stick, "tune failed")
+            return self._done(st, t0)
+        first = await self._wait(stick, "playing", self.step_s("first_report_s"),
+                                 min_pos=self.step_s("min_real_pos_s"), since=t_tune)
+        if first is None:
+            st.why = (f"no playing report with the stream's own position (at least "
+                      f"{self.step_s('min_real_pos_s'):.0f} s) within {self.step_s('first_report_s'):.0f} s of the tune")
+            self._drop(stick, "no real position after the tune")
+            return self._done(st, t0)
+        pos = first.pos_now_s if first.pos_now_s is not None else first.position_s
+        place = ParkPlace(target, first.wall - self._live_lag() - pos, False, t_tune, first.wall, pos)
+        self.offsets.new_tune(target, t_tune)
+        nums = {"ref_pos_s": round(pos, 2), "read": False}
+        if int(self.step_s("read_steps")) > 0:
+            got = await self._gesture(stick, place, first=first)
+            if got is None:
+                st.why = "the read gesture did not end playing"
+                self._drop(stick, "read gesture did not end playing")
+                return self._done(st, t0)
+            nums.update(got)
+        else:
+            self._to(stick, "playing", "tuned, no read asked")
+        self.places[stick.host] = place
+        stick.remember(target, await stick.playback(self._pkg(stick)))
+        st.outcome, st.numbers = "ok", nums
+        st.way += ", read" if place.read else ", no read"
+        if not place.read:
+            st.why = "place not read: plan it with the unread padding"
+        return self._done(st, t0)
+
+    # --- 2. PLACE: the read gesture ---------------------------------------------------------------------------
+    def _prog_start(self, lab) -> tuple[float | None, bool]:
+        """The programme's start: the reader's own, else inferred on the 5-minute grid from capture time minus the
+        label when that leaves a believable frame age (read_age_min_s to read_age_max_s). (start, inferred)."""
+        p0 = getattr(lab, "prog_start", None)
+        if p0 is not None:
+            return float(p0), False
+        if getattr(lab, "status", "") != "ok" or getattr(lab, "label_s", None) is None:
+            return None, False
+        raw = float(lab.cap_wall) - float(lab.label_s)
+        grid = self.step_s("grid_s")
+        cand = math.floor(raw / grid) * grid
+        if self.step_s("read_age_min_s") <= raw - cand <= self.step_s("read_age_max_s"):
+            return cand, True
+        return None, False
+
+    async def _label(self, stick: Stick):
+        """The label on the overlay that is up: one read, and one retry when the first gives no number."""
+        lab = None
+        for _ in range(2):
+            self.counts["reads_tried"] += 1
+            try:
+                lab = await asyncio.wait_for(self.label_reader(stick), self.step_s("label_timeout_s"))
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                lab = None
+            if lab is not None and getattr(lab, "status", "") == "ok" and getattr(lab, "label_s", None) is not None:
+                return lab
+        return lab
+
+    async def _gesture(self, stick: Stick, place: ParkPlace, first=None) -> dict | None:
+        """CENTER (pause + overlay), LEFT x steps (exactly 15 s each), the label read, CENTER (commit). It ends
+        playing, steps x 15 s plus the time it sat further back. With a label read that is believable the place
+        becomes exact (`read`); a fresh tune's read is believed when the picture sits base_lag_min_s to
+        base_lag_max_s behind YouTube's clock (less the seek), a stream found already on the game up to
+        kept_lag_max_s. None = it did not end playing."""
+        n, step = int(self.step_s("read_steps")), self.step_s("left_step_s")
+        self._to(stick, "reading", "the read gesture")
+        if not await self._key(stick, "KEYCODE_DPAD_CENTER"):
+            return None
+        await self.sleep(self.step_s("center_wait_s"))
+        for _ in range(n):
+            await self._key(stick, "KEYCODE_DPAD_LEFT")
+            await self.sleep(self.step_s("left_gap_s"))
+        await self.sleep(self.step_s("label_wait_s"))
+        pz = await self._read(stick)                          # the pause report: the frozen frame's exact position
+        pz = pz if pz is not None and pz.state == "paused" and pz.position_s is not None else None
+        lab = await self._label(stick)
+        t_commit = self.now()
+        await self._key(stick, "KEYCODE_DPAD_CENTER")
+        land = await self._wait(stick, "playing", self.step_s("land_wait_s"), since=t_commit)
+        await self.sleep(self.step_s("settle_s"))
+        r = await self._read(stick)
+        if r is not None and r.state == "paused":             # the commit toggled a pause: resume once
+            await self._key(stick, "KEYCODE_MEDIA_PLAY_PAUSE")
+            land = await self._wait(stick, "playing", self.step_s("replay_wait_s"), since=self.now()) or land
+            r = await self._read(stick)
+        if land is None or r is None or r.state != "playing":
+            return None
+        seek = (land.position_s - pz.position_s) if pz is not None else None
+        good = seek is not None and -step * n - 0.05 <= seek <= -step * n + 0.6
+        prog0, inferred = self._prog_start(lab) if lab is not None else (None, False)
+        label_ok = lab is not None and getattr(lab, "status", "") == "ok" and getattr(lab, "label_s", None) is not None
+        if label_ok:
+            self.counts["reads_ok"] += 1
+        why = ""
+        if not label_ok:
+            why = f"label not read ({getattr(lab, 'status', 'no reply') if lab is not None else 'no reply'})"
+        elif prog0 is None:
+            why = "label read but the programme's start is unknown"
+        elif not good:
+            why = "the seek did not land where the LEFTs put it"
+        else:
+            anchor = prog0 + float(lab.label_s) - (pz.position_s - step * n)
+            base = r.wall - (anchor + r.pos_now_s) - step * n
+            hi = self.step_s("kept_lag_max_s") if place.kept else self.step_s("base_lag_max_s")
+            if self.step_s("base_lag_min_s") < base < hi:
+                place.anchor, place.read = anchor, True
+                self.counts["inferred_start"] += int(inferred)
+                if first is not None and not place.kept:
+                    fp = first.pos_now_s if first.pos_now_s is not None else first.position_s
+                    self.offsets.read(place.target, first.wall - (anchor + fp), "label", place.tuned_at)
+            else:
+                why = f"the read puts the picture {base:.0f} s behind YouTube's clock: not believed"
+        place.ref_wall, place.ref_pos, place.paused = r.wall, r.pos_now_s, False
+        self._to(stick, "playing", "read gesture done, place read" if place.read else f"read gesture done, {why}")
+        sat = (land.event_wall - pz.event_wall) if (pz is not None and land.event_wall is not None
+                                                    and pz.event_wall is not None) else None
+        out = self._place_numbers(place, r)
+        out.update(seek_s=round(seek, 2) if seek is not None else None, sat_s=round(sat, 2) if sat is not None else None,
+                   start_inferred=bool(inferred and place.read), read_why=why)
+        return out
+
+    def _place_numbers(self, place: ParkPlace, r) -> dict:
+        pos = r.pos_now_s if r.pos_now_s is not None else r.position_s
+        return {"read": place.read, "pos_s": round(pos, 2) if pos is not None else None,
+                "behind_youtube_s": round(r.wall - place.content(pos), 2) if pos is not None else None,
+                "padding": "read" if place.read else "unread", "kept": place.kept}
+
+    # --- 3. PARK -----------------------------------------------------------------------------------------------
+    async def park(self, stick: Stick, target: str, at: float | None = None) -> ParkStep:
+        """Pause `stick` (playing `target`, placed by tune) so its picture freezes at wall time `at` (the pause key
+        goes out pause_lead earlier), BACK to clear the banner, then read back: still paused, YouTube TV in front."""
+        t0, st = self.now(), ParkStep("park", "failed", stick=self.label(stick), target=target,
+                                      way="pause key, BACK, read back")
+        place = self.places.get(stick.host)
+        if place is None or place.target != target or place.paused:
+            st.outcome = "refused"
+            st.why = "not placed on this game by a tune" if place is None or place.target != target else "already parked"
+            return self._done(st, t0)
+        lead = self.pause_lead(stick)
+        if at is not None:
+            await self._sleep_until(at - lead)
+        t_key = self.now()
+        self._to(stick, "pausing", "pause key")
+        if not await self._key(stick, "KEYCODE_MEDIA_PLAY_PAUSE"):
+            st.why = "the pause key was not sent"
+            self._to(stick, "playing", "pause key not sent")
+            return self._done(st, t0)
+        pz = await self._wait(stick, "paused", self.step_s("replay_wait_s"), since=t_key)
+        if pz is None:
+            r = await self._read(stick)
+            st.why = f"no paused report after the key (it reports {r.state if r else 'nothing'})"
+            if r is not None and r.state == "playing":
+                self._to(stick, "playing", "the pause key did not pause")
+            else:
+                self._drop(stick, "neither paused nor playing: tune again")
+            return self._done(st, t0)
+        ok, why = await self._confirm(stick, place, pz, t_key)
+        if not ok:
+            st.why = why
+            return self._done(st, t0)
+        frozen = place.content(place.frozen_pos)
+        st.outcome = "ok"
+        st.numbers = {"read": place.read, "padding": "read" if place.read else "unread",
+                      "frozen_pos_s": round(place.frozen_pos, 2), "key_late_s": round(t_key + lead - at, 2) if at else None,
+                      "behind_youtube_s": round((place.paused_at or t_key + lead) - frozen, 2), "pause_lead_s": lead}
+        return self._done(st, t0)
+
+    async def _confirm(self, stick: Stick, place: ParkPlace, pz, key_at: float) -> tuple[bool, str]:
+        """BACK clears the pause banner; then read back that it is still paused with YouTube TV in front."""
+        await self._sleep_until(key_at + self.step_s("back_after_s"))
+        await self._key(stick, "KEYCODE_BACK")
+        await self.sleep(self.step_s("confirm_s"))
+        r, fg = await self._read(stick), await stick.foreground()
+        front = bool(self._pkg(stick)) and str(self._pkg(stick)) in (fg or "")
+        if r is None or r.state != "paused" or not front:
+            why = f"after BACK it reports {r.state if r else 'nothing'}, YouTube TV in front: {'yes' if front else 'no'}"
+            if r is not None and r.state == "playing" and front:
+                place.paused, place.ref_wall, place.ref_pos = False, r.wall, r.pos_now_s
+                self._to(stick, "playing", "the pause did not hold")
+            else:
+                self._drop(stick, "lost after the pause: tune again")
+            return False, why
+        place.paused, place.frozen_pos = True, pz.position_s
+        place.paused_at = pz.event_wall if pz.event_wall is not None else key_at + self.pause_lead(stick)
+        self._to(stick, "parked", "paused, banner cleared, read back")
+        return True, ""
+
+    def stale(self, stick: Stick) -> str:
+        """Why the stick's park should be made again ("" = it holds): paused longer than park.max_park_s, or its
+        picture more than park.late_cap_s behind its stream's live edge."""
+        place = self.places.get(stick.host)
+        if place is None or not place.paused or place.paused_at is None:
+            return ""
+        now = self.now()
+        if now - place.paused_at > self._num("max_park_s"):
+            return f"paused {now - place.paused_at:.0f} s, past park.max_park_s"
+        if place.behind_s(now) - self._live_lag() > self._num("late_cap_s"):
+            return "more than park.late_cap_s behind its live edge"
+        return ""
+
+    # --- 4. JUMP -------------------------------------------------------------------------------------------------
+    async def jump(self, to: Stick, target: str, left: Stick | None, hdmi: str) -> ParkStep:
+        """Resume `to` (parked on `target`), flip the TV to `hdmi` resume_lead_s later (the TV's own input change),
+        pause `left` hold_key_s after the flip command, then read back the TV's input and, through the sound
+        guard, mute and volume. Input not the new one: the picture still up is started again ("kept"). Sound
+        blocked, an incident, or silence not read back: stop and send nothing more ("stop")."""
+        t0, st = self.now(), ParkStep("jump", "failed", stick=self.label(to), target=target,
+                                      way="resume, flip, pause the stick left, read back")
+        place = self.places.get(to.host)
+        if place is None or place.target != target or not place.paused:
+            st.outcome, st.why = "refused", "the stick is not parked on this game"
+            return self._done(st, t0)
+        g = getattr(self.ctl.tv, "sound_guard", None)
+        if g is None or self.stopped or self.ctl._sound_blocked():
+            st.outcome, st.why = "stop", self.stopped or self.ctl._sound_blocked() or "no sound guard"
+            return self._done(st, t0)
+        lp = self.places.get(left.host) if left is not None else None
+        self._to(to, "resuming", "jump: resume key")
+        if not await self._key(to, "KEYCODE_MEDIA_PLAY_PAUSE"):
+            self._to(to, "parked", "resume key not sent")
+            st.outcome, st.why = "kept", "the resume key was not sent"
+            return self._done(st, t0)
+        await self._sleep_until(t0 + self.step_s("resume_lead_s"))
+        t_flip = self.now()
+        methods = list(self.ctl.cfg.get("park.steps.flip_methods", None) or config.default("park.steps.flip_methods"))
+        flip = asyncio.ensure_future(self.ctl.tv.set_input(hdmi, methods=methods))
+        held_at = None
+        if left is not None:
+            await self._sleep_until(t_flip + self.step_s("hold_key_s"))
+            if lp is not None:
+                self._to(left, "pausing", "jump: the stick left is paused at the swap")
+            if await self._key(left, "KEYCODE_MEDIA_PLAY_PAUSE"):
+                held_at = self.now()
+        try:
+            fok = bool(await flip)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            fok = False                                       # the read-back below says which picture is up
+        flip_s = self.now() - t_flip
+        st.numbers = {"flip_s": round(flip_s, 2), "flip_ok": fok, "read": place.read,
+                      "padding": "read" if place.read else "unread"}
+        stop = await self._sound_readback(g)
+        if stop:
+            return self._stop(st, t0, stop)
+        inp = (g.last or {}).get("input")
+        for _ in range(int(self.step_s("input_rereads"))):
+            if inp:
+                break
+            await self.sleep(self.step_s("input_reread_s"))
+            inp = await self.ctl.tv.input_status()
+        if not inp:
+            return self._stop(st, t0, "the TV's input could not be read back")
+        st.numbers["input_ok"] = inp == hdmi
+        if inp != hdmi:
+            await self._restart_left(left, held_at)
+            r = await self._read(to)
+            if r is not None and r.state == "playing":
+                place.paused, place.ref_wall, place.ref_pos = False, r.wall, r.pos_now_s
+                self._to(to, "playing", "the flip did not land: it plays unseen")
+            elif r is not None and r.state == "paused":
+                self._to(to, "parked", "the flip did not land: still paused")
+            else:
+                self._drop(to, "the flip did not land and it is neither playing nor paused")
+            st.outcome = "kept"
+            st.why = "the flip did not confirm" if not fok else "the TV is not on the new input"
+            return self._done(st, t0)
+        e = await self._wait(to, "playing", self.step_s("replay_wait_s"), since=t0)
+        if e is None:
+            r = await self._read(to)
+            if r is not None and r.state == "paused" and await self._key(to, "KEYCODE_MEDIA_PLAY_PAUSE"):
+                e = await self._wait(to, "playing", self.step_s("replay_wait_s"))
+        if e is None:
+            self._drop(to, "the new picture did not start playing")
+            st.why = "the new picture did not start playing"
+            return self._done(st, t0)
+        land = place.frozen_pos
+        place.paused, place.ref_wall, place.ref_pos = False, e.wall, e.pos_now_s
+        self._to(to, "playing", "jumped: on screen and playing")
+        self.counts["jumps"] += 1
+        st.outcome = "ok"
+        st.numbers.update(jump_s=round(self.now() - t0, 2), land_pos_s=round(land, 2) if land is not None else None,
+                          behind_youtube_s=round(e.wall - place.content(e.pos_now_s), 2))
+        if left is not None:
+            st.numbers["left_paused"] = await self._hold_left(left, lp, held_at)
+        return self._done(st, t0)
+
+    async def _sound_readback(self, g) -> str:
+        """Mute and volume through the sound guard after a flip: "" = silent, read back; else why to stop."""
+        res = await g.check("park jump")
+        if res == "unreadable":
+            res = await g.check("park jump")
+        s = dict(g.last or {})
+        if g.blocked or res in ("incident", "blocked"):
+            return f"sound incident: {g.blocked_why() or res}"
+        if res != "ok" or not sound_silent(s):
+            return f"silence not read back ({res})"
+        return ""
+
+    def _stop(self, st: ParkStep, t0: float, why: str) -> ParkStep:
+        self.stopped = why
+        for s in self.ctl.sticks:
+            if self.m.state(self.label(s)) != "stopped":
+                self._to(s, "stopped", why)
+        st.outcome, st.why = "stop", why
+        return self._done(st, t0)
+
+    async def _restart_left(self, left: Stick | None, held_at: float | None) -> None:
+        """The flip did not land: the picture still up was paused at the swap; start it again at once."""
+        if left is None or held_at is None:
+            return
+        r = await self._read(left)
+        if r is not None and r.state == "paused":
+            await self._key(left, "KEYCODE_MEDIA_PLAY_PAUSE")
+            r = await self._wait(left, "playing", self.step_s("replay_wait_s"))
+        lp = self.places.get(left.host)
+        if lp is not None and r is not None and r.state == "playing":
+            lp.paused, lp.ref_wall, lp.ref_pos = False, r.wall, r.pos_now_s
+            self._to(left, "playing", "the flip did not land: started again")
+        elif lp is not None:
+            self._drop(left, "the flip did not land and it did not start again")
+
+    async def _hold_left(self, left: Stick, lp: ParkPlace | None, held_at: float | None) -> bool:
+        """The stick left: its pause seen, then BACK and the read back (as a park). False = not held."""
+        if held_at is None:
+            if lp is not None:
+                self._to(left, "playing", "the pause key to the stick left was not sent")
+            return False
+        pz = await self._wait(left, "paused", self.step_s("replay_wait_s"), since=held_at - 1.0)
+        if pz is None or lp is None:
+            if lp is not None:
+                self._drop(left, "the stick left did not pause")
+            return False
+        ok, _ = await self._confirm(left, lp, pz, held_at)
+        return ok
+
+    # --- 5. FINISH -------------------------------------------------------------------------------------------------
+    async def finish(self) -> ParkStep:
+        """Never leave a stick paused: every paused stick gets the resume key (none after a sound stop)."""
+        t0, st = self.now(), ParkStep("finish", "ok", way="resume every paused stick")
+        if self.stopped or self.ctl._sound_blocked():
+            st.outcome, st.why = "stop", self.stopped or "sound incident open: nothing sent"
+            return self._done(st, t0)
+        left = 0
+        for s in self.ctl.sticks:
+            r = await self._read(s)
+            if r is not None and r.state == "paused":
+                await self._key(s, "KEYCODE_MEDIA_PLAY_PAUSE")
+                if await self._wait(s, "playing", self.step_s("replay_wait_s")) is None:
+                    left += 1
+            if s.host in self.places:
+                self._drop(s, "finish")
+        if left:
+            st.outcome, st.why = "failed", f"{left} stick(s) still paused"
+        return self._done(st, t0)
+
+    def view(self) -> dict:
+        """For the Show tab: per stick label its state and place (numbers only), the counts, the last step."""
+        sticks = {}
+        for s in self.ctl.sticks:
+            p = self.places.get(s.host)
+            sticks[self.label(s)] = {"state": self.m.state(self.label(s)), "target": p.target if p else None,
+                                     "read": p.read if p else None, "paused": p.paused if p else None}
+        return {"stopped": self.stopped, "sticks": sticks, "counts": dict(self.counts),
+                "last": self.last.view() if self.last else None}

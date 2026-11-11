@@ -160,6 +160,7 @@ export async function mockApi(path, { method, body } = {}) {
     return { ...copy(d), game: copy(g), venue: d.venue && Object.keys(d.venue).length ? d.venue : g.venue };
   }
   if (path.startsWith("/api/v2/")) return mockV2(path, b);
+  if (path.startsWith("/api/show")) return mockShow(path);   // Show view (flag show.ui): ?mock=1&show, plus &loud, &stale or &noshow
   if (path === "/api/teams") return teamsPayload();
   if ((x = path.match(/^\/api\/teams\/(\w+)\/(\d+)/))) {
     const [, lg, id] = x;
@@ -509,4 +510,101 @@ function mockV2(path, b) {
   }
   if (path === "/api/v2/priority") { Object.assign(V2.prefs, b); return { ok: true, message: "Saved", prefs: b }; }
   throw new Error("not in mock");
+}
+
+
+/* ---------- Show view preview (rz-show.js, flag show.ui) ----------
+   A made-up night shaped like the show's state files (redzone-agents STATE_CONTRACT.md): about 1.3 jumps a
+   minute over five games for the last 34 minutes, parks, stays, big plays (seen when that game was on), one alert.
+   ?mock=1&show · &loud = TV sound on · &stale = the file stopped 95 s ago · &noshow = no state file. */
+const SHOW = (() => {
+  let seed = 7;
+  const rnd = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const games = [
+    { game: "DAL @ WSH", league: "nfl", channel: "espn", value: 0.91, per: ["3rd", "4th"], base: [17, 20], every: 260 },
+    { game: "BOS @ PHI", league: "nba", channel: "nbc", value: 0.78, per: ["3rd", "4th"], base: [78, 81], every: 50 },
+    { game: "MSU @ DUKE", league: "cbb", channel: "espn2", value: 0.66, per: ["1st", "2nd"], base: [41, 38], every: 55 },
+    { game: "LAL @ GS", league: "nba", channel: "tnt", value: 0.52, per: ["2nd", "3rd"], base: [55, 61], every: 48 },
+    { game: "NYR @ BOS", league: "nhl", channel: "tnt", value: 0.34, per: ["2nd", "3rd"], base: [1, 1], every: 900 },
+  ];
+  const why = ["dead ball", "timeout", "made basket", "free throws", "commercial break", "quarter break", "whistle"];
+  const start = Date.now() / 1000 - 34 * 60;
+  const jumps = [], extra = [];
+  let t = start + 20, on = 1;
+  const grow = (until) => {
+    while (t < until) {
+      const look = 28 + rnd() * 44;
+      const to = rnd() < 0.3 ? 0 : 1 + Math.floor(rnd() * 4);
+      const next = to === on ? (to + 1) % games.length : to;
+      t += look;
+      jumps.push({ t, kind: "jump", from: games[on].game, to: games[next].game, reason: why[Math.floor(rnd() * why.length)], jump_s: 1.8 + rnd() * 0.9, look_s: look });
+      const pk = (next + 1 + Math.floor(rnd() * 3)) % games.length;
+      extra.push({ t: t + 6 + rnd() * 6, kind: "park", game: games[pk].game, channel: games[pk].channel, took_s: 7 + rnd() * 5 });
+      if (rnd() < 0.3) extra.push({ t: t + 14, kind: "stay", reason: rnd() < 0.6 ? "no safe exit yet" : "the other stick is not ready", for_s: Math.round(6 + rnd() * 14) });
+      if (rnd() < 0.42) {
+        const bg = rnd() < 0.55 ? next : Math.floor(rnd() * games.length);
+        extra.push({ t: t + 5 + rnd() * 20, kind: "big_play", game: games[bg].game, what: ["three to take the lead", "and-one through contact", "go-ahead touchdown", "steal and a dunk", "power-play goal"][Math.floor(rnd() * 5)], seen: bg === next });
+      }
+      on = next;
+    }
+  };
+  grow(Date.now() / 1000 + 120);
+  extra.push({ t: start + 21 * 60, kind: "alert", level: "warn", text: "the feed is 40 s late" });
+  return { games, start, jumps, extra, grow };
+})();
+
+function showAt(T) {
+  SHOW.grow(T + 120);
+  const done = SHOW.jumps.filter((j) => j.t <= T);
+  const last = done[done.length - 1];
+  const nextJ = SHOW.jumps.find((j) => j.t > T);
+  const onName = last ? last.to : SHOW.games[1].game;
+  const parkEv = SHOW.extra.filter((e) => e.kind === "park" && e.t <= T).pop();
+  const rows = SHOW.games.map((g) => {
+    const k = Math.floor((T - SHOW.start) / g.every);
+    const score = `${g.base[0] + Math.floor(k * 1.1)}-${g.base[1] + k}`;
+    const left = Math.max(0, 720 - ((T - SHOW.start) % 720));
+    const st = g.game === onName ? (nextJ && nextJ.t - T < 8 ? "dead ball" : "live play") : ["live play", "dead ball", "break"][Math.floor(T / 37 + g.every) % 3];
+    return { game: g.game, league: g.league, channel: g.channel, period: g.per[(T - SHOW.start) > 1200 ? 1 : 0], clock: g.league === "nhl" ? `${Math.floor(left / 60) % 20}:${String(Math.floor(left % 60)).padStart(2, "0")}` : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")}`, score, state: st, value: g.value, on_screen: g.game === onName, parked: !!parkEv && parkEv.game === g.game && g.game !== onName };
+  });
+  const cur = rows.find((r) => r.on_screen);
+  const win = {};
+  for (const w of ["1", "5", "10", "20", "30", "45", "60"]) win[w] = T - SHOW.start >= Number(w) * 60 ? done.filter((j) => j.t > T - Number(w) * 60).length : null;
+  const mins = (T - SHOW.start) / 60;
+  const inS = nextJ ? nextJ.t - T : null;
+  const stays = SHOW.extra.filter((e) => e.kind === "stay" && e.t <= T);
+  const reasons = {};
+  for (const e of stays) reasons[e.reason] = (reasons[e.reason] || 0) + e.for_s * 9;
+  const loud = Q.has("loud");
+  return {
+    updated: T, mode: "live",
+    session: { started: SHOW.start, minutes: mins, planned_minutes: 120 },
+    sound: loud ? { mute: "unmuted", volume: 12, read_back_at: T - 4, ok: false } : { mute: "muted", volume: 0, read_back_at: T - (T % 10), ok: true },
+    on_screen: { game: onName, league: cur.league, channel: cur.channel, stick: "plus", input: "HDMI2", period: cur.period, clock: cur.clock, score: cur.score, behind_live_s: 41, since: last ? last.t : SHOW.start, look_s: last ? T - last.t : null, state: cur.state },
+    parked: parkEv && parkEv.game !== onName ? { game: parkEv.game, league: SHOW.games.find((g) => g.game === parkEv.game).league, channel: parkEv.channel, stick: "s2023", ready: T - parkEv.t > 10, parked_for_s: T - parkEv.t, behind_live_s: 55 } : null,
+    next: nextJ ? (inS > 22 ? { action: "stay", to_game: null, in_s: inS - 22, reason: "the play is still live on this game" }
+      : { action: "jump", to_game: nextJ.to, in_s: inS, reason: `${nextJ.reason} coming on ${onName}, about ${Math.round(20 + inS)} s of dead time` }) : null,
+    pace: { jumps: done.length, per_min_now: win["5"] !== null ? win["5"] / 5 : null, per_min_session: done.length / Math.max(1, mins), windows: win },
+    planned: { scheduled: Math.round(done.length * 1.38), delivered: done.length },
+    rule1: { mid_play_joins: 0, mid_play_leaves: 0, high_leverage_leaves: 0, judged: "unknown live" },
+    timing: { padding_s: 2.8, channels: { espn: { k_s: -2.78, k_spread_s: 0.5, tune_offset_known: true }, nbc: { k_s: 1.12, k_spread_s: 0.9, tune_offset_known: true }, tnt: { k_s: 0.4, k_spread_s: 2.1, tune_offset_known: false } } },
+    stay_reasons: { "no safe exit yet": 310, "the other stick is not ready": 120, ...reasons },
+    health: { tv: "ok", feed: "ok", sticks: { plus: "ok", s2023: "ok" }, eyes: "ok", last_error: "" },
+    games: rows,
+    eyes: { updated: T - 0.6, status: "ok", channel: cur.channel, league: cur.league, frame_y: T - 26, period: 2, clock_s: 463, clock_running: cur.state === "live play", k: { "espn|cbb": { k_s: -2.78, spread_s: 0.5, n: 5 } }, reads_per_min: 104 + Math.round(T % 9), failed_reads_per_min: 3, cpu_pct: 9.5, mem_mb: 520 },
+  };
+}
+
+function mockShow(path) {
+  const off = Q.has("stale") ? 95 : 0;
+  const T = Date.now() / 1000 - off;
+  if (path.startsWith("/api/show/events")) {
+    if (Q.has("noshow")) return { events: [] };
+    const m = path.match(/since=([^&]+)/);
+    const since = m ? Number(decodeURIComponent(m[1])) : -Infinity;
+    const all = [...SHOW.jumps, ...SHOW.extra].filter((e) => e.t <= T && e.t >= since).sort((a, b) => a.t - b.t);
+    return { events: copy(all.slice(-500)) };
+  }
+  if (Q.has("noshow")) return { eyes: null, stale_s: null };
+  return { ...showAt(T), stale_s: off };
 }

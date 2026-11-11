@@ -216,7 +216,7 @@ def _leave(f: Flip) -> bool:
     if f.jump:
         ok = f.host.decider.jump_may_leave(f.before, f.live, f.now, f.host._leave_margin())
     else:
-        ok = f.host.safe_to_leave(f.before, required_s=8.0)   # the value cut_veto has always used
+        ok = _plain_leave(f, 8.0)   # the value cut_veto has always used
         if not ok and getattr(f.d, "leave_held", False):       # [legal.leave_low_leverage] a held pick may go at a low-leverage moment
             ok = not _ending_airing(f) and f.host.decider.held_low_leverage_exit(f.before, f.live, f.now)
     return not ok or _leaves_high_leverage_play(f)
@@ -280,32 +280,64 @@ def entry_veto(host: Any, d: Any, target: str | None, now: float | None = None) 
     return next((name for name, rule in ENTRY_RULES if rule(f)), "")
 
 
+def leave_refusal(dec: Any, gid: str | None, target: str | None, phase: Any, now: float, uncalibrated_sigma: float,
+                  required_s: float = 0.0) -> str:
+    """Why the screen's game is not safe to leave for the next required_s ("" = it is). The body of Engine.safe_to_leave,
+    clock passed in, so a decider waiting on the leave and the flip read one rule. The product reads only empty or not; the
+    names are gate:leave's sub-causes in scripts/veto_audit.py: replay, no_timeline, unaired_row (a LIVE game whose newest
+    data row has not aired yet), ended_airing (the same check on a game that ended or left the list), window."""
+    if not gid or gid in PSEUDO:   # [S-5] a pseudo game has no timeline and no play to cut
+        return ""
+    if dec.replaying or dec.after_replay:
+        return "" if now >= max(dec.replay_until, dec.replay_exit_after) else "replay"
+    if gid not in dec.timelines:
+        return "no_timeline"  # no screen timing evidence is not an open cutting window
+    if dec._ending_still_airing(gid, now) > 0:
+        live = phase == Phase.LIVE
+        # [gate.leave_unaired_row_only_ended, off] "its last row is still airing" is a rule for a game that ENDED: a live game's newest
+        # row has nearly always not aired yet, so on one it refused before the leave window (which guards every play) was asked
+        if not (live and dec.cfg.get("gate.leave_unaired_row_only_ended", False)):
+            return "unaired_row" if live else "ended_airing"
+    if phase == Phase.POST:
+        return ""   # its last play has aired (checked above): there's nothing left to cut
+    ok = leave_window(dec.timelines[gid], dec.delays.get(target or "unknown"), now, uncalibrated_sigma, required_s).safe
+    return "" if ok else "window"
+
+
 def leave_open(dec: Any, gid: str | None, target: str | None, phase: Any, now: float, uncalibrated_sigma: float,
                required_s: float = 0.0) -> bool:
-    """Is the screen's game safe to leave for the next required_s? The body of Engine.safe_to_leave, clock passed in, so a
-    decider waiting on the leave and the flip read one rule."""
-    if not gid or gid in PSEUDO:   # [S-5] a pseudo game has no timeline and no play to cut
-        return True
-    if dec.replaying or dec.after_replay:
-        return now >= max(dec.replay_until, dec.replay_exit_after)
-    if gid not in dec.timelines:
-        return False  # no screen timing evidence is not an open cutting window
-    if dec._ending_still_airing(gid, now) > 0:
-        return False
-    if phase == Phase.POST:
-        return True   # its last play has aired (checked above): there's nothing left to cut
-    return leave_window(dec.timelines[gid], dec.delays.get(target or "unknown"), now, uncalibrated_sigma, required_s).safe
+    """Is the screen's game safe to leave for the next required_s? (leave_refusal says why not.)"""
+    return not leave_refusal(dec, gid, target, phase, now, uncalibrated_sigma, required_s)
+
+
+def leave_cause(f: Flip, usual: float = 8.0) -> str:
+    """Which part of the leave rule says no to this flip ("" = none of it): leave_refusal's name for the plain window (asked for
+    `usual` seconds, _leave's own number), `jump` for the rotation's own gate, `high_leverage` for the clock proof. Read only by
+    scripts/veto_audit.py, to split gate:leave; no decision depends on it."""
+    if not _leave(f):
+        return ""
+    if f.jump:
+        return "jump"
+    host, before = f.host, f.before or ""
+    g = host.merger.games.get(before)
+    why = leave_refusal(host.decider, f.before, getattr(host.where.get(before), "target", None), g.phase if g is not None else None,
+                        f.now, host.cfg.get("decider.uncalibrated_sigma_s"), _leave_need(f, usual))
+    return why or "high_leverage"
 
 
 class DeciderHost:
     """What the leave rules read of the Engine, from a Decider on its own (no phase for a game outside this tick's list, so
-    its leave needs a window). For a cut waiting on the leave only: the switch still faces the real gate at the flip."""
+    its leave needs a window). For a cut waiting on the leave, and for the list's landing plan (Flip.replan, legal.facts_urgent):
+    the switch still faces the real gate at the flip."""
 
     def __init__(self, dec: Any, cands: dict, now: float):
         self.decider, self.delays, self.cfg, self._now = dec, dec.delays, dec.cfg, now
         self.scored = {g: x.scored for g, x in cands.items()}
         self.where = {g: _NS(target=x.target) for g, x in dec._known.items()}
         self.merger = _NS(games={g: _NS(game_id=g, phase=Phase.LIVE, league=x.scored.league) for g, x in cands.items() if g not in PSEUDO})
+        # [legal.facts_urgent] Flip.replan from the decider's list: the switch cost legal_facts and the entry plan already use
+        self.control = _NS(deadline_cost=lambda t: dec.entry_cost(t) if dec.entry_cost is not None else dec._deadline_cost(t),
+                           _scrub_wanted=lambda t: False)
 
     def safe_to_leave(self, gid: str | None, required_s: float = 0.0) -> bool:
         g = self.merger.games.get(gid or "")
@@ -327,6 +359,52 @@ def leave_veto(dec: Any, d: Any, cands: dict, now: float) -> str:
 
 
 # ----- facts a rule reads that aren't one poll's measurements (kept out of Flip so a rule stays a one-liner) -----------
+
+def _leave_need(f: Flip, usual: float) -> float:
+    """Seconds the plain leave window must stay open for this flip. `usual` is cut_veto's 8.0, a guess nobody measured. With
+    gate.leave_margin_measured (off) it is the flip's own bound, the one a jump's leave already uses (Engine._leave_margin: the
+    configured flip, never less than the measured slow end of a flip; 1.9 s median and 2.2 s max on Nick's TV, Nov 9)."""
+    if f.host.cfg.get("gate.leave_margin_measured", False):
+        return float(f.host._leave_margin())
+    return usual
+
+
+def _plain_leave(f: Flip, usual: float) -> bool:
+    """A non-jump leave of the game on screen: the 'data covers the screen' window, open for the whole flip, or (flag) a proven
+    dead window on the screen's game."""
+    return bool(f.host.safe_to_leave(f.before, required_s=_leave_need(f, usual))) or _dead_window_leave(f)
+
+
+def _dead_window_leave(f: Flip) -> bool:
+    """[gate.leave_dead_window, off] The screen's LIVE game sits inside a play-by-play dead window (cuts.DeadTracker: a foul, free
+    throws, a timeout, a huddle) for the whole flip, delay doubt on both sides: the dead-window bar a jump's leave already uses
+    (Decider._jump_gate), without its break guess, its walk or its low-leverage exception. The plain window never asked the
+    tracker, so basketball and hockey answered "play is live" with the whistle already in the feed. Never when the game clock is
+    proven running across the leave, at ANY leverage: an earlier trial of dead-window leaves made 1-2 mid-play NBA cuts
+    (decisions.md 2026-11-04), and a window can outlast the restart (_lands_with_clock_running). An ended game is ending_airing's."""
+    host, before = f.host, f.before
+    if not host.cfg.get("gate.leave_dead_window", False) or not before or before in PSEUDO:
+        return False
+    g = host.merger.games.get(before)
+    if g is None or g.phase != Phase.LIVE:
+        return False
+    need = float(host._leave_margin())
+    target = getattr(host.where.get(before), "target", None)
+    return bool(host.decider.dead_window_leave(before, target, f.now, need)) and not _clock_ran_on_leave(f, need)
+
+
+def _clock_ran_on_leave(f: Flip, need: float) -> bool:
+    """Basketball: the game clock is proven running at some moment the screen shows during [now, now + need] on the game being left
+    (_leaves_high_leverage_play's proof, asked whatever the leverage). No clock rows, or another sport: False."""
+    before = f.before or ""
+    tl = f.host.decider.timelines.get(before)
+    g = f.host.merger.games.get(before)
+    events = getattr(tl, "clock_events", None)
+    if g is None or not events or g.league.base.value not in WHISTLE_LEAGUES:
+        return False
+    mu = f.host.delays.get(getattr(f.host.where.get(before), "target", None) or "unknown").mu
+    return _clock_ran(events, f.now - mu, f.now + need - mu)
+
 
 def _own_frame(f: Flip) -> bool:
     """A real resume or skip lands on a frame its own tune already fixed, so an entry plan doesn't apply. "Real" is read from
@@ -358,10 +436,11 @@ def bucket_on(cfg: Any) -> bool:
 def _post_make_windows(dead: Any, floor_s: float, p: slate_mod.Params) -> list[Window]:
     """Basketball: each made basket's window, in real time. Starts when the ball is through (bucket_after_s), ends at the
     measured moment the next possession can produce a shot (floor_s after the make) or the next logged action less the
-    stamp's guard, whichever is sooner. A window needs no next row in the data: with a late feed the floor is all there is."""
+    stamp's guard, whichever is sooner. A window needs no next row in the data: with a late feed the floor is all there is.
+    A made free throw opens none: Nick's rule is made baskets, and the grader's window (cutgrade.after_bucket) is field goals only."""
     out, ms = [], dead._order()
     for i, m in enumerate(ms):
-        if m.shot != "made" or m.hi <= dead.frozen_until:
+        if m.shot != "made" or m.ft or m.hi <= dead.frozen_until:
             continue
         nxt = dead._next_action(ms, i)
         end = m.hi + floor_s if nxt is None else min(m.hi + floor_s, nxt.lo - p.bucket_guard_s)
@@ -376,11 +455,14 @@ def bucket_landing(cfg: Any, tl: Any, scored: Any, sigma: float, x0: float, x1: 
     arrival [x0, x1], widened by the doubt (bucket_sigmas times the stick delay's sigma), must sit inside one made-basket
     window: a landing that may be before the make, or after the next shot, is None (it waits or skips). Never high-leverage
     close-and-late or overtime (the leave rule's bar), never a game outside NBA and men's college.
-    x0 and x1 are real time. Made baskets only: _post_make_windows opens on shot == "made"."""
+    x0 and x1 are real time. Made baskets only: _post_make_windows opens on shot == "made".
+    [NBA-YES] basketball.join_after_bucket_crunch (off): the same window also takes a join INTO a crunch or high-leverage game.
+    The window, its doubt and "made baskets only" are unchanged; the rule about LEAVING a high-leverage moment is not read here."""
     league = tl.dead.league.value
     if not bucket_on(cfg) or league not in ("nba", "cbb"):
         return None
-    if getattr(scored, "high_leverage", False) or scored.crunch or scored.crunch_now:
+    tight = getattr(scored, "high_leverage", False) or scored.crunch or scored.crunch_now
+    if tight and not cfg.get("basketball.join_after_bucket_crunch", False):
         return None
     p = slate_mod.Params.from_config(cfg.get)
     doubt = p.bucket_sigmas * sigma

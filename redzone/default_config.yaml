@@ -593,6 +593,8 @@ multiview:                 # YouTube TV multiview as a switch path (redzone/tune
 tuners:                    # per-app switch paths
   prime_fast_confirm: false # [build plan WP-04] confirm a Prime tune without running OCR inside the poll loops
   espn_link_form: false     # [build plan WP-04] use the checked ESPN deep-link form
+  app_change_confirm: false # [TV Nov 10] after another app was in front: let the plain link confirm (about 2.5 s) before the
+                            # resend as a new task, and count the asked channel already playing at a retry as success
   unauthorized_retry_s: 300   # [DEV-15] an adb-unauthorized stick is not re-connected faster than this (re-raises the TV prompt)
   diagnose_timeout_s: 4       # [DEV-17] a failed tune's screen read (names "signed out" etc.) is cut after this
   launch_timeout_s: 30     # [DEV-11] `am start -W` (an app deep link) waits this long: a cold start can top 15 s
@@ -642,6 +644,17 @@ hardening:                 # error handling (PLATFORM). Each switch is off until
   mac: false               # after the Mac sleeps or changes network: re-check network, reconnect sticks, resync the TV
   watchdog: false          # the watchdog may ask the app for narrow fixes (POST /api/agent/fix); off: it only tells you
   tv: false                # the TV jumped by itself to a stick on its home screen (a reboot's HDMI-CEC): flip it back
+
+sound_guard:               # [Nick, Nov 10: "Volume must be 1000% off"] the TV's mute and volume by readback (redzone/platform/sound_guard.py)
+  enabled: false           # on: read mute + volume back before the first input switch, after every switch and every check_s;
+                           # off: no guard exists and no sound call is made (read once at app start)
+  must_be_silent: false    # on: muted AND volume 0 is required (not silent, or unreadable unreadable_max times = incident),
+                           # and redzone/tv.py refuses KEY_VOLUP, KEY_MUTE, volumeUp, unmute, setVolume above 0 and volume_duck
+  check_s: 20.0            # the periodic check (tvctl.py watch used 20 s)
+  unreadable_max: 3        # this many readbacks in a row without mute or volume is an incident ("no readback, no test")
+  silence_tries: 4         # volume 0 + mute + read back, this many tries, before the first switch of a session
+  on_incident: off_tv      # off_tv: power the TV off, then block switching until cleared by hand; block: only block
+  settle_s: 0.7            # after volume 0 + mute, wait this long before the readback (tvctl.py); read once at import
 
 two_stick:
   unavailable_backoff_s: 0  # [Nick live test Nov 7] a standby tune that stopped at an account/payment/UNAVAILABLE screen keeps
@@ -988,6 +1001,30 @@ timing:
   seek_base_s: 28.7        # a seek lands this far behind live with no LEFT press (time label, 6 of 6, two games)
   seek_per_press_s: 16.5   # ...plus this much per LEFT press
   reach_s: 175             # deepest seek reached (about 175-177 s); catchup.HARD_CAP_S (180) still caps the route
+  # [POSITION-FIX, Nov 10 TV, research/position FINDINGS] each OFF; flag off = today's behaviour (redzone/tuners/yttv_timing.py)
+  label_stamp_at_pause: false    # a label read is timed at the media session's pause event, paired with the position the commit lands on
+  playback_with_package: false   # YouTube TV playback reads pass the app's package (a paused YouTube TV session is invisible without it)
+  no_right_probe_at_live: false  # at the live edge no RIGHT after the LEFT probe (it does not undo it); the LEFT is booked as 15.000 s
+  per_tune_offset: false         # a fresh YouTube TV tune's own lag is unknown (sd 1.2-2.0 s) until one absolute read on that tune
+  per_tune_offset_sd_s: {default: 2.0, espn: 1.24, fs1: 1.98}   # that spread per channel (n=21 espn, n=10 fs1, one night)
+  stats_for_nerds: false         # read Live Latency off the Stats for nerds panel at the live edge (redzone/tuners/yttv_nerds.py)
+  key_constants: false           # pause/resume timed with each stick's own key delays below, not the round trip
+  key_constants_by_stick:        # MEDIA_PLAY_PAUSE: frozen frame this long after the key; playing this long after the resume key
+    "Fire TV Stick 4K (2023)": {pause_s: 0.70, resume_s: 0.69, sd_s: 0.13}   # n=11 each
+    "Fire TV Stick 4K Plus": {pause_s: 0.60, resume_s: 0.53, sd_s: 0.08}     # n=6 each
+  game_offset: false             # per-game K (YouTube-clock time of a frame minus the feed time on it) from game_offset_file; no K = delay unknown
+  game_offset_file: ""           # any K file shape (noggin/k_table.k_rows), only rows naming a game id; empty = off (redzone/decider/tune_offset.py)
+  # [POSITION-FIX] measured numbers the helpers above read once from this file (not live settings; Nov 10 TV, hidden 2023 stick)
+  yttv_left_step_s: 15.0         # one committed LEFT lands exactly this far back (69 of 69 single steps)
+  nerds_shots_s: [11.0, 17.0, 22.0]   # Stats for nerds: Live Latency is readable about 11-23 s after a fresh tune
+  nerds_latest_s: 23.0           # ...past this after the landing it reads 0.00 again
+  nerds_bias_s: 0.34             # Live Latency minus the label's U, mean (espn +0.29 n=6, fs1 +0.42 n=4)
+  nerds_sd_s: 0.19               # ...its spread: one Live Latency read knows the tune's offset to this
+  dead_v2: false           # [DEAD-V2] OFF: true = a caller sizes an open stoppage's sure dead time by break class (an NFL timeout
+                           # the feed calls official is a commercial, "Timeout #n by TEAM" is short) and by the time already run
+                           # (scoring/dead_left_lite.guaranteed_left, table broadcast/dead_left_table.json, train nights only).
+                           # Off = dead_left.guaranteed_left, the pooled quantile less the elapsed time, as before. No app code
+                           # reads it yet (salvaged from branch anchor-mode without its anchor mode). Simulated only (ledger L1, L5)
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
@@ -1199,6 +1236,15 @@ queue:                     # [build plan P-BUILD] one queue owns the hidden stic
 commit_gate:               # [build plan WP-05] one named-veto gate at the flip for every non-tap switch (decider/gate.py)
   enabled: false
 
+gate:                      # [YES-1, Nick Nov 10: "a no is rare"] logic fixes to the leave half of the commit gate (decider/gate.py). Each ships OFF: simulated on recorded nights only
+  leave_unaired_row_only_ended: false   # the "newest data row has not aired yet" check refuses a leave only for a game that ended or left the list; a LIVE game goes straight to the leave window, which guards every play
+  leave_margin_measured: false          # a non-tap leave's window must stay open for the flip's own bound (Engine._leave_margin, what a jump's leave uses) instead of 8 s, a guess nobody measured. Taps and the old cut_veto path keep 8 s
+  leave_dead_window: false              # a non-tap leave of a live game may also go inside a play-by-play dead window (the bar a jump's leave uses: fouls, free throws, timeouts, huddles), never with the game clock proven running, at any leverage
+  ending_last_play: false               # football and baseball: "its last play is still airing" runs from the last PLAY row plus the usual 3 s after-play buffer, not from any row (the final horn included) plus 5 s. Basketball and hockey keep the old timer
+
+cuts:                      # [YES-1] decider/cuts.py, the dead-window tracker. Ships OFF: simulated on recorded nights only
+  floor_from_marks: false  # an open dead window is surely dead until the latest (entry stamp + that entry's own measured floor) over the entries in it; with noggin.timing on (NBA) the bound is read given the dead time the latest entry's stamp proves. Off: the first entry's stamp + the strongest kind's floor, so a free throw 1 of 2 or a timeout logged after the foul only renames the window
+
 discovery:                 # [build plan WP-01]
   espn_on_yttv: false      # [build plan WP-22] ESPN events through YouTube TV; unproven until a TV night answers its unknowns
   st_wait: false           # an NFL Sunday game waits for its Sunday Ticket slot; local CBS and FOX games keep their local route
@@ -1213,11 +1259,14 @@ arbiter:                   # [build plan WP-17] picks among legal options, with 
   catchup_route_short: true   # [ZERO-LOSS-4, Nick yes Nov 9: "thats the whole point"; no effect while catchup_route is off] with another missed must-see waiting, a catch-up clip is just the play (lead-in, play, 1 s), so the one hidden stick clears more of the queue inside the 180 s cap. Needs catchup_route. Simulated only
   class_bonus: false       # [P1] a brain's pick: your team and crunch add points instead of filtering; the must-show floor is unchanged
   class_bonus_pts: 20.0    # [P1] per class: your team +40, crunch +20, open 0
+  caution_rules: true      # [YES-1] false: the cut ceiling, late narrowing, the visit budget and the brain margin stop refusing a cut (Nick, Nov 10: "ofc switch if its better"). The must-show floor and the class order are untouched. Simulated on recorded nights only
 
 legal:                     # [LEAVE-AT-FLIP] noggin/legal.py. Needs arbiter.enabled: nothing else reads this list
   leave_at_flip: false     # a cut stays listed with the leave gate shut or no landing yet; it waits (decider.leave_wait) and goes only when the flip's leave rules and a dead-ball landing both allow it
   leave_low_leverage: []   # leagues where a held cut may leave mid-play at a low-leverage moment (Decider._leavable: redzone/lab/leverage.py's floor, your team, crunch, a locked moment). Needs leave_at_flip. [] = only at a dead window: today's rule
   leave_wait_s: 45         # the longest a cut waits (per league: league_overrides); it also ends when the target stops being worth it or can't be entered at all
+  lock_dead_ball: false    # [YES-1] a moment lock (red-zone drive, power play, at-bat) stops hiding every cut for as long as the game state holds: only a lock at a high-leverage moment (close and late, overtime) hides cuts, and it lets one through at a proven dead ball when the cut outranks it by decider.locked_override_lead. The leave gate still decides when
+  facts_urgent: false      # [YES-1] the list plans each landing as the flip gate does (gate.Flip.replan: the urgent margin of a crunch or sticky entry, a possession-start cue). Off: the list plans with neither and is stricter than the gate
 
 slate:                     # [build plan WP-18] blocks of a few games, then catch-up, late narrowing; NBA misses its exit bar
   enabled: false
@@ -1269,3 +1318,54 @@ views:                     # [build plan WP-21] the phone's clock as of the scre
 
 basketball:                # [NBA-BUCKET] land right after a made basket, including the transition after it (Nick, Nov 9)
   join_after_bucket: false
+  join_after_bucket_crunch: false   # [NBA-YES] with join_after_bucket: the made-basket window also takes a join INTO a crunch or high-leverage game (off: only low-leverage games). Nick decides; simulated on recorded nights only
+
+show:                      # the phone's Show view over the new show's state files (redzone/web/show.py; read-only)
+  ui: false                # on: a "Show" tab with what is on the TV, the next move, pace, sound and Rule #1 counters
+  state_dir: ""            # the folder the show writes state.json and events.jsonl to (empty = no show yet)
+  eyes_dir: ""             # the folder the clock watcher writes eyes_state.json to (empty = the state folder, then its sibling eyes/)
+
+park:                      # [PARK, integration plan unit 0b] the two-stick show run by the app itself: the hidden stick is paused on the
+                           # next game; a jump resumes it, flips the TV input and pauses the stick that was left
+  enabled: false           # OFF. The planner, the facts and the timing model are in redzone/noggin/park_*.py; the stick steps
+                           # (tune, place, park, jump, finish) are Controller.park_* in redzone/control.py (unit PARK-HANDS),
+                           # which refuse unless this, sound_guard.enabled and sound_guard.must_be_silent are all on. Nothing calls
+                           # them until the decision-path owner (unit PARK-CONTROLLER) does
+  max_park_s: 300          # a stick paused longer than this is stale and is parked again (a 315 s pause held on Nov 10, ledger L13)
+  late_cap_s: 145          # ...and so is one whose picture is more than this behind its stream's live edge (finding 5, ledger L45)
+  steps:                   # each PARK device step as measured on the real sticks and TV on Nov 10 (ledger L13-L21, L41-L51)
+    min_real_pos_s: 60     # after a tune the media session says "playing" at position 0.0 for about 2 s: a position under this
+                           # is never a stream's place
+    live_lag_s: 20         # an unread stream's nominal place: its live edge this far behind YouTube's clock (19-27 s measured;
+                           # park.timing.live_lag wins when set). A read replaces it
+    first_report_s: 8      # ...a tune with no real position within this long is a failed tune
+    poll_s: 0.25           # the media session is read this often while a step waits on it (the runner read 4 times a second)
+    tune_timeout_s: 90     # one way of tuning (direct code, local search, search) gets at most this long
+    read_steps: 2          # the read gesture's LEFT presses (CENTER, LEFT x this, read the label, CENTER); 0 = no read
+    left_step_s: 15        # one committed LEFT is exactly this far back (69 of 69)
+    center_wait_s: 1.3     # after the first CENTER: the overlay comes up and the player pauses
+    left_gap_s: 0.6        # between LEFT presses
+    label_wait_s: 0.7      # after the last LEFT, before the label is read
+    label_timeout_s: 25    # one label read (screenshot, on-Mac text reading, frame deleted) gets at most this long
+    land_wait_s: 4         # after the committing CENTER: playing again within this
+    settle_s: 2.5          # ...then this long before checking the commit did not toggle a pause
+    replay_wait_s: 6       # a resume or pause key's report is waited for this long
+    read_age_min_s: 5      # a label with no programme start: the start is the 5-minute grid point before (capture - label)
+    read_age_max_s: 240    # ...when that leaves a frame this many seconds old or between (worked on nbc, 58.8 s behind)
+    grid_s: 300            # programmes start on this grid
+    base_lag_min_s: 5      # a fresh tune's read is believed when the picture is this far behind YouTube's clock (less the seek)...
+    base_lag_max_s: 90     # ...up to this
+    kept_lag_max_s: 600    # a stream found already on the game is believed up to this far behind (one was 120 s behind, run 6)
+    pause_lead_s: 0.70     # the frozen frame is this far past the pause key: the 2023 stick (and any model not named below)
+    pause_lead_plus_s: 0.60   # ...the 4K Plus
+    back_after_s: 0.4      # BACK clears the pause banner this long after the pause key...
+    confirm_s: 1.6         # ...then the stick is read back (still paused, YouTube TV in front) this long after BACK
+    resume_lead_s: 0.3     # a jump: the resume key goes out this long before the flip command
+    hold_key_s: 1.35       # ...and the pause key to the stick being left this long after the flip command (60 of 60)
+    flip_methods: [smartthings]   # the TV's own input change; never HOME on a stick
+    input_rereads: 2       # an input the sound readback did not return is read again this many times...
+    input_reread_s: 0.7    # ...this far apart
+
+eyes:                      # [EYES, integration plan unit 0b] the hidden watcher: its own muted Chrome reads the on-air game clock and
+                           # each frame's time, and keeps each game's offset K
+  enabled: false           # OFF and read by nothing yet (units EYES-PACKAGE and EYES-LINK). Needs Nick's one sign-in in the watcher's own profile
