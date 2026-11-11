@@ -417,7 +417,7 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
     """The app's PARK controller on a recorded dev night: fake sticks, a fake TV, a clock that is not the wall.
     first = "read" (the first picture's place was read: the app's `Controller.park_start`, the local runner's start) or
     "live" (what happens WITHOUT that step: the stream on screen sits at its live edge, never read; the feed is never
-    far enough ahead of it for a padded leave, so the show never makes its first jump)."""
+    far enough ahead of it for a padded leave, so the show almost never makes its first jump)."""
     P = params or ShowParams.from_config(config.default)
     first = first or "read"
     rs, slate = loaded or load_replay(night_id, games, league)
