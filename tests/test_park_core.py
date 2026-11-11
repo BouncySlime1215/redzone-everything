@@ -176,6 +176,6 @@ def test_only_the_park_shows_own_modules_import_them():
         text = p.read_text(encoding="utf-8")
         if "park_core" in text or "noggin.park_plan" in text or "noggin import park_plan" in text:
             hits.append(p.relative_to(ROOT).as_posix())
-    assert sorted(hits) == ["redzone/noggin/park_show.py", "redzone/park_run.py", "redzone/showboard.py"]
+    assert sorted(hits) == ["redzone/noggin/park_facts.py", "redzone/noggin/park_show.py", "redzone/park_run.py", "redzone/showboard.py"]
     engine = (ROOT / "redzone" / "engine.py").read_text(encoding="utf-8")
     assert engine.count("import ParkRun") == 1 and "\n        from redzone.park_run import ParkRun\n" in engine   # inside the loop, never at the top

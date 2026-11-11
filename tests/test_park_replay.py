@@ -96,10 +96,27 @@ def test_only_dev_nights_are_replayed():
 
 
 @needs_archive
+def test_the_any_shot_what_if_is_outside_rule_1_by_the_frozen_grader_and_the_show_never_uses_it():
+    """Why the show has two masks: with the simulator's any-shot rule the replay's own judge says 0 / 0 / 0 while the
+    frozen grader finds cuts in live play (a shot's 4 s join a stoppage or another shot's 4 s, and the padding is then
+    measured to the ends of the merged run)."""
+    loaded = pr.load_replay("20261023", 4)
+    old = pr.result(pr.replay("20261023", 4, loaded=loaded, minutes=100, any_shot=True, grid=(0, 0)))
+    assert (old["mid_entry"], old["mid_leave"], old["hl_leave"]) == (0, 0, 0)
+    assert old["grader_entries_mid_play"] + old["grader_leaves_mid_play"] >= 2
+    now = pr.result(pr.replay("20261023", 4, loaded=loaded, minutes=100))
+    assert (now["grader_entries_mid_play"], now["grader_entries_mid_play_strict"], now["grader_leaves_mid_play"]) == (0, 0, 0)
+    assert now["flips"] >= 30
+
+
+@needs_archive
 def test_night_20261023_two_games_whole_night_rule_1_is_zero_and_every_jump_is_warranted():
     show = pr.replay("20261023", 2)
     row = pr.result(show)
-    assert (row["mid_entry"], row["mid_leave"], row["hl_leave"]) == (0, 0, 0)
+    # the bar: 0 / 0 / 0 by the FROZEN grader (cutgrade.grade), on where the pictures truly were
+    assert (row["grader_entries_mid_play"], row["grader_entries_mid_play_strict"], row["grader_leaves_mid_play"]) == (0, 0, 0)
+    assert row["grader_entries"] == row["grader_leaves"] == row["flips"] and row["joins_after_miss"] == 0
+    assert (row["mid_entry"], row["mid_leave"], row["hl_leave"]) == (0, 0, 0)          # the replay's own judge (PARK's own mask)
     assert row["warrant_n"] == row["flips"] >= 40 and row["warranted"] == row["warrant_n"]
     assert 0.30 <= row["jumps_per_min"] <= 0.60                                        # the local runner's READY-B gave 0.50 here
     assert row["noplay_looks"] == 0 and row["break_lands"] == 0 and not show.refused

@@ -38,7 +38,7 @@ from redzone.grading import RESUME_LEAD, raw_type
 from redzone.models import League
 from redzone.noggin import park_core
 from redzone.noggin.park_core import PARK_PARAMS, Arr, Night, Setting, State, Stats
-from redzone.noggin.park_facts import FACTS, FactsParams, GameFacts, merge_eyes, pad_arr, refusal, shift
+from redzone.noggin.park_facts import FACTS, GRID, FactsParams, GameFacts, merge_eyes, pad_arr, refusal, shift
 from redzone.noggin.park_plan import NO_TUNE, FAR, FRESH_BEHIND, Plan, Planner
 from redzone.noggin.park_timing import TIMING, ErrorParts, GameTiming, TimingParams
 from redzone.sources import espn
@@ -83,7 +83,11 @@ class ShowParams:
     read_sat: float = 8.0           # of the read, the stream sits paused about this long
     late_cap: float = 145.0         # Nick's lateness cap: nothing comes up further behind the stream's live edge
     jump_slack: int = 1             # a real jump can take a second more than planned: the cap allows for it
-    pause_reach: float = 315.0      # a pause was held this far behind live on the TV (ledger L13)
+    pause_reach: float = 180.0      # a paused stream may sit at most this far behind live: the longest hold whose place was
+    #                                 read back after its resume is 180 s (4 pauses of 20-180 s on one channel, ledger L74)
+    max_park: int = 180             # park.max_park_s: a stream held paused longer than this is not jumped onto; it is tuned afresh
+    hold_ok: float = 1.0            # after a resume the stream's place is read again: within this of where it was = it HELD
+    hold_drift: float = 2.0         # ...more than this off = it DRIFTED: unread at once, no cut on it until it is read again
     lag_sane: int = 60              # after a tune a stream sits where the read put it: a place more than this off is a bad reading
     lag_read_max: float = 300.0     # an adopted stream whose place was read is believed up to this far behind
     lag_early: float = 10.0         # ...and no place more than this ahead of the stream's own live edge
@@ -107,7 +111,7 @@ class ShowParams:
         kw = {}
         for f in fields(cls):
             d = f.default
-            v = get(f"park.show.{f.name}", d)
+            v = get("park.max_park_s" if f.name == "max_park" else f"park.show.{f.name}", d)   # (the park age cap is ONE key)
             if isinstance(d, bool):
                 kw[f.name] = v if isinstance(v, bool) else d
             elif isinstance(d, str):
@@ -128,6 +132,7 @@ class ShowParams:
 
 
 SHOW = ShowParams()
+HOLD_AT = (10, 30, 60, 120)        # seconds after a resume at which the stream on screen has its place read again (while it stays up)
 
 
 # ---------------------------------------------------------------------------------------------- timing
@@ -150,12 +155,17 @@ class ShowTiming:
     def errs(self, g: int, read_ok: bool = True) -> ErrorParts:
         return self.g[g].errors(self.read and read_ok)
 
+    def _grid(self, errs: ErrorParts) -> int:
+        """The padding in whole grid seconds, never rounded DOWN (4 x 1.62 s = 6.48 s is 7, not 6). The grid's own
+        slack (flags read once a second, times and positions cut to whole seconds) is cut into the arrays apart: GRID."""
+        return max(1, int(math.ceil(errs.padding(self.p.pad_k) - 1e-9)))
+
     def pad(self, g: int, read_ok: bool = True) -> int:
-        return self.errs(g, read_ok).grid_padding(self.p.pad_k)
+        return self._grid(self.errs(g, read_ok))
 
     def eyes_pad(self, read_ok: bool = True) -> int:
         """A stoppage edge the watcher saw is on YouTube's clock, like a read stream: no K and no feed stamp in it."""
-        return ErrorParts(self.p.read_sd if read_ok else self.p.tune_sd, self.p.eyes_sd, 0.0, self.p.key_sd).grid_padding(self.p.pad_k)
+        return self._grid(ErrorParts(self.p.read_sd if read_ok else self.p.tune_sd, self.p.eyes_sd, 0.0, self.p.key_sd))
 
     def pad0(self) -> int:
         pads = [self.pad(g) for g in range(len(self.g))]
@@ -177,11 +187,18 @@ class ShowTiming:
 
 
 def engine_setting(pad0: int, know: float, *, late_cap: float, tune_s: float = 3.0, min_live: float = 3.0,
-                   land_wait: float = 999.0, flip: float = 3.0, pause_reach: float = SHOW.pause_reach) -> Setting:
-    """park_core's setting for the show: tune-and-pause, ping-pong, the any-shot rule, ONE padding (the smallest
-    game's; the others are cut into their arrays) and no error drawn inside it: it runs on what is BELIEVED."""
+                   land_wait: float = 999.0, flip: float = 3.0, pause_reach: float = SHOW.pause_reach,
+                   any_shot: bool = False) -> Setting:
+    """park_core's setting for the show: tune-and-pause, ping-pong, ONE padding (the smallest game's; the others are
+    cut into their arrays) and no error drawn inside it: it runs on what is BELIEVED.
+
+    Where a cut may be made is the frozen grader's dead ball and nothing else (`grading.dead_at`: a stoppage, or the 4 s
+    after a SCORING play), for leaves and for joins. The simulator's "any-shot rule" (4 s after ANY shot, made or
+    missed, counted as a legal point) is OUTSIDE Rule #1: Nick's ruling of Nov 9 is made baskets only, and the grader
+    counts a join after a miss as mid-play and gives a leave no shot window at all. So the app never sets it; `any_shot`
+    exists only for the replay's labelled what-if."""
     return Setting(route="tune", pause_holds=True, ping_pong=True, land_wait_max=float(land_wait), max_behind=float(pause_reach),
-                   shots=True, feed_lead=float(know), tune_s=float(tune_s), late_cap=float(late_cap), min_live_s=float(min_live),
+                   shots=bool(any_shot), feed_lead=float(know), tune_s=float(tune_s), late_cap=float(late_cap), min_live_s=float(min_live),
                    flip=float(flip), pos_sd=0.0, delay_sd=0.0, stamp_sd=0.0, key_sd=0.0, pad_k=0.0, guard=float(pad0))
 
 
@@ -213,9 +230,9 @@ class LiveNight(Night):
     """A night whose games are filled in as the feed reports them. The list `A` is the one the engine and the planner
     read; a game's entry is replaced in place, so the planner keeps its plan."""
 
-    def __init__(self, n_games: int, base: int, n: int, span: tuple, s: Setting):
+    def __init__(self, n_games: int, base: int, n: int, span: tuple, s: Setting, grid: tuple = GRID):
         self.games = [blank(base + n) for _ in range(n_games)]
-        self.base, self.n, self.span, self.s = base, n, span, s
+        self.base, self.n, self.span, self.s, self.grid = base, n, span, s, tuple(grid)
         self.big_total = self.v2_total = 0.0
         self.A = [Arr(g, base, n, s.shots, s.value, s.live_w) for g in self.games]
         self._arrs = {(s.shots, s.value, s.live_w): self.A}
@@ -223,7 +240,7 @@ class LiveNight(Night):
     def put(self, k: int, g: dict, extra: int = 0, eyes: tuple | None = None) -> None:
         s = self.s
         self.games[k] = g
-        self.A[k] = pad_arr(Arr(g, self.base, self.n, s.shots, s.value, s.live_w), extra, eyes)
+        self.A[k] = pad_arr(Arr(g, self.base, self.n, s.shots, s.value, s.live_w), extra, eyes, self.grid)
 
 
 def line_of(league: League, p: dict) -> dict:
@@ -243,14 +260,25 @@ class FactsFeed:
     the engine polled) and the replay (a recorded game cut off at the rows a live feed would have had)."""
 
     def __init__(self, games: list[tuple], night: LiveNight, shifts: list[float], leads: list[float], *,
-                 stop_min: dict | None = None, params: FactsParams = FACTS):
+                 stop_min: dict | None = None, params: FactsParams = FACTS, keep_shots: bool = False):
         self.games = [(League(lg), str(gid)) for lg, gid in games]
         self.night, self.shifts, self.leads, self.stop_min = night, list(shifts), list(leads), stop_min or {}
+        self.keep_shots = keep_shots       # False (the app, always): the show's arrays are handed NO shots, so nothing but the
+        #                                    grader's dead time can make a second legal (only the replay's what-if keeps them)
         self.fx = [GameFacts(lg, gid, params) for lg, gid in self.games]
         self.fresh: dict = {}
         self.key = [None] * len(games)
         self.at = [NEVER] * len(games)
         self.errors = 0
+        self.seen: list[list[int]] = [[] for _ in games]         # per game, per row as polled: the grid second it was first seen
+
+    def kept(self, g: int) -> dict:
+        """Game g's play list as polled, for regrading a run afterwards: the rows as the feed gave them (public
+        play-by-play), the stamps the show used, how many late-edit rows were put back, and when each row was first seen."""
+        fx, base = self.fx[g], self.night.base
+        return {"league": self.games[g][0].value, "game_id": self.games[g][1], "shift_s": round(self.shifts[g], 3), "base": base,
+                "rows": list(fx.raw), "stamps": [round(w, 3) for w in fx.wall], "restamped": fx.restamped,
+                "first_seen": [base + t for t in self.seen[g]]}
 
     def _floor(self, g: int, since: float) -> float | None:
         """The feed time an open stoppage that began at `since` is surely dead until: each of its rows has a shortest
@@ -301,6 +329,9 @@ class FactsFeed:
     def _publish(self, g: int, at: int) -> bool:
         fx = self.fx[g]
         self.at[g] = at
+        seen = self.seen[g]
+        del seen[len(fx.raw):]                                   # (the feed rewrote its list: those rows are seen anew)
+        seen.extend([at] * (len(fx.raw) - len(seen)))
         if not fx.plays:
             return False
         key = (len(fx.plays), fx.wall[-1], fx.final)
@@ -310,6 +341,8 @@ class FactsFeed:
         d, base = self.shifts[g], self.night.base
         edge = base + at + self.leads[g] - d                     # the feed time the feed has been read up to
         view, of = fx.planner_view(base + self.night.n - d, edge)
+        if not self.keep_shots:
+            view["shots"] = []
         op = None
         if of is not None:
             o = fx._open(max(edge, fx.wall[-1]))
@@ -331,6 +364,18 @@ class FactsFeed:
         fx = self.fx[g]
         i = bisect.bisect_right(fx.wall, self.night.base + p - self.shifts[g]) - 1
         return line_of(self.games[g][0], fx.plays[i]) if i >= 0 else {}
+
+    def row_at(self, g: int, p: int) -> dict:
+        """The feed row a cut at grid second p of game g relied on: the last row at or before it, with its age there
+        (public game data only: the row's type, period and clock)."""
+        fx = self.fx[g]
+        st = self.night.base + p - self.shifts[g]
+        i = bisect.bisect_right(fx.wall, st) - 1
+        if i < 0:
+            return {}
+        r = fx.plays[i]
+        return {"type": str(espn._get(r, "type", "text") or "")[:40], "period": espn._int(espn._get(r, "period", "number")),
+                "clock": espn._get(r, "clock", "displayValue"), "age_s": round(st - fx.wall[i], 1), "rows_in": len(fx.plays)}
 
     def health(self, now: int | None = None) -> str:
         if now is None or min(self.at) <= NEVER:
@@ -463,6 +508,11 @@ class Show:
         self.jump_at: list = []                                  # the second of every jump carried out
         self.records: list = []                                  # the decision record of every jump carried out (warrant included)
         self.since, self.parked_at, self.look_live = None, None, 0
+        self.paused_since, self.aged, self.longest_hold = None, 0, 0   # the hidden stream's pause: since when; times it hit the cap; the longest
+        self.watch = self.look_op = self.reread_op = None        # the look on screen: its hold being graded; a read in flight; a re-read in flight
+        self.drifted: set = set()                                # streams whose place moved after a resume: no cut on them until read again
+        self.reread_at = 0
+        self.holds = {"held": 0, "loose": 0, "drifted": 0, "unread": 0}
 
     def begin(self, first: int, on: int, a: int) -> State:
         """The state at the start: game `first` is on screen on stream `on`, nothing is held, second a."""
@@ -581,6 +631,19 @@ class Show:
             if self.keep_rolls or (S.h_paused and S.hb - S.he >= self.reach - self.P.keep_margin):
                 self.keep_rolls = True                           # close to the lateness cap and it cannot be re-tuned:
                 return False, S.hg, -1, ""                       # from here on it plays on hidden and is joined as it plays
+        if jump and (self.on in self.drifted or (1 - self.on) in self.drifted):
+            return hold                                          # a place drifted: nothing is cut on it until it is read again
+        if not S.h_paused or S.hg < 0:
+            self.paused_since = None
+        elif self.paused_since is not None:
+            age = t - self.paused_since
+            self.longest_hold = max(self.longest_hold, age)
+            if not self.rig.instant and age > self.P.max_park and how != "tune":
+                # held paused past the park age cap (park.max_park_s): no hold that long has had its place read back after
+                # the resume, so it is not jumped onto: it is tuned afresh (the kept stream plays on instead)
+                self.aged += 1
+                self.paused_since = None
+                return (False, S.hg, -1, "") if hid_kept or t < self.block.get(S.hg, -1) else (False, S.hg, -1, "tune")
         go = self.pl.go
         if (not self.rig.instant and not jump and not how and S.hg >= 0 and game == S.hg and S.h_paused and t >= S.h_ready
                 and S.hb - S.he >= self.P.stale and not (go is not None and go[3] == S.hg and go[6] - t <= 2 * self.pl.p.commit_s)):
@@ -641,6 +704,7 @@ class Show:
         if self.to_judge:
             self._eyes_judge()
         self._collect(t)
+        self._hold_watch(t)
         self._repad()
         self._trust()
         if not self.stop:
@@ -854,7 +918,7 @@ class Show:
         else:
             if ok:
                 if mine and not rig.instant:
-                    self._paused_at(int(round(val + rig.unseen_s)), t)
+                    self._paused_at(int(math.floor(val + rig.unseen_s)), t)
                 if kind == "park" and mine:
                     self.parked_at = t
                     self.say(f"PARKED {self.names[game]} on {self.chans[game]}, waiting for a dead ball")
@@ -867,6 +931,89 @@ class Show:
                     S.h_paused, S.h_ready = False, t
                     if not rig.instant:
                         S.hb = S.he + rig.lag[h]
+
+    # ---- every look grades its own hold ---------------------------------------------------------------------------------
+    def _hold_watch(self, t: int) -> None:
+        """After every resume the stream on screen has its place read again at HOLD_AT seconds (one media-session read
+        each, no key), for as long as it stays on screen. Each CHANGED position report is written to the event log with
+        its update time; the change against the lag at the resume gives the look's verdict: held (within hold_ok),
+        drifted (over hold_drift), loose (between), unread (no read came back). A drifted stream is marked unread at
+        once, is not cut on again until its place is read again, and that read is asked for here."""
+        rig, w = self.rig, self.watch
+        if rig.instant or not hasattr(rig, "look"):
+            return
+        if self.look_op is not None and self.look_op[1].done():
+            at_s, fut = self.look_op
+            self.look_op = None
+            if w is not None:
+                self._hold_read(w, at_s, _result(fut, None), t)
+        if self.reread_op is not None and self.reread_op[1].done():
+            k, fut = self.reread_op
+            self.reread_op = None
+            ok = bool(_result(fut, (False, 0.0))[0])
+            if ok and rig.read[k]:
+                self.drifted.discard(k)
+                if k == self.on:
+                    self.S.sb = self.S.se + rig.lag[k]
+                if self.judge is not None and rig.game[k] is not None:
+                    self.judge.tuned(k, rig.game[k], True)
+                self.say("READ AGAIN: the stream on screen has a place once more.")
+                self.emit({"ev": "reread", "tick": t, "stream": k, "ok": 1, "lag_s": round(rig.lag[k], 1)})
+            else:
+                self.reread_at = t + self.P.tune_retry
+                self.emit({"ev": "reread", "tick": t, "stream": k, "ok": 0})
+        if self.on in self.drifted and self.reread_op is None and self.j_op is None and t >= self.reread_at and hasattr(rig, "reread"):
+            self.reread_op = (self.on, asyncio.ensure_future(rig.reread(self.on)))
+        if w is None:
+            return
+        if w["k"] != self.on:                                    # that stream has left the screen: its look is over
+            if self.j_op is None:
+                self._hold_end()
+            return
+        if self.look_op is None and self.j_op is None and w["due"] and t - w["t0"] >= w["due"][0]:
+            self.look_op = (w["due"].pop(0), asyncio.ensure_future(rig.look(w["k"])))
+
+    def _hold_read(self, w: dict, at_s: int, res, t: int) -> None:
+        P = self.P
+        row = {"at_s": at_s, "lag_s": None, "change_s": None}
+        if res is not None:
+            row = {"at_s": at_s, "lag_s": round(float(res["lag"]), 2), "change_s": round(float(res["lag"]) - w["lag0"], 2)}
+            rep = (res.get("pos_s"), res.get("updated"))
+            if rep != w["last"]:                                 # each CHANGED position report, with its update time
+                w["last"] = rep
+                self.emit({"ev": "position", "tick": t, "n": w["n"], "stream": w["k"], "pos_s": rep[0], "updated": rep[1],
+                           "state": res.get("state"), "lag_s": row["lag_s"]})
+                if self.board is not None:
+                    self.board.event("position", n=w["n"], pos_s=rep[0], updated=rep[1], lag_s=row["lag_s"])
+        w["reads"].append(row)
+        got = [abs(r["change_s"]) for r in w["reads"] if r["change_s"] is not None]
+        was, w["verdict"] = w["verdict"], ("unread" if not got else "drifted" if max(got) > P.hold_drift
+                                           else "held" if max(got) <= P.hold_ok else "loose")
+        hold = {"verdict": w["verdict"], "lag_at_resume_s": round(w["lag0"], 2), "reads": list(w["reads"])}
+        if 0 < w["n"] <= len(self.records):
+            self.records[w["n"] - 1]["hold"] = hold              # the verdict goes into that jump's decision record
+        self.emit({"ev": "hold", "tick": t, "n": w["n"], **hold})
+        if self.board is not None and (w["verdict"] != was or not w["due"]):
+            self.board.event("hold", n=w["n"], verdict=w["verdict"], change_s=row["change_s"], at_s=at_s)
+        if w["verdict"] == "drifted" and w["k"] not in self.drifted and res is not None:
+            k = w["k"]
+            self.drifted.add(k)
+            self.rig.replace(k, float(res["lag"]))               # unread at once (the wide padding), at where it is now
+            if k == self.on:
+                self.S.sb = self.S.se + float(res["lag"])
+            self.reread_at = t + self.P.cool
+            self.say(f"DRIFTED: the stream on screen moved {row['change_s']:+.1f} s from where it was read ({at_s} s after its resume). "
+                     f"No cut on it until its place is read again.")
+            if self.board is not None:
+                self.board.event("alert", level="warn", text=f"a stream's place drifted {row['change_s']:+.1f} s after its resume: it is read again before any cut")
+
+    def _hold_end(self) -> None:
+        """The look being graded is over (its stream left the screen, or the show ends): count its verdict."""
+        w, self.watch = self.watch, None
+        if w is not None:
+            self.holds[w["verdict"]] = self.holds.get(w["verdict"], 0) + 1
+            if 0 < w["n"] <= len(self.records):
+                self.records[w["n"] - 1].setdefault("hold", {"verdict": "unread", "lag_at_resume_s": round(w["lag0"], 2), "reads": []})
 
     def _drop(self, why: str, t: int) -> None:
         """The hidden stream can no longer be counted on for its game: say so, once, with the cause; it will be tuned again."""
@@ -881,14 +1028,32 @@ class Show:
     def _paused_at(self, p: int, t: int) -> None:
         """The hidden stream is paused and the first second a viewer would see of it is p. (Called before the engine's
         second t, which moves a paused stream's lag on by one.)"""
+        if self.paused_since is None:
+            self.paused_since = t                                # the park age cap counts from here (park.max_park_s)
         self.S.h_paused, self.S.hb, self.S.h_ready = True, float(t - 1 - p) + self.S.he, t
 
     # ---- the jump --------------------------------------------------------------------------------------------------
     def guard(self, t: int, g1: int, i: int, over: bool, g2: int, j: int, k1: int, k2: int) -> str:
         """The hard guard, asked before every jump ("" = it may go): leave game g1 at believed second i (stream k1),
         first second seen of game g2 = j (stream k2). Never traded for pace."""
+        if k1 in self.drifted or k2 in self.drifted:
+            return "a stream's place drifted after its resume: no cut on it until it is read again"
         return refusal(self.A, self.pad0, t, self.flip, self.know, self.s.late_cap, g1, i, over, g2, j,
                        self.sure, self.open_from, self.tail, self.extra_of(k1, g1), self.extra_of(k2, g2))
+
+    def _relied(self, t: int, g1: int, i: int, over: bool, g2: int, j: int) -> dict:
+        """For the jump's record, so a run can be regraded afterwards: each end's kind, how deep inside its stretch the
+        cut is (seconds since the stretch began and left in it, as the show's own arrays have them), whether that
+        stretch is final or still open in the feed, and the feed row it rests on (type, period, clock, age)."""
+        def end(g: int, p: int) -> dict:
+            x = self.A[g]
+            q = min(x.n - 1, max(0, p))
+            since, left = x.since[q], x.left[q]
+            kind = "timeout or break" if x.brk[q] else "dead ball" if x.dead[q] else "live play"
+            row = self.feed.row_at(g, q) if hasattr(self.feed, "row_at") else {}
+            return {"kind": kind, "second": int(p), "since_s": int(since), "left_s": int(min(left, 9999)),
+                    "open": bool(self.open_from[g] is not None and q >= self.open_from[g]), "feed_edge_s": int(self.feed.edge(g) - q), "row": row}
+        return {"leave": {"kind": "that game is over"} if over else end(g1, i), "join": end(g2, j)}
 
     async def _jump(self, t: int, snap: dict) -> None:
         """The engine has just jumped (its own padding tests passed). Check it again here, then carry it out."""
@@ -915,6 +1080,8 @@ class Show:
         if rig.instant and paused and not rig.paused[tgt]:
             await rig.pause(tgt, None)                           # the engine parked it and jumped in the same second
         hold = None if (self.keep == self.on and self.keep_rolls) else self.on
+        self.held_s = (t - self.paused_since) if (paused and self.paused_since is not None) else 0   # how long the landing was held
+        self.relied = self._relied(t, g1, i, t > self.A[g1].a1 + S0["sb"], g2, j)   # what both ends of this cut rest on, as known NOW
         ctx = (snap, t, g1, i, g2, j, paused, self.on, tgt, wr)
         self.on = tgt
         if rig.instant:
@@ -939,17 +1106,25 @@ class Show:
             self.since, self.look_live, self.parked_at = t0 + self.flip, 0, None
             wd = warrant_row(wr)
             self.warrants.append(wr)
+            if not rig.instant and hasattr(rig, "look"):         # every look grades its own hold (see _hold_watch)
+                self._hold_end()
+                self.watch = {"n": self.jumps_done, "k": tgt, "t0": t, "lag0": float(rig.lag[tgt]), "due": list(HOLD_AT), "reads": [],
+                              "last": None, "verdict": "unread"}
             rec = {"n": self.jumps_done, "tick": t0, "from": self.names[g1], "to": self.names[g2], "reason": kind, "warrant": wd,
                    "leave_at": (g1, i), "join_at": (g2, j), "behind_s": round(t0 + self.flip - j + self.delay, 1),
-                   "pad_s": {"from": self.pad[g1], "to": self.pad[g2]}, "read": {"from": bool(rig.instant or rig.read[was_on]), "to": bool(rig.instant or rig.read[tgt])}}
+                   "pad_s": {"from": self.pad[g1], "to": self.pad[g2]}, "read": {"from": bool(rig.instant or rig.read[was_on]), "to": bool(rig.instant or rig.read[tgt])},
+                   "held_s": int(getattr(self, "held_s", 0)), **getattr(self, "relied", {})}
             self.records.append(rec)
             self.say(f"JUMP -> {self.names[g2]} on {self.chans[g2]} ({kind}, {left} on the game we left). Why: {wd['why']}"
                      + (f" (worth {wd['there']} there, {wd['here']} here)" if wr is not None else ""))
             self.emit({"ev": "jump", "tick": t0, "from": g1, "to": g2, "leave": i, "land": j, "behind_s": rec["behind_s"],
-                       "n": self.jumps_done, "look_s": look, "look_live_s": self.looks[-1][1], "warrant": wd})
+                       "n": self.jumps_done, "look_s": look, "look_live_s": self.looks[-1][1], "warrant": wd,
+                       "leave_on": rec.get("leave"), "join_on": rec.get("join"), "held_s": rec["held_s"]})
             if self.board is not None:
                 self.board.event("jump", **{"from": self.names[g1], "to": self.names[g2], "reason": kind,
-                                            "jump_s": round(float(getattr(rig, "jump_s", self.flip)), 1), "look_s": look, "warrant": wd})
+                                            "jump_s": round(float(getattr(rig, "jump_s", self.flip)), 1), "look_s": look, "warrant": wd,
+                                            "leave_on": rec.get("leave"), "join_on": rec.get("join"), "held_s": rec["held_s"],
+                                            "n": self.jumps_done})
             if self.judge is not None:
                 self.judge.flip(t0, was_on, g1, i, tgt, g2, j, paused)
             if self.eyes is not None:                            # the watcher rules on both ends once it has seen those seconds
@@ -959,7 +1134,7 @@ class Show:
                 S.sb = S.se + rig.lag[tgt]
                 fut = rig.confirming(was_on)
                 if S.hg == g1 and not self.retune and rig.paused[was_on]:
-                    self._paused_at(int(round(rig.frozen[was_on] + rig.unseen_s)), t)
+                    self._paused_at(int(math.floor(rig.frozen[was_on] + rig.unseen_s)), t)
                     if fut is not None:
                         self.h_op = ("hold", g1, fut)
                         S.h_ready = t + 1
@@ -997,7 +1172,7 @@ class Show:
         elif S.hg < 0:
             S.h_paused, S.h_ready = False, t
         elif rig.paused[h]:
-            self._paused_at(int(round(rig.frozen[h] + rig.unseen_s)), t)
+            self._paused_at(int(math.floor(rig.frozen[h] + rig.unseen_s)), t)
         else:
             S.hb, S.h_paused, S.h_ready = S.he + rig.lag[h], False, t
 
@@ -1027,9 +1202,11 @@ class Show:
                 self.board.event("stay", reason=why, for_s=self.stay[1])
 
     async def close(self) -> None:
-        for fut in (self.h_op[2] if self.h_op else None, self.j_op):
+        for fut in (self.h_op[2] if self.h_op else None, self.j_op, self.look_op[1] if self.look_op else None,
+                    self.reread_op[1] if self.reread_op else None):
             if fut is not None and not fut.done():
                 fut.cancel()
+        self._hold_end()
         await self.rig.finish()
         if self.to_judge:
             self._eyes_judge(final=True)

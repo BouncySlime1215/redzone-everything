@@ -95,7 +95,9 @@ class Planner(core.Planner):
 
 def setting(error: str, league_shots: bool, **kw) -> ps.Setting:
     """The planner's park_sim setting for one of the three timing scenarios. A landing may wait any time for its play (the
-    plan prices the dead air), and the any-shot rule is on wherever the padding fits inside the 4 s window."""
+    plan prices the dead air). `league_shots` = the any-shot WHAT-IF (4 s after ANY shot, made or missed, is a legal point):
+    it is OUTSIDE Rule #1 (Nick, Nov 9: made baskets only; the frozen grader counts a join after a miss as mid-play), so
+    the command line leaves it off unless --any-shot is given."""
     base = {"route": "tune", "pause_holds": True, "ping_pong": True, "land_wait_max": 999.0, "max_behind": pc.PAUSE_REACH_S,
             "delay_sd": ERRORS[error], "shots": league_shots, **ERR_FIXED}
     base.update(kw)
@@ -166,6 +168,8 @@ def main() -> int:
     ap.add_argument("--brain", default="hindsight", choices=sorted(ps.BRAINS), help="whose wants the audit's yes-rate is counted on")
     ap.add_argument("--plan", action="append", default=[], help="key=value on Plan (repeatable)")
     ap.add_argument("--set", action="append", default=[], help="key=value on park_sim.Setting (repeatable)")
+    ap.add_argument("--any-shot", action="store_true",
+                    help="WHAT-IF, OUTSIDE RULE #1: the 4 s after ANY shot, made or missed, counts as a legal point (off by default)")
     ap.add_argument("--model", default=None, help="an .npz of trees (kaggle_park.py) that values the seconds the feed has not reported")
     ap.add_argument("--baseline", action="store_true", help="also run live-edge physics under the same padding")
     ap.add_argument("--cache", default=None, help="a folder OUTSIDE the repo for the per-game facts")
@@ -188,7 +192,7 @@ def main() -> int:
         if not nights:
             continue
         for err in a.errors:
-            s = setting(err, True, **sets)
+            s = setting(err, a.any_shot, **sets)
             todo = [("live-edge physics", None)] if a.baseline else []
             todo += [(f"planner bonus {b:g}", replace(base_plan, jump_bonus=b)) for b in a.bonus]
             for tag, plan in todo:

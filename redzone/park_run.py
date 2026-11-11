@@ -23,6 +23,7 @@ Why: the show ran on the TV from a local tool with its own loop, feed and sticks
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 import re
@@ -31,6 +32,7 @@ import time
 from redzone.models import Phase
 from redzone.noggin.k_table import read_k_table
 from redzone.noggin.park_core import PARK_PARAMS
+from redzone.noggin.park_facts import FactsParams
 from redzone.noggin.park_show import FactsFeed, LiveNight, Show, ShowParams, ShowTiming, engine_setting
 from redzone.noggin.park_timing import GameTiming, TimingParams, k_for
 from redzone.showboard import Board
@@ -156,6 +158,31 @@ class ControllerRig:
     def confirming(self, k: int):
         return None                                               # park_jump reads the stick left back before it returns
 
+    async def look(self, k: int) -> dict | None:
+        """Where stream k, the one ON SCREEN, is now by one media-session read (Controller.park_look: no key): its lag
+        behind the show's edge, and the report it came from (the session's own position and its update time)."""
+        if self.ctl.main is None or self.ctl.sticks.index(self.ctl.main) != k:
+            return None
+        out = await self.ctl.park_look()
+        n = out.numbers
+        if not out.ok or n.get("behind_youtube_s") is None:
+            return None
+        self.counts["steps"] += 1
+        upd = n.get("updated_wall")
+        return {"lag": float(n["behind_youtube_s"]) - self.live_lag - self.delay, "pos_s": n.get("report_pos_s"),
+                "updated": None if upd is None else round(float(upd) - self.clock.base, 2), "state": n.get("state")}
+
+    async def reread(self, k: int) -> tuple:
+        """Read stream k's place again after it drifted: only the stream on screen (Controller.park_start(reread=True):
+        the read gesture, which steps the picture back once)."""
+        t0 = self.clock.now()
+        if self.ctl.main is None or self.ctl.sticks.index(self.ctl.main) != k:
+            return False, 0.0
+        out = await self.ctl.park_start(reread=True)
+        self._over.pop(k, None)
+        self._done(k, out)
+        return bool(out.ok and self.read[k]), self.clock.now() - t0
+
     async def finish(self) -> None:
         try:
             await self.ctl.park_finish()
@@ -265,6 +292,8 @@ class ParkRun:
         self.rig.sync()
         self.offer(t)
         await show.tick(t)
+        if t % 300 == 0:
+            self.keep_plays()                                    # (every 5 minutes, and at every stand-down)
         if show.jumps_done != self.told:
             self.tell_screen()
         if show.stop:
@@ -367,7 +396,8 @@ class ParkRun:
         self.end = a + int(minutes * 60)
         night = LiveNight(len(games), base, PARK_PARAMS.pad_s + int(minutes * 60) + 900, (a, self.end), eng)
         stop_min = dict(cfg.get("park.show.stop_min", None) or {}) if P.stops else {}
-        feed = FactsFeed([(g.league, gid) for gid, g, _ in games], night, shifts, leads, stop_min=stop_min)
+        feed = FactsFeed([(g.league, gid) for gid, g, _ in games], night, shifts, leads, stop_min=stop_min,
+                         params=FactsParams.from_config(cfg.get))   # (park.late_row_s: late-edit rows are put back)
         names = [g.matchup for _, g, _ in games]
         folder = cfg.get("show.state_dir", "") or "data/show"
         self.board = Board(folder, now=self._now)
@@ -382,10 +412,30 @@ class ParkRun:
         self.board.start(self.show, "live", minutes)
         self._set("running", f"{len(games)} games")
 
+    def keep_plays(self, show: Show | None = None) -> int:
+        """Write each game's play list as polled (rows, the stamps used, when each row was first seen) beside the show's
+        state, so a live run can be regraded afterwards. Public play-by-play, in the state folder (never in the repo)."""
+        show = show or self.show
+        if show is None or self.board is None or self.board.dir is None or not hasattr(show.feed, "kept"):
+            return 0
+        n = 0
+        try:
+            folder = self.board.dir / "plays"
+            folder.mkdir(parents=True, exist_ok=True)
+            for g, gid in enumerate(self.gids):
+                tmp = folder / f"{re.sub(r'[^A-Za-z0-9_-]', '_', str(gid))}.json.tmp"
+                tmp.write_text(json.dumps({"game": show.names[g], "channel": show.chans[g], **show.feed.kept(g)}))
+                tmp.replace(tmp.with_suffix(""))
+                n += 1
+        except OSError:
+            log.exception("park show: play lists not written")
+        return n
+
     async def stand_down(self, why: str) -> None:
         """End the show: the sticks are finished first (never leave one paused), then the state says why."""
         show, self.show = self.show, None
         if show is not None:
+            self.keep_plays(show)
             try:
                 await show.close()
             except Exception:

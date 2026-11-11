@@ -133,7 +133,7 @@ def main() -> int:
         for err in a.errors:
             sd = pp.ERRORS[err]
             timing = {"delay_sd": sd, **pp.ERR_FIXED}
-            s_plan = pp.setting(err, True)
+            s_plan = pp.setting(err, False)      # (the any-shot rule is a what-if outside Rule #1: off)
             pl = plan_core.Planner()
             core.run(nights[0], ps.Foresight(), s_plan, t0=nights[0].span[0], t1=nights[0].span[0] + 1, planner=pl)
             pad = pl.G

@@ -38,7 +38,7 @@ class ParkParams:
     same_behind_s: int = 10             # a stick already behind live may skip forward to this close to the live edge
     pad_s: int = 400                    # empty seconds kept before the first tip and after the last final on a night's grid
     hop_gain_s: int = 10                # a visit that has shown no play is left only for a play that starts this much sooner
-    shot_window_s: float = 4.0          # the any-shot rule: this long after any shot counts as a legal point
+    shot_window_s: float = 4.0          # the any-shot WHAT-IF (Setting.shots, outside Rule #1): this long after any shot counts as legal
     skip_step_s: float = 15.0           # one forward or back skip on the stick
     press_s: float = 1.28               # each further key press of a skip or rewind
     reach_s: float = 175.0              # deepest a REWIND puts a stick behind live
@@ -115,7 +115,9 @@ class Setting:
     leave_rule: str = "dead"      # dead | low_leverage
     park_at: str = "end"          # end = just before the play (R3) | start = just after the whistle
     park_target: str = "value"    # value = before the best known moment in reach | recent = the latest dead stretch
-    shots: bool = False           # R2: the 4 s after any shot is a legal point (basketball)
+    shots: bool = False           # WHAT-IF, OUTSIDE RULE #1 (the app never sets it): the 4 s after ANY shot, made or missed, is a
+    #                               legal point. Nick's ruling (Nov 9) is made baskets only, joins only; the frozen grader
+    #                               counts a join after a miss as mid-play and gives a leave no shot window
     flip: float = 2.05
     feed_lead: float = P.feed_lead_s
     prepark: bool = True          # while the brain is content, keep the hidden stick on its second choice
@@ -124,6 +126,31 @@ class Setting:
     value: str = "dense"          # what the brain values: dense = value2 grades + 2 x must-sees + live action | v1 = must-sees only
     live_w: float = 0.05          # dense: brain points per second of live play (30 s of play = 1.5, about one good basket)
     seed: int = 0
+
+
+def stretches(mask: bytearray) -> tuple[list[int], list[int], list[int], list[int]]:
+    """(since, left, starts, ends) of a per-second mask, exactly as Arr strings its legal seconds: since[i] = marked
+    seconds in a row up to and including i, left[i] = from i on; starts / ends = the stretches that END (the last one,
+    still running at the end of the grid, is left out)."""
+    n = len(mask)
+    since, left, starts, ends, run = [0] * n, [0] * n, [], [], 0
+    for i in range(n):
+        if mask[i]:
+            if not run:
+                starts.append(i)
+            run += 1
+        else:
+            if run:
+                ends.append(i)
+            run = 0
+        since[i] = run
+    if len(starts) > len(ends):
+        starts.pop()
+    run = 0
+    for i in range(n - 1, -1, -1):
+        run = run + 1 if mask[i] else 0
+        left[i] = run
+    return since, left, starts, ends
 
 
 class Arr:

@@ -36,6 +36,7 @@ and every fact it is handed must be one it could know at that second, or Rule #1
 """
 from __future__ import annotations
 
+import bisect
 import math
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
@@ -45,6 +46,7 @@ from redzone.models import GameState, League, Phase, Stoppage, Team
 from redzone.moments import value2
 from redzone.moments.detect import detect as detect_moments
 from redzone.noggin import arbiter
+from redzone.noggin.park_core import stretches
 from redzone.noggin.park_timing import GameTiming
 from redzone.scoring.engine import high_leverage
 from redzone.sources import espn
@@ -59,6 +61,13 @@ class FactsParams:
     shot_window_s: float = 4.0      # this long after any shot counts as a legal point (the grader gives a made basket 4 s)
     ghost_s: float = 60.0           # the stand-in play row sits this far past the last row
     open_lead_s: float = -1.0       # an open stoppage may have restarted this long before its anchor; < 0 = the grader's RESUME_LEAD
+    stop_max: tuple = ()            # the sanity gate: ((stoppage kind, seconds), ...) = the longest a dead ball of each kind can
+    #                                 plausibly last; what a dead stretch holds past that is UNKNOWN, not dead. () = no gate (the
+    #                                 loader's and the grader's own reading); the show sets park.show.stop_max
+    late_row_s: float = float("inf")   # a row stamped more than this after a row that FOLLOWS it in the feed's order is a late
+    #                                 edit (a substitution row re-stamped half an hour on): it takes the stamp of the row before
+    #                                 it. The show sets 60 (park.late_row_s). Off here (inf) = the repo loader's own stamps, row
+    #                                 for row, which is what the recorded-night checks of these facts compare against
 
     def lead(self, league: League) -> float:
         return self.open_lead_s if self.open_lead_s >= 0 else float(RESUME_LEAD[league])
@@ -69,8 +78,14 @@ class FactsParams:
         kw = {}
         for f in fields(cls):
             d = f.default
+            if not isinstance(d, float):
+                continue
             v = get(f"park.{f.name}", d)
             kw[f.name] = float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else d
+        caps = get("park.show.stop_max", None)
+        if isinstance(caps, dict):
+            kw["stop_max"] = tuple(sorted((str(k), float(v)) for k, v in caps.items()
+                                          if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0))
         return cls(**kw)
 
 
@@ -99,6 +114,7 @@ class OpenStop:
     earliest_restart: float         # the soonest play could have restarted, by the grader's own lead
     anchor: str                     # "row": a later play row is in (its clock has not moved); "edge": none yet
     brk: bool                       # a commercial break started it
+    basket: bool = False            # it is only a made basket's 4 s (no whistle): it never runs on past them
 
 
 @dataclass
@@ -127,6 +143,37 @@ def stamp_of(p: dict, last: float | None) -> float | None:
     return max(t, last) if t is not None and last is not None else t
 
 
+def stamps_of(rows: list, late_row_s: float) -> tuple[list, list[int]]:
+    """Every row's feed time, with late edits put back: (stamps, the rows that were re-stamped).
+
+    The loader's rule (`stamp_of`) never lets a stamp go backwards. That is right for a feed that slips a second, and
+    WRONG for an edit: the feed re-stamps an old row (a substitution, half an hour late; 30 such rows in four games on
+    Nov 10) with the time of the edit, and every row after it in the feed's order was then pulled up to that time, so
+    half an hour of play read as one long dead ball (live run 4, flip 4: a leave in live play). So a row stamped more
+    than `late_row_s` after the EARLIEST stamp of any row that follows it is an edit: it takes the stamp of the row
+    before it and drags nothing. Stamps are None for a list whose first row has none (the loader drops such a game)."""
+    raw, last = [], None
+    for p in rows:
+        t = espn._ts(p.get("wallclock"))
+        t = t if t is not None else (last + 5 if last is not None else None)
+        raw.append(t)
+        last = t if t is not None else last
+    if not raw or raw[0] is None:
+        return raw, []
+    fixed, least = [], float("inf")
+    after = [0.0] * len(raw)
+    for i in range(len(raw) - 1, -1, -1):
+        after[i] = least                                     # the earliest stamp of any LATER row
+        least = min(least, raw[i])
+    for i in range(1, len(raw)):
+        if raw[i] > after[i] + late_row_s:
+            raw[i] = raw[i - 1]
+            fixed.append(i)
+    for i in range(1, len(raw)):
+        raw[i] = max(raw[i], raw[i - 1])
+    return raw, fixed
+
+
 class GameFacts:
     """One game's facts, built from its rows as they arrive. Rows are only ever appended; if the feed rewrites an
     earlier row, `update` starts over from the first row."""
@@ -149,6 +196,8 @@ class GameFacts:
         self.settled_k = 0                        # every row before this one leaves no dead ball, or one whose restart is dated
         self.last_action: int | None = None
         self.unplaced = False                     # the first row had no stamp: the loader drops such a game
+        self.restamped = 0                        # late-edit rows put back to the stamp of the row before them (stamps_of)
+        self.dragged: list[float] = []            # the stamps USED for rows whose own stamp is more than late_row_s earlier
         self.shots: list[float] = []
         self.hl: list[tuple[float, float]] = []
         self.lev: list[tuple] = []
@@ -173,15 +222,30 @@ class GameFacts:
             self.set_final()
         return len(plays) - n
 
-    def add(self, p: dict) -> None:
-        """One more row, in feed order."""
+    def add(self, p: dict, at: float | None = None) -> None:
+        """One more row, in feed order. A row stamped far EARLIER than the row before it shows that an earlier row was a
+        late edit which the never-backwards rule let drag the stamps up: every stamp is then made again (`stamps_of`)."""
         if self.final:
             raise ValueError("the game is over: no row may follow")
-        t = stamp_of(p, self.wall[-1] if self.wall else None)
+        own = espn._ts(p.get("wallclock"))
+        if at is None and self.wall and own is not None and own < self.wall[-1] - self.p.late_row_s and not self.unplaced:
+            rows = self.raw + [p]
+            stamps, fixed = stamps_of(rows, self.p.late_row_s)
+            if fixed:
+                data = self.data
+                self._reset()
+                self.data = data
+                for q, t in zip(rows, stamps):
+                    self.add(q, t)
+                self.restamped = len(fixed)
+                return
+        t = stamp_of(p, self.wall[-1] if self.wall else None) if at is None else at
         self.raw.append(p)
         if t is None or self.unplaced:
             self.unplaced = True
             return
+        if own is not None and t - own > self.p.late_row_s:
+            self.dragged.append(t)                           # used far later than the feed stamped it: what rests on it is not known
         i = len(self.plays)
         self.plays.append(p)
         self.wall.append(t)
@@ -340,7 +404,7 @@ class GameFacts:
             since, brk = t0 + a, any(f == 2 for f in flags[a:k + 1])
         anchor_t, anchor = (self.wall[j], "row") if j is not None else (edge, "edge")
         soon = max(w, anchor_t - lead)
-        return OpenStop(since, w, min(soon, w + self.p.shot_window_s) if only_basket else soon, anchor, brk)
+        return OpenStop(since, w, min(soon, w + self.p.shot_window_s) if only_basket else soon, anchor, brk, only_basket)
 
     def value(self) -> tuple[list[tuple], list[tuple]]:
         """(v2, big): the graded plays (time, value, replay value) and the must-sees (time, weight), graded on the last
@@ -376,14 +440,35 @@ class GameFacts:
                 dead.append((a, last if b is None and self.final else t0 + len(flags) if b is None else b))
                 brk.append(f == 2)
         op = None if self.final else self._open(edge if edge is not None else last, flags)
-        if op is not None:
+        if op is not None and not op.basket:                 # (a bare made basket is dead for its 4 s only, whatever the feed does next)
             if dead and dead[-1][0] <= op.since < dead[-1][1] + 1:
                 dead[-1] = (dead[-1][0], end)
             else:
                 dead.append((op.since, end))
                 brk.append(op.brk)
+        if self.dragged:
+            # the sanity gate, apart from the re-stamping: a dead ball that rests on a row used far later than the feed
+            # stamped it is UNKNOWN, not dead (never a place to cut)
+            keep = [k for k, (a, b) in enumerate(dead) if not any(a - 1.0 <= w <= b for w in self.dragged)]
+            dead, brk = [dead[k] for k in keep], [brk[k] for k in keep]
+        if self.p.stop_max and not self.final:
+            dead = self._capped(dead)
         g["dead"], g["brk"] = dead, brk
         return g, (None if self.final else next((a for a, b in dead if b > sett), None))
+
+    def _capped(self, dead: list) -> list:
+        """The sanity gate (`stop_max`), on every dead stretch, final or still open: "no row says play" only means "still
+        stopped" for as long as a stoppage of its kind can plausibly last. A stretch longer than that (the feed went quiet,
+        lost a row, or its stamps were dragged by a late edit) is dead only up to the cap; the rest is unknown."""
+        caps = dict(self.p.stop_max)
+        least = caps.get("whistle", min(caps.values()))
+        out, lg = [], self.league
+        for a, b in dead:
+            i0, i1 = bisect.bisect_left(self.wall, a - 1.0), bisect.bisect_right(self.wall, b)
+            kinds = {espn.stoppage_for(lg, self.plays[i]).value for i in range(i0, i1)}
+            cap = max([caps.get(k, least) for k in kinds if k != "none"] or [least])
+            out.append((a, min(b, a + cap)))
+        return out
 
 
 def _runs(flags: list[int], t0: float) -> list[tuple[int, float, float | None]]:
@@ -447,7 +532,7 @@ def refusal(A: list, pad: int, t: int, flip: int, know: int, late_cap: float, g1
     if not over:
         if not 0 <= i < n or xs.hlc[min(n, i + pad + x1 + 1)] - xs.hlc[max(0, i - pad - x1)]:
             return "the leave is inside a padded high-leverage span"
-        if not inside(xs, g1, i, pad + x1):
+        if not inside(xs, g1, i, pad + x1):                  # a LEAVE and a JOIN alike: the grader's dead time only (one mask)
             return "the leave is outside a padded legal window"
     if not inside(xh, g2, j, pad + x2):
         return "the landing is outside a padded legal window"
@@ -456,52 +541,59 @@ def refusal(A: list, pad: int, t: int, flip: int, know: int, late_cap: float, g1
     return ""
 
 
-def pad_arr(x, extra: int, eyes: tuple | None = None):
+def pad_arr(x, extra: int, eyes: tuple | None = None, grid: tuple = (0, 0)):
     """One game's arrays (the PARK core's `Arr`, built from `planner_view`) with that game's own padding cut in, in
     place: every legal stretch is cut back by `extra` seconds at each end and every high-leverage span widened by it,
     so the engine's one padding (the smallest game's) tests this game at its own. `eyes` = (starts, ends, extra): the
-    stretch edges Eyes itself saw, which carry Eyes's own smaller cut. Every other edge, a shot's 4 s among them, is
-    the feed's. Returns x."""
-    if extra > 0 or (eyes is not None and eyes[2] > 0):
-        _cut(x, extra, eyes or ((), (), 0))
+    stretch edges Eyes itself saw, which carry Eyes's own smaller cut. Every other edge is the feed's.
+    `grid` = (head, tail): whole seconds also cut off the start and the end of every stretch for the 1 s grid itself
+    (`GRID` for a show on real sticks; see there). Each stretch is cut by itself. Returns x."""
+    head, tail = grid
+    if extra > 0 or head > 0 or tail > 0 or (eyes is not None and eyes[2] > 0):
+        _cut(x, extra, eyes or ((), (), 0), head, tail)
     return x
 
 
-def _cut(x, extra: int, eyes: tuple) -> None:
-    """pad_arr's cut (x = the game's arrays)."""
-    n, legal, new = x.n, x.legal, bytearray(x.n)
+GRID = (1, 2)      # (head, tail): whole seconds cut off the start and the end of every dead stretch for a show on real sticks,
+#                    so that the padding in SECONDS really holds on a grid of whole seconds. The arrays hold one flag per
+#                    second, read at instants t0, t0 + 1, ... of the game's own clock, and are laid on the night's grid by
+#                    cutting each time down to its whole second; a believed position x is used as int(x). So for a stretch
+#                    marked on grid seconds m..m'-1 the ball is only KNOWN dead from m + f to m' - 1 + f (f = the game's
+#                    sub-second phase on the grid, 0 to 1), and the real x lies in [int(x), int(x) + 1).
+#                    Start: x - pad >= m + f needs 1 more second (f can be almost 1).
+#                    End: x + pad <= m' - 1 + f needs 2 more (1 for the last flag, 1 for int(x); f can be 0).
+#                    Found Nov 10 in the tables simulator: "4 sd" rounded to 2 s was really 1 to 2 s on the grid.
+GRID_TAIL = GRID[1]
+
+
+def _trim(mask: bytearray, extra: int, eyes: tuple, head: int, tail: int) -> bytearray:
+    """One mask with every stretch cut back: `extra` + `head` at its start, `extra` + `tail` at its end (Eyes's own cut
+    in place of `extra` at an edge Eyes saw). A stretch that runs to the end of the grid keeps its end (nothing says
+    when it ends)."""
+    n, new = len(mask), bytearray(len(mask))
     starts, ends, own = eyes
     i = 0
     while i < n:
-        if not legal[i]:
+        if not mask[i]:
             i += 1
             continue
         a = i
-        while i < n and legal[i]:
+        while i < n and mask[i]:
             i += 1
-        a2 = a + (own if a in starts else extra)
-        e2 = i if i >= n else i - (own if i in ends else extra)   # a stretch that runs to the end of the grid keeps its end
+        a2 = a + (own if a in starts else extra) + head
+        e2 = i if i >= n else i - (own if i in ends else extra) - tail
         if e2 > a2:
             new[a2:e2] = b"\x01" * (e2 - a2)
-    since, left, run = [0] * n, [0] * n, 0
-    x.starts, x.ends = [], []
-    for i in range(n):
-        if new[i]:
-            if not run:
-                x.starts.append(i)
-            run += 1
-        else:
-            if run:
-                x.ends.append(i)
-            run = 0
-        since[i] = run
-    if len(x.starts) > len(x.ends):
-        x.starts.pop()
-    run = 0
-    for i in range(n - 1, -1, -1):
-        run = run + 1 if new[i] else 0
-        left[i] = run
-    x.legal, x.since, x.left, x._leave = new, since, left, {}
+    return new
+
+
+def _cut(x, extra: int, eyes: tuple, head: int = 0, tail: int = 0) -> None:
+    """pad_arr's cut (x = the game's arrays)."""
+    n = x.n
+    x.legal = _trim(x.legal, extra, eyes, head, tail)
+    x.since, x.left, x.starts, x.ends = stretches(x.legal)
+    x._leave = {}
+    x.__dict__.pop("_plan_tabs", None)
     if extra > 0 and x.hlc[n]:
         hlc, hl = x.hlc, bytearray(n)
         for i in range(n):

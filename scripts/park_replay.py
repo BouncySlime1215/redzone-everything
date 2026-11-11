@@ -33,6 +33,7 @@ import heapq
 import math
 import random
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -45,6 +46,7 @@ from redzone import config  # noqa: E402
 from redzone.models import League  # noqa: E402
 from redzone.noggin import park_core  # noqa: E402
 from redzone.noggin import park_show as show_mod  # noqa: E402
+from redzone.noggin.park_facts import GRID, FactsParams, stamps_of  # noqa: E402
 from redzone.noggin.park_plan import Plan  # noqa: E402
 from redzone.noggin.park_show import SHOW, FactsFeed, LiveNight, Show, ShowParams, ShowTiming, engine_setting, peak, warrant_counts  # noqa: E402
 
@@ -72,6 +74,8 @@ class Judge:
         self.shown: set = set()
         self.pic = self.live_s = self.dead_s = self.brk_s = self.avoid_s = self.noplay = self.brk_land = 0
         self.land_wait: list = []                                # per jump: seconds from the landing to the play's start
+        self.cuts: list = []                                     # per jump: (game left, its true second, game joined, its true second)
+        self.e_log: list = []
 
     def _draw(self, g: int, read_ok: bool) -> float:
         return self.rng.gauss(0.0, self.tm.errs(g, read_ok)[0]) + self.gd[g]
@@ -113,8 +117,11 @@ class Judge:
     def flip(self, t: int, k1: int, g1: int, i: int, k2: int, g2: int, j: int, paused: bool) -> None:
         xs, xh, bad = self.A[g1], self.A[g2], 0
         e1, e2 = self.tm.errs(g1), self.tm.errs(g2)
-        ti = self._at(xs, i - self.e.get(k1, 0.0) + self.rng.gauss(0.0, math.hypot(e1[2], e1[3])))
-        ej = self._at(xh, j - self.e.get(k2, 0.0) + self.rng.gauss(0.0, e2[2] if paused else math.hypot(e2[2], e2[3])))
+        true_i = i - self.e.get(k1, 0.0) + self.rng.gauss(0.0, math.hypot(e1[2], e1[3]))
+        true_j = j - self.e.get(k2, 0.0) + self.rng.gauss(0.0, e2[2] if paused else math.hypot(e2[2], e2[3]))
+        ti, ej = self._at(xs, true_i), self._at(xh, true_j)
+        self.cuts.append((g1, true_i, g2, true_j))
+        self.e_log.append((self.e.get(k1, 0.0), self.e.get(k2, 0.0)))    # each stream's standing error at this cut (leave, join)
         if not xs.dead[ti]:
             if xs.legal[ti]:
                 self.walk_leave += 1
@@ -196,7 +203,7 @@ class FakeRig:
 
     def __init__(self, clock=None, *, instant: bool = True, seed: int = 0, tune_s: dict | None = None, delay: int = 0, steps: int = 0,
                  reads=None, tune_range: tuple | None = None, latency: float = 0.0, bad_place: float = 0.0, read0: bool = True,
-                 hands: str = "runner", params: ShowParams = SHOW, tune_sd: float = 1.5):
+                 hands: str = "runner", params: ShowParams = SHOW, tune_sd: float = 1.5, drift: float = 0.0, drift_n: int = 10 ** 9):
         P = self.P = params
         self.clock, self.instant, self.rng, self.tune_sd = clock, instant, random.Random(seed), tune_sd
         self.unseen_s, self.pause_lead, self.hold_off = P.unseen, (0.70, 0.60), P.hold_off
@@ -216,6 +223,9 @@ class FakeRig:
         self._conf: dict = {}
         self.sound_at, self.incident = None, ""
         self.true_lag = [0.0, 0.0]
+        self.drift = [0.0, 0.0]                                  # seconds a minute stream k creeps after a resume (a pause that did not hold)
+        self.drift_rate, self.drift_left = float(drift), int(drift_n)   # ...made to order: the next drift_n resumes creep at this rate
+        self.played_at = [None, None]                            # when stream k last started playing (its session's update time)
 
     def _fails(self, what: str) -> bool:
         n = self.fail.get(what, 0)
@@ -283,6 +293,30 @@ class FakeRig:
 
     def _play(self, k: int, key_at: float) -> None:
         self.paused[k], self.lag[k] = False, key_at + RESUME_REPORT - (self.frozen[k] + 0.18)
+        self.played_at[k] = key_at + RESUME_REPORT
+        self.drift[k] = self.drift_rate if (self.drift_rate and self.drift_left > 0) else 0.0
+        self.drift_left -= int(bool(self.drift[k]))
+
+    async def look(self, k: int):
+        """One media-session read of stream k: its lag now (with any creep since its resume) and the report behind it."""
+        await self._wait(0.1)
+        if self._fails("look") or self.game[k] is None:
+            return None
+        since = self._now() - (self.played_at[k] if self.played_at[k] is not None else self._now())
+        lag = self.lag[k] + self.drift[k] * since / 60.0
+        return {"lag": lag, "pos_s": round(self._now() - lag, 2), "updated": self.played_at[k], "state": "playing"}
+
+    async def reread(self, k: int) -> tuple:
+        """The read gesture on stream k again: it ends `steps` LEFT presses further back, read (or not)."""
+        P = self.P
+        took = P.read + min(6.0, self.rng.expovariate(1 / 1.5))
+        since = self._now() - (self.played_at[k] if self.played_at[k] is not None else self._now())
+        await self._wait(took)
+        self.sent += [("key", k, "KEYCODE_DPAD_CENTER")] + [("key", k, "KEYCODE_DPAD_LEFT")] * self.steps + [("key", k, "KEYCODE_DPAD_CENTER")]
+        self.read[k] = bool(self.reads(self.game[k])) and not self._fails("read")
+        self.lag[k] += self.drift[k] * since / 60.0 + P.step * self.steps + P.read_sat
+        self.drift[k], self.played_at[k] = 0.0, self._now()
+        return self.read[k], took
 
     async def resume(self, k: int) -> tuple:
         self.sent.append(("key", k, "KEYCODE_MEDIA_PLAY_PAUSE"))
@@ -352,8 +386,9 @@ class FakeRig:
 
 
 # ---------------------------------------------------------------------------------------------- the recorded night
-def load_replay(night_id: str, n_games: int, league: str = "nba") -> tuple[list, list]:
-    """(the recorded games of the slate, their whole-night facts): the slate park_plan.py would pick on that night."""
+def load_replay(night_id: str, n_games: int, league: str = "nba", repaired: bool = True) -> tuple[list, list]:
+    """(the recorded games of the slate, their whole-night facts): the slate park_plan.py would pick on that night.
+    repaired: late-edit rows are put back first (`repair`); False = the loader's own stamps."""
     from redzone.lab import splits
     from redzone.lab.backtest import Replay
     d = ROOT / "data/archive" / league
@@ -368,11 +403,25 @@ def load_replay(night_id: str, n_games: int, league: str = "nba") -> tuple[list,
             r = None
         if r is not None and len(r.plays) >= 60:
             rs.append(r)
+    if repaired:
+        rs = [repair(r) for r in rs]
     slate = pc.slate([pc.truth_of(r) for r in rs], n_games)
     if not slate:
         raise SystemExit(f"night {night_id} has no slate of {n_games} games that start within 2.5 hours.")
     by = {r.gid: r for r in rs}
     return [by[g["gid"]] for g in slate], slate
+
+
+def repair(r, late_row_s: float | None = None):
+    """The recorded game with its late-edit rows put back (`park_facts.stamps_of`, the show's own rule): a row the feed
+    re-stamped long after the rows that follow it takes the stamp of the row before it, instead of the loader's
+    never-backwards rule dragging every later row up to the edit's time. The frozen grader's functions are unchanged;
+    they are only given these stamps (as the coordinator's regrade of the live flips of Nov 10 does)."""
+    late = float(config.default("park.late_row_s", 60.0)) if late_row_s is None else late_row_s
+    wall, fixed = stamps_of(r.plays, late)
+    out = replace(r, wall=wall, _cache={})
+    out.restamped = len(fixed)
+    return out
 
 
 class RowFeed:
@@ -413,7 +462,7 @@ async def drive(show: Show, clock, rows: RowFeed, a: int, b: int) -> None:
 def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str = "app", first: str = "", minutes: float = 0,
            seed: int = 0, league: str = "nba", fail: dict | None = None, poll: int = 3, say=None, loaded: tuple | None = None,
            params: ShowParams | None = None, stop_min: dict | None = None, board=None, rig_kw: dict | None = None,
-           model=None, eyes=None, emit=None) -> Show:
+           model=None, eyes=None, emit=None, any_shot: bool = False, grid: tuple | None = None) -> Show:
     """The app's PARK controller on a recorded dev night: fake sticks, a fake TV, a clock that is not the wall.
     first = "read" (the first picture's place was read: the app's `Controller.park_start`, the local runner's start) or
     "live" (what happens WITHOUT that step: the stream on screen sits at its live edge, never read; the feed is never
@@ -426,16 +475,18 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
     lead = int(P.show_delay + FEED_LEAD[case])
     steps = P.steps_for(known)
     eng = engine_setting(tm.pad0(), lead, late_cap=P.late_cap - P.show_delay - P.jump_slack, tune_s=3.0 + (P.read if steps else 0.0),
-                         min_live=P.min_look, land_wait=P.land_wait, flip=P.jump_real, pause_reach=P.pause_reach)
+                         min_live=P.min_look, land_wait=P.land_wait, flip=P.jump_real, pause_reach=P.pause_reach,
+                         any_shot=any_shot)                      # (any_shot: the what-if OUTSIDE Rule #1; the app never sets it)
     full = park_core.Night(slate)
     A = full.arrs(eng.shots, eng.value, eng.live_w)
     a, b = full.span
     b = min(b, a + int(minutes * 60)) if minutes else b
-    night = LiveNight(len(rs), full.base, full.n, (a, b), eng)
+    night = LiveNight(len(rs), full.base, full.n, (a, b), eng, grid=GRID if grid is None else grid)
     night.big_total, night.v2_total = full.big_total, full.v2_total
     if stop_min is None:
         stop_min = dict(config.default("park.show.stop_min") or {}) if P.stops else {}
-    feed = FactsFeed([(r.league, r.gid) for r in rs], night, [0.0] * len(rs), [lead] * len(rs), stop_min=stop_min)
+    feed = FactsFeed([(r.league, r.gid) for r in rs], night, [0.0] * len(rs), [lead] * len(rs), stop_min=stop_min,
+                     params=FactsParams.from_config(config.default), keep_shots=any_shot)
     _, S0 = park_core.run(full, _Hindsight(), eng, t0=a, t1=a)     # the first picture, picked the way park_plan.py picks it
     clock = FakeClock(float(a))
     rig = FakeRig(clock, instant=False, seed=seed, delay=P.show_delay, steps=steps, reads=tm.reads, hands=hands, params=P,
@@ -449,6 +500,7 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
     show = Show(night, eng, tm, rig, feed, plan=Plan(jump_bonus=P.bonus), judge=judge, board=board, say=say or (lambda line: None),
                 names=[r.matchup or r.gid for r in rs], chans=[f"channel {k + 1}" for k in range(len(rs))], tune0=tune0,
                 params=P, model=model, eyes=eyes, emit=emit)
+    show.replays = rs                                            # for the frozen grader (graded)
     S = show.begin(S0.sg, 0, a)
     S.sb = float(rig.lag[0])
     rows = RowFeed(rs, feed, full.base, lead, poll)
@@ -468,6 +520,37 @@ class _Hindsight:
     def score(self, g: int, c: int, t: int, on_screen: bool, back: int = 0) -> float:
         P = park_core.PARK_PARAMS
         return self.A[g].ahead(c - back + (0 if on_screen else P.seen_lead_s), c + P.run_up_s, c)
+
+
+# ---------------------------------------------------------------------------------------------- the frozen grader
+def graded(show: Show) -> dict:
+    """The replay's cuts as the FROZEN grader scores them (`redzone.lab.cutgrade.grade`, read only, never edited here):
+    each jump becomes one switch-log row whose leave and entry are the feed times that were truly on screen at the
+    cut. The replay's own judge reads the PARK planner's own mask, so its Rule #1 line alone checks PARK against
+    PARK; this is the independent count.
+        entries_mid_play         the grader's Rule #1 entry count (v49: clean from a made field goal for 8 s NBA /
+                                 9 s college, or until the next shot)
+        entries_mid_play_strict  the same without that window (the scoring before v49)
+        leaves_mid_play          leaves the grader does not find on a dead ball (leaves have no made-basket window)
+        joins_after_miss         entries on a live ball that the PARK mask called legal (a shot window) and whose last
+                                 shot was NOT a made field goal: what the any-shot rule lets through outside Rule #1"""
+    from redzone.grading import SwitchLog, dead_at
+    from redzone.lab import cutgrade
+    j, rs, base = show.judge, show.replays, show.night.base
+    log, after_miss, walk = [], 0, 0
+    for g1, pi, g2, pj in j.cuts:
+        log.append(SwitchLog(base + pj, rs[g1].gid, rs[g2].gid, "jump", "park replay", leave_dt=pi - pj))
+        r, st = rs[g2], base + pj
+        if r.wall[0] <= st <= r.wall[-1] and not dead_at(r.league, r.wall, r.plays, st)[0]:
+            x = j.A[g2]
+            if x.legal[j._at(x, pj)]:
+                walk += 1
+                after_miss += int(not cutgrade.after_bucket(r.league, r.wall, r.plays, st))
+    card = cutgrade.grade(rs, log, 0.0, 0.0)
+    return {"grader_entries": card.entries, "grader_entries_mid_play": card.entries_mid_play,
+            "grader_entries_mid_play_strict": card.entries_mid_play_strict, "grader_entries_after_bucket": card.entries_after_bucket,
+            "grader_leaves": card.leaves, "grader_leaves_mid_play": card.leaves - card.leaves_in_dead - card.leaves_between_plays,
+            "joins_in_shot_window": walk, "joins_after_miss": after_miss}
 
 
 # ---------------------------------------------------------------------------------------------- the numbers
@@ -490,6 +573,7 @@ def result(show: Show) -> dict:
     row.update(tunes=show.tunes_sent, tunes_skipped=show.tunes_skipped, back_tunes=show.back_tunes)
     mins = max(1e-9, row["minutes"])
     if j is not None:
+        row.update(graded(show))
         pic = max(1, j.pic)
         row.update(plays_per_look=round(j.plays / max(1, len(j.jumps)), 2), live_share=round(j.live_s / pic, 3),
                    dead_share=round(j.dead_s / pic, 3), commercial_share=round(j.brk_s / pic, 3), noplay_looks=j.noplay,
@@ -515,8 +599,12 @@ def summary(show: Show, head: str) -> tuple[dict, str]:
              f"  behind live: median {row['behind_med_s']} s, worst {row['behind_max_s']} s",
              "  seconds stayed, by cause: " + ("; ".join(f"{k} {v}" for k, v in row["stayed_s"].items()) or "none"),
              "  steps refused: " + ("; ".join(f"{k} x{v}" for k, v in show.refused.items()) or "none"),
-             f"  Rule #1, judged on the whole recorded night: joins mid-play {row['mid_entry']}, leaves mid-play {row['mid_leave']}, "
-             f"high-leverage leaves {row['hl_leave']}; big plays seen {_pct(row['big_seen'])}, graded value seen {_pct(row['v2_seen'])}"]
+             f"  Rule #1 by the FROZEN grader (cutgrade.grade, on where the pictures truly were): joins mid-play {row['grader_entries_mid_play']} "
+             f"of {row['grader_entries']} (strict, without the made-basket window: {row['grader_entries_mid_play_strict']}), leaves mid-play "
+             f"{row['grader_leaves_mid_play']} of {row['grader_leaves']}; joins in a shot window {row['joins_in_shot_window']}, of which after a MISS {row['joins_after_miss']}",
+             f"  Rule #1 by the replay's own judge (the planner's own mask, so PARK against PARK): joins mid-play {row['mid_entry']}, leaves mid-play "
+             f"{row['mid_leave']}, high-leverage leaves {row['hl_leave']}; cuts in a shot window: joins {row['walk_entry']}, leaves {row['walk_leave']}",
+             f"  big plays seen {_pct(row['big_seen'])}, graded value seen {_pct(row['v2_seen'])}"]
     return row, "\n".join(lines)
 
 
@@ -532,6 +620,10 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--fail", action="append", default=[], help="step=n: the next n of that step fail (tune, read, pause, resume, key, flip, readback, sound)")
     ap.add_argument("--lines", type=int, default=12, help="how many event lines to show")
+    ap.add_argument("--what-if-grid", type=int, nargs=2, default=None, metavar=("HEAD", "TAIL"),
+                    help="WHAT-IF: whole seconds cut off the start and the end of every dead stretch for the 1 s grid (the show uses 1 2)")
+    ap.add_argument("--what-if-any-shot", action="store_true",
+                    help="WHAT-IF, OUTSIDE RULE #1: also cut in the 4 s after ANY shot, made or missed (the app never does)")
     a = ap.parse_args()
     shown = [0]
 
@@ -541,9 +633,10 @@ def main() -> int:
             print(line)
     fail = {k: int(v) for k, v in (x.split("=", 1) for x in a.fail)}
     show = replay(a.night, a.games, case=a.case, hands=a.hands, first=a.first, minutes=a.minutes, seed=a.seed, league=a.league,
-                  fail=fail, say=say)
+                  fail=fail, say=say, any_shot=a.what_if_any_shot, grid=tuple(a.what_if_grid) if a.what_if_grid else None)
     _, text = summary(show, f"SUMMARY (replayed on recorded night {a.night} with FAKE sticks, not measured on the TV; {a.games} games, "
-                            f"case {a.case}, hands {a.hands}, paddings {sorted(set(show.pad))} s, show delay {show.delay} s)")
+                            f"case {a.case}, hands {a.hands}, paddings {sorted(set(show.pad))} s, show delay {show.delay} s)"
+                      + ("\n  WHAT-IF, OUTSIDE RULE #1: the any-shot rule is ON (cuts in the 4 s after any shot, made or missed)" if a.what_if_any_shot else ""))
     print(f"... {max(0, shown[0] - a.lines)} more lines not shown\n{text}")
     return 0
 
