@@ -7,13 +7,14 @@ needs the same steps, behind park.enabled (off), with every step returning a sma
 The fakes: a stick whose media session says "playing" at position 0.0 for 2 s after a tune, then the stream's own
 clock (tens of thousands of seconds); CENTER pauses and brings up the overlay, LEFT moves its knob exactly 15 s,
 CENTER commits; the pause key freezes the frame 0.70 s (2023) or 0.60 s (Plus) past the key. A TV whose input
-changes 2.7 s after a SmartThings command, with mute and volume read back. Time runs SPEED times faster than real.
+changes 2.7 s after a SmartThings command, with mute and volume read back. Time is fake: it moves only when
+every task is waiting on it (`Clock`), so a busy machine cannot change what a step takes.
 """
 from __future__ import annotations
 
 import asyncio
+import heapq
 import math
-import time
 from types import SimpleNamespace
 
 import pytest
@@ -26,23 +27,48 @@ from redzone.tuners.adb import RunResult, Stick
 from redzone.tuners.tuners import TuneResult
 from redzone.tuners.yttv_label import LabelRead
 
-SPEED = 25.0
+IDLE_PASSES = 40          # event-loop passes with nothing new to do before the fake clock moves on
 PKG = "yttv.pkg"
 FORBIDDEN = ("VOLUME", "MUTE", "POWER", "HOME", "SLEEP", "WAKEUP")
 STATIONS = {"espn": "ESPN", "fs1": "FS1", "nbc": "WRAL", "tnt": "TNT"}
 
 
 class Clock:
-    """Wall time that runs SPEED times faster than real time (concurrent waits overlap as they would)."""
+    """Fake wall time that moves ONLY when everything is waiting on it: once every task has run until it waits, the
+    earliest sleeper is woken and the time jumps to its moment (concurrent waits overlap as they would). So a step
+    takes the same fake time however busy the real machine is. (The first clock ran 25 times faster than real time:
+    0.4 s of real stall was 10 s of test time, and a test with a 9 s margin failed once on a loaded Mac.)"""
 
     def __init__(self):
-        self.m0, self.t0 = time.monotonic(), 1_794_000_000.0
+        self.t = 1_794_000_000.0
+        self._q, self._n, self._pump = [], 0, None
 
     def now(self) -> float:
-        return self.t0 + (time.monotonic() - self.m0) * SPEED
+        return self.t
 
     async def sleep(self, s: float) -> None:
-        await asyncio.sleep(max(0.0, s) / SPEED)
+        if s <= 0:
+            await asyncio.sleep(0)
+            return
+        fut = asyncio.get_running_loop().create_future()
+        self._n += 1
+        heapq.heappush(self._q, (self.t + s, self._n, fut))
+        if self._pump is None or self._pump.done():
+            self._pump = asyncio.ensure_future(self._run())
+        await fut
+
+    async def _run(self) -> None:
+        while self._q:
+            for _ in range(IDLE_PASSES):
+                await asyncio.sleep(0)                         # let everything run until it waits
+            while self._q and self._q[0][2].cancelled():
+                heapq.heappop(self._q)                         # a waiter that was cancelled moves no time
+            if not self._q:
+                break
+            when, _, fut = heapq.heappop(self._q)
+            self.t = max(self.t, when)
+            if not fut.done():
+                fut.set_result(None)
 
 
 class YTStick(Stick):
