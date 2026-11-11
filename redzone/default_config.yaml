@@ -1365,6 +1365,38 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
     flip_methods: [smartthings]   # the TV's own input change; never HOME on a stick
     input_rereads: 2       # an input the sound readback did not return is read again this many times...
     input_reread_s: 0.7    # ...this far apart
+  leagues: [nba, cbb]      # [PARK-CONTROLLER, unit 8] the leagues whose live games the PARK show takes (its facts are basketball's)
+  show:                    # the show's own numbers (redzone/noggin/park_show.py ShowParams; each as the local show runner ended
+                           # Nov 10 on, its READY-B state). Pace is a soft pull, never a rule (Nick, Nov 10)
+    show_delay: 35         # the whole show runs this far behind each stream's live edge, so the feed is complete for what is
+                           # on screen and the per-tune read (which steps the stream back) costs nothing extra
+    bonus: 3.0             # the planner's jump bonus: the soft pull toward pace; it only chooses among WARRANTED jumps
+    min_look: 3.0          # seconds of play a look must show before the next jump (whole possessions stay)
+    warrant: need          # need: no jump without a warrant worked out before it (Nick, Nov 10: "If we jump the warrant
+                           # has to exist") | note: only write it down | off
+    crunch: true           # in crunch time the best game is the anchor: the others only fill its stoppages
+    stops: true            # trust an open stoppage for the shortest time its kind has lasted (stop_min below)
+    land_wait: 20          # no landing more than this before a play start the feed has reported (never onto a long break)
+    long_break: 90         # stopped this long at the feed's edge with no restart reported = a long break: nothing is parked there
+    tune_stick: 1.0        # a new tune must be worth this many jump bonuses more than the best plan without one (no thrash)
+    late_cap: 145          # nothing comes up further behind its stream's live edge than this (Nick's lateness cap)
+    jump_real: 3.0         # a jump on the real TV, first key to the new picture: 2.4-3.5 s (ledger L45); the plan uses this
+    read: 10.5             # the per-tune read gesture, first key to playing again (a tune with it took 13-19 s)
+    stop_min:              # "<league>|<feed row type>": the shortest dead time (s) such a row was followed by on the NBA dev
+                           # nights (1st percentile, never above any one night's; learned by the local show runner, Nov 10)
+      "nba|coach's challenge (overturned)": 9.0
+      "nba|end period": 3.0
+      "nba|free throw - 1 of 3": 4.0
+      "nba|free throw - 2 of 3": 4.0
+      "nba|free throw - technical": 6.0
+      "nba|kicked ball": 4.0
+      "nba|offensive charge": 11.0
+      "nba|offensive foul": 8.0
+      "nba|out of bounds - lost ball turnover": 3.0
+      "nba|out of bounds - step turnover": 6.0
+      "nba|personal foul": 9.0
+      "nba|personal take foul": 14.0
+      "nba|shooting foul": 4.0
 
 eyes:                      # [EYES, integration plan unit 0b] the hidden watcher: its own muted Chrome reads the on-air game clock and
                            # each frame's time, and keeps each game's offset K
