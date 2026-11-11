@@ -9574,7 +9574,9 @@
    },
    "outputs": [
     "redzone/noggin/park_plan.py",
-    "scripts/park_sim.py"
+    "scripts/park_compare.py",
+    "scripts/park_sim.py",
+    "scripts/park_table.py"
    ],
    "owner": "unowned",
    "role": "PARK core: the two-stick show, one second at a time, on a night's per-second facts.",
@@ -9599,7 +9601,9 @@
     "drives": []
    },
    "outputs": [
-    "scripts/park_plan.py"
+    "scripts/park_compare.py",
+    "scripts/park_plan.py",
+    "scripts/park_table.py"
    ],
    "owner": "unowned",
    "role": "PARK planner: the search that plans the two-stick show (stay, jump, hold, roll, skip, tune) a few jumps ahead.",
@@ -16272,14 +16276,23 @@
    ]
   },
   "scripts/park_compare.py": {
-   "calls": [],
+   "calls": [
+    "redzone/noggin/park_core.py:Setting",
+    "redzone/noggin/park_core.py:run",
+    "redzone/noggin/park_core.py:summarize",
+    "redzone/noggin/park_plan.py:Plan",
+    "redzone/noggin/park_plan.py:Planner"
+   ],
    "contracts": [],
    "data": {
     "reads": [],
     "uses": [],
     "writes": []
    },
-   "inputs": [],
+   "inputs": [
+    "redzone/noggin/park_core.py",
+    "redzone/noggin/park_plan.py"
+   ],
    "kind": "entry",
    "machines": {
     "declares": [],
@@ -16390,7 +16403,11 @@
   "scripts/park_table.py": {
    "calls": [
     "redzone/models_rt/forest.py:Nodes",
-    "redzone/models_rt/forest.py:load_npz"
+    "redzone/models_rt/forest.py:load_npz",
+    "redzone/noggin/park_core.py:Stats",
+    "redzone/noggin/park_core.py:run",
+    "redzone/noggin/park_plan.py:Plan",
+    "redzone/noggin/park_plan.py:Planner"
    ],
    "contracts": [],
    "data": {
@@ -16399,7 +16416,9 @@
     "writes": []
    },
    "inputs": [
-    "redzone/models_rt/forest.py"
+    "redzone/models_rt/forest.py",
+    "redzone/noggin/park_core.py",
+    "redzone/noggin/park_plan.py"
    ],
    "kind": "entry",
    "machines": {
@@ -18583,7 +18602,7 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2149,
+  "calls": 2158,
   "data_files": 202,
   "machines": 51,
   "modules": 464,

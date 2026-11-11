@@ -41,6 +41,8 @@ import park_ceiling as pc  # noqa: E402
 import park_pick  # noqa: E402
 import park_plan as pp  # noqa: E402
 import park_sim as ps  # noqa: E402
+from redzone.noggin import park_core as core  # noqa: E402  (the simulator core: one copy for the app and the scripts)
+from redzone.noggin import park_plan as plan_core  # noqa: E402  (the planner: the same)
 
 WINDOWS = (5, 10, 20, 30, 45, 60)
 GRID_SD = {"today": 3.0, "middle": 1.0, "spec": 0.5}      # the grid's total-error cell nearest each scenario (0.25 .. 3 s)
@@ -61,14 +63,14 @@ def line(name: str, r: dict) -> str:
             f"{pct(r.get('big_seen', ''))} | {beh} | {brk} | {r.get('flips', '-')} |")
 
 
-def sim_row(nights: list, brain: str, s: ps.Setting) -> dict:
-    runs = [(n, ps.run(n, ps.BRAINS[brain](), s)[0]) for n in nights]
-    r = ps.summarize(runs)
+def sim_row(nights: list, brain: str, s: core.Setting) -> dict:
+    runs = [(n, core.run(n, ps.BRAINS[brain](), s)[0]) for n in nights]
+    r = core.summarize(runs)
     r["flips"] = sum(len(x.hops) for _, x in runs)
     return r
 
 
-def plan_row(nights: list, s: ps.Setting, plan: pp.Plan, brain: str) -> dict:
+def plan_row(nights: list, s: core.Setting, plan: plan_core.Plan, brain: str) -> dict:
     r = pp.evaluate(nights, s, plan, brain)
     r["flips"] = round(r["hops_per_min"] * r["minutes"])
     return r
@@ -113,10 +115,10 @@ def main() -> int:
     a = ap.parse_args()
     cache = Path(a.cache) if a.cache else None
     bonus = {k: float(v) for k, v in (b.split("=", 1) for b in a.bonus)}
-    base_plan = pp.Plan(**pp.parse_plan(a.plan))
+    base_plan = plan_core.Plan(**pp.parse_plan(a.plan))
     sweep = list(csv.DictReader(open(a.sweep)))
     grid = list(csv.DictReader(open(a.grid)))
-    cap_s = ps.Setting().late_cap
+    cap_s = core.Setting().late_cap
     out_rows = []
 
     def emit(slate: str, err: str, name: str, r: dict) -> None:
@@ -132,8 +134,8 @@ def main() -> int:
             sd = pp.ERRORS[err]
             timing = {"delay_sd": sd, **pp.ERR_FIXED}
             s_plan = pp.setting(err, True)
-            pl = pp.Planner()
-            ps.run(nights[0], ps.Foresight(), s_plan, t0=nights[0].span[0], t1=nights[0].span[0] + 1, planner=pl)
+            pl = plan_core.Planner()
+            core.run(nights[0], ps.Foresight(), s_plan, t0=nights[0].span[0], t1=nights[0].span[0] + 1, planner=pl)
             pad = pl.G
             mins = sum((n.span[1] - n.span[0]) / 60.0 for n in nights)
             print(f"\n**{slate}, {err} (channel delay known to sd {sd} s, padding {pad} s), {len(nights)} dev nights, {mins:.0f} minutes"
