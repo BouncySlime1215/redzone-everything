@@ -5240,6 +5240,7 @@
     "redzone/tuners/tuners.py:channel_matcher",
     "redzone/tuners/yttv_label.py:LabelProbe",
     "redzone/tuners/yttv_seek.py:enter_buffer",
+    "redzone/tuners/yttv_seek.py:front_and_playing",
     "redzone/tuners/yttv_timing.py:key_constants",
     "redzone/tuners/yttv_timing.py:paused_span",
     "redzone/tuners/yttv_timing.py:read_session",
@@ -19573,7 +19574,7 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2351,
+  "calls": 2352,
   "data_files": 208,
   "machines": 53,
   "modules": 484,
