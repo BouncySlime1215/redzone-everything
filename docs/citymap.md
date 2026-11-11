@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**476 modules**, 404 untagged, 274 unowned, 34 orphans (no importer); 2236 call edges, 205 data files, 52 machines.
+**476 modules**, 404 untagged, 274 unowned, 34 orphans (no importer); 2240 call edges, 205 data files, 53 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -102,7 +102,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
 | `redzone/channels.py` | Where can you actually watch a game? | models -> autonomy, canary, control, decider.gate, demo.engine, discovery.providers +24 | untagged |
-| `redzone/control.py` | Turns decisions into TV actions. | autonomy, channels, config, contracts.switching, fallback_ladder, fsm +15 -> autonomy, demo.engine, engine, lab.night.run, supervisor, scripts.fault_drill +3 | APP-04, BTN-05, Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), SAFE-08, STK-01, STK-02, STK-05, STK-06, STK-07, Switch time p95 (SmartThings input change), TV-04 |
+| `redzone/control.py` | Turns decisions into TV actions. | autonomy, channels, config, contracts.switching, decider.tune_offset, fallback_ladder +16 -> autonomy, demo.engine, engine, lab.night.run, supervisor, scripts.fault_drill +3 | APP-04, BTN-05, Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), SAFE-08, STK-01, STK-02, STK-05, STK-06, STK-07, Switch time p95 (SmartThings input change), TV-04 |
 | `redzone/discovery/__init__.py` (package) | Finding where things are watchable, by itself. | - -> - | untagged |
 | `redzone/discovery/lounge.py` | Ask the YouTube TV app on a stick which video id it is playing, over the network, no login. | - -> discovery.yttv, scripts.find_yttv_code | untagged |
 | `redzone/discovery/providers.py` | Provider candidates: installed apps, learned access failures, and per-game routes. | channels, models -> discovery.runtime, discovery.search, discovery.stickio, supervisor, tuners.prime_search, tuners.profiles +7 | untagged |
@@ -281,7 +281,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/decider/playbooks.py` | Safety playbooks SAFE-01/02/03/05 (docs/playbooks.md, family flag `playbooks.safe.enabled`, OFF). | - -> decider.decider, decider.scenarios | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), SAFE-01, SAFE-02, SAFE-03, SAFE-05, Your-team crunch live |
 | `redzone/decider/scenarios.py` | Scenario-tree lookup on the Mac (idea #19, Mac half; docs/playbooks.md GAME-*). | decider.playbooks -> decider.decider | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), GAME-01, GAME-02, GAME-03, GAME-21, GAME-22, Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/sync.py` | Automatic per-channel sync: each channel's screen delay tracked by a small Kalman filter, no taps. | contracts.sync, uses:SyncEstimate -> decider.screen, engine, screen.scorebug, sync_probe, scripts.timing_replay | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
-| `redzone/decider/tune_offset.py` | [POSITION-FIX items 4 and 7] A YouTube TV picture's delay as three numbers kept apart, not one. | config, noggin.k_table, tuners.yttv_nerds, tuners.yttv_timing -> engine | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
+| `redzone/decider/tune_offset.py` | [POSITION-FIX items 4 and 7] A YouTube TV picture's delay as three numbers kept apart, not one. | config, noggin.k_table, tuners.yttv_nerds, tuners.yttv_timing -> control, engine | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/whistle.py` | [EXP-610] A basketball clock-stopped dead ball, judged from play-by-play (wall time, period, game clock, type). | - -> decider.gate, engine, lab.backtest | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/fallback_ladder.py` | Per-stick fallback ladder (Nick's Nov 7 sync order, item 2). | - -> control | untagged |
 | `redzone/fsm.py` | Explicit state machines: one named state, declared transitions, a reason and a history. | - -> __main__, autonomy, control, decider.decider, decider.screen, engine +10 | untagged |
@@ -1099,7 +1099,7 @@ Files two or more modules name (the rest are in the JSON). Best effort from stri
 | `wordings_teacher.json` | - | - | agent.kaggle.teacher_distill, scripts.distill |
 | `yttv_verified.json` | - | - | autonomy, lab.night.run |
 
-## Machines (52)
+## Machines (53)
 
 | machine | declared in | owner | driven by |
 |---|---|---|---|
@@ -1111,6 +1111,7 @@ Files two or more modules name (the rest are in the JSON). Best effort from stri
 | `control.cec` | machines.control | `control.Controller.cec_m` | control |
 | `control.command` | machines.control | `control.Controller.command_m` | control |
 | `control.offset` | machines.control | `control.Controller.offset_m` | control |
+| `control.park` | machines.control | `control.ParkHands.m` | control |
 | `control.preload_slot` | machines.control | `control.Controller.slot_m` | control |
 | `control.screen` | machines.control | `control.Controller.screen_m` | control |
 | `control.standby` | machines.control | `control.Controller.standby_m` | control |

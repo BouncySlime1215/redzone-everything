@@ -1845,6 +1845,13 @@
    ],
    "owner": "control.Controller.offset_m"
   },
+  "control.park": {
+   "declared_in": "redzone/machines/control.py",
+   "driven_by": [
+    "redzone/control.py"
+   ],
+   "owner": "control.ParkHands.m"
+  },
   "control.preload_slot": {
    "declared_in": "redzone/machines/control.py",
    "driven_by": [
@@ -5141,11 +5148,13 @@
   "redzone/control.py": {
    "calls": [
     "redzone/autonomy.py:stick_identity",
+    "redzone/channels.py:LOCAL_SEARCH_QUERY",
     "redzone/channels.py:match_title",
     "redzone/config.py:any_league",
     "redzone/config.py:default",
     "redzone/contracts/switching.py:flip_bound",
     "redzone/contracts/switching.py:seek_model",
+    "redzone/decider/tune_offset.py:TuneOffsets",
     "redzone/fallback_ladder.py:FallbackLadder",
     "redzone/fallback_ladder.py:Step",
     "redzone/fsm.py:MachineMap",
@@ -5184,7 +5193,9 @@
     "redzone/tuners/yttv_seek.py:enter_buffer",
     "redzone/tuners/yttv_timing.py:key_constants",
     "redzone/tuners/yttv_timing.py:paused_span",
-    "redzone/tv.py:SamsungTV"
+    "redzone/tuners/yttv_timing.py:read_session",
+    "redzone/tv.py:SamsungTV",
+    "redzone/tv.py:silent"
    ],
    "contracts": [
     "flip_bound",
@@ -5205,6 +5216,7 @@
     "redzone/channels.py",
     "redzone/config.py",
     "redzone/contracts/switching.py",
+    "redzone/decider/tune_offset.py",
     "redzone/fallback_ladder.py",
     "redzone/fsm.py",
     "redzone/machines/control.py",
@@ -5231,6 +5243,7 @@
      "control.cec",
      "control.command",
      "control.offset",
+     "control.park",
      "control.preload_slot",
      "control.screen",
      "control.standby",
@@ -5977,6 +5990,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/control.py",
     "redzone/engine.py"
    ],
    "owner": "unowned",
@@ -8654,6 +8668,7 @@
      "control.cec",
      "control.command",
      "control.offset",
+     "control.park",
      "control.preload_slot",
      "control.screen",
      "control.standby",
@@ -19106,9 +19121,9 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2236,
+  "calls": 2240,
   "data_files": 205,
-  "machines": 52,
+  "machines": 53,
   "modules": 476,
   "orphans": 34,
   "unowned": 274,
