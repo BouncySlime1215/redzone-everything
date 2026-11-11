@@ -415,10 +415,11 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
            params: ShowParams | None = None, stop_min: dict | None = None, board=None, rig_kw: dict | None = None,
            model=None, eyes=None, emit=None) -> Show:
     """The app's PARK controller on a recorded dev night: fake sticks, a fake TV, a clock that is not the wall.
-    first = "read" (the first picture's place was read, as the local runner starts) or "live" (the app's own start:
-    the stream on screen was never read; it is taken to be at its live edge and cut at the wide padding)."""
+    first = "read" (the first picture's place was read: the app's `Controller.park_start`, the local runner's start) or
+    "live" (what happens WITHOUT that step: the stream on screen sits at its live edge, never read; the feed is never
+    far enough ahead of it for a padded leave, so the show never makes its first jump)."""
     P = params or ShowParams.from_config(config.default)
-    first = first or ("live" if hands == "app" else "read")
+    first = first or "read"
     rs, slate = loaded or load_replay(night_id, games, league)
     tm = ShowTiming.case(case, len(rs), league=league, delay=P.show_delay)
     known = case == "tonight"
