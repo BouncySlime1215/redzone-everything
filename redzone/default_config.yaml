@@ -1285,3 +1285,4 @@ basketball:                # [NBA-BUCKET] land right after a made basket, includ
 show:                      # the phone's Show view over the new show's state files (redzone/web/show.py; read-only)
   ui: false                # on: a "Show" tab with what is on the TV, the next move, pace, sound and Rule #1 counters
   state_dir: ""            # the folder the show writes state.json and events.jsonl to (empty = no show yet)
+  eyes_dir: ""             # the folder the clock watcher writes eyes_state.json to (empty = the state folder, then its sibling eyes/)

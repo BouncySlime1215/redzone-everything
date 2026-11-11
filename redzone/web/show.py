@@ -3,8 +3,8 @@
     GET /api/show                  state.json, eyes_state.json under "eyes", and "stale_s" (seconds since "updated")
     GET /api/show/events?since=t   events.jsonl lines with t >= since (newest EVENTS_MAX)
 
-The folder is config `show.state_dir`; eyes_state.json is read from there, or from the sibling `eyes/` folder
-(the contract's layout). The contract: redzone-agents tools/STATE_CONTRACT.md. Any field may be missing or null.
+The folder is config `show.state_dir`; eyes_state.json is read from `show.eyes_dir` when set, else from the state
+folder, else from its sibling `eyes/` folder (the contract's layout). The contract: redzone-agents tools/STATE_CONTRACT.md. Any field may be missing or null.
 Only the contract's fields leave here, each checked for type: numbers, on/off values and short text. Text that
 looks like an address, a link, an account or a long id is dropped (the repo and the page are public-safe).
 Nothing here reads or changes the engine, the decider or the TV; with the flag off the router is not included,
@@ -23,7 +23,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-SCRIPT_TAG = '<script type="module" src="/static/rz-show.js?v=1"></script>'
+SCRIPT_TAG = '<script type="module" src="/static/rz-show.js?v=4"></script>'
 STATE_MAX_BYTES = 1_000_000      # a state file bigger than this is not the show's
 EVENTS_TAIL_BYTES = 2_000_000    # only the end of a long events file is read
 EVENTS_MAX = 500                 # newest events per answer
@@ -72,7 +72,7 @@ STATE_SPEC = {
                     "state": TEXT, "value": NUM, "on_screen": BOOL, "parked": BOOL}),
 }
 EYES_SPEC = {
-    "updated": NUM, "status": TEXT, "channel": TEXT, "league": TEXT, "frame_y": NUM, "period": NUM, "clock_s": NUM,
+    "updated": NUM, "status": TEXT, "why": TEXT, "channel": TEXT, "league": TEXT, "frame_y": NUM, "period": NUM, "clock_s": NUM,
     "clock_running": BOOL, "last_stop_y": NUM, "last_restart_y": NUM, "bug_missing_since_y": NUM,
     "k": _map({"k_s": NUM, "spread_s": NUM, "n": NUM}),
     "reads_per_min": NUM, "failed_reads_per_min": NUM, "cpu_pct": NUM, "mem_mb": NUM,
@@ -135,22 +135,22 @@ def _read_json(path: Path):
     return data if isinstance(data, dict) else None
 
 
-def _folder(cfg) -> Path | None:
-    raw = cfg.get("show.state_dir", "") or ""
+def _folder(cfg, key: str = "show.state_dir") -> Path | None:
+    raw = cfg.get(key, "") or ""
     return Path(raw).expanduser() if isinstance(raw, str) and raw.strip() else None
 
 
-def build_state(folder: Path | None, now: float | None = None) -> dict:
+def build_state(folder: Path | None, now: float | None = None, eyes_dir: Path | None = None) -> dict:
     """The /api/show answer. A missing or broken state file gives {"eyes": ..., "stale_s": None}."""
     now = time.time() if now is None else now
     raw = _read_json(folder / "state.json") if folder else None
     out = clean(raw, STATE_SPEC) if raw is not None else {}
     eyes = None
-    if folder:
-        for p in (folder / "eyes_state.json", folder.parent / "eyes" / "eyes_state.json"):
-            eyes = _read_json(p)
-            if eyes is not None:
-                break
+    places = [eyes_dir] if eyes_dir else [folder, folder.parent / "eyes"] if folder else []
+    for d in places:
+        eyes = _read_json(d / "eyes_state.json")
+        if eyes is not None:
+            break
     out["eyes"] = clean(eyes, EYES_SPEC) if eyes is not None else None
     upd = out.get("updated")
     out["stale_s"] = round(max(0.0, now - upd), 1) if upd is not None else None
@@ -211,7 +211,7 @@ def router(engine) -> APIRouter:
     def show_state():
         if not enabled(engine.cfg):
             return off()
-        return JSONResponse(build_state(_folder(engine.cfg)))
+        return JSONResponse(build_state(_folder(engine.cfg), eyes_dir=_folder(engine.cfg, "show.eyes_dir")))
 
     @r.get("/events")
     def show_events(since: str | None = None):

@@ -5,6 +5,7 @@ only the contract's fields leave, as numbers, on/off values and short public nam
 broken file is a calm answer, never an error.
 """
 import json
+from pathlib import Path
 import time
 
 import pytest
@@ -169,3 +170,69 @@ def test_clean_text_rules():
     for bad in ("192.168.1.2", "me@example.com", "https://x.y", "aa:bb:cc:dd:ee", "A" * 30, "/Users/someone"):
         assert show.clean(bad, show.TEXT) is None, bad
     assert show.clean(float("inf"), show.NUM) is None and show.clean(True, show.NUM) is None
+
+
+# ---- tonight's real run (Nov 10, run 4): the runner's own files, copied as written --------------------------
+REAL = Path(__file__).parent / "fixtures" / "show_2026-11-10-run4"
+
+
+def test_real_state_nulls_survive_as_null(engine):
+    s = show.build_state(REAL, now=1794363017.0 + 3)
+    assert s["stale_s"] == 3.0 and s["mode"] == "live"
+    assert s["next"] == {"action": "wait", "to_game": None, "in_s": None,
+                         "reason": "the landing is outside a padded legal window"}
+    assert s["parked"]["parked_for_s"] is None and s["parked"]["ready"] is False
+    assert s["pace"]["windows"]["10"] is None and s["pace"]["windows"]["5"] == 4
+    assert s["rule1"] == {"mid_play_joins": None, "mid_play_leaves": None, "high_leverage_leaves": None,
+                          "judged": "unknown live"}
+    assert s["on_screen"]["behind_live_s"] == 134.3 and s["on_screen"]["look_s"] == 42
+    assert all(isinstance(v, (int, float)) for v in s["stay_reasons"].values()) and len(s["stay_reasons"]) == 8
+    assert max(len(k) for k in s["stay_reasons"]) > 40          # long plain-English reasons are kept whole
+    assert s["games"][1]["value"] == 1.1                         # worth can run past 1
+    assert s["health"]["eyes"] == "off"
+
+
+def test_real_state_drops_fields_outside_the_contract(engine):
+    s = show.build_state(REAL, now=1794363020.0)
+    assert "show_delay_s" not in s["timing"]
+    assert set(s["timing"]["channels"]["nbc"]) == {"k_s", "k_spread_s", "tune_offset_known"}   # no "game", "padding_s"
+    _keys({k: v for k, v in s.items() if k not in ("eyes", "stale_s")}, show.STATE_SPEC)
+
+
+def test_real_eyes_status_why_and_restart(engine):
+    e = show.build_state(REAL, now=1794363020.0)["eyes"]
+    assert e["status"] == "off" and e["why"] == "stopped"
+    assert e["last_stop_y"] is None and e["last_restart_y"] == 1794362763.236
+    assert e["k"]["espn|cbb|401909564"] == {"k_s": None, "spread_s": None, "n": 0}
+    for gone in ("chrome_pid", "chrome_cpu_pct", "mode", "watching", "pm_s"):
+        assert gone not in json.dumps(e), gone
+    _keys(e, show.EYES_SPEC)
+
+
+def test_eyes_dir_setting(engine, tmp_path):
+    (tmp_path / "state.json").write_text(json.dumps({"updated": NOW}))
+    s = _app(engine, True, tmp_path).get("/api/show").json()
+    assert s["eyes"] is None
+    engine.cfg.update({"show": {"eyes_dir": str(REAL)}})
+    assert _app(engine, True, tmp_path).get("/api/show").json()["eyes"]["why"] == "stopped"
+
+
+def test_real_events_every_kind(engine):
+    evs = show.read_events(REAL)
+    lines = [ln for ln in (REAL / "events.jsonl").read_text().splitlines() if ln.strip()]
+    assert len(evs) == len(lines)
+    assert {e["kind"] for e in evs} == {"stay", "park", "jump", "alert"}
+    j = [e for e in evs if e["kind"] == "jump"][0]
+    assert j == {"t": 1794362776.0, "kind": "jump", "from": "BOS @ PHI", "to": "MSU @ DUKE",
+                 "reason": "timeout or break", "jump_s": 2.7, "look_s": 273}
+    a = [e for e in evs if e["kind"] == "alert"][0]
+    assert a["text"] == "no jump: a tune did not work" and a["level"] == "warn"
+    assert [e["kind"] for e in show.read_events(REAL, since=1794362976.0)] == ["jump", "park"]
+
+
+def test_real_run_through_the_route(engine):
+    c = _app(engine, True, REAL)
+    s = c.get("/api/show").json()
+    assert s["on_screen"]["game"] == "BOS @ PHI" and s["stale_s"] > 0
+    assert "undefined" not in json.dumps(s) and "NaN" not in json.dumps(s)
+    assert "rz-show.js?v=4" in c.get("/").text
