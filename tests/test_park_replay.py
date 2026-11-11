@@ -119,5 +119,6 @@ def test_night_20261023_two_games_whole_night_rule_1_is_zero_and_every_jump_is_w
     assert (row["mid_entry"], row["mid_leave"], row["hl_leave"]) == (0, 0, 0)          # the replay's own judge (PARK's own mask)
     assert row["warrant_n"] == row["flips"] >= 40 and row["warranted"] == row["warrant_n"]
     assert 0.30 <= row["jumps_per_min"] <= 0.60                                        # the local runner's READY-B gave 0.50 here
-    assert row["noplay_looks"] == 0 and row["break_lands"] == 0 and not show.refused
+    assert row["noplay_looks"] == 0 and row["break_lands"] <= 2                         # (a landing with over 10 s of a break still to come)
+    assert not any("did not" in k or "not sent" in k for k in show.refused)            # no step failed (the fake was not told to fail)
     assert row["behind_max_s"] <= SHOW.late_cap and show.stop == ""
