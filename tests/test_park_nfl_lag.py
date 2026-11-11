@@ -159,3 +159,13 @@ def test_at_either_end_rule_1_and_warrants_hold(s):
     assert (pic["football_joins_mid"], pic["football_leaves_mid"]) == (0, 0)
     row = pr.result(show)
     assert row["warranted"] == row["warrant_n"]
+
+
+@needs_archive
+def test_the_feed_lag_is_measured_from_each_rows_first_sight():
+    """In the replay a row is handed over once the show's edge is `lead` short of its stamp, read every 3 s: its measured
+    lag (first sight - stamp, on the show's grid) is -lead, less up to one poll."""
+    show = pr.replay("20261023", 2, minutes=10)
+    for g in range(2):
+        lag, lead = show.feed.lag_s(g), show.feed.leads[g]
+        assert lag is not None and -lead - 0.5 <= lag <= -lead + 3.5

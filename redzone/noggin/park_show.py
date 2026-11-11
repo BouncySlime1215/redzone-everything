@@ -294,7 +294,6 @@ class FactsFeed:
         self.keep_shots = keep_shots       # False (the app, always): the show's arrays are handed NO shots, so nothing but the
         #                                    grader's dead time can make a second legal (only the replay's what-if keeps them)
         self.fx = [GameFacts(lg, gid, params) for lg, gid in self.games]
-        self.lag_seen: dict = {}                                 # [PARK-NFL-LAG] game -> wall seconds from a row's stamp to its first sight
         self.fresh: dict = {}
         self.key = [None] * len(games)
         self.at = [NEVER] * len(games)
@@ -349,25 +348,22 @@ class FactsFeed:
 
     def offer(self, g: int, summary: dict, at: int, final: bool | None = None) -> bool:
         """A summary of game g read at grid second `at`. True when it changed that game's facts."""
-        fx = self.fx[g]
-        n0, first = len(fx.plays), self.at[g] <= NEVER
-        last0 = fx.wall[-1] if fx.wall else None
         try:
             self.fx[g].edge_hint = self.night.base + at + self.leads[g] - self.shifts[g]
             self.fx[g].update(summary, final)
         except (KeyError, TypeError, ValueError):
             self.errors += 1
             return False
-        if not first and n0 and len(fx.plays) > n0 and fx.wall[n0 - 1] == last0:     # (not after a reset)
-            seen = self.lag_seen.setdefault(g, [])                # rows new since the last poll: how late each one came
-            seen.extend(self.night.base + at - w for w in fx.wall[n0:])
-            del seen[:-40]
         return self._publish(g, at)
 
-    def lag_s(self, g: int, min_n: int = 5) -> float | None:
-        """[PARK-NFL-LAG] The feed's measured lag for game g (median of its newest first sightings), None before min_n."""
-        seen = self.lag_seen.get(g) or []
-        return sorted(seen)[len(seen) // 2] if len(seen) >= min_n else None
+    def lag_s(self, g: int, min_n: int = 5, last: int = 40) -> float | None:
+        """[PARK-NFL-LAG] The feed's measured lag for game g: the median, over its newest `last` rows that came after the
+        first poll, of (when the row was first seen, `seen`) - its stamp. None before min_n such rows."""
+        fx, seen = self.fx[g], self.seen[g]
+        if not seen or len(seen) != len(fx.wall):
+            return None
+        lags = [self.night.base + t - w for t, w in zip(seen, fx.wall) if t > seen[0]][-last:]
+        return sorted(lags)[len(lags) // 2] if len(lags) >= min_n else None
 
     def offer_rows(self, g: int, rows: list, at: int, final: bool = False, data: dict | None = None) -> bool:
         """The same from rows handed over one by one (the replay: `rows` are the game's NEW rows, in feed order)."""
