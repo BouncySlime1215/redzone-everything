@@ -21,6 +21,7 @@ It runs as its own launchd job (com.redzone.agent), so it still works when the a
 crashed. Every observation, verdict and action goes to data/agent.jsonl.
 
     .venv-agent/bin/python -m agent.watchdog [--once] [--dry-run]
+Why: Keeps the app healthy without a person, as a separate always-on process (docstring, watchdog commit).
 """
 from __future__ import annotations
 
@@ -47,6 +48,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 LOG = DATA / "service.log"
 JOURNAL = DATA / "agent.jsonl"
+BEAT = DATA / "agent.heartbeat"   # touched every check: the app alerts when this goes stale (supervisor.rule_watchdog_beat)
 API = os.environ.get("REDZONE_API", "http://127.0.0.1:8778")
 LABEL = "com.redzone.everything"
 CHECK_S = 60.0
@@ -58,6 +60,7 @@ MODEL_IDLE_S = 900.0         # the local model is dropped after 15 idle minutes 
 PRUNE_EVERY_S = 1800.0       # prune_disk at most once per 30 min (it only frees caches the app rebuilds)
 MAX_ACTIONS_HOUR = 12        # restarts + reconnects + prunes, all kinds together: past this, notify only
 SETTLE_CHECKS = 2            # an action's problem still there this many checks later: it didn't work
+REPEAT_ROW_S = 900.0         # the same verdict is journaled at most once per 15 min (one row a minute filled agent.jsonl)
 FAILED_TTL_S = 1800.0        # a failed fix is skipped on the same problem for this long
 # app fix -> (seconds between two on the same target, max per hour on the same target)
 FIX_LIMITS = {"resume_player": (120.0, 6), "clear_prompt": (120.0, 6), "retune_stick": (300.0, 3),
@@ -144,6 +147,8 @@ class Watchdog:
         # Set by main() only: a watchdog built in a test never files real issues.
         self.state: dict | None = None
         self.autofix: Filer | None = None
+        self.beat_path: Path | None = None           # set by main() only: tests never touch data/
+        self._journaled: dict[tuple, float] = {}     # verdict key -> when its row was last written
 
     # ---- seeing ----------------------------------------------------------------------------
     def observe(self) -> Obs:
@@ -172,6 +177,13 @@ class Watchdog:
             net = ((st.get("health") or {}).get("network")) or {}
             o.away = net.get("where") == "away"
             o.route_issue = (net.get("message") or "")[:300] if net.get("routes_broken") else ""
+            sup = ((st.get("health") or {}).get("supervisor")) or {}
+            try:   # the app's own loop heartbeat (not the log's mtime: a healthy app is silent for minutes, P-03)
+                hb = sup.get("heartbeat_age_s")
+                o.heartbeat_age_s = float(hb) if hb is not None else -1.0
+            except (TypeError, ValueError):
+                o.heartbeat_age_s = -1.0
+            o.switch_in_flight = bool(sup.get("switch_in_flight"))
             sticks = ((st.get("health") or {}).get("sticks")) or []
             off = [s.get("host") for s in sticks if s.get("state") == "offline" and s.get("host")]
             for h in off:
@@ -458,7 +470,7 @@ class Watchdog:
         row = {"ts": round(self._clock(), 1), "kind": "check", "action": v.action, "source": v.source,
                "why": v.why, "target": v.target, "result": done, "fault": v.kind, "fixes": self.fix_rates(),
                "obs": {"api_ok": o.api_ok, "live": o.live_games, "crunch": o.crunch_on_screen,
-                       "log_age_s": o.log_age_s, "disk_mb": o.disk_free_mb, "offline": o.sticks_offline,
+                       "log_age_s": o.log_age_s, "heartbeat_age_s": o.heartbeat_age_s, "disk_mb": o.disk_free_mb, "offline": o.sticks_offline,
                        "errors": len(o.errors), "governor": self.gov.level,
                        "app_mb": self.gov.service_mb(), "models_mb": round(self.gov.models_mb())}}
         if self.memory is not None and not self.dry_run and worked(v.action, done):
@@ -467,9 +479,33 @@ class Watchdog:
                 self.memory.record(sig, v.action, done, why=v.why)
             except Exception as e:   # memory must never stop the watchdog
                 log.warning("agent: memory record failed: %s", e)
-        if v.action != "none" or int(self._clock()) % 900 < CHECK_S:   # quiet checks: one row per 15 min
+        self._beat()
+        if self._journal_due(v, done, o):
             _journal(row)
         return row
+
+    def _beat(self) -> None:
+        """Touch the heartbeat file: the app alerts when it goes stale (the watchdog died or was never installed)."""
+        if self.beat_path is None or self.dry_run:
+            return
+        try:
+            self.beat_path.write_text(str(round(self._clock(), 1)))
+        except OSError:
+            pass
+
+    def _journal_due(self, v: Verdict, done: str, o: Obs) -> bool:
+        """Quiet checks: one row per 15 min. A verdict that keeps repeating (a standing notify, 'waiting')
+        is written once per REPEAT_ROW_S, not once a minute (P-16: 1.4k rows a day)."""
+        now = self._clock()
+        if v.action == "none" and not v.why.startswith(("waiting", "a stick is offline")):
+            return int(now) % 900 < CHECK_S
+        if v.action not in ("none", "notify") and "recently" not in done and "rate-limited" not in done:
+            return True   # something ran
+        key = (v.action, v.target, re.sub(r"\d+", "N", v.why))
+        if now - self._journaled.get(key, -1e9) < REPEAT_ROW_S:
+            return False
+        self._journaled[key] = now
+        return True
 
 
 def launchd_last_exit(label: str = LABEL) -> int | None:
@@ -484,8 +520,21 @@ def launchd_last_exit(label: str = LABEL) -> int | None:
     return int(m.group(1)) if m else None
 
 
+# Mirrors scripts/deploy.py ACTIVE (the deploy states that restart or watch the app).
+DEPLOY_ACTIVE = frozenset({"switching", "watching", "rolling_back"})
+
+
 def deploy_in_progress(now: float) -> bool:
-    """scripts/deploy.py writes this marker while it restarts the app and watches its health."""
+    """True while scripts/deploy.py restarts the app or watches its health. Reads the deploy machine in
+    state.json first (the one source of truth, redzone/machines/platform.py "deploy.lifecycle"), then the
+    older in_progress.json marker. Kept dependency-free: the watchdog runs in its own venv."""
+    try:
+        st = json.loads((DATA / "deploy" / "state.json").read_text())
+        m = st.get("machine") if isinstance(st, dict) else None
+        if isinstance(m, dict) and m.get("state"):
+            return m["state"] in DEPLOY_ACTIVE and float(m.get("until") or 0) > now
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
     try:
         m = json.loads((DATA / "deploy" / "in_progress.json").read_text())
         return float(m.get("until", 0)) > now
@@ -551,6 +600,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     Watchdog.memory = Memory(ROOT)
     w = Watchdog(dry_run=a.dry_run, use_model=not a.no_model)
+    w.beat_path = BEAT
     w.autofix = Filer(ROOT, health=lambda: (w.state or {}).get("health"), notify=w._push)
     while True:
         t0 = time.time()

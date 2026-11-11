@@ -8,6 +8,7 @@ Off is only right once the TV's own input change works (scripts/tv_setup.py), be
 CEC to take the TV. The app turns CEC back on for a HOME fallback onto a stick by itself, and off
 again right after. If adb can't change it: Settings > Display & Sounds > HDMI CEC Device Control.
 See docs/instant-switching.md.
+Why: Reads or toggles HDMI-CEC on the sticks over adb (docstring, instant switching commit).
 """
 from __future__ import annotations
 

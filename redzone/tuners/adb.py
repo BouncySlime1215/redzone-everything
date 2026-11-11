@@ -1,9 +1,12 @@
 """Talk to a Fire TV stick over the network with the adb command-line tool.
 
+Why: Fire TV sticks are driven over the network by adb; each command has a timeout so a hung adb never freezes the app (docstring).
+
 Guardrails:
 - Every command has a timeout; a hung adb never freezes the app.
 - Lost connection -> reconnect at every keepalive tick (~10s), forever, quietly.
-- "unauthorized" -> stop and tell you to approve the prompt on the TV.
+- "unauthorized" -> stop re-sending `adb connect` (it can re-raise the prompt over the game); retry
+  every UNAUTH_RETRY_S, and tell you to approve the prompt on the TV.
 - Package names are discovered with `pm list packages`, never assumed.
 - Speed: each stick keeps ONE `adb shell` open and sends commands down it (~10-40 ms each)
   instead of starting a new adb process per command (~80-250 ms each; a tune sends 5-30).
@@ -30,6 +33,7 @@ import time
 from dataclasses import dataclass, field
 
 from redzone import config as _config
+from redzone.machines.control import ADB_SHELL, STICK_LINK
 from redzone.platform.breaker import Breaker
 
 log = logging.getLogger(__name__)
@@ -37,10 +41,12 @@ log = logging.getLogger(__name__)
 ADB = shutil.which("adb") or "/opt/homebrew/bin/adb"
 SESSION_ON = os.environ.get("RZ_ADB_SESSION", "1").strip().lower() not in ("0", "off", "false", "no")
 LOCK_WAIT_S = 0.15     # shell busy longer than this (a slow command) -> this one runs as its own adb process
-HANDSHAKE_S = 3.0      # a fresh shell must answer `echo ok` this fast (normally ~0.1 s), cleanly, or we don't use it
+HANDSHAKE_S = 8.0      # a fresh shell must answer `echo ok` this fast (normally ~0.1 s), cleanly, or we don't use it. Was 3 s:
+                       # [P1-ROOTCAUSE-09] a one-off stall of the swapping Mac counted as a dead shell, equally on both sticks
 MAX_REPLY = 32 << 20   # biggest reply we'll buffer (a full UI dump is ~100 KB)
 AWAKE_TTL_S = 60.0     # trust "the stick is awake" this long before asking again
 STICK_HUNG = "stick not responding"   # detail prefix while a stick's breaker is open (not the target's fault)
+UNAUTH_RETRY_S = float(_config.default("tuners.unauthorized_retry_s", 300))  # an unauthorized stick is not re-connected faster than this (the prompt is on the TV)
 CONNECT_RETRY_MAX_S = 9.0   # a failed connect is retried at the next ~10 s keepalive tick, never later
 # [scrub entry] a scrubbed stream is trusted this long (Nick Nov 6: one 20-minute hold proven on TNT)
 SCRUB_TRUST_S = float(_config.default("timing.behind_live_s.scrub_trust_s", 1200))
@@ -54,6 +60,7 @@ YOUTUBE_PACKAGES = ["com.amazon.firetv.youtube", "com.google.android.youtube.tv"
 ESPN_PACKAGES = ["com.espn.gtv", "com.espn.score_center", "com.espn.androidtv", "com.espn.espnplus"]
 
 # Model code -> (name, os). From Amazon's device table; Vega sticks can't be controlled.
+# AFTCA002, AFTCL001, AFTCR001 and AFTMA08C15 are NOT yet verified against Amazon's table (DEV-14).
 MODELS = {
     "AFTMM": ("Fire TV Stick 4K (2018)", "Fire OS 6"), "AFTKA": ("Fire TV Stick 4K Max (2021)", "Fire OS 7"),
     "AFTSS": ("Fire TV Stick Lite / HD", "Fire OS 7"), "AFTSSS": ("Fire TV Stick (3rd gen)", "Fire OS 7"),
@@ -98,7 +105,7 @@ class Stick:
     model: str = ""
     os: str = ""
     packages: dict[str, str] = field(default_factory=dict)  # role -> package
-    state: str = "unknown"         # connected | offline | unauthorized | unknown
+    state: str = "unknown"         # connected | offline | unauthorized | unknown (machine tuners.stick_link: link_m)
     connect_error: str = ""         # last failed connection/probe, kept separate from playback status
     last_ok: float = 0.0
     _next_retry: float = 0.0
@@ -171,6 +178,9 @@ class Stick:
             raise
         if not r.ok and r.out.startswith("timeout/error"):
             self.breaker.hang()
+            # [P1-ROOTCAUSE-09] which command, how long: two words only (a later word can be a deep link)
+            log.warning("%s: adb '%s' hung after %.1f s (%d in a row)", self.host, " ".join(cmd.split()[:2]), r.took,
+                        self.breaker.hangs)
             if self.breaker.is_open:
                 log.warning("%s: %d adb commands hung in a row; failing fast for %.0fs",
                             self.host, self.breaker.hangs, self.breaker.retry_in())
@@ -256,10 +266,13 @@ class Stick:
             detail = probe.out.strip()
             text = detail.lower()
         self.connect_error = detail[:300] or "ADB did not establish a usable shell"
-        if "unauthorized" in text or "failed to authenticate" in text:
-            self.state = "unauthorized"
-        else:
-            self.state = "offline"
+        unauthorized = "unauthorized" in text or "failed to authenticate" in text
+        self.state = "unauthorized" if unauthorized else "offline"
+        if unauthorized:
+            # DEV-15: every `adb connect` can re-raise the allow-debugging prompt over the game. Wait.
+            self._next_retry = now + UNAUTH_RETRY_S
+            self._backoff = CONNECT_RETRY_MAX_S
+            return False
         # Retry on the next keepalive tick (~10 s), always: `adb connect` is cheap, and a longer
         # backoff left a stick that was reachable again unconnected for up to a minute.
         self._next_retry = now + min(self._backoff, CONNECT_RETRY_MAX_S)
@@ -269,8 +282,10 @@ class Stick:
     async def identify(self) -> None:
         r = await self.shell("getprop ro.product.model; getprop ro.build.version.release; "
                              "getprop ro.build.version.name; settings get global device_name", timeout=6)
+        if not r.ok:
+            return   # a breaker message or "timeout/error..." is not a model (DEV-14)
         lines = [x.strip() for x in r.out.splitlines()]
-        if lines:
+        if lines and lines[0]:
             self.model = lines[0]
             known = MODELS.get(self.model)
             if known:
@@ -280,6 +295,9 @@ class Stick:
                 self.os = f"Fire OS (Android {lines[1]})" if len(lines) > 1 and lines[1] else "unknown"
             if len(lines) > 2 and lines[2] and "Fire" in lines[2]:
                 self.os = lines[2].split("(")[0].strip()
+            if not known and any("vega" in x.lower() for x in lines[1:3]):
+                # An unlisted model that says it runs Vega (new sticks appear before this table does).
+                self.os = "Vega OS"
         pk = await self.shell("pm list packages", timeout=10)
         installed = set(re.findall(r"package:([\w.]+)", pk.out))
         for role, cands in (("youtubetv", YTTV_PACKAGES), ("prime", PRIME_PACKAGES), ("youtube", YOUTUBE_PACKAGES),
@@ -298,7 +316,10 @@ class Stick:
         started = time.monotonic()
         r = await self.shell(PLAYBACK_CMD, timeout=4)
         report = parse_playback(r.out if r.ok else "", package)
-        report.update(read_ok=r.ok, read_started=started, read_finished=time.monotonic())
+        no_sessions = not r.ok and not r.out.strip()   # grep exits 1 on no match: the stick answered, with no media session
+        report.update(read_ok=r.ok or no_sessions, read_started=started, read_finished=time.monotonic())
+        if no_sessions:
+            report["no_sessions"] = True
         if self.observer is not None:
             try:
                 self.observer(self, report)
@@ -316,6 +337,9 @@ class Stick:
         """All visible text in the current UI (menus, buttons, prompts). Video itself isn't text.
         Slow (1-3 s), so it runs as its own adb process: the always-open shell stays free for the
         quick "playing yet?" checks that run alongside it."""
+        if self.breaker.is_open:
+            self.screen_source = "ui"
+            return ""                  # a hung stick: this bypasses shell(), so it must check the breaker itself
         # Remove the previous dump first: a failed dump (common while video plays: "could not get
         # idle state") must never hand back an earlier screen's text.
         r = await self.run("shell", "rm -f /sdcard/rz_ui.xml && uiautomator dump /sdcard/rz_ui.xml >/dev/null 2>&1"
@@ -339,6 +363,8 @@ class Stick:
 
     async def screencap(self, timeout: float = 8.0) -> bytes:
         """A fresh PNG screenshot (no key pressed, nothing changes on screen). b'' if it failed."""
+        if self.breaker.is_open:
+            return b""
         proc = await asyncio.create_subprocess_exec(
             ADB, "-s", self.host, "exec-out", "screencap", "-p",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
@@ -352,6 +378,8 @@ class Stick:
         return png
 
     async def _exec_out(self, cmd: str, timeout: float) -> bytes:
+        if self.breaker.is_open:
+            return b""
         proc = await asyncio.create_subprocess_exec(
             ADB, "-s", self.host, "exec-out", cmd,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
@@ -367,7 +395,8 @@ class Stick:
         score bug's lower third) read off the stick; the rows above are black. The stick sends raw pixels
         (no PNG encode there: a 1080p `screencap -p` takes ~6.5 s on the 4K (2023) stick), only the band's
         bytes cross Wi-Fi, and the PNG is rebuilt here at full size so OCR boxes keep their positions.
-        b'' when the frame isn't 8-bit RGBA or anything fails (the caller falls back to screencap)."""
+        b'' when the frame isn't 8-bit RGBA or the command fails (the caller falls back to screencap). A timeout is
+        NOT swallowed: it raises asyncio.TimeoutError, as screencap does (yttv_seek counts it as a failed read)."""
         if self._raw_geom is None:
             head = await self._exec_out("screencap | head -c 12", timeout)
             if len(head) < 12:
@@ -457,7 +486,9 @@ class Stick:
             # before that read may have closed. Waking can steal HDMI via CEC.
             if may_cut is not None and not may_cut():
                 return False
-            await self.key("KEYCODE_WAKEUP")
+            pressed = await self.key("KEYCODE_WAKEUP")
+            if pressed is not None and not pressed.ok:   # None: a test double's key(), which reports nothing
+                return True            # pressed, or tried to: don't trust "awake" until a press has worked
         self.mark_awake()
         return asleep
 
@@ -517,6 +548,23 @@ def hdmi_port_from_dump(text: str) -> str | None:
     return f"HDMI{next(iter(ports))}" if len(ports) == 1 else None
 
 
+def _stick_state(self: "Stick") -> str:
+    m = self.__dict__.get("link_m")
+    return m.state if m is not None else "unknown"
+
+
+def _set_stick_state(self: "Stick", value: str) -> None:
+    """Stick.state is the tuners.stick_link machine (link_m): every write is a declared move."""
+    m = self.__dict__.get("link_m")
+    if m is None:
+        self.__dict__["link_m"] = STICK_LINK.new(key=self.__dict__.get("host", ""), state=value)
+        return
+    m.to(value, why=self.__dict__.get("connect_error", "") or value)
+
+
+Stick.state = property(_stick_state, _set_stick_state)   # after @dataclass: __init__ still takes state=
+
+
 # --- the always-open shell ---------------------------------------------------------------
 
 DONE, NOT_SENT, LOST, TIMED_OUT = "done", "not sent", "lost", "timed out"
@@ -550,6 +598,11 @@ class AdbShell:
         self.retry_at = 0.0                # monotonic time before which we don't try starting it again
         self.last_error = ""
         self.ready_ms: float | None = None
+        self.m = ADB_SHELL.new(key=host, clock=time.monotonic)   # closed / opening / ready / broken
+
+    def view(self) -> dict:
+        return {**self.m.view(history=0), "alive": self.alive, "failures": self.failures,
+                "retry_in_s": round(max(0.0, self.retry_at - time.monotonic()), 1)}
 
     @property
     def alive(self) -> bool:
@@ -572,6 +625,7 @@ class AdbShell:
     async def _open(self) -> bool:
         self.opens += 1
         t0 = time.monotonic()
+        self.m.to("opening", why=f"open #{self.opens}")
         try:
             self.proc = await asyncio.create_subprocess_exec(
                 ADB, "-s", self.host, "shell", stdin=asyncio.subprocess.PIPE,
@@ -586,6 +640,7 @@ class AdbShell:
             return self._broken((r.out.strip()[-120:] if r.out.strip() else status))
         self.failures, self.last_error = 0, ""
         self.ready_ms = (time.monotonic() - t0) * 1000
+        self.m.to("ready", why=f"handshake in {self.ready_ms:.0f} ms")
         log.info("adb: always-open shell to %s ready in %.0f ms", self.host, self.ready_ms)
         return True
 
@@ -594,6 +649,7 @@ class AdbShell:
         wait = min(300.0, 5.0 * 2 ** (self.failures - 1))
         self.retry_at = time.monotonic() + wait
         self.last_error = why
+        self.m.to("broken", why=f"{why[:80]}; retry in {wait:.0f}s")
         log.warning("adb: always-open shell to %s not usable (%s); one adb process per command for %.0fs",
                     self.host, why, wait)
         return False
@@ -647,6 +703,8 @@ class AdbShell:
         p, self.proc = self.proc, None
         if p is not None:
             _close_proc(p)
+        if not self.m.is_("broken"):
+            self.m.to("closed", why="killed")
 
     def abandon(self) -> None:
         """Kill it without waiting (works even if its event loop is gone)."""
@@ -654,6 +712,8 @@ class AdbShell:
 
     async def close(self) -> None:
         p, self.proc = self.proc, None
+        if not self.m.is_("broken"):
+            self.m.to("closed", why="closed")
         if p is None:
             return
         _close_proc(p)
@@ -819,6 +879,10 @@ async def _adb(*args: str, timeout: float = 8.0) -> RunResult:
         if proc is not None:
             _close_proc(proc)
         return RunResult(False, str(e), time.monotonic() - t0)
+    except BaseException:
+        if proc is not None:
+            _close_proc(proc)         # cancelled: don't leave an adb process running behind us (as Stick.run)
+        raise
 
 
 async def adb_available() -> bool:

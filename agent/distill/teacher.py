@@ -1,5 +1,7 @@
 """Teacher prompts, request files and answer parsing. Stdlib only.
 
+Why: the big teacher model only runs on a free Kaggle GPU, so prompts and parsing live here, testable off the notebook (commit 2026-11-04, Kaggle Mind).
+
 The teacher is a big open model (Qwen3-32B-AWQ, or 14B) run on a free Kaggle GPU by
 ``agent/distill/kaggle/teacher_kaggle.ipynb``. Everything model-specific stays in that notebook; this
 module renders every prompt here, so the notebook is a dumb "messages in, text out" loop and the

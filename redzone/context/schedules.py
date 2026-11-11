@@ -3,6 +3,8 @@
 Both return one row per game: game_id, season, game_type, kickoff_utc, final_utc, home, away, home_score,
 away_score, neutral, venue_id, roof (+ daynight for MLB). Sources: nflverse schedules games.csv (CC-BY-4.0) and
 Retrosheet game logs GL<year>.TXT (free with the Retrosheet notice).
+
+Why: first added in 51db66ed (2026-11-05) as "Data B: stakes (standings, Elo, playoff-odds swing) landed NFL+MLB; Open-Meteo weather and CFBD c..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

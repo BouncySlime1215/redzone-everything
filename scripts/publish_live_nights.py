@@ -13,6 +13,7 @@ docs/live-nights/<night>/summary.json, which northstar.yml reads with --live-dir
 The repo is public: the raw rows (tv_input, traces, sync, cuts) are never copied, only counts and
 percentiles, and any string value that looks like a LAN address, MAC or path is refused. A night
 already published is left alone unless --force.
+Why: Publishes live-night summaries so the North Star workflow grades real nights (docstring).
 """
 from __future__ import annotations
 

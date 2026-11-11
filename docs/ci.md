@@ -34,3 +34,16 @@ on anything but macOS, and the comment counts them. Don't use ad-hoc `platform.s
 **New dataset pin.** Publish it under a new tag and change `EVAL_DATA_TAG` in the workflow. The
 cache is keyed on the tag, so re-uploading assets under the same tag would keep serving the old
 cached copy.
+
+**Branch protection (Nick sets these; about 5 minutes).** Repo → Settings → Branches → Add branch ruleset, once each
+for `integration/next` and `integration/release`:
+
+1. Enforcement status: **Active**. Target: that branch.
+2. Turn on **Require status checks to pass**, tick **Require branches to be up to date**, and add `lint`, `memory`,
+   `graders`, `data`, `test`, `scorecard`. A check appears in the list after it has run once on a PR.
+3. Turn on **Block force pushes** and **Restrict deletions**.
+4. `integration/next` only: turn on **Require merge queue**. CI runs on the queue through its `merge_group` trigger.
+5. **Create.**
+
+CI's `merge_group` trigger and the `fix_needs_test` and `plan_check` steps land with
+`docs/agents/patches/2026-11-08-process-gates.patch`.

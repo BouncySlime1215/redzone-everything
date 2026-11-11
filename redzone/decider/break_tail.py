@@ -1,5 +1,7 @@
 """[EXP-728 / EXP-736] Land late in a break, not early: the restart a break is predicted to end at.
 
+Why: [EXP-728/736] #277's autopsy found entries landing in commercials with over 10 s left, so entries are held later in the break (decisions 2026-11-05, off).
+
 Test writers' autopsy (Nov 5, #277): NBA dev 33 of 64 entries and NFL 196 of 531 land in a real commercial with
 more than 10 s still to air (cutgrade BREAK_TAIL_BAR). The cure they pre-registered: when the destination is in a
 break, hold the switch until its picture would come up at most `decider.entry.break_tail_s` before the predicted
@@ -11,14 +13,14 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
-from pathlib import Path
+
+from redzone.scoring.dead_left import LENGTHS_FILE
 
 # DeadTracker window kinds (redzone/decider/cuts.after_kind) -> the table's stoppage kinds
 WINDOW_KIND = {"timeout": "timeout", "timeout_long": "timeout", "media_timeout": "timeout", "tv_timeout": "timeout", "team_timeout": "timeout",
         "official_timeout": "timeout", "end_period": "end_period", "halftime": "halftime", "review": "review",
         "two_minute": "two_minute_warning", "score": "score_break", "goal": "score_break", "injury": "injury",
         "intermission": "intermission"}
-LENGTHS_FILE = Path(__file__).resolve().parent.parent / "scoring" / "broadcast" / "break_lengths.json"
 
 
 @lru_cache(maxsize=1)

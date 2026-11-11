@@ -6,6 +6,7 @@ uint32, low nibble first. Output: a plain Hugging Face checkpoint (float16 safet
 config without "quantization") that transformers loads as Qwen3ForCausalLM.
 
     python agent/kaggle/dequant.py <mlx 4-bit dir> <out dir>
+Why: Rebuilds the Mac's base model from 4-bit weights with numpy, so Kaggle needs no MLX (docstring).
 """
 from __future__ import annotations
 

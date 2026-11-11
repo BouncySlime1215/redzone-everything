@@ -1,5 +1,7 @@
 """The producer loop: poll every feed -> merge -> score -> decide -> act -> tell the phone.
 
+Why: the producer loop: each stage is wrapped so one failing feed, game or stick degrades only that piece and the app keeps running (docstring).
+
 Runs forever. Every stage is wrapped so one failure (a feed down, a bad game, a stick
 offline) degrades that piece and keeps everything else running.
 """
@@ -8,25 +10,34 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import subprocess
 import time
+from dataclasses import replace as _replace
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from redzone import bets as betlib
 from redzone import buffer_rc8
-from redzone import reel, standby, trace, userstate, views
+from redzone import fsm, reel, standby, trace, userstate, views
 from redzone.reel import REEL_DIR
-from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
+from redzone.cheap_labels import CheapLabels
+from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on, route_class
 from redzone.config import Config, ConfigError, for_league
-from redzone.control import Controller, Outcome
+from redzone.governor import keep_awake_wanted, starting_soon
+from redzone.control import NO_STICK, ROUTE_OFF_S, STANDBY_NOT_READY, Controller, Outcome
+from redzone.decider import buffered as bj
+from redzone.decider import gate
 from redzone.decider import whistle
-from redzone.decider.decider import REDZONE, REEL, Candidate, Decider, Decision, FocusMode, Missed, State
-from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
-                                   leave_gate, leave_window, screen_evidence)
+from redzone.decider.decider import ENTRY_EXEMPT, REDZONE, REEL, Candidate, Decision, FocusMode, Missed, State
+from redzone.noggin.show import ShowDecider
+from redzone.decider.screen import (MIN_BREAK_S, PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
+                                   leave_gate, screen_evidence)
 from redzone.models import GameState, League, Phase
-from redzone.plan import Tonight
+from redzone.moments import tier_of
+from redzone.moments.detect import _PEN_EXCLUDED
+from redzone.plan import Tonight, day_of, path_for
 from redzone.scoring import breaks
 from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal, Scored, Scorer
@@ -37,6 +48,10 @@ from redzone.sources.merge import Merger
 from redzone.recorder import Recorder
 from redzone.screen import boundary, scorebug
 from redzone.store import Store
+from redzone.fsm import MachineMap
+from redzone.machines import decider as M
+from redzone.noggin import gamequeue as gq
+from redzone.noggin.lookahead import ahead
 
 log = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")
@@ -47,9 +62,33 @@ CLOCK_JUMP_S = 5.0     # wall clock moved this much more (or less) than time.mon
 # TV input. They neither cool the target down nor count against it.
 NOT_THE_TARGETS_FAULT = ("no safe moment", "safe exit window closed", "switch cancelled",
                          "TV input is unknown", "TV control was disabled", "no channel",
-                         "stick not responding", "no stick connected")
+                         "stick not responding", STANDBY_NOT_READY, NO_STICK)
 PEEK_HOLD_S = 90.0    # a game opened on the phone keeps the hidden stick this long (two_stick.pretune_on_open)
 SKIP_S = 300.0        # a skipped game stays off the TV this long after the TV leaves it
+_QUEUE_KLASS = {"prime": gq.LONG_LEAD, "espn": gq.LIVE_EDGE, "other": gq.LONG_LEAD}   # channels.route_class -> gamequeue
+
+
+def _moment_word(league: League, e) -> str:
+    """The redzone/moments word for one timeline play, "" when it has none. The Timeline keeps only the play's kind
+    and `big`, so the setups that need field position, down or a run (rz_trip, 4th_try, run8, big_pa) have no word."""
+    k, base = e.play_kind or "", league.base
+    if not k:
+        return ""
+    if base == League.NFL:
+        return "turnover" if k == "safety" else k if k in ("td", "turnover", "fg") else ""
+    if base == League.NBA:
+        return "clutch_fg" if e.big else ""   # Timeline._nba_clutch is the only way a basket is big here
+    if base == League.NHL:
+        words = k.replace("_", " ")
+        if k == "goal" or "penalty_shot" in k:
+            return "goal" if k == "goal" else "penalty_shot"
+        return "pp_start" if espn._nhl_penalty(words) and not any(x.lower() in words for x in _PEN_EXCLUDED) else ""
+    if base == League.MLB:
+        return "hr" if k == "hr" else "run_scored" if e.big else ""
+    return ""
+
+
+SUPERSEDED = "switch cancelled: superseded"   # an in-flight switch replaced by a newer one (_act): resolved, recorded
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
 
@@ -67,11 +106,102 @@ def _short_why(detail: str) -> str:
     return detail.split(";", 1)[0].strip()[:80] or "switch failed"
 
 
+_IPISH = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b|\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b", re.I)
+
+
+def _redact(detail: str) -> str:
+    """A failure's first clause for a public log row: no IP addresses, ports or MACs."""
+    return _IPISH.sub("<host>", _short_why(detail or ""))[:80]
+
+
+def _stage_times(tr: dict | None, out) -> dict:
+    """Seconds each stage of a switch took (numbers only; a stage that didn't run is left out): the bottleneck
+    numbers for data/jumps.jsonl and the switches table. tr = the switch's trace (redzone/trace.py)."""
+    sp = (tr or {}).get("spans") or {}
+    marks = {n: t for n, t in (getattr(out, "marks", None) or [])}
+
+    def gap(a: str, b: str) -> float | None:
+        return round(max(0.0, marks[b] - marks[a]), 2) if a in marks and b in marks else None
+    queued = [x for x in (sp.get("decide"), sp.get("queued")) if x is not None]
+    rec = {"stage_decide_s": round(sum(queued), 2) if queued else None,   # decided -> the controller starts it
+           "stage_tune_s": sp.get("tune"), "stage_scrub_s": gap("scrub_start", "scrub_done"),
+           "stage_park_s": gap("tune_done", "park_done"), "stage_wait_s": sp.get("safe_wait"),   # may_cut's wait
+           "stage_play_to_flip_s": gap("snap_play", "flip_start"),   # a parked stick rolling before the flip
+           "stage_flip_s": sp.get("flip"), "stage_picture_s": sp.get("resume"),   # input changed -> confirmed playing
+           "stage_to_picture_s": sp.get("to_picture"), "stage_total_s": sp.get("total")}
+    return {k: v for k, v in rec.items() if v is not None}
+
+
+def _league_of(g) -> str | None:
+    lg = getattr(g, "league", None)
+    return getattr(lg, "value", None)
+
+
+def buffered_league(cfg, decider, target: str, g) -> bool:
+    """[buffered jump] Jump mode + buffered_jump on, a YouTube TV target, a game in buffered_jump.leagues."""
+    if decider is None or not decider.buffered_on() or not target.startswith("youtubetv:"):
+        return False
+    lgs = bj.cfg_get(cfg, "leagues") or []
+    return not lgs or g.league.value in lgs
+
+
+class FailCool(dict):
+    """[state machines] engine.fail_cool: tuner target -> no retry before this time, one keyed machine per target
+    (ok / cooling). A dict on purpose: the supervisor sets, pops and clears it (e._fail_cool[t] = until) and tests
+    compare it to a dict; every write moves the target's machine with a reason."""
+
+    def __init__(self, data: dict | None = None):
+        super().__init__()
+        self.m = MachineMap(M.FAIL_COOL)
+        for k, v in (data or {}).items():
+            self[k] = v
+
+    def __setitem__(self, target, until) -> None:
+        super().__setitem__(target, until)
+        self.m[target].to("cooling", f"until {float(until):.0f}")
+
+    def __delitem__(self, target) -> None:
+        super().__delitem__(target)
+        self._ok(target, "cleared")
+
+    def _ok(self, target, why: str) -> None:
+        if target in self.m:
+            self.m[target].to("ok", why)
+            self.m.prune()
+
+    def pop(self, target, *default):
+        had = target in self
+        v = super().pop(target, *default)
+        if had:
+            self._ok(target, "cool-down over")
+        return v
+
+    def popitem(self):
+        k, v = super().popitem()
+        self._ok(k, "cleared")
+        return k, v
+
+    def clear(self) -> None:
+        for k in list(self):
+            self._ok(k, "all cleared")
+        super().clear()
+
+    def update(self, *a, **kw) -> None:
+        for k, v in dict(*a, **kw).items():
+            self[k] = v
+
+    def setdefault(self, target, until=None):
+        if target not in self:
+            self[target] = until
+        return self[target]
+
+
 class Engine:
     def __init__(self, cfg: Config | None = None, store: Store | None = None):
         self.cfg = cfg or Config()
         self.store = store or Store()
         self.channels = ChannelMap()
+        self.channels.apply_config(self.cfg)   # [WP-22] discovery.espn_on_yttv (off)
         self.channels.local_search = bool(self.cfg.get("tuners.yttv_local_search", False))
         self.fetcher = Fetcher()
         # [NHL primary] api-web's live play-by-play owns NHL stoppages while it's fresh.
@@ -118,7 +248,7 @@ class Engine:
         self.delays.edge_prior_cfg = lambda key: self.cfg.get(f"delay.edge_prior.{key}")
         for t in list(self.delays.book):   # entries reloaded above were priced before the live config was attached
             self.delays._refresh(t)
-        self.decider = Decider(self.cfg, self.delays)
+        self.decider = ShowDecider(self.cfg, self.delays)   # [threads] flags off: the plain Decider
         data_dir = getattr(self.cfg, "user_path", None)
         # [auto sync] every channel's delay tracked by a Kalman filter from the automatic signals
         # (redzone/decider/sync.py); every signal is logged to data/sync.jsonl for scripts/eval_sync.py.
@@ -132,14 +262,23 @@ class Engine:
                 self.sync = _belief.attach(self.delays, **sync_kw)
             else:
                 self.sync = self.delays.attach_sync(**sync_kw)
+            self.sync.robust = bool(self.cfg.get("delay.sync.robust", False))   # Student-t + change points (OFF)
+            for app, spec in (self.cfg.get("delay.sync.app_min_sigma_s") or {}).items():   # needs its replay verdict
+                self.delays.set_app_floor(app, spec.get("floor_s", 4.0), spec.get("replay"))
+            self.delays.apply_timing_config(self.cfg.get("delay.timing.app_sigma"))   # [timing] OFF until the yaml has it
             # [league overrides] each channel's floor follows the league of the game it shows
             self.delays.sync_floor_for = lambda target: float(for_league(
                 self.cfg, "delay.sync.min_sigma_s", self._league_of(target), 4.0))
+        if self.cfg.get("delay.feed_bias.enabled", False):   # [feed bias] learned per source, applied only with .apply
+            from redzone.decider.delaymodel import FeedBias
+            from redzone.decider.screen import Timeline
+            Timeline.feed_bias = FeedBias(apply=bool(self.cfg.get("delay.feed_bias.apply", False)))
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
         # [jump mode] jumps go only onto the hidden stick's ready game (one stick: there's no standby to wait for)
         self.decider.standby_ready = lambda t: not self.control.two_stick or self.control.standby_ready(t)
+        self.decider.snap_parked = self.control.snap_parked   # [buffered jump] when the hidden stick paused, or None
         self.decider.slow_tune = self.control.slow_tune
         if data_dir:
             from redzone import calibration
@@ -172,6 +311,7 @@ class Engine:
             self.control.edge_probe = EdgeProbe(self.cfg)   # [edge prior] probe the hidden stick's live edge, <= 1/30 min
         self.control.on_edge_read = self.edge_read
         self.control.on_behind = self._on_behind
+        self.control.on_alert = lambda text: self.toast(text, "error")   # DEV-09: a wrong stick is worth saying
         # [buffer.watchdog STK-06] a lost hold is rebuilt only while that game is in a dead ball
         self.control.dead_ball = self._target_dead
         self.control.buffer_log_path = data_dir.parent / "buffer.jsonl" if data_dir else None
@@ -181,10 +321,17 @@ class Engine:
         # [EXP-741 E] a waiting tap's Prime score-bug clock reads, numbers only: data/tap_bug.jsonl
         from redzone.screen.tap_bug import TapBug
         self.tap_bug = TapBug(data_dir.parent / "tap_bug.jsonl" if data_dir else None)
+        self.cheap_labels = CheapLabels(self.cfg, data_dir.parent / "labels" if data_dir else None)   # labels.enabled, off
         # [time-shift buffer SHADOW, Nick 9:10 AM Nov 5] an editor decider B s behind live, logged only
         self._bug_log_path = data_dir.parent / "scorebug_reads.jsonl" if data_dir else None
         # [jump mode] every jump with its reason: ids, numbers and short codes (data/jumps.jsonl)
         self._jump_log_path = data_dir.parent / "jumps.jsonl" if data_dir else None
+        # [jump mode] standby status rows go to their own file (overseer Nov 8: a status row in jumps.jsonl read
+        # as a jump with every field None)
+        self._jump_status_path = data_dir.parent / "jump_status.jsonl" if data_dir else None
+        self._jump_status_at = 0.0
+        self._jump_standby_note: dict = {"standby_plan": "not run yet"}
+        self._bj_park_why = "never"   # [buffered jump] the park step reached this tick (was read with getattr)
         from redzone.buffer_shadow import BufferShadow
         self.buffer_shadow = BufferShadow(self.cfg, self.decider, self._shadow_behind,
                                           data_dir.parent / "buffer_shadow.jsonl" if data_dir else None,
@@ -199,6 +346,9 @@ class Engine:
         # Stream delay measured from the broadcast score bug in Prime screenshots (not DRM-blanked).
         self.scorebug = scorebug.ScoreBugWatcher(on_sample=self._scorebug_sample, on_tune=self._sync_tune,
                                                  on_clock=self._sync_clock)
+        self.scorebug.on_clock_fit, self.scorebug.on_stop = self._sync_clock_fit, self._scorebug_stop
+        self.scorebug.honest_frames = bool(self.cfg.get("delay.scorebug_midpoint", False))     # [Nov 8] OFF
+        self.scorebug.clock_fit = bool(self.cfg.get("delay.scorebug_clock_fit", False))        # [Nov 8] OFF
         self.planner = standby.Planner(self.cfg)   # what the hidden stick holds between switches
         self._hand_left: tuple[str, float] | None = None   # (game you left by hand, when): standby.options hand_back
         # owed TV timeouts per game: when a break is coming (+ the learned brain, when brain.enabled)
@@ -206,7 +356,7 @@ class Engine:
         self._cost_mode: bool | None = None         # two-stick mode when switch costs were last synced
         self._cost_synced = 0.0
         self.boosted: set[str] = set()
-        self.skipped: dict[str, float] = {}   # game -> skip expires at
+        self.skipped: dict[str, float] = {}   # game -> skip expires at (skip_m: leaving / muted; kept across restarts)
         self.scored: dict[str, Scored] = {}
         self.where: dict[str, object] = {}
         self.last_decision = None
@@ -233,24 +383,25 @@ class Engine:
         # [SYNC, Nick 3:30 AM] a Prime epoch read + K -> a delay sample (sync.edge.epoch_signal, off)
         self.sync_probe.label_of = lambda t: (self.delays.labels[t][0] if self.delays.labelled(t) else None)
         self.sync_probe.on_epoch = lambda target, z, t, sd: self._sync_measure(target, z, "epoch", t, sd)
+        self.sync_probe.on_position = self._sync_position   # [meter] sync.edge.meter (OFF)
         self.sync_probe.on_force_live = lambda target, row: (   # [SYNC B] re-link to live (flags off)
             self.control.force_live_hidden(target) if row["role"] == "hidden" else self.control.relink_visible_live(target))
         self._alarmed: dict[str, float] = {}   # [SYNC 6] target -> last drift alarm
         self._last_snapshot = 0.0
         self.mic = None
         self.fantasy = None   # latest fantasy.Matchup
-        self._suspended_focus: tuple | None = None   # (game, mode) paused for garbage time
-        self.hold: dict | None = None   # "Watch this" from the phone: a manual hold until "Resume auto"
+        # _suspended_focus: (game, mode) paused for garbage time (focus_m); hold: "Watch this" from the phone, a manual
+        # hold until "Resume auto" (hold_m): properties on their machines
         from redzone.commands import Commands
         self.commands = Commands()   # phone taps by id: a retried tap answers, never runs twice
         self.peek: tuple[str, str, float] | None = None   # (game, target, until): a game opened on the phone
         self._mic_used: set[tuple[str, float]] = set()
         self._last_mic = 0.0
-        self._pending_decision = None
+        # _pending_decision: the switch in flight (pending_m: idle / pending; a newer switch supersedes it explicitly)
         self._pending_since = 0.0
         self._pending_mono = 0.0   # the same moment on time.monotonic(): wall-clock jumps can't age a switch
         self._pending_done = None          # the in-flight switch's done callback (for the deadline)
-        self._fail_cool: dict[str, float] = {}   # tuner target -> no retry before this time
+        self._fail_cool = FailCool()   # tuner target -> no retry before this time (engine.fail_cool, keyed)
         self.mic_suggestion = None
         self.fastcast = None
         self._fastcast_task = None
@@ -263,6 +414,12 @@ class Engine:
         self._fresh = asyncio.Event()
         self._house_device_task = None
         self._st_scan_task = None
+        self.queue_pins: list[str] = []   # [queue] Nick's pins, first = strongest (action pin / move)
+        self._queue_off: dict[str, float] = {}   # [queue] target -> until: walled, refused or blacked out (_on_queue_move)
+        self._queue_cands: dict | None = None    # [queue] the last tick's candidates, for a re-plan after a failure
+        self._queue_loaded: dict[str, str] = {}  # [queue] game -> the route the queue last put on the hidden stick for it
+        self._game_queue: dict | None = None   # [queue] snapshot['game_queue'], from the last tick
+        self.clock_tape = views.ClockTape()    # [views.screen_clock] each game's clock, to read it back at the screen's delay
         from redzone.recorded import RecordedPlayback
         self.recorded = RecordedPlayback(self)
         from redzone.discovery.runtime import DiscoveryRuntime
@@ -271,6 +428,7 @@ class Engine:
         # Home / away from home / Tailscale stealing the home routes (redzone/network.py). Read-only.
         self.network = NetWatch(self.discovery.autonomy.paths.devices)
         from redzone.platform.wake import WakeWatch
+        self._house_busy_s = 0.0                      # how long the last housekeeping tick's work ran (WakeWatch)
         self.wake = WakeWatch()                       # hardening.mac: the Mac slept / changed network
         self._net_where: str | None = None
         self.tonight = Tonight(self)   # today's plan + pre-game checks on the hidden stick
@@ -287,8 +445,113 @@ class Engine:
         self.control.target_names = self._target_names
         # Pause / "Watch this" / focus / lock survive a service restart (redzone/userstate.py).
         self._user_state_path = data_dir.parent / "user_state.json" if data_dir else None
-        self._user_state_saved = userstate.capture(self.decider.user, self.hold)   # defaults: nothing to write
+        self._user_state_saved = self._capture_user_state()   # defaults: nothing to write
         self._restore_user_state()
+
+    # ------------------------------------------------------------------ state machines (redzone/machines/decider.py)
+    # The old attribute names are properties on them; class-level defaults keep a half-built Engine readable.
+    _pend = None
+    _tap_forced = None   # [N4] the waiting tap whose second tap arrived (one object; cleared when it resolves)
+    _hold_d: dict | None = None
+    _focus_susp: tuple | None = None
+    _LAZY = {"pending_m": M.ENGINE_PENDING, "standby_m": M.STANDBY_PLAN, "hold_m": M.HOLD, "focus_m": M.FOCUS_SUSPEND}
+
+    def __getattr__(self, name: str):
+        spec = Engine._LAZY.get(name)
+        if spec is not None:
+            m = self.__dict__[name] = spec.new()
+            return m
+        if name == "skip_m":
+            m = self.__dict__[name] = MachineMap(M.ENGINE_SKIP)
+            return m
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+
+    @property
+    def _fail_cool(self) -> FailCool:
+        fc = self.__dict__.get("_fail_cool_d")
+        if fc is None:
+            fc = self.__dict__["_fail_cool_d"] = FailCool()
+        return fc
+
+    @_fail_cool.setter
+    def _fail_cool(self, v: dict) -> None:
+        """A plain dict assigned (the supervisor, tests) becomes the machine-backed one."""
+        old = self.__dict__.get("_fail_cool_d")
+        if old is not None:
+            old.clear()
+        self.__dict__["_fail_cool_d"] = v if isinstance(v, FailCool) else FailCool(v)
+
+    @property
+    def _pending_decision(self):
+        return self._pend if self.pending_m.is_("pending") else None
+
+    @_pending_decision.setter
+    def _pending_decision(self, d) -> None:
+        self._pend = d
+        if d is None:
+            self.pending_m.to("idle", "cleared")
+        else:
+            self.pending_m.to("pending", f"{getattr(d, 'action', '?')}:{getattr(d, 'kind', '')} -> {getattr(d, 'target', None)}")
+
+    @property
+    def hold(self) -> dict | None:
+        return self._hold_d
+
+    @hold.setter
+    def hold(self, h: dict | None) -> None:
+        self._hold_d = h
+        if h is None:
+            self.hold_m.to("none", "released")
+        else:
+            self.hold_m.to("resuming" if h.get("resume_at") else "held", f"holding {h.get('game_id')}")
+
+    @property
+    def _suspended_focus(self) -> tuple | None:
+        return self._focus_susp if self.focus_m.is_("suspended") else None
+
+    @_suspended_focus.setter
+    def _suspended_focus(self, v: tuple | None) -> None:
+        self._focus_susp = v
+        self.focus_m.to("suspended" if v else "none", f"focus on {v[0]} suspended for garbage time" if v else "restored")
+
+    def _capture_user_state(self) -> dict:
+        state = userstate.capture(self.decider.user, self.hold, self.skipped, self._suspended_focus)
+        return {**state, "queue_pins": list(self.queue_pins)} if self.queue_pins else state
+
+    def _skip_tick(self, now: float) -> None:
+        """[controls] skip_m follows each skipped game: 'leaving' while still on screen (its five minutes count from when
+        the TV leaves it), 'muted' after; an expired skip unmutes its game."""
+        for gid, until in list(self.skipped.items()):
+            if gid == self.decider.current:
+                # Still on the skipped game (waiting for a dead ball to leave it): the five minutes count from when
+                # the TV leaves it. Before, a skip in a hockey power play waited ~5 min for a stoppage, expired first,
+                # and the TV never left (controls drill, seed 4).
+                self.skipped[gid] = max(until, now + SKIP_S)
+                self.skip_m[gid].to("leaving", "skipped, still on screen")
+                continue
+            if now >= until:
+                self.skipped.pop(gid)
+                self.decider.user.muted.discard(gid)
+                if gid in self.skip_m:
+                    self.skip_m[gid].to("none", "skip expired: unmuted")
+            else:
+                self.skip_m[gid].to("muted", f"skipped until {until:.0f}")
+        for gid in self.skip_m:
+            if gid not in self.skipped and not self.skip_m[gid].is_("none"):
+                self.skip_m[gid].to("none", "skip dropped")
+        self.skip_m.prune()
+
+    def machines_view(self) -> dict:
+        """[state machines] Every engine + decider machine now: snapshot()['machines'] (GET /api/machines has all)."""
+        now = time.time()
+        return {**self.decider.machines(), "pending": self.pending_m.view(now, history=0),
+                "standby_plan": {**self.standby_m.view(now, history=0), **self._jump_standby_note},
+                "hold": self.hold_m.view(now, history=0), "skip": self.skip_m.view(now),
+                "focus_suspend": self.focus_m.view(now, history=0), "fail_cool": self._fail_cool.m.view(now)}
+
+    def _plan_owner(self, state: str, why: str) -> None:
+        """engine.standby_plan: who planned the hidden stick this tick."""
+        self.standby_m.to(state, why)
 
     def _restore_user_state(self) -> None:
         if self._user_state_path is None:
@@ -298,16 +561,47 @@ class Engine:
             if state is None:
                 return
             self.hold = userstate.apply(state, self.decider.user, FocusMode)
-            self._user_state_saved = userstate.capture(self.decider.user, self.hold)
+            self.skipped = dict(state.get("skipped") or {})
+            self.queue_pins = [g for g in state.get("queue_pins") or [] if isinstance(g, str)]
+            sf = state.get("suspended_focus")
+            if sf:
+                try:
+                    self._suspended_focus = (sf[0], FocusMode(sf[1]))
+                except ValueError:
+                    pass
+            self._skip_tick(time.time())
+            self._user_state_saved = self._capture_user_state()
             log.info("restored after restart: %s", self._user_state_saved)
         except Exception:
             log.exception("could not restore pause/hold/focus/lock")
+
+    def _screen_state_path(self):
+        return self._user_state_path.with_name("screen_state.json") if self._user_state_path is not None else None
+
+    def _save_screen_state(self) -> None:
+        """[P-04] Every housekeeping tick (10 s): the game on screen and its leverage. A restart reads it, so the unknown
+        screen isn't a free cut away from a close, late game (decider.note_restart)."""
+        path = self._screen_state_path()
+        got = self.decider.restart_state(self.scored.get(self.decider.current or ""))
+        if path is None or self.recorded.active or got is None:
+            return
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"game": got[0], "high_leverage": got[1], "at": time.time()}))
+        tmp.replace(path)
+
+    def _restore_screen_state(self) -> None:
+        """[P-04] On boot: tell the decider what was on screen. It drops a stale one itself (buffered_jump.restart_hold_s)."""
+        path = self._screen_state_path()
+        if path is None or self.recorded.active or not path.exists():
+            return
+        saved = json.loads(path.read_text())
+        self.decider.note_restart(saved.get("game"), float(saved.get("at") or 0.0), bool(saved.get("high_leverage")))
 
     def _save_user_state(self) -> None:
         """Written when it changes (checked every decision tick, so within half a second of a tap)."""
         if self._user_state_path is None or self.recorded.active:
             return
-        state = userstate.capture(self.decider.user, self.hold)
+        state = self._capture_user_state()
         if state != self._user_state_saved:
             userstate.save(self._user_state_path, state)
             self._user_state_saved = state
@@ -317,6 +611,14 @@ class Engine:
     async def run(self) -> None:
         """Three loops: data (adaptive 3-10s), decisions (every second), housekeeping."""
         await self.control.start()
+        try:
+            self.control.restore_held()
+        except Exception:
+            log.exception("restore held offsets failed")
+        try:
+            self._restore_screen_state()
+        except Exception:
+            log.exception("restore screen game failed")
         if self.cfg.get("screen.mic_calibration", False):
             self.set_mic(True)
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
@@ -371,12 +673,22 @@ class Engine:
         self._sync_measure(target, delay_s, "clock", wall)
         self.sync_probe.frame_k(target, delay_s, wall, SIGMA["clock"])   # [SYNC, Nick 3:30 AM] K = arena - frame clock
 
+    def _sync_clock_fit(self, target: str, wall: float, delay_s: float, sd: float) -> None:
+        """[clock fit] One fitted window of the bug's running clock: a delay sample with the fit's own doubt."""
+        self._sync_measure(target, delay_s, "clock_fit", wall, sd)
+        self.sync_probe.frame_k(target, delay_s, wall, sd)
+
+    def _scorebug_stop(self, target: str, wall: float, delay_s: float, sd: float) -> None:
+        """[clock stop] Where the bug's clock stopped against the feed's play there: logged only (shadow)."""
+        if self.sync is not None:
+            self.sync.note(target, "clock_stop", wall, delay_s, sd=sd, stick=self._stick_of(target))
+
     def _boundary_sample(self, s) -> None:
         from redzone.decider.sync import SIGMA
         self._sync_measure(s.target, s.sample, "flip", s.flip_wall, max(SIGMA["flip"], s.error_s))
         d = self.delays.boundary(s.target, s.sample, s.flip_wall)
         try:
-            self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="boundary")
+            self.store.calibration(s.target, s.sample - d.behind, d.mu, d.sigma, kind="boundary")
         except Exception:
             log.exception("could not save a boundary delay sample")
 
@@ -386,7 +698,7 @@ class Engine:
         self.sync_probe.frame_k(s.target, s.sample, s.onset, max(SIGMA["score"], s.error_s))
         d = self.delays.screen(s.target, s.sample, s.onset)
         try:
-            self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="screen")
+            self.store.calibration(s.target, s.sample - d.behind, d.mu, d.sigma, kind="screen")
         except Exception:
             log.exception("could not save a score-bug delay sample")
 
@@ -396,6 +708,8 @@ class Engine:
         g = self.merger.games.get(gid or "")
         if g is None or g.phase != Phase.LIVE:
             return 0.0
+        if buffered_league(self.cfg, getattr(self, "decider", None), target, g):
+            return float(bj.cfg_get(self.cfg, "behind_s"))   # [buffered jump] every stick plays this far behind
         if buffer_rc8.is_on(self.cfg, g.league.value):   # [RC8] Nick flipped this league: adaptive (or pinned) B
             try:
                 return buffer_rc8.buffer_for(self.cfg, g.league.value)[0]
@@ -417,7 +731,10 @@ class Engine:
         g = self.merger.games.get(gid or "")
         if g is None:
             return False
+        if buffered_league(self.cfg, getattr(self, "decider", None), target, g):
+            return True   # [buffered jump] the overlay scrub is how a stick gets behind (a pause doesn't hold)
         return bool(for_league(self.cfg, "timing.behind_live_s.scrub_entry", g.league.value, False))
+
 
     def _shadow_buffer_on(self) -> bool:
         """[buffer shadow] timing.behind_live_s.shadow while the buffer itself is off on screen."""
@@ -503,11 +820,19 @@ class Engine:
                 bias = float(self.cfg.get(f"{key}.gap_s" if burst else f"{key}.start_bias_s", 15.0))
                 bias_sd = float(self.cfg.get(f"{key}.gap_sd_s" if burst else f"{key}.bias_sd_s", 10.0))
                 z = t - w - bias
+                # feed_type for break_start rows too (it was burst-only: 26 of 52 rows had none)
                 row.update(feed_wall=round(w, 2), z=round(z, 2), feed_type=next(
-                    (p.type_text or p.kind for p in dead if p.wallclock == w), None) if burst else None)
+                    (p.type_text or p.kind for p in dead if p.wallclock == w), None))
                 if for_league(self.cfg, f"{key}.enabled", g.league.value, False):
                     row["used"] = bool(self.sync is not None and self.delays.anchor(
                         target, z, "burst" if burst else "break", t, (sd * sd + bias_sd * bias_sd) ** 0.5))
+                    row["used_why"] = "used" if row["used"] else "filter_rejected"
+                else:
+                    row["used_why"] = "flag_off"   # `used` is false by design until sync.*_anchor.enabled
+            else:
+                row["used_why"] = "no_dead_ball"
+        else:
+            row["used_why"] = "no_game" if g is None else "not_an_anchor_kind"
         try:
             self.recorder.sync_anchor(row)
         except Exception:
@@ -548,7 +873,13 @@ class Engine:
         if visible and cur and getattr(self.where.get(cur), "target", None) == target:
             return cur
         hits = [gid for gid, w in self.where.items() if getattr(w, "target", None) == target]
-        return hits[0] if len(hits) == 1 else None
+        if len(hits) == 1:
+            return hits[0]
+        # [overseer Nov 7 22:30] a network carries tomorrow's games too (FOX: IOWA@NU live + Sunday's NFL), so
+        # several games map to one channel. The one LIVE game is what it shows; without this, FOX/ABC/NBC/ESPN
+        # read "no game" and behind_of/scrub_of said 0/off: the hidden stick was never scrubbed (0 buffered cuts).
+        live = [g for g in hits if getattr(self.merger.games.get(g), "phase", None) == Phase.LIVE]
+        return live[0] if len(live) == 1 else None
 
     async def _scorebug_loop(self) -> None:
         """While a Prime game is on screen (and, with delay.scorebug_hidden, on the live hidden stick):
@@ -572,6 +903,7 @@ class Engine:
                 if (self.cfg.get("mode.dry_run", True) or self._pending_decision is not None
                         or self.decider.replaying or self.decider.after_replay):
                     self.scorebug.reset()
+                    self.control.bug_why = "decision_pending_or_replay"
                     wait = 5.0
                 elif not self.control.scorebug_sticks(bool(self.cfg.get("delay.scorebug_hidden", False))):
                     self.scorebug.reset()
@@ -579,6 +911,7 @@ class Engine:
                 else:
                     if not self.governor.allow("ocr"):   # the Mac is critical: no OCR for now
                         self.scorebug.reset()
+                        self.control.bug_why = "governor_no_ocr"
                         await asyncio.sleep(10.0)
                         continue
                     wait = scorebug.EVERY_S * self.governor.scale("ocr")
@@ -587,29 +920,41 @@ class Engine:
                         band_from=scorebug.LOWER_FROM if self.cfg.get("delay.scorebug_band") else None)
                     if not frames:
                         self.scorebug.reset()
+                why = getattr(self.control, "bug_why", "") if not frames else ""
                 for f in frames:
                     gid = self._game_on(f["target"], f["visible"])
                     g = self.merger.games.get(gid or "")
                     tl = self.decider.timelines.get(gid or "")
-                    bug = None
+                    bug, frame = None, None
                     if g is not None and tl is not None:
-                        bug = await asyncio.to_thread(scorebug.read_png, f["png"], g.home, g.away, recognize)
+                        bug, frame = await asyncio.to_thread(scorebug.read_frame, f["png"], g.home, g.away, recognize,
+                                                             f["target"].split(":", 1)[0])
+                    why = why or ("no_game" if g is None or tl is None else "no_bug" if bug is None else "")
                     # The pipeline (switch/flip) may have moved while OCR ran: those frames don't count.
                     if self._pending_decision is not None or not any(
                             s is f["stick"] and tgt == f["target"] for s, tgt, _ in self.control.scorebug_sticks(
                                 bool(self.cfg.get("delay.scorebug_hidden", False)))):
                         self.scorebug.reset()
                         break
-                    self.scorebug.observe(f["stick"].host, f["target"], f["tune"], f["t0"], bug, tl)
+                    self.scorebug.observe(f["stick"].host, f["target"], f["tune"], f["t0"], bug, tl, t_done=f["t1"],
+                                          kind=frame)
                     if g is not None and str(for_league(self.cfg, "decider.entry.user_bug_gate", g.league.value,
                                                         "off") or "off") == "shadow":
                         # [EXP-741 E shadow] every Prime bug read logged as clock numbers: lane 3 grades
                         # stopped/running against the play-by-play with no tap ever waiting
                         self.tap_bug.add(f["target"], f["t0"], bug, visible=f["visible"], why="watch")
+                    if g is not None and self.cheap_labels.enabled:   # [cheap labels] a read already made, logged
+                        self.cheap_labels.observe_bug(f["target"], f["t0"], bug, game=gid, league=g.league.value,
+                                                      live=g.phase == Phase.LIVE, visible=bool(f["visible"]))
                     if self.cfg.get("delay.scorebug_log", True) and bug is not None and g is not None:
                         # [Nick 9:25 AM Nov 5] every bug read as numbers (data/scorebug_reads.jsonl): the TNF race
                         # (bug vs espn_fastcast / summary / markets) is graded from first-seen score changes
                         self._log_bug_read(g, f, bug)
+                if why != getattr(self, "_bug_why", None):
+                    # [overseer Nov 8 00:05] the score bug went silent 23:21-00:05 with a Prime standby unsynced (±13 s):
+                    # each change of why it reads nothing is logged once
+                    log.info("score bug: %s", why or "reading")
+                    self._bug_why = why
             except Exception:
                 log.exception("score bug read failed")
                 self.scorebug.reset()
@@ -682,9 +1027,9 @@ class Engine:
                 self.decider.note_error()
             self._reel_tick()
             live = any(g.phase == Phase.LIVE for g in self.merger.games.values())
-            soon = any(g.phase == Phase.PRE and g.start_time and 0 < g.start_time - time.time() < 900
+            soon = any(g.phase == Phase.PRE and starting_soon(g.start_time, time.time())
                        for g in self.merger.games.values())
-            self._keep_awake(live)
+            self._keep_awake(keep_awake_wanted(self.merger.games.values(), time.time(), planned=self._planned_soon()))
             if live:
                 interval = self._burst_s() if self._burst else self.cfg.get("polling.hot_s", 3)
             else:
@@ -886,6 +1231,11 @@ class Engine:
     async def _house_loop(self) -> None:
         while True:
             await asyncio.sleep(10)
+            started = time.monotonic()
+            try:
+                self._save_screen_state()
+            except Exception:
+                log.exception("could not save the screen game")
             try:
                 await self._after_wake()
             except Exception:
@@ -895,17 +1245,22 @@ class Engine:
             except Exception:
                 log.exception("drift check failed")
             try:
+                await self._relearn_screen()
+            except Exception:
+                log.exception("screen read-back failed")
+            try:
                 await self._device_keepalive()
                 self._tick += 1
                 if self._tick % 360 == 0:
                     self.store.prune()
             except Exception:
                 log.exception("housekeeping failed")
+            self._house_busy_s = time.monotonic() - started   # the next wake check must not count this as a stall
 
     async def _after_wake(self) -> list[str] | None:
         """hardening.mac: after a sleep or a network change, every connection re-proves itself now
         (redzone/platform/wake.py), before this tick's device keepalive. Off: nothing."""
-        slept = self.wake.check()
+        slept = self.wake.check(getattr(self, "_house_busy_s", 0.0))
         where = self.network.state.where
         prev, self._net_where = self._net_where, where
         moved = prev not in (None, "unknown") and where not in (prev, "unknown")
@@ -1200,6 +1555,12 @@ class Engine:
 
     def _source_health(self) -> None:
         now = time.time()
+        # Lift benches whose time is up even when no feed updated this tick (a quiet benched source
+        # would otherwise stay flagged).
+        try:
+            self.merger.expire(now)
+        except Exception:
+            log.debug("merger.expire failed", exc_info=True)
         for name, h in self.merger.health.items():
             # ok = reachable and fresh. A bench (merge.py: this source's copy regressed against a faster
             # feed for some game) is reported on its own: the source still works, so it isn't a failing
@@ -1380,16 +1741,7 @@ class Engine:
         if self.recorded.active:
             return False
         now = time.time()
-        for gid, until in list(self.skipped.items()):
-            if gid == self.decider.current:
-                # [controls] Still on the skipped game (waiting for a dead ball to leave it): the five
-                # minutes count from when the TV leaves. Before, a skip in a hockey power play waited
-                # ~5 min for a stoppage, expired first, and the TV never left (controls drill, seed 4).
-                self.skipped[gid] = max(until, now + SKIP_S)
-                continue
-            if now >= until:
-                self.skipped.pop(gid)
-                self.decider.user.muted.discard(gid)
+        self._skip_tick(now)
         for tgt, until in list(self._fail_cool.items()):
             if now >= until:
                 self._fail_cool.pop(tgt)
@@ -1413,6 +1765,8 @@ class Engine:
                 continue
             self.scored[gid] = sc
             w = self.supervisor.route(gid, self.discovery.choose(g, self.channels.where(g, sunday_ticket=st)))
+            if self.cfg.get("queue.enabled", False):
+                w = self._queue_failover(gid, w)
             self.where[gid] = w
             if g.phase != Phase.LIVE:
                 continue
@@ -1430,6 +1784,7 @@ class Engine:
         self._hold_check()
         if self._shadow_buffer_on():
             self.buffer_shadow.tick(cands)   # never acts: what the buffered show would do right now
+        self._jump_status()   # [jump mode] heartbeat, also while a switch or replay is in flight
         if self._pending_decision is not None:
             return False  # score/feed updates continue; don't race a tune in flight
         if not dry and self.control.input_unknown and getattr(self.control, "live_control", False):
@@ -1439,6 +1794,7 @@ class Engine:
             return False
         before = self.decider.current
         redzone = self._redzone_target(st, dry)
+        self.decider.show_states = self.merger.games
         d = self.decider.decide(cands, redzone, commit=dry, reel=self._reel_target())
         self.last_decision = d
         # [autopsy Nov 5] the gate is logged when it changes too: a halftime that never opened the gate
@@ -1446,14 +1802,18 @@ class Engine:
         gate = str(getattr(d, "gate", "") or "")
         changed = d.reason != self._last_logged_reason or d.action != "stay" or gate != self._last_logged_gate
         self._lock_expired()
+        self._entry_stuck()
         if changed:
             self.store.decision(d)
             self._last_logged_reason = d.reason
             self._last_logged_gate = gate
-        if d.action in ("switch", "replay") and d.target:
+        # [Nick, Nov 8 live] replay turned off mid-loop: no replay is acted on from that tick
+        replay_off = d.action == "replay" and not self.cfg.get("replay.enabled", True)
+        if d.action in ("switch", "replay") and d.target and not replay_off:
             self._act(d, before, cands)
         else:
             self._preload_standby(cands, redzone)
+            self._buffered_park(cands)
         self._sync_switch_costs()
         if time.time() - self._last_snapshot > 60:
             self._last_snapshot = time.time()
@@ -1550,9 +1910,17 @@ class Engine:
         deferred = not self.cfg.get("mode.dry_run", True)
         replay_exit = max(self.decider.replay_until, self.decider.replay_exit_after) \
             if (self.decider.replaying or self.decider.after_replay) else None
+        old, old_done = self._pending_decision, self._pending_done
+        if old is not None and old is not d and old_done is not None:
+            # [pending] a newer switch (your tap while one is in flight) replaces it: resolve the old one now, with its
+            # store row, reject (its proposed break visit dropped) and no error. Before, the new one overwrote
+            # _pending_decision and the old done() returned early: no confirm/reject, no row, a stale _proposal_home.
+            old_done(Outcome(False, None, self.pending_age(time.time()),
+                             f"{SUPERSEDED} by a newer {d.kind or d.action} switch to {d.target}", False))
         self._pending_decision = d
         self._pending_since = time.time()
         self._pending_mono = time.monotonic()
+        self._plan_owner("idle", f"a {d.kind or d.action} switch is in flight")
         before_target = getattr(self.control, "on_target", None) or getattr(self.where.get(before or ""), "target", None)
         if deferred:
             # Conservatively mark the transition unknown until observed; never
@@ -1563,19 +1931,30 @@ class Engine:
 
         forced = [False]   # [Nick, Nov 5] set by may_cut: this cut went through on a second "Go now" tap
 
+        resolved = [False]
+
         def done(out):
-            if self._pending_decision is not d:
+            if resolved[0] or self._pending_decision is not d:
                 return
-            self._pending_decision = None
-            self._pending_done = None
+            resolved[0] = True
+            if self._tap_forced is d:
+                self._tap_forced = None
+            superseded = out.detail.startswith(SUPERSEDED)
+            self._pend, self._pending_done = None, None
+            self.pending_m.to("idle", ("superseded" if superseded else "confirmed" if out.ok else "failed")
+                              + f": {d.action}:{d.kind} -> {d.target}")
             cancelled = out.detail.startswith("switch cancelled")
             if deferred:
                 if out.ok and not out.dry_run:
                     self.decider.confirm(d, cands)
                     if d.kind == "user":
                         self.decider.user.manual_until = time.time() + self.cfg.get("decider.manual_pause_s")
+                    if out.path in ("tuned", "single") and target:
+                        # [edge model] a fresh tune lands on the live edge: an overlay label read before this command
+                        # belonged to the old tune (it stayed stale when the tune wasn't reported to _sync_tune)
+                        self.delays.clear_label_before(target, cmd_ts)
                 else:
-                    self.decider.reject(d)
+                    self.decider.reject(d, backoff=not superseded)
                     if not out.dry_run and not cancelled and not out.detail.startswith(NOT_THE_TARGETS_FAULT):
                         self.decider.lock_failed(d, _short_why(out.detail))   # [lock wait] (flag off: no-op)
                     # Playback can be unknown after a failed launch. Hold for
@@ -1586,10 +1965,17 @@ class Engine:
                         self.decider._screen_log.append((time.time(), "replay" if replay_exit is not None else before))
                     # A visible failure counts as an error below (3 in 5 minutes -> safe mode),
                     # not straight to safe mode: one app hiccup must not end the night.
+            if not out.ok and not out.dry_run and not cancelled and d.action == "replay" and d.replay is not None:
+                # [Nick, Nov 8 live] every failed replay backs off, whichever path it took (it looped at ~2 Hz)
+                self.decider.replay_failed(d.replay)
             if (not out.ok and not out.dry_run and d.action == "switch" and d.kind != "user" and target
                     and not out.detail.startswith(NOT_THE_TARGETS_FAULT)):
                 self._fail_cool[target] = time.time() + self.cfg.get("decider.fail_cooldown_s", 90)
             detail = {"took": out.took, "detail": out.detail, "path": out.path, "waited": round(out.waited, 1)}
+            if not out.ok and may_cut.veto:
+                detail["veto"] = may_cut.veto   # [P1-ROOTCAUSE-04] which check held a 'no safe moment' switch
+            if d.kind == "user" and not out.ok and "no safe moment" in out.detail:
+                self.toast(f"No dead ball in time for {self._name(d.target)}: tap twice to go now", "info")
             try:
                 prov["guard"] = {"rule": "no mid-play cut", "waited_s": round(out.waited, 1),
                                  "let_through": out.ok and not out.screen_unchanged}
@@ -1600,8 +1986,17 @@ class Engine:
                 trace.emit(self.trace_sink, detail["trace"])
             except Exception:   # a trace must never cost the switch its row
                 log.exception("switch trace failed")
+            detail["stages"] = _stage_times(detail.get("trace"), out)
             if d.kind == "jump":
-                self._log_jump(d, before, target, out, cmd_ts)
+                self._log_jump(d, before, target, out, cmd_ts, detail["stages"])
+                if out.ok and not out.dry_run:
+                    # [jump mode] refill the hidden stick right away with the rotation's next pick: the
+                    # game we just left is on it now, and readiness is the whole bottleneck
+                    try:
+                        if not (self.cfg.get("queue.enabled", False) and self._queue_refill(cands)):
+                            self._jump_standby(cands, urgent=True)
+                    except Exception:
+                        log.exception("jump standby refill failed")
             self.store.switch(ts=cmd_ts, frm=before, to_game=d.target, target=target, kind=d.kind, reason=d.reason,
                               event_ts=event_ts, cmd_ts=cmd_ts, confirmed_ts=out.confirmed_at, ok=out.ok,
                               dry_run=out.dry_run, detail=detail)
@@ -1618,18 +2013,22 @@ class Engine:
             self.broadcast()
         self._pending_done = done
 
-        def may_cut() -> bool:
+        def cut_veto() -> str:
+            """Why this switch may not cut right now ("" = it may). [P1-ROOTCAUSE-04] Named for every kind, not only jumps."""
+            if d.kind != "user" and (self.cfg.get("commit_gate.enabled", False) or getattr(d, "leave_held", False)):
+                return gate.commit_gate(self, d, before, target, cands, replay_exit)   # [WP-05] one gate, every non-tap kind
             if self.decider.user.paused or self.cfg.get("mode.dry_run", True):
-                return False
+                return "paused_or_dry_run"
             if d.kind == "user":
                 if self._forced_go(d):
                     forced[0] = True   # the cut goes through on your second tap, not on a safe moment
-                    return True
+                    return ""
                 forced[0] = False
-                return (not self._hold_waits(d) or self.safe_to_leave(before, required_s=8.0)) \
-                    and self._tap_lands_dead(d, target)
+                # [N4, S-4] every tap waits for a dead ball; only a second tap (_forced_go) cuts mid-play
+                return ("tap_leave" if not self.safe_to_leave(before, required_s=8.0)
+                        else "tap_landing" if not self._tap_lands_dead(d, target) else "")
             if time.time() < d.at + float(getattr(d, "defer_s", 0.0) or 0.0):
-                return False   # [EXP-803 A1] the break's tail: cut at the planned moment, not before
+                return "deferred"   # [EXP-803 A1] the break's tail: cut at the planned moment, not before
             if d.kind == "jump":
                 # [jump mode] rule #1 at the flip: the target's picture must come up on a dead ball; leaving
                 # uses the rotation's own gate (play-by-play dead windows, low-leverage leaves), not the
@@ -1637,19 +2036,43 @@ class Engine:
                 now = time.time()
                 cost = self.control.deadline_cost(target)
                 g = self.merger.games.get(d.target or "")
-                if not g or g.phase != Phase.LIVE or self.feeds.stale(g.game_id) \
-                        or getattr(self.where.get(g.game_id), "target", None) != target:
-                    return False
-                return self.decider.jump_lands_dead(
-                    d.target, cands.get(d.target), now, cost) and self.decider.jump_may_leave(
-                    before, cands, now, float(self.cfg.get("jump_mode.flip_s", 3.2)))
-            return self._entry_valid(d, target) and (time.time() >= replay_exit if replay_exit is not None
-                                                     else self.safe_to_leave(before, required_s=8.0)) \
-                and self._flip_lands_whistle(d, target)
+                # [S-2] this polls for the whole wait: judge on the scores of NOW (a low-leverage game can turn into a red
+                # zone trip during the wait), like _entry_valid does for other switches
+                live = {gid: _replace(c, scored=self.scored[gid]) if gid in (before, d.target) and gid in self.scored
+                        else c for gid, c in cands.items()}
+                # [overseer Nov 7 23:43] every veto is named (data/jumps.jsonl 'veto', one log line per change): two
+                # buffered cuts waited 25 s on a bare 'no safe moment to cut'
+                veto = ("not_live" if not g or g.phase != Phase.LIVE else "feed_stale" if self.feeds.stale(g.game_id)
+                        else "target_moved" if getattr(self.where.get(g.game_id), "target", None) != target
+                        else "landing" if not self.decider.jump_lands_dead(d.target, live.get(d.target), now, cost)
+                        else "hold" if before in live and self.decider._jump_hold(live[before])   # [P1-REVIEW-06]
+                        else "leave" if not self.decider.jump_may_leave(before, live, now, self._leave_margin()) else "")
+                if d.jump is not None:
+                    d.jump["veto"], d.jump["veto_cost_s"] = veto, round(cost, 1)
+                return veto
+            if not self._entry_valid(d, target):
+                return "entry_invalid"
+            if not (time.time() >= replay_exit if replay_exit is not None else self.safe_to_leave(before, required_s=8.0)):
+                return "replay_exit" if replay_exit is not None else "leave"
+            return "" if self._flip_lands_whistle(d, target) else "landing_whistle"
+
+        def may_cut() -> bool:
+            veto = cut_veto()
+            if veto and veto != may_cut.veto:
+                log.info("%s to %s vetoed at the flip: %s", d.kind or d.action, d.target, veto)
+            may_cut.veto = veto
+            return not veto
+        may_cut.veto, may_cut.tap = "", d.kind == "user"
         self.control.submit(target, back, done, may_cut=may_cut,
                             replay_id=d.replay.pid if d.replay else None,
                             entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0,
-                            entry_cue=getattr(d, "cue", "") if d.action == "switch" else "")
+                            entry_cue=getattr(d, "cue", "") if d.action == "switch" else "",
+                            preloaded_only=d.kind == "jump")   # [jump mode] a jump only flips to a ready standby
+
+    def _leave_margin(self) -> float:
+        """[S-3] Seconds a leave's dead window must outlast: the configured flip, never less than the measured slow
+        end of a flip on the path we'd use now (the old game plays on until the TV's input changes)."""
+        return max(float(self.cfg.get("jump_mode.flip_s", 3.2)), self.control.flip_upper())
 
     def pending_age(self, now: float) -> float:
         """Seconds the pending switch has been running, as of wall-clock `now`. If the wall clock
@@ -1714,6 +2137,8 @@ class Engine:
 
     def _entry_valid(self, d: Decision, target: str | None) -> bool:
         """Refresh the destination just before any visible mutation, not just at planning time."""
+        if self.cfg.get("commit_gate.enabled", False):
+            return not gate.entry_veto(self, d, target)   # [WP-05] the same named rules the flip uses
         if d.action == "replay":
             return bool(d.replay and not d.replay.replayed)
         if d.target == REDZONE:
@@ -1734,11 +2159,18 @@ class Engine:
         if d.kind == "chase" and catchable(tl, delay, now, remaining) is None:
             return False
         cands1 = {d.target: Candidate(self.scored[d.target], target)} if d.target in self.scored else {}
-        if d.action == "switch" and d.kind != "user" and self.decider._cut_timed(d.target, cands1):
+        timed = self.decider._cut_timed(d.target, cands1)
+        x1 = cands1.get(d.target)
+        # [P1-REVIEW-01] whistle-timed leagues too (hold_only): their flip can come 25 s after the decision. The scrub
+        # path isn't: its picture isn't the live edge the plan judges (_flip_lands_whistle gates it).
+        entry_only = not timed and d.kind not in ENTRY_EXEMPT and self.decider._entry_only(x1, d) \
+            and not self.control._scrub_wanted(target)
+        if d.action == "switch" and d.kind != "user" and (timed or entry_only):
             # [cut timing] the picture must still come up on a dead ball, with the planned rewind
-            # (only where cut timing is on: decider.entry.leagues)
-            plan = self.decider.entry_plan(d.target, cands1, now, remaining,
-                                           urgent=d.kind == "crunch")
+            # (only where cut timing is on: decider.entry.leagues). On the same bar the decision used.
+            pos = entry_only and self.decider._possession_start(x1, d)
+            urgent = d.kind == "crunch" or (entry_only and self.decider._entry_urgent(d, x1, cands1))
+            plan = self.decider.entry_plan(d.target, cands1, now, remaining, urgent=urgent or pos, possession=pos)
             if plan is not None and (not plan.ok or plan.rewind_s != getattr(d, "rewind_s", 0.0)):
                 return False
             if plan is not None and plan.rewind_s:
@@ -1838,62 +2270,431 @@ class Engine:
 
     def safe_to_leave(self, gid: str | None, required_s: float = 0.0) -> bool:
         """Re-checked right before a two-stick input flip: is a play on screen in the game we're leaving?"""
-        if not gid or gid == REDZONE:
-            return True
-        if self.decider.replaying or self.decider.after_replay:
-            return time.time() >= max(self.decider.replay_until, self.decider.replay_exit_after)
-        if gid not in self.decider.timelines:
-            return False  # no screen timing evidence is not an open cutting window
-        if self.decider._ending_still_airing(gid, time.time()) > 0:
-            return False
-        g = self.merger.games.get(gid)
-        if g is not None and g.phase == Phase.POST:
-            return True   # its last play has aired (checked above): there's nothing left to cut
-        target = getattr(self.where.get(gid), "target", None) or "unknown"
-        gate = leave_window(self.decider.timelines[gid], self.delays.get(target), time.time(),
-                            self.cfg.get("decider.uncalibrated_sigma_s"), required_s)
-        return gate.safe
+        g = self.merger.games.get(gid or "")
+        return gate.leave_open(self.decider, gid, getattr(self.where.get(gid or ""), "target", None), g.phase if g is not None else None,
+                               time.time(), self.cfg.get("decider.uncalibrated_sigma_s"), required_s)
 
     def _preload_standby(self, cands: dict, redzone: str | None = None) -> None:
         """Two sticks: keep the hidden one on what the next switch most likely needs, so that switch
         is a 1-2s input flip instead of a 5-10s tune. What and when: redzone/standby.py."""
-        if not self.control.two_stick or self.decider.user.paused:
+        dec = self.decider
+        if not dec.jump_on() and self._jump_standby_note.get("standby_plan") != "jump mode off":
+            # [standby notes] jump mode's notes were never cleared when it went off: jump_status / the snapshot kept
+            # saying 'rotation, want X' for a plan that no longer ran
+            self._jump_standby_note = {"standby_plan": "jump mode off"}
+            self._bj_park_why = "off"
+        if not self.control.two_stick or dec.user.paused:
+            self._plan_owner("idle", "one stick" if not self.control.two_stick else "paused")
+            self._game_queue = None
             return
+        queue_on = bool(self.cfg.get("queue.enabled", False))
+        queue_plan = self._queue_plan(cands, redzone) if queue_on else None
         if self._peeking():
+            self._plan_owner("peek", f"{self.peek[0]} opened on the phone")
             return   # a game you opened on the phone is on the hidden stick: keep it there for now
-        if self.decider.jump_on() and not self.decider.replaying and self._jump_standby(cands):
+        if queue_on and self._queue_standby(cands, queue_plan):
+            return   # the queue (or a named lease) owns this tick; otherwise the plans below are the fallback
+        if dec.jump_on() and not dec.replaying and self._jump_standby(cands):
+            self._plan_owner("buffered" if dec.buffered_on() else "rotation",
+                             str(self._jump_standby_note.get("standby_plan", "")))
             return
+        self._plan_owner("planner", "jump mode off" if not dec.jump_on() else
+                         "replaying" if dec.replaying else str(self._jump_standby_note.get("standby_plan", "")))
         self._plan_prime_multiview(cands)
         pick = self.planner.plan(self._standby_options(cands, redzone), self.control.standby)
         if pick:
             self.control.preload(pick.target, back_s=pick.back_s, replay_id=pick.replay_id)
 
-    def _jump_standby(self, cands: dict) -> bool:
+    # ------------------------------------------------------------------ the game queue (WP-12, queue.enabled)
+    # gamequeue answers "what should the hidden stick hold"; these methods give it the tick's facts and act on the
+    # answer. Nothing here flips a stick: a preload only fills the hidden one, and every cut still goes through _act.
+
+    def _stick_lease(self) -> str:
+        """The named lease on the hidden stick right now ("" = none). While one holds, the queue and its fallback plans
+        start nothing on that stick. Read from what each writer is already doing, so a writer can't leave a lease behind
+        and none of them had to change: the phone's peek is checked in _preload_standby."""
+        if self._st_scan_task and not self._st_scan_task.done():
+            return "sunday_ticket_scan"
+        ctl = self.control
+        job = ctl.stick_job()
+        if job == "verify":
+            return "plan_check"
+        if job == "refresh":
+            return "refresh_left"
+        if job.startswith("lock:"):
+            return job
+        tiles = getattr(ctl, "prime_plan", None) or ()
+        if job == "preload" and self.cfg.get("tuners.prime_multiview", False) and len(tiles) >= 2 \
+                and ctl.standby[0] in tiles:
+            return "prime_multiview"
+        warm = (getattr(self.tonight, "plan", None) or {}).get("warmup") or {}
+        if self.cfg.get("warmup.pregame", False) and warm.get("state") in ("tuning", "ready") \
+                and warm.get("target") == ctl.standby[0] and time.time() < float(warm.get("window") or 0.0):
+            return "pregame_warmup"
+        return ""
+
+    def _queue_targets(self, gid: str, primary: str | None) -> tuple[str, ...]:
+        """Every way to watch this game, best first: the chosen target, then discovery's tunable alternates."""
+        alts = (a.target for a in getattr(self.where.get(gid), "alternates", None) or () if a.tunable and not a.blackout)
+        return tuple(dict.fromkeys(t for t in (primary, *alts) if t))
+
+    def _queue_moment(self, gid: str, target: str, now: float, max_sigma: float) -> tuple[int, float, float] | None:
+        """(tier, join_in_s, lookahead_s) of the best known moment still to air in this game, or None. The join point is
+        the last clean landing before it: the end of the last dead window that closes before the moment, less the
+        delay's doubt. No clean dead ball before it means no rung, and the catch-up replay has it. These are feed times, ahead of the picture: they stay out of snapshot["game_queue"]."""
+        tl = self.decider.timelines.get(gid)
+        if tl is None:
+            return None
+        dl = self.delays.get(target)
+        try:   # the stick will hold this far behind live once it has the game, so that is how far ahead the feed will be
+            extra = max(0.0, float(self._behind_of(target) or 0.0) - float(self.delays.held.get(target, 0.0)))
+        except (TypeError, ValueError):
+            extra = 0.0
+        book = _replace(dl, mu=dl.mu + extra) if extra else dl
+        seen = ahead(tl, book, now, max_sigma)
+        if seen is None:
+            return None
+        best = None
+        for e in seen.plays:
+            word = _moment_word(tl.league, e)
+            tier = tier_of(tl.league.base.value, word) if word else None
+            if tier not in (1, 2) or (best is not None and tier >= best[0]):
+                continue
+            w = seen.last_dead_before(e.lo, seen.screen_t)
+            if w is not None:
+                best = (tier, max(w.start, w.end - 2.0 * book.current_sigma(now)) - now, book.mu)
+        return best
+
+    def _queue_lead(self, g: GameState | None, target: str, now: float, within: float) -> float | None:
+        """Seconds of known lead on a long-lead route: to the scheduled start, or to the end of a break that always runs
+        long enough (MIN_BREAK_S, as the picture will show it). None outside `within`, so a game hours away can't hold
+        the hidden stick."""
+        if g is None or _QUEUE_KLASS.get(route_class(target), gq.FAST) != gq.LONG_LEAD:
+            return None
+        lead = None
+        if g.phase == Phase.PRE and g.start_time:
+            lead = g.start_time - now
+        elif g.phase == Phase.LIVE:
+            tl = self.decider.timelines.get(g.game_id)
+            start = tl.last("stop_start") if tl is not None else None
+            if start is not None and start.label == tl.stoppage.value:
+                floor = max(MIN_BREAK_S.get(tl.league, {}).get(tl.stoppage, 0.0),
+                            float(tl.extra_floors.get(tl.stoppage, 0.0)))
+                lead = start.lo + floor + self.delays.get(target).mu - now if floor > 0 else None
+        return lead if lead is not None and 0.0 <= lead <= within else None
+
+    def _queue_plan(self, cands: dict, redzone: str | None = None) -> gq.Plan | None:
+        """One gamequeue.tick on this tick's facts, kept for the phone. Reads only. None if anything fails, so the
+        fallback plans run: a queue bug must never cost the hidden stick."""
+        try:
+            dec, u, ctl, now = self.decider, self.decider.user, self.control, time.time()
+            ctl.on_queue_move, self._queue_cands = self._on_queue_move, cands
+            params = gq.Params.from_config(self.cfg.get)
+            hidden_t = ctl.standby[0]
+            hidden = self._game_on_target(hidden_t) if hidden_t else None
+            rank: dict[str, int] = {}
+            worth: dict[str, float] = {}   # the option's own value (return bonus, seconds saved): eviction weighs what the ranking weighed
+            classes: dict[str, int] = {}
+            for i, o in enumerate(self._standby_options(cands, redzone)):
+                if o.replay_id is None and o.game_id not in rank:
+                    rank[o.game_id], worth[o.game_id], classes[o.game_id] = i, o.value, o.cls
+            checks = ((e.get("check") or {}) for e in (getattr(self.tonight, "plan", None) or {}).get("games") or ())
+            verified = {c.get("target") for c in checks if c.get("state") == "verified"}
+            for t in [t for t, until in self._queue_off.items() if now >= until]:
+                del self._queue_off[t]
+            max_sigma = float(self.cfg.get("noggin.lookahead.max_sigma_s", 10))
+            within = float(self.cfg.get("queue.warn_within_s", 180.0))
+
+            def can_reach(target: str | None) -> bool:
+                return bool(target) and target not in self._queue_off and (target == hidden_t or bool(ctl.can_tune(target)))
+
+            def best_target(gid: str, primary: str | None) -> str | None:
+                return next((t for t in self._queue_targets(gid, primary) if can_reach(t)), primary)
+
+            self.queue_pins[:] = [g for g in self.queue_pins
+                                  if getattr(self.merger.games.get(g), "phase", None) != Phase.POST]
+            # Only the strongest pin that can be reached takes the Pin rung; the rest wait behind it, in your order.
+            top_pin = next((g for g in self.queue_pins
+                            if g != dec.current and g in cands and can_reach(best_target(g, cands[g].target))), None)
+            entries, games = [], self.merger.games
+
+            def add(gid: str, primary: str | None, score: float, stale: bool) -> None:
+                t = best_target(gid, primary)
+                ok = can_reach(t)
+                routes = []
+                for r in self._queue_targets(gid, primary):   # failover: a route that is off stays listed but flagged
+                    app, _, ref = r.partition(":")
+                    routes.append(gq.Route(app, ref, _QUEUE_KLASS.get(route_class(r), gq.FAST),
+                                           bool(ctl.slow_tune(r)), not can_reach(r)))
+                routes.sort(key=lambda r: r.flagged)   # the route `t` is first, so the level below is the route's
+                state, on = (ctl.standby_m.state, ctl.hidden) if t and t == hidden_t else \
+                    ("ready", ctl.main) if gid == dec.current else (None, None)
+                buffered = on is not None and on.scrubbed(t) is not None
+                pin_i = self.queue_pins.index(gid) if gid in self.queue_pins else None
+                planner_rank = rank.get(gid) if pin_i is None or gid == top_pin else pin_i - len(self.queue_pins)
+                known = self._queue_moment(gid, t, now, max_sigma) if t and ok and not stale and gid != dec.current else None
+                tier, join_in, ahead_s = known or (None, None, None)
+                entries.append(gq.Entry(
+                    game=gid, routes=tuple(routes), level=gq.level_of(ok, t in verified, state, buffered),
+                    user="lock" if gid == u.locked_game else "pin" if gid == top_pin else "",
+                    committed=gid == getattr(self.last_decision, "want", None), tier=tier, join_in_s=join_in,
+                    lookahead_s=ahead_s, lead_s=self._queue_lead(games.get(gid), t, now, within) if t and ok else None,
+                    planner_rank=planner_rank, value=min(100.0, max(0.0, float(worth.get(gid, score)))),
+                    standby_class=classes.get(gid)))
+
+            for gid, x in cands.items():
+                if gid not in u.muted:   # Drop is the existing mute
+                    add(gid, x.target, x.scored.score, x.stale)
+            for gid, g in games.items():   # not live yet, so not a candidate: only a long-lead route close to its start
+                w = self.where.get(gid)
+                if g.phase == Phase.PRE and gid not in cands and gid not in u.muted and w is not None and w.tunable \
+                        and g.league in self._leagues() and self._queue_lead(g, w.target, now, within) is not None:
+                    add(gid, w.target, getattr(self.scored.get(gid), "score", 0.0), False)
+            job = ctl.stick_job()
+            measured = {app: m for app in params.tune_s if ":" not in app and (m := ctl.latency.median(app)) is not None}
+            if hidden_t in self._queue_off:   # still parked on a route that just went off: it holds nothing the queue can use
+                hidden = None
+            elif hidden_t and hidden is None:   # the stick may hold a failover route, which `where` doesn't name
+                hidden = next((e.game for e in entries if any(f"{r.app}:{r.ref}" == hidden_t for r in e.routes)), None)
+            stick = gq.Stick(busy_until=now + ctl.tune_estimate(hidden_t or "other") if job else 0.0,
+                             job_game=hidden if job == "preload" else None,
+                             job_to=gq.Level.R3 if job == "preload" else None, tune_s=measured)
+            final = {gid for gid, g in games.items() if g.phase == Phase.POST}   # an ended game on the stick blocks nobody
+            plan = gq.tick(entries, dec.current, hidden, stick, now, params, final)
+            self._game_queue = gq.view(plan)
+            return plan
+        except Exception:
+            log.exception("game queue plan failed")
+            self._game_queue = None
+            return None
+
+    def _on_queue_move(self, target: str, move: gq.Move, host: str | None = None) -> None:
+        """The Controller's typed answer to a failed hidden tune (it has already backed this target off). A walled,
+        refused or blacked-out route is off for the night, a wall also for this game's other routes on that app; the
+        queue picks again at once when the Move says nothing waits on this attempt. Runs inside the preload task, so
+        the re-plan waits for the loop's next pass, when the stick is free."""
+        try:
+            if move.route_off:
+                until, app = time.time() + ROUTE_OFF_S, target.partition(":")[0]
+                self._queue_off[target] = until
+                if gq.FAILURE_RULES[move.failure].app_off:
+                    gid = self._game_on_target(target)
+                    for t in self._queue_targets(gid or "", None):
+                        if t.partition(":")[0] == app:
+                            self._queue_off[t] = until
+            if move.advance:
+                asyncio.get_running_loop().call_soon(self._queue_replan)
+        except Exception:
+            log.exception("queue move failed for %s", target)
+
+    def _queue_failover(self, gid: str, w):
+        """Which route this game resolves to this tick, when the queue loaded it a backup. The backup replaces the primary
+        in `where` only while it can really be used: still a live, unblocked way to watch this game, and either the primary
+        is down and the hidden stick is ready on the backup, or the game is on screen on it (every leave reads that route's
+        delay). Only `where` changes, so every switch, tap and commit gate rule runs as it always did: no new way to flip.
+        Any doubt keeps the primary.
+
+        Why: the queue could fill the hidden stick with a backup, but the decider still wanted the failed primary, so the
+        ready stick was never flipped to (WP-12C)."""
+        try:
+            ctl, t, primary = self.control, self._queue_loaded.get(gid), getattr(w, "target", None)
+            if not t or t == primary or t in self._queue_off or t in self._fail_cool:
+                return w
+            alt = next((a for a in getattr(w, "alternates", None) or ()
+                        if a.target == t and a.tunable and not a.blackout), None)   # a blackout or a lost link stays off
+            if alt is None:
+                return w
+            on_screen = ctl.on_target == t and gid in (self.decider.current, getattr(self._pending_decision, "target", None))
+            primary_down = not primary or not w.tunable or primary in self._queue_off or primary in self._fail_cool \
+                or not ctl.can_tune(primary)
+            if not on_screen and not (primary_down and ctl.standby_ready(t) and ctl.can_tune(t)):
+                return w
+            return _replace(w, target=t, label=alt.label, confidence=alt.confidence, tunable=True, provider=alt.provider,
+                            reasons=[f"{primary or 'its main route'} is down; using {alt.label}"])
+        except Exception:
+            log.exception("queue failover failed for %s", gid)
+            return w
+
+    def _queue_replan(self) -> None:
+        """One extra hidden-stick pass on the last tick's candidates; a switch in flight keeps the stick."""
+        if self._queue_cands is not None and self._pending_decision is None:
+            self._preload_standby(self._queue_cands)
+
+    def _queue_preload(self, cands: dict, plan: gq.Plan, urgent: bool = False) -> None:
+        """Act on a tick that wants a swap. rotate=True: the queue's eviction rule, not the scrub guard, decides when a
+        scrubbed standby goes. A Lock or a Pin is Nick's own word, so it goes the way a game opened on the phone does."""
+        ctl, want = self.control, plan.want
+        target = f"{want.route.app}:{want.route.ref}"   # the route it picked: a failover, or a game not live yet
+        self._queue_loaded[want.entry.game] = target   # the queue's own word for which game this route is for
+        started = ctl.standby != (target, None) and ctl.preload(
+            target, user=want.rung in (gq.Rung.LOCK, gq.Rung.PIN), urgent=urgent, rotate=True)
+        self._jump_standby_note = {"standby_plan": "queue", "want": want.entry.game,
+                                   "want_ready": bool(ctl.standby_ready(target)),
+                                   "preload": "started" if started else (ctl.preload_why or "refused")}
+
+    def _queue_standby(self, cands: dict, plan: gq.Plan | None) -> bool:
+        """This tick's owner when the queue is on. True: a lease or the queue has the hidden stick. False: nothing
+        above the planner rung wants it, so the rotation and standby.Planner run as they always did."""
+        lease = self._stick_lease()
+        if lease:
+            self._plan_owner("idle", f"lease: {lease}")
+            return True
+        if plan is None or plan.want is None or plan.want.rung >= gq.Rung.PLANNER:
+            return False
+        word = "moment" if plan.want.rung in (gq.Rung.TIER1, gq.Rung.TIER2) else plan.want.rung.name.lower()   # one word: no tier
+        self._plan_owner("queue", f"queue {word}: {plan.why}")
+        self._plan_prime_multiview(cands)
+        if plan.swap:
+            self._queue_preload(cands, plan)
+        return True
+
+    def _queue_refill(self, cands: dict) -> bool:
+        """The urgent refill after a jump, queue first. False: the rotation's refill runs as it always did."""
+        if self._stick_lease():
+            return True
+        plan = self._queue_plan(cands)
+        if plan is None or plan.want is None or plan.want.rung >= gq.Rung.PLANNER:
+            return False
+        if plan.swap:
+            self._queue_preload(cands, plan, urgent=True)
+        self._jump_status(force=True)
+        return True
+
+    def _queue_pin(self, gid: str | None, on: bool, at=None) -> tuple[bool, str]:
+        """Pin (or unpin) a game, or Move a pin. `at`: 0-based place in your pins, or 'up' / 'down'."""
+        if not gid:
+            return False, "Pick a game"
+        pins, was = self.queue_pins, self.queue_pins.index(gid) if gid in self.queue_pins else None
+        if not on:
+            if was is not None:
+                pins.pop(was)
+            return True, f"Unpinned {self._name(gid)}"
+        if gid in self.decider.user.muted:
+            return False, f"{self._name(gid)} is dropped: un-drop it first"
+        if at in ("up", "down"):
+            at = (len(pins) if was is None else was) + (-1 if at == "up" else 1)
+        elif at is not None and type(at) is not int:
+            return False, "Move it where?"
+        if was is not None:
+            pins.pop(was)
+        pins.insert(len(pins) if at is None and was is None else was if at is None else max(0, min(at, len(pins))), gid)
+        return True, f"Pinned {self._name(gid)}"
+
+    def _buffered_park(self, cands: dict) -> None:
+        """[buffered jump, park] The hidden stick (scrubbed behind live) pauses on the line-up just before its game's
+        next LOGGED snap (redzone/decider/buffered.park_in); a park older than park_max_age_s is rolled and parks
+        again. The next dead ball on screen flips to it (Decider._buffered_jump)."""
+        dec, ctl = self.decider, self.control
+        if self.cfg.get("queue.enabled", False) and self._stick_lease():
+            self._bj_park_why = "lease"
+            return
+        self._bj_park_why = ("off" if not dec.buffered_on() else "one_stick" if not ctl.two_stick
+                             else "replaying" if dec.replaying else "no_standby" if not ctl.standby[0] else "buffer")
+        if self._bj_park_why != "buffer":
+            return
+        target = ctl.standby[0]
+        # [bootstrap, overseer Nov 8 21:47] sticks tuned before the flag went on are never scrubbed: re-tune + scrub
+        # the hidden one; and a standby stuck not-ready with nothing running is let go for the rotation's next pick
+        if ctl.drop_stuck_standby(target, float(bj.cfg_get(self.cfg, "stuck_s"))) or ctl.buffer_standby(target):
+            return
+        self._bj_park_why = "checked"
+        if not bj.cfg_get(self.cfg, "park"):
+            return
+        if ctl.snap_parked(target) is not None:
+            ctl.snap_park_expire()
+            return
+        gid = self._game_on_target(target)
+        now = time.time()
+        pic = dec._bj_pic(gid or "", cands.get(gid or ""), now)
+        if pic is None or not ctl.standby_ready(target):
+            return
+        pin = bj.park_in(pic, now, self.cfg)
+        if pin is not None and pin <= float(self.cfg.get("buffered_jump.park_schedule_s", 4.0)):
+            ctl.snap_park(target, pin)
+
+    def _jump_standby(self, cands: dict, urgent: bool = False) -> bool:
         """[jump mode] The hidden stick keeps re-tuning to the rotation's next game (Decider.jump_next).
         False: the rotation has nothing to tune (no other game), so the normal standby plan runs."""
         u = self.decider.user
         if u.locked_game or u.focus_mode != FocusMode.AUTOPILOT:
+            self._jump_standby_note = {"standby_plan": "locked or focus mode"}
             return False
-        if self.cfg.get("jump_mode.replays", True) and self._replay_standby(cands) is not None:
+        # [overseer Nov 8 22:15] buffered: the hidden stick is the editor's next cut, so a queued replay doesn't take it
+        # (it starved the standby: 'yields to a queued replay', 0 cuts)
+        if self.cfg.get("jump_mode.replays", True) and not self.decider.buffered_on() \
+                and self._replay_standby(cands) is not None:
+            self._jump_standby_note = {"standby_plan": "yields to a queued replay"}
             return False   # a big-play catch-up is queued: the normal plan parks it on the hidden stick (replay_park)
         gid = self.decider.jump_next(cands, standby=self.control.standby[0], tunable=self.control.can_tune)
         target = cands[gid].target if gid in cands else None
         if not target:
-            return False
-        self.control.preload(target)
+            self._jump_standby_note = {"standby_plan": "no other tunable game"}
+            # [overseer Nov 8 21:00] the normal plan then loaded ORL@GS (NBA, not in jump_mode.leagues) with UGA@MISS
+            # on screen: while the screen is in the rotation, the hidden stick only ever holds a game the rotation can
+            # jump to, so with none tunable right now it keeps what it has
+            return self.decider._jump_league(cands.get(self.decider.current or ""))
+
+        started = self.control.preload(target, urgent=urgent, rotate=self.decider.buffered_on())
+        if not started and urgent:
+            log.info("jump refill of %s refused: %s", gid, self.control.preload_why)
+        self._jump_standby_note = {"standby_plan": "refill" if urgent else "rotation", "want": gid,
+                                   "want_ready": bool(self.control.standby_ready(target)),
+                                   "preload": "started" if started else (self.control.preload_why or "refused")}
+        if urgent:
+            self._jump_status(force=True)
         return True
 
-    def _log_jump(self, d, before: str | None, target: str | None, out, cmd_ts: float) -> None:
+    def _jump_status(self, force: bool = False) -> None:
+        """[jump mode] Every ~30 s (and on each refill after a jump) one row in data/jump_status.jsonl: what the
+        standby holds, whether it's ready, what the standby plan did (and why a preload was refused), whether a
+        switch or replay is in flight, and why the rotation held. Kinds and codes only: no play text."""
+        now = time.time()
+        if self._jump_status_path is None or not self.cfg.get("jump_mode.log", True) or not self.decider.jump_on():
+            return
+        if not force and now - self._jump_status_at < 30.0:
+            return
+        self._jump_status_at = now
+        sb = self.control.standby[0]
+        pend, last = self._pending_decision, self.last_decision
+        rec = {"ts": round(now, 2), "on_screen": self.decider.current, "standby": self._game_on_target(sb),
+               "standby_ready": bool(self.control.standby_ready(sb)), **self._jump_standby_note,
+               # [owner] which decider owned the TV and who planned the hidden stick (additive keys)
+               "owner": self.decider.owner_m.state, "owner_why": self.decider.owner_m.why,
+               "standby_owner": self.standby_m.state, "screen": self.decider.screen_m.state,
+               "pending": f"{pend.action}:{pend.kind}" if pend is not None else None,
+               "pending_s": round(now - self._pending_since, 1) if pend is not None and self._pending_since else None,
+               "replaying": bool(self.decider.replaying),
+               # [buffered jump] where the standby's re-scrub stands: the park step reached, and buffer_standby's guard
+               **({"bj_park": self._bj_park_why, "bj_buffer": getattr(self.control, "bj_buffer_why", "")}
+                  if self.decider.buffered_on() else {}),
+               "last": f"{last.action}:{last.kind}" if last is not None else None,
+               "holds": dict(self.decider.jump_holds)}
+        if fsm.run_commit():
+            rec["sha"] = fsm.run_commit()      # which code made this call (scripts/why.py)
+        try:
+            with self._jump_status_path.open("a") as fh:
+                fh.write(json.dumps(rec) + "\n")
+        except OSError:
+            pass
+
+    def _log_jump(self, d, before: str | None, target: str | None, out, cmd_ts: float, stages: dict | None = None) -> None:
         """One row per jump: who, why, and what it cost. No raw text (the repo is public)."""
         if self._jump_log_path is None or not self.cfg.get("jump_mode.log", True):
             return
         rec = {"ts": round(cmd_ts, 2), "from": before, "to": d.target, "app": (target or "").split(":", 1)[0],
                "ok": bool(out.ok), "dry_run": bool(out.dry_run), "took_s": round(out.took or 0.0, 2),
                "waited_s": round(out.waited or 0.0, 1), "path": out.path, **(d.jump or {}),
-               "standby": self._game_on_target(self.control.standby[0]), "standby_ready": bool(self.control.hidden_ready)}
+               "standby": self._game_on_target(self.control.standby[0]), "standby_ready": bool(self.control.hidden_ready),
+               # [pass bar audit, scripts/buffered_jump_try.py] which ESPN league to read each game's play-by-play from
+               "from_league": _league_of(self.merger.games.get(before or "")),
+               "to_league": _league_of(self.merger.games.get(d.target or "")), **(stages or {})}
         if not out.ok:
             rec["fail"] = "cancelled" if out.detail.startswith("switch cancelled") else "no_safe_moment" \
-                if "no safe moment" in out.detail else "other"
+                if "no safe moment" in out.detail else "standby_not_ready" \
+                if out.detail.startswith(STANDBY_NOT_READY) else "other"
+            rec["fail_detail"] = _redact(out.detail)
+        if fsm.run_commit():
+            rec["sha"] = fsm.run_commit()
         try:
             with self._jump_log_path.open("a") as fh:
                 fh.write(json.dumps(rec) + "\n")
@@ -2070,6 +2871,7 @@ class Engine:
             if not self.hold:
                 return False, "Nothing is held"
             self.hold.update(auto_resume=bool(value), resume_at=None, why="")
+            self.hold_m.to("held", f"auto-resume {'on' if value else 'off'}")
             return True, ("I'll hand back to autopilot when it's over or a blowout" if value
                           else f"Staying on {self._name(self.hold['game_id'])} until you tap Resume auto")
         if action == "redzone":
@@ -2087,7 +2889,7 @@ class Engine:
             u.focus_game = gid
             u.focus_mode = FocusMode(value or "focus")
             if dec.current != gid:
-                self._act_manual(gid)
+                return True, self._tap_said(self._tap(gid), f"Focused on {self._name(gid)}")
             return True, f"Focused on {self._name(gid)}"
         if action == "autopilot":
             u.focus_game, u.focus_mode = None, FocusMode.AUTOPILOT
@@ -2128,8 +2930,7 @@ class Engine:
             if not dec.stack:
                 return False, "Nowhere to go back to"
             prev = dec.stack[-1]
-            self._act_manual(prev)
-            return True, f"Back to {self._name(prev)}"
+            return True, self._tap_said(self._tap(prev), f"Back to {self._name(prev)}")
         if action == "watch":
             if not gid:
                 return False, "Pick a game"
@@ -2155,19 +2956,14 @@ class Engine:
             elif was_dry:
                 # A simulated current game is not evidence of a physical stream.
                 dec.abort_replay()
-                dec.current = None
-                dec._screen_log.clear()
-                dec._arrival_until = 0.0
-                dec.after_replay = False
-                dec.replay_exit_after = 0.0
+                dec.forget_screen("TV control on: a dry-run screen is no evidence of a real stream")
                 self.control.on_target = None
             return True, "Dry run on: the TV won't be touched" if value else "TV control ON"
         if action == "replay":
             m = next((m for m in dec.queue if m.pid == str(value)), None)
             if not m:
                 return False, "That replay isn't available anymore"
-            self._act_manual(m.game_id, replay=m)
-            return True, f"Replaying: {m.label[:60]}"
+            return True, self._tap_said(self._tap(m.game_id, replay=m), f"Replaying: {m.label[:60]}")
         if action == "scan_st":
             return self._start_st_scan()
         if action == "mic":
@@ -2178,6 +2974,9 @@ class Engine:
         if action == "label":
             self.store.label(str(value), dec.current, {"decision": getattr(self.last_decision, "reason", "")})
             return True, f"Labeled: {value}"
+        if action in ("pin", "unpin", "move") and self.cfg.get("queue.enabled", False):
+            on = action == "move" or (action == "pin" and value is not False)
+            return self._queue_pin(game_id, on, value if action == "move" else None)
         return False, f"Unknown action {action}"
 
     def _hold(self, gid: str | None, force: bool = False) -> tuple[bool, str]:
@@ -2255,9 +3054,11 @@ class Engine:
             return True
         scope = for_league(self.cfg, "decider.entry.user_timed_targets", lg, None) or []
         if scope and not any(str(target or "").startswith(f"{p}:") for p in scope):
-            return True   # [EXP-741 scope] e.g. [youtubetv]: Prime taps go as before until arm E grades
+            return True   # [EXP-741 scope] a target list set by hand (default []: every target waits, N4)
+        # [N4, P1-REVIEW-02] a live game with no proof of a dead ball waits for one; the second tap still goes now
+        unproven = bool(g is not None and g.phase == Phase.LIVE and target and self.cfg.get("decider.entry.enabled", True))
         if d.target not in self.scored:
-            return True
+            return not unproven
         cands1 = {d.target: Candidate(self.scored[d.target], target)}
         now = time.time()
         after = for_league(self.cfg, "decider.entry.user_rewind_after_s", lg, None)
@@ -2273,7 +3074,7 @@ class Engine:
                 return say == "stopped"
         plan = self.decider.entry_plan(d.target, cands1, now, self.control.deadline_cost(target))
         if plan is None:
-            return True
+            return not unproven
         if not plan.ok:
             return False
         if not plan.rewind_s and getattr(plan.landing, "state", "dead") != "dead":
@@ -2290,9 +3091,35 @@ class Engine:
         return True
 
     def _forced_go(self, d: Decision) -> bool:
-        """Your second "Go now" tap on the held game: it cuts at once, even mid-play (Nick, Nov 5)."""
+        """Your second tap: on the held game ("Go now", Nick, Nov 5) or on a waiting Back / Focus / Replay (N4). It cuts
+        at once, even mid-play."""
         h = self.hold
-        return bool(h and d.kind == "user" and d.action == "switch" and d.target == h["game_id"] and h.get("force"))
+        return d is self._tap_forced or bool(h and d.kind == "user" and d.action == "switch"
+                                             and d.target == h["game_id"] and h.get("force"))
+
+    def _tap(self, gid: str, replay: Missed | None = None) -> bool:
+        """[N4, S-4] A phone tap (Back, Focus, Replay) waits for a dead ball; the same tap again while it waits goes now.
+        True = this was that second tap."""
+        p = self._pending_decision
+        if p is not None and p.kind == "user" and p.target == gid and p.action == ("replay" if replay else "switch") \
+                and (replay is None or (p.replay is not None and p.replay.pid == replay.pid)):
+            self._tap_forced = p
+            return True
+        self._act_manual(gid, replay=replay)
+        return False
+
+    def _tap_said(self, second: bool, said: str) -> str:
+        if second:
+            return f"{said}: going now"
+        return said if self.cfg.get("mode.dry_run", True) else f"{said} at the next dead ball (tap again to go now)"
+
+    def _entry_stuck(self) -> None:
+        """[P1-REVIEW-05] Say once that nothing can be proved dead: no other game to go to, so the screen waits."""
+        dec = self.decider
+        gid, dec.entry_stuck = dec.entry_stuck, None
+        if gid:
+            self.toast(f"Waiting on {self._name(gid)}: no play-by-play to find a dead ball (tap twice to go now)", "error")
+            log.warning("entry on %s waiting: no play-by-play, nothing else to go to", gid)
 
     def _lock_expired(self) -> None:
         """[lock wait] The decider gave up on a locked game it couldn't reach: drop the lock (and the
@@ -2309,11 +3136,6 @@ class Engine:
             dec.user.locked_game = None
         self.toast(f"Couldn't get to {self._name(gid)} ({why}) — back on autopilot", "error")
         log.warning("lock on %s given up: %s", gid, why)
-
-    def _hold_waits(self, d: Decision) -> bool:
-        """A switch to the held game honors the never-cut-mid-play rule unless you forced it."""
-        h = self.hold
-        return bool(h and d.action == "switch" and d.target == h["game_id"] and not h.get("force"))
 
     def _release_hold(self, msg: str) -> tuple[bool, str]:
         dec, u = self.decider, self.decider.user
@@ -2354,11 +3176,13 @@ class Engine:
             if h["resume_at"] and not why:
                 self.toast(f"{self._name(gid)} is close again — staying")
             h.update(resume_at=None, why="")
+            self.hold_m.to("held", "close again" if why else "no auto-resume")
             return
         now = time.time()
         if h["resume_at"] is None:
             wait = 5.0 if over else HOLD_RESUME_S
             h.update(resume_at=now + wait, why=why)
+            self.hold_m.to("resuming", f"{gid} {why}: autopilot in {wait:.0f}s")
             self.toast(f"{self._name(gid)} {why} — autopilot takes over in {wait:.0f}s")
         elif now >= h["resume_at"]:
             self._release_hold("")
@@ -2420,7 +3244,7 @@ class Engine:
         sample = tap - e.seen
         self._sync_measure(target, sample, "tap", time.time())
         d = self.delays.calibrate(target, sample)
-        self.store.calibration(target, sample, d.mu, d.sigma)
+        self.store.calibration(target, sample - d.behind, d.mu, d.sigma)   # as the book keeps it: DelayBook.load adds no hold back
         return True, f"Matched {e.label[:60]}; delay {d.mu:.0f}s (±{2*d.sigma:.0f}) for {describe(target)}"
 
     def _name(self, gid: str | None) -> str:
@@ -2439,7 +3263,7 @@ class Engine:
         s = self.scored.get(gid)
         w = self.where.get(gid)
         live = g.phase == Phase.LIVE
-        return {
+        item = {
             "id": gid, "league": g.league.value, "league_logo": views.league_logo(g.league.value),
             "matchup": g.matchup, "phase": g.phase.value,
             "status_text": g.status_text or _status(g), "home": views.team(g.home), "away": views.team(g.away),
@@ -2459,6 +3283,15 @@ class Engine:
             "brain": (s.brain or None) if s and live else None,
             "reasoner": (s.reasoner or None) if s and live else None,
         }
+        return self._screen_item(item, gid, g, w)
+
+    def _screen_item(self, item: dict, gid: str, g, w) -> dict:
+        """[views.screen_clock, off] The card's clock as of what the screen shows, not the feed that runs ahead of it."""
+        if not views.screen_clock_on(self.cfg):
+            return item
+        self.clock_tape.record(gid, g)
+        return views.screen_item(item, gid, enabled=True, tape=self.clock_tape,
+                                 delay_s=views.known_delay_s(self.delays, getattr(w, "target", None)))
 
     async def game_detail(self, gid: str) -> dict | None:
         g = self.merger.games.get(gid)
@@ -2524,10 +3357,12 @@ class Engine:
                      "tv_control": self.control.live_control, "two_stick": self.control.two_stick,
                      "control_note": self.control.note, "mic": self.mic is not None, "announcer_hint": ""},
             "now": now, "next": nxt, "standby": self._standby_view(), "games": games,
+            "machines": self.machines_view(),   # [state machines] additive: every engine/decider machine now
             "reel": self.reel_view(), "agent": self.agent_notes(),
             "tonight": self.tonight.view(),
             "screen_evidence": self.screen_evidence(),
             "queue": [self._queue_item(m) for m in sorted(dec.queue, key=lambda m: -m.value)[:10]],
+            **({"game_queue": self._game_queue} if self.cfg.get("queue.enabled", False) else {}),
             "log": self._log(),
             "server_time": time.time(),
             "recorded_playback": self.recorded.snapshot(),
@@ -2619,6 +3454,26 @@ class Engine:
             log.debug("queue item enrich failed", exc_info=True)
         return item
 
+    async def _relearn_screen(self) -> str | None:
+        """[overseer Nov 7 23:00] After a restart decider.current is None and jump mode holds forever
+        ('screen_game_unknown'). Learn it from control.on_target, else read the main stick back (control.read_screen).
+        Only while nothing is pending; a live game on that channel first (_game_on_target)."""
+        dec, c = self.decider, self.control
+        if (dec.current is not None or self._pending_decision is not None or self.recorded.active
+                or self.cfg.get("mode.dry_run", True)):
+            return None
+        target = getattr(c, "on_target", None)
+        if target is None:
+            live = [w.target for g, w in self.where.items() if getattr(w, "target", None)
+                    and getattr(self.merger.games.get(g), "phase", None) == Phase.LIVE]
+            target = await c.read_screen(live) if hasattr(c, "read_screen") else None
+        gid = self._game_on_target(target) if target else None
+        if gid is None or dec.current is not None or self._pending_decision is not None:
+            return None
+        dec.adopt(gid)
+        log.info("screen game re-learned after a restart: %s on %s", gid, target)
+        return gid
+
     def _game_on_target(self, target: str | None) -> str | None:
         """The game a channel is showing now: a LIVE game on it first. `where` maps every game on the board,
         so a channel's first entry can be tomorrow's game on the same network (overseer Nov 7 19:10: the
@@ -2678,13 +3533,29 @@ class Engine:
             q.put_nowait(("state", payload))
 
     def toast(self, text: str, level: str = "info") -> None:
+        payload = json.dumps({"text": text, "level": level})
         for q in list(self.subscribers):
-            q.put_nowait(("toast", json.dumps({"text": text, "level": level})))
+            if q.qsize() > 20:
+                continue  # a phone that stopped reading: don't let its queue grow without bound
+            q.put_nowait(("toast", payload))
 
     # ------------------------------------------------------------------ mac
 
+    def _planned_soon(self, within_s: float = 3600.0) -> bool:
+        """[P-10] Does today's plan (data/plan_YYYYMMDD.json) have a game starting within the next hour? The merger may not
+        list it yet, and a Mac asleep at kickoff never notices the game is live."""
+        if self._user_state_path is None:
+            return False
+        now = time.time()
+        path = path_for(day_of(now), self._user_state_path.parent)
+        try:
+            games = json.loads(path.read_text()).get("games", []) if path.exists() else []
+        except (OSError, ValueError, AttributeError):
+            return False
+        return any(isinstance(e, dict) and e.get("start") and 0 < float(e["start"]) - now < within_s for e in games)
+
     def _keep_awake(self, live: bool) -> None:
-        """caffeinate only while games are live, so the Mac sleeps normally otherwise."""
+        """caffeinate only while games are live or about to start, so the Mac sleeps normally otherwise."""
         running = self._caffeinate is not None and self._caffeinate.poll() is None
         if live and not running:
             try:

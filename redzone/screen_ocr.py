@@ -1,5 +1,7 @@
 """Read local PNG menu text with Apple Vision; never capture or control a device.
 
+Why: apps like YouTube TV draw their own UI, so on-screen menus are read from screenshots with local Apple Vision OCR (screen_prompts.py docstring).
+
 Coordinates are normalized with a top-left origin. Text/confidence describes OCR,
 not focused controls, entitlement, playback, or the identity of the playing game.
 Focus boxes are geometric UI candidates, not an accessibility focus assertion;

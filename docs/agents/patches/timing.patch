@@ -1,0 +1,43 @@
+Timing (delay.timing.app_sigma). Coordinator applies; nothing here is live until the yaml has the key.
+default_config.yaml, under delay: (absent = exactly today)
+  timing:
+    app_sigma: {}          # prime: {sigma_s: 1.0, min_anchors: 2, meter_s: 15, replay: <scripts/timing_replay.py "recommended">}
+                           # needs sync.edge.meter on (the position reads) and delay.sync.robust on
+
+diff --git a/redzone/engine.py b/redzone/engine.py
+index a6ff9b43..e7d2d5fc 100644
+--- a/redzone/engine.py
++++ b/redzone/engine.py
+@@ -264,6 +264,7 @@ class Engine:
+             self.sync.robust = bool(self.cfg.get("delay.sync.robust", False))   # Student-t + change points (OFF)
+             for app, spec in (self.cfg.get("delay.sync.app_min_sigma_s") or {}).items():   # needs its replay verdict
+                 self.delays.set_app_floor(app, spec.get("floor_s", 4.0), spec.get("replay"))
++            self.delays.apply_timing_config(self.cfg.get("delay.timing.app_sigma"))   # [timing] OFF until the yaml has it
+             # [league overrides] each channel's floor follows the league of the game it shows
+             self.delays.sync_floor_for = lambda target: float(for_league(
+                 self.cfg, "delay.sync.min_sigma_s", self._league_of(target), 4.0))
+diff --git a/scripts/tv_test_runner.py b/scripts/tv_test_runner.py
+index 09b800c2..3c471331 100644
+--- a/scripts/tv_test_runner.py
++++ b/scripts/tv_test_runner.py
+@@ -141,6 +141,20 @@ SPECS: tuple[Spec, ...] = (
+     Spec("T1-L12", "L12 DIAL read-only",
+          "Ask the stick's DIAL service what app is running; read only, nothing is launched.", 3,
+          (Bar("dial_reads", "==", True),)),
++    Spec("T2-cap", "Prime capture offset",
++         "30 alternating raw-band and PNG captures of a running game clock on the hidden Prime stick; the offset between "
++         "the two conventions is the capture offset. Replaces the 1.0 s margin in delay.timing.app_sigma.", 3,
++         (Bar("capture_offset_s", "info"), Bar("capture_offset_sd_s", "<=", 0.5, " s"))),
++    Spec("T2-k", "Prime K per game",
++         "20 bug reads per game across 3 games and both sticks: K = delay - E, per game and per stick.", 12,
++         (Bar("k_sd_within_game_s", "<=", 0.5, " s"), Bar("k_spread_across_games_s", "info"),
++          Bar("k_spread_across_sticks_s", "<=", 0.5, " s"))),
++    Spec("T2-pos", "Prime position form",
++         "Which content reports the wall-clock position and which a counter; pause and seek in each and check the meter.",
++         5, (Bar("epoch_content_share", "info"), Bar("meter_survives_seek", "==", True))),
++    Spec("T2-edge", "YouTube TV live edge",
++         "The label probe (3b) on 5 channels, 3 rounds an hour apart, both sticks. Is the live edge one number, and how "
++         "stable.", 15, (Bar("edge_mean_s", "info"), Bar("edge_sd_s", "<=", 1.0, " s"))),
+ )
+ SPEC_BY_ID = {s.id: s for s in SPECS}
+ T1_IDS = tuple(s.id for s in SPECS if s.id.startswith("T1-"))

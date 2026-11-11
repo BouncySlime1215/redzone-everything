@@ -1,5 +1,7 @@
 """SyncModel contract: how far each channel's picture runs behind real life.
 
+Why: Architecture contract v1 (2026-11-03): one SyncModel interface, so Decider and Guard don't care which delay estimator runs (Kalman or belief, EXP-023).
+
 Owner: SYNC ("Predict live delay per channel"). Implementation today: redzone/decider/screen.py
 DelayBook (wrapped by redzone/contracts/legacy.py LegacySync).
 Called by: DecisionCore and Guard (leave gate / entry plan), BreakModel consumers that convert

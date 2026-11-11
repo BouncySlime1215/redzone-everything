@@ -14,6 +14,7 @@ with null delays, so the ledger can tell "no measurement" apart from "no error".
 from the buffer shadow's rows (gid -> league); a gid it never saw is "unknown". Stick hosts (IP:port)
 are never written. The stick is the anchor row's HDMI input.
 Derived numbers only: nothing here reads frames or the LAN.
+Why: Per-stick delay error at each switch landing, for the WV mistake ledger (docstring).
 """
 from __future__ import annotations
 

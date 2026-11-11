@@ -21,6 +21,7 @@ It takes that stick's screen for a few minutes, so run it with the app paused. I
 
 Output: data/prime_multiview_keys.json, and data/lab/prime_multiview/<time>/probe.json with every
 step. Nothing turns on by itself: tuners.prime_multiview stays false until the live night passes.
+Why: Learns Prime NBA multiview keys on one stick; the feature ships OFF (memory 2026-11-03).
 """
 from __future__ import annotations
 

@@ -5,7 +5,10 @@ clock reads the same on two frames at least MIN_GAP_S apart (stopped: in basketb
 stops on a dead ball) and the newer frame is at most FRESH_S old. Two different readings = running.
 No readable clock = unknown, and the tap falls back to the feed's entry plan. The screen has no feed
 lag, which is what failed arms A-D on Prime (lane 3, EXP-741 grade). Numbers only: each frame becomes
-(time, clock, period) and the PNG is dropped (Nick, 3:30 AM Nov 5)."""
+(time, clock, period) and the PNG is dropped (Nick, 3:30 AM Nov 5).
+
+Why: first added in e30ce4ac (2026-11-05) as "EXP-741 E/F: Prime tap score-bug clock gate (user_bug_gate, off) and taps never take an unknown l..."; no separate decision is recorded for this module.
+"""
 from __future__ import annotations
 
 import json

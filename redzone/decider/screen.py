@@ -1,5 +1,7 @@
 """What's on your screen right now, estimated from the data and the stream delay.
 
+Why: leave and entry calls need what is on screen now, which differs from the feed by stream delay and arrival lag (commit 2026-11-02, Mid-play guard).
+
 Event times come from the feed's wallclock. When a feed has no wallclock,
 we retain an interval covering its possible arrival lag, not one guessed time.
 The delay is how far your screen runs behind real life; the "I just saw it"
@@ -13,15 +15,21 @@ player's PLAYING state into evidence that the ball is live.
 """
 from __future__ import annotations
 
+import logging
 import math
+import re
 import statistics
 import time
 from collections import deque
 from dataclasses import dataclass, field
 
 from redzone.decider.cuts import DeadTracker
-from redzone.decider.delaymodel import Centre, app_prior, combine
+from redzone.fsm import MachineMap
+from redzone.machines import decider as _M
+from redzone.decider.delaymodel import Centre, app_prior, combine, replay_allows_floor, timing_replay_allows
 from redzone.models import REAL_BREAKS, ByLeague, GameState, League, Phase, Stoppage, pro_period
+
+log = logging.getLogger(__name__)
 
 # Leagues where the ball/puck is live continuously; only official stoppages are gaps.
 CONTINUOUS = {League.NBA, League.NHL, League.CBB, League.WCBB}
@@ -96,6 +104,14 @@ SCREEN_SIGMA_S = 4.0
 # is read off YouTube TV's own overlay time label. media_session's position is wrong after a seek and the old
 # pause "hold" never held (Nov 6 stick tests), so neither may set behind_live on a seeked tune. Every number
 # (edge default 25 s +-3, label sd, edge_max_sd_s) lives in delay.edge_model in default_config.yaml.
+
+
+@dataclass(frozen=True)
+class TimingSigma:
+    """[timing, delay.timing.app_sigma, OFF] What one app's position is really known to, under a hold-out replay's numbers."""
+    sigma_s: float                         # the worst night's error, plus the capture offset no log can measure
+    min_anchors: int = 2                   # absolute samples on this stream first (one bad read mustn't do it alone)
+    meter_s: float = 15.0                  # a position read this recent means the meter is holding the delay
 
 
 @dataclass
@@ -197,17 +213,22 @@ class DelayBook:
         self.held: dict[str, float] = {}                         # [time-shift buffer] target -> s held behind live
         self._sync_floor = MIN_TAP_SIGMA_S
         self.sync_floor_for = None   # [league overrides] target -> its floor (engine), else _sync_floor
+        self.app_floor: dict[str, float] = {}   # [per-app floor] app -> a floor a forward-chaining replay cleared
         self.cal: NoiseCal | None = None                         # [self-calibrating doubt] see attach_cal
         self._fresh: set[str] = set()                            # tuned, no anchor yet since
         self.calibrated: dict[str, tuple[float, float]] = {}     # [calib.auto] target -> (fresh-tune delay, sd)
         # [edge model] delay = D_edge(channel) + behind_live (label), config delay.edge_model
         self.edge_cfg = None                                      # key -> delay.edge_model.<key> (engine), else defaults
         self.labels: dict[str, tuple[float, float, float]] = {}   # target -> (behind_live_s, sd, ts) off the overlay label
+        self.label_m = MachineMap(_M.DELAY_LABEL, clock=clock)    # [state machines] none / read / stale, per target
         self.edge_seen: dict[str, tuple[float, float, float]] = {}  # target -> (edge s, sd, ts) tonight at behind 0
         self.on_label_stale = None                                # target -> re-read its label (wired by yttv_seek)
         # [edge prior, Nick Nov 7] one shared live-edge delay per app (delay.edge_prior, OFF), refreshed by the probe
         self.edge_prior_cfg = None                                # key -> delay.edge_prior.<key> (engine), else defaults
         self.edge_reads: dict[str, list[tuple[float, float]]] = {}  # app -> [(ts, delay_s)] from the edge probe
+        # [timing, delay.timing.app_sigma, OFF] app -> the doubt its replay earned; empty = exactly today's floors
+        self.timing: dict[str, TimingSigma] = {}
+        self._timed: dict[str, bool] = {}                         # target -> was it on the timing floor at its last refresh
 
     @staticmethod
     def app(target: str) -> str:
@@ -232,6 +253,8 @@ class DelayBook:
             if self.cal is not None:
                 self.book[target].cal_sigma = self.cal.sigma(self.app(target))
             self._refresh(target)
+        if self.timing:
+            self._timing_refresh(target)
         return self.book[target]
 
     # ------------------------------------------------------------------ [auto sync]
@@ -246,6 +269,67 @@ class DelayBook:
         # channel's fresh-tune delay (calibration.delay_fit)
         self.sync.behind_of = lambda t: self.book[t].behind if t in self.book else 0.0
         return self.sync
+
+    def floor_for(self, target: str) -> float:
+        """The least doubt this target's delay may state: the league's or the global floor (4 s, what the gates were
+        tuned on), or the app's cleared floor when lower, never under the app's measured error (NoiseCal)."""
+        base = float(self.sync_floor_for(target) if self.sync_floor_for is not None else self._sync_floor)
+        app = self.app(target)
+        lowered = self.app_floor.get(app)
+        timed = self._timing_floor(target)
+        if lowered is None or lowered >= base:
+            return base if timed is None else min(base, timed)
+        learned = self.cal.sigma(app) if self.cal is not None else None
+        floor = min(base, max(lowered, learned or 0.0))
+        return floor if timed is None else min(floor, timed)
+
+    # ------------------------------------------------------------------ [timing] the doubt a replay earned
+    def _timing_floor(self, target: str) -> float | None:
+        """[timing] This target's earned doubt, or None: only with the replay's evidence on file, an absolute anchor on this
+        stream and the position meter live. Prime's meter is flat to 0.01-0.5 s inside a tune, but the arena-to-frame offset
+        differs by game (9.3 vs 23.2 s on two nights), so a stream with no anchor yet earns nothing, whatever the app."""
+        spec = self.timing.get(self.app(target))
+        if spec is None or self.sync is None:
+            return None
+        f = self.sync.filters.get(target)
+        if f is None or not f.meter_anchored(self._clock(), spec.min_anchors, spec.meter_s):
+            return None
+        return spec.sigma_s
+
+    def _timing_refresh(self, target: str) -> None:
+        """A dead meter must take the earned doubt away even if nothing else on this channel changes."""
+        on = self._timing_floor(target) is not None
+        if on != self._timed.get(target, False):
+            self._timed[target] = on
+            self._refresh(target)
+
+    def set_timing_sigma(self, app: str, sigma_s: float, evidence: dict | None, min_anchors: int = 2,
+                         meter_s: float = 15.0) -> bool:
+        """[timing] State an app's real doubt: only with a whole-night hold-out showing the worst night within it."""
+        if not timing_replay_allows(evidence, float(sigma_s), app):
+            log.warning("%s: doubt %.2f s refused, no whole-night hold-out backs it", app, float(sigma_s))
+            return False
+        self.timing[app] = TimingSigma(float(sigma_s), int(min_anchors), float(meter_s))
+        for t in [t for t in self.book if self.app(t) == app]:
+            self._refresh(t)
+        return True
+
+    def apply_timing_config(self, spec: dict | None) -> None:
+        """delay.timing.app_sigma: {app: {sigma_s, min_anchors, meter_s, replay: <timing_replay's verdict>}}. Absent = today."""
+        for app, cfg in (spec or {}).items():
+            self.set_timing_sigma(app, cfg.get("sigma_s", 0.0), cfg.get("replay"), int(cfg.get("min_anchors", 2)),
+                                  float(cfg.get("meter_s", 15.0)))
+
+    def set_app_floor(self, app: str, floor_s: float, replay: dict | None) -> bool:
+        """[per-app floor] Lower one app's floor: only with a forward-chaining replay showing no fold's mid-play cuts
+        rose (delaymodel.replay_allows_floor). A too-narrow interval is what cuts plays mid-play, so no replay, no floor."""
+        if not replay_allows_floor(replay):
+            log.warning("%s: floor %.1f s refused, no forward-chaining replay clears it", app, float(floor_s))
+            return False
+        self.app_floor[app] = max(1.0, float(floor_s))
+        for t in [t for t in self.book if self.app(t) == app]:
+            self._refresh(t)
+        return True
 
     def _sync_prior(self, target: str) -> tuple[float, float]:
         d = self.get(target)
@@ -307,7 +391,7 @@ class DelayBook:
             return
         d.base = (d.mu, d.sigma, d.calibrated_at, d.source, d.drift_cap)
         f = self.sync.filters[target]
-        floor = self.sync_floor_for(target) if self.sync_floor_for is not None else self._sync_floor
+        floor = self.floor_for(target)
         d.mu, d.sigma, d.calibrated_at = est[0], max(floor, est[1]), f.updated
         d.source, d.drift_cap = "sync", SETTLED_DRIFT_S
 
@@ -421,7 +505,7 @@ class DelayBook:
         if any(now - ts <= CROSS_NIGHT_S for ts, _ in self._own(target)):
             return                                  # tonight's own taps / score bug on this channel win
         d = self.book[target]
-        floor = self.sync_floor_for(target) if self.sync_floor_for is not None else self._sync_floor
+        floor = self.floor_for(target)
         d.mu, d.sigma = e[0] + d.behind, max(float(floor), e[1])
         d.calibrated_at = max((t for t, _ in self.edge_reads.get(self.app(target), [])), default=now) \
             if e[2] == "probe" else now
@@ -438,6 +522,7 @@ class DelayBook:
         sd = float(self._ecfg("label_sd_s")) if sd is None else max(0.1, float(sd))
         prev = self.labels.get(target)
         self.labels[target] = (behind_s, sd, self._clock() if ts is None else float(ts))
+        self.label_m[target].to("read", f"behind {behind_s:.1f}s +-{sd:.1f}")
         d = self.get(target)
         self._refresh(target)
         if self.edge_model and self.sync is not None and (prev is None or abs(prev[0] - behind_s) > 2.0):
@@ -446,11 +531,24 @@ class DelayBook:
             self.sync.tuned(target, new_stream=False)
         return d
 
-    def clear_label(self, target: str) -> None:
+    def clear_label(self, target: str, why: str = "a fresh tune") -> None:
         """A fresh tune (deep link to the live edge): the label read belonged to the old tune."""
+        if target in self.label_m:
+            self.label_m[target].to("none", why)
+            self.label_m.prune()
         if self.labels.pop(target, None) is not None and target in self.book:
             self.book.pop(target, None)   # rebuilt at behind 0 from the channel's samples / filter
             self.get(target)
+
+    def clear_label_before(self, target: str, t: float) -> bool:
+        """A fresh tune confirmed by the controller (its command at t): a label read before t belonged to the tune
+        before it. The tune callback (_sync_tune) normally clears it; a tune it never heard of left the old figure
+        standing as this tune's behind_live. A read after t is the new tune's own (a scrub's label): kept."""
+        lab = self.labels.get(target)
+        if lab is None or lab[2] >= t:
+            return False
+        self.clear_label(target, "a confirmed fresh tune after the read")
+        return True
 
     def labelled(self, target: str) -> bool:
         """The edge model owns this target's delay: flag on and a label read for this tune."""
@@ -479,7 +577,7 @@ class DelayBook:
         behind, lsd, ts = lab
         if d.base is None:
             d.base = (d.mu, d.sigma, d.calibrated_at, d.source, d.drift_cap)
-        floor = self.sync_floor_for(target) if self.sync_floor_for is not None else self._sync_floor
+        floor = self.floor_for(target)
         d.behind = behind
         d.mu = e[0] + behind
         d.sigma = max(float(floor), math.hypot(e[1], lsd))
@@ -629,7 +727,7 @@ class DelayBook:
     def boundary(self, target: str, sample_s: float, ts: float | None = None) -> Delay:
         """One delay sample measured from a show change on the quarter hour (no tap)."""
         d = self.get(target)
-        if not self._add(target, self._clock() if ts is None else ts, sample_s, self.bounds):
+        if not self._add(target, self._clock() if ts is None else ts, sample_s - d.behind, self.bounds):
             return d
         self._refresh_app(self.app(target))
         return d
@@ -637,7 +735,7 @@ class DelayBook:
     def screen(self, target: str, sample_s: float, ts: float | None = None) -> Delay:
         """One delay sample from the score bug: a new score's first frame minus its play's wallclock."""
         d = self.get(target)
-        if not self._add(target, self._clock() if ts is None else ts, sample_s, self.screens):
+        if not self._add(target, self._clock() if ts is None else ts, sample_s - d.behind, self.screens):
             return d
         self._refresh_app(self.app(target))
         return d
@@ -648,7 +746,8 @@ class DelayBook:
             if self.live.pop(target, None) is None:
                 return
         else:
-            self.live[target] = delay_s
+            # read off this picture, so any rewind is in it; the book adds `behind` back when it builds mu
+            self.live[target] = delay_s - (self.book[target].behind if target in self.book else 0.0)
         if target in self.book:
             self._refresh(target)
 
@@ -709,7 +808,7 @@ class DelayBook:
     def calibrate(self, target: str, sample_s: float) -> Delay:
         """One "I just saw it" measurement. Outliers are clipped, not trusted blindly."""
         d = self.get(target)
-        if not self._add(target, self._clock(), sample_s):
+        if not self._add(target, self._clock(), sample_s - d.behind):   # read off the picture: the rewind is in it
             return d
         self._refresh_app(self.app(target))   # every channel of this app without its own taps learns too
         return d
@@ -742,6 +841,7 @@ class DelayBook:
             # [edge model] the label read is stale by the stall: behind +3 s, its doubt +5 s, until re-read
             b, sd, ts = self.labels[target]
             self.labels[target] = (b + 3.0, sd + 5.0, ts)
+            self.label_m[target].to("stale", "the stream stalled after the read")
             self._refresh(target)
             if self.sync is not None:
                 self.sync.tuned(target, new_stream=False)
@@ -815,7 +915,7 @@ def _is_game_end(kind: str) -> bool:
 def _entry_label(p, league: League) -> str:
     """[quiet break] What a play-by-play entry says about the moment right after it, for a feed that
     then goes quiet: "period_end" (end of a quarter/half/period, or the clock read 0:00), "score"
-    (a scoring play in a stop-start sport: try/kickoff/ad follow), else ""."""
+    (a scoring play in football: try/kickoff/ad follow), else ""."""
     k = f"{p.kind or ''} {getattr(p, 'type_text', '') or ''}".lower().replace("_", " ")
     if "end" in k and "game" not in k and any(w in k for w in ("period", "quarter", "half", "regulation", "inning")):
         return "period_end"
@@ -824,7 +924,7 @@ def _entry_label(p, league: League) -> str:
     clock = getattr(p, "clock", None)
     if clock is not None and clock <= 0.0 and getattr(p, "period", None) is not None:
         return "period_end"
-    if p.scoring and league not in CONTINUOUS:
+    if p.scoring and league.base == League.NFL:   # baseball's next batter is up in ~20 s: no try, kickoff or ad
         return "score"
     if clock is not None and getattr(p, "period", None) is not None and league not in CONTINUOUS \
             and (p.period or 0) < 4:
@@ -842,14 +942,34 @@ class Event:
     play_kind: str = ""
     spread: float = 0.0  # unsure by this much: it happened in [seen - spread, seen]
     score: tuple[int, int] | None = None  # "score" events: (home, away) right after the play
+    # [slate] football only, None when the feed can't say: the snap's gain (from the play text), the down and yards to go
+    # before it (the prior poll's situation, only when this poll has one new play), the yards to the goal line
+    gain: int | None = None
+    down: int | None = None
+    to_go: int | None = None
+    to_goal: int | None = None
+    ptype: str = ""       # ESPN's play type text, for the moment words
 
     @property
     def lo(self) -> float:
         return self.seen - self.spread
 
 
+def _gain(text: str) -> int | None:
+    """Yards gained from an ESPN football play's text, or None when it doesn't say (a nullified play counts as None)."""
+    t = (text or "").lower()
+    if "no play" in t:
+        return None
+    if "for no gain" in t:
+        return 0
+    m = re.search(r"\bfor (-?\d+) yards?\b", t)
+    return int(m[1]) if m else None
+
+
 class Timeline:
     """Per-game event history, fed every poll from the merged GameState."""
+
+    feed_bias = None   # [feed bias] delaymodel.FeedBias, shared by every game's timeline (engine, delay.feed_bias); None: off
 
     def __init__(self, league: League, clock=time.time):
         self.league = league
@@ -865,6 +985,7 @@ class Timeline:
         # [auto sync] (wallclock, period, game clock s left) of timed plays: the score bug's clock is
         # timed against these (sync.clock_sample)
         self.clocks: deque[tuple] = deque(maxlen=80)
+        self.game_key = id(self)                  # [feed bias] one game's plays pair with each other only
         # [EXP-610] (wallclock, period, game clock s left, lower-case type text) of timed plays, for the clock-stopped
         # dead-ball check on a buffered flip (redzone/decider/whistle.py)
         self.clock_events: deque[tuple] = deque(maxlen=120)
@@ -886,6 +1007,7 @@ class Timeline:
         # newest entry this game's data has logged (any kind, markers included): see quiet_break().
         self.quiet_cfg: dict | None = None
         self.last_entry: Event | None = None
+        self._sit_prior: tuple[int | None, int | None, int | None] = (None, None, None)   # [slate] (down, to go, to goal) before this poll
 
     def lag_est(self) -> float:
         """How far behind real life this game's feed runs (recent worst case)."""
@@ -900,6 +1022,10 @@ class Timeline:
             return False
         hs, as_ = self._last_score or (g.home.score, g.away.score)
         return hs is not None and as_ is not None and abs(hs - as_) <= 5
+
+    def _unbiased(self, p) -> float:
+        """[feed bias] The play's wallclock, less its source's learned bias when that is applied (off by default)."""
+        return p.wallclock if Timeline.feed_bias is None else Timeline.feed_bias.adjust(self.league.value, p.source, p.wallclock)
 
     def observe(self, g: GameState) -> None:
         now = self._clock()
@@ -926,10 +1052,19 @@ class Timeline:
             big = p.kind in ("td", "turnover", "goal", "hr") or (p.scoring and self.league.base != League.NBA) \
                 or self._nba_clutch(p, g)
             lo, hi = _bounds(p, now, prev_fresh)
-            self.events.append(Event(hi, "play", (p.text or p.kind)[:80], big, p.id, p.kind, hi - lo))
+            ev = Event(hi, "play", (p.text or p.kind)[:80], big, p.id, p.kind, hi - lo)
+            if self.league.base == League.NFL:
+                ev.gain, ev.ptype = _gain(p.text), (p.type_text or "")
+                if len(action) == 1:
+                    ev.down, ev.to_go, ev.to_goal = self._sit_prior
+            self.events.append(ev)
             if p.wallclock and prev_fresh is not None and not first_poll:
                 # It wasn't in the data at the last fresh poll, so the feed ran at least this far behind.
                 self._lags.append(min(LAG_SAMPLE_CAP_S, max(0.0, prev_fresh - p.wallclock)))
+        if Timeline.feed_bias is not None:
+            for p in scorers:
+                if p.wallclock and p.score:
+                    Timeline.feed_bias.add(self.game_key, self.league.value, tuple(p.score), p.source, p.wallclock)
         for p in scorers:
             # Every score change with its feed time, free throws included (they're dead-ball markers
             # above), for timing the broadcast's score bug (redzone/screen/scorebug.py).
@@ -947,13 +1082,15 @@ class Timeline:
                 self.last_entry = Event(hi, "entry", _entry_label(p, self.league), p.scoring, p.id, p.kind,
                                         hi - lo)
             if p.wallclock and getattr(p, "clock", None) is not None and getattr(p, "period", None) is not None:
-                self.clocks.append((p.wallclock, p.period, p.clock))
+                self.clocks.append((self._unbiased(p), p.period, p.clock))
                 self.clock_events.append((p.wallclock, p.period, p.clock,
                                           (getattr(p, "type_text", "") or p.kind or "").lower()))
             self._seen_ids.append(p.id)
             lo, hi = _bounds(p, now, prev_fresh)
             self.dead.add(p.id, lo, hi, p.kind, p.text, getattr(p, "type_text", ""),
                           getattr(p, "clock", None), getattr(p, "period", None))
+        sit = g.situation
+        self._sit_prior = (sit.down, sit.distance, sit.yards_to_goal) if sit is not None and self.league.base == League.NFL else (None, None, None)
         if not new and self._last_score is not None and score != self._last_score and None not in score:
             # No play-by-play from this source: a score change is still a play (time unknown: bound it).
             lo, hi = (prev_fresh or now) - FEED_LAG_MAX_S, now - FEED_LAG_MIN_S
@@ -974,6 +1111,12 @@ class Timeline:
         # [mid-play guard] a break starts on screen no earlier than the LATEST it could have started.
         stop_lo, at = _bounds(lp, now, prev_fresh) if lp else (
             (prev_fresh or now) - FEED_LAG_MAX_S, now - FEED_LAG_MIN_S)
+        if lp and not first_poll and self.league in CONTINUOUS and lp.id not in {p.id for p in new}:
+            # A stoppage with no new play (the owner feed's flag laid on another feed's copy, /score's intermission):
+            # that old play doesn't date it. The ball stays live between plays here, so it began after that play,
+            # and the latest it could have begun is just before this poll.
+            stop_lo = max(at, (prev_fresh or now) - FEED_LAG_MAX_S)
+            at = max(stop_lo, now - FEED_LAG_MIN_S)
         stopped = g.stoppage not in (Stoppage.NONE, Stoppage.UNKNOWN)
         if stopped and not self._stopped:
             self.events.append(Event(at, "stop_start", g.stoppage.value,
@@ -1047,7 +1190,7 @@ QUIET_KINDS = ("period_end", "score")
 
 def quiet_break(tl: Timeline, mu: float, margin: float, now: float, tune_s: float) -> Gate | None:
     """[quiet break, Nick Nov 7 12:40] The data on this game went quiet right after an entry that
-    starts a dead spell: a period end / 0:00 clock, or a score in a stop-start sport. During the ad that
+    starts a dead spell: a period end / 0:00 clock, or a score in football. During the ad that
     follows, the feed logs nothing, so the stale-data and uncalibrated-delay rules below blocked leaving
     exactly when it was safest. Treat that entry as an official stoppage: it is on screen once it has
     surely aired (seen + mu + margin) and stays a break for floor_s[kind] after it (the same

@@ -14,6 +14,8 @@ part's own timeouts and backoffs:
     is re-verified;
   - the FastCast socket is restarted, and HTTP backoffs left from the old network are cleared.
 Nothing here presses a key or changes the TV's input.
+
+Why: first added in 9cfabbd1 (2026-11-04) as "hardening.mac: reconnect everything at once after the Mac sleeps or changes network"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -32,15 +34,19 @@ class WakeWatch:
         self.gap_s, self.wall, self.mono, self.expect_s = gap_s, wall, mono, expect_s
         self._last: tuple[float, float] | None = None
 
-    def check(self) -> float | None:
-        """Call once per housekeeping tick. Seconds the Mac was away (asleep or stalled), else None."""
+    def check(self, busy_s: float = 0.0) -> float | None:
+        """Call once per housekeeping tick. Seconds the Mac was away (asleep or stalled), else None.
+
+        busy_s: how long the previous tick's own work ran (the keepalive, a screen read). The loop sleeps
+        expect_s AFTER that work, so the next check comes expect_s + busy_s later on a healthy Mac; without
+        it a slow keepalive (a stick timing out) read as a stall and reset every connection."""
         w, m = self.wall(), self.mono()
         last, self._last = self._last, (w, m)
         if last is None:
             return None
         dw, dm = w - last[0], m - last[1]
         slept = dw - dm                       # wall ran ahead: asleep
-        stalled = dm - self.expect_s          # the tick itself came late
+        stalled = dm - self.expect_s - max(0.0, busy_s)   # the tick itself came late
         away = max(slept, stalled)
         return away if away >= self.gap_s else None
 
@@ -70,6 +76,9 @@ def recover(engine: Any, why: str) -> list[str]:
         if tv is not None:
             def tv_reset():
                 tv._drop_local()
+                reset = getattr(tv, "reset_backoff", None)
+                if reset is not None:
+                    reset()                   # a backoff from before the sleep says nothing about the TV now
                 br = getattr(tv, "st_breaker", None)
                 if br is not None:
                     br.probe_now()

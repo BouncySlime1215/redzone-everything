@@ -18,6 +18,7 @@ No night collected, or a night with no games -> a PENDING page. These lines are 
 judges the locked set plus fresh nights (release_gate.py).
 
 Behind report.nightly (default OFF): with it off the script writes nothing unless --force.
+Why: Writes the nightly health report to docs/nights each morning, with no input from Nick (docstring).
 """
 from __future__ import annotations
 

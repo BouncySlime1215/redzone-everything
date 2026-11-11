@@ -9,6 +9,7 @@ frames are kept and the stick address is not printed.
 --label wires the overlay label reader (yttv_label.LabelProbe): the LEFT probe at the live edge is the anchor and
 one read after the commit gives a MEASURED behind_live_s (the stick must be at the live edge when this starts).
 --again=S then waits S seconds and reads once more (each read adds ~7.5 s), printing that second value.
+Why: Runs yttv_seek.enter_buffer once on the hidden YouTube TV stick, item 1 (docstring).
 """
 import asyncio
 import json

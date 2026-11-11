@@ -13,6 +13,7 @@ For each league:
 Writes redzone/reasoner/models/<league>.npz (the shipped head), data/training/reasoner_folds/
 <league>_f<k>.npz (the fold models, for cross-fitted scorecards) and data/training/
 reasoner_<league>_oof.json (OOF odds + the lift report vs the brain alone).
+Why: Trains the reasoner's fast lock-in head per league, cross-fitted by night (docstring).
 """
 import argparse
 import gzip

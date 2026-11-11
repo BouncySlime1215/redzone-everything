@@ -1,5 +1,7 @@
 """Noggin Timing features and window labels: numpy + stdlib only (the live app has no pandas).
 
+Why: `context` is the one feature definition for the data factory and the live hook, so a feature means the same in training and live (docstring).
+
 `context` is THE feature definition for a dead window, used by the data factory (training) and by the
 live hook (redzone/noggin/live.py), so a feature means the same thing in both. `windows_for_game` labels
 one game's windows with the live `cuts.DeadTracker`.

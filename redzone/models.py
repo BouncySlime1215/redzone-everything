@@ -1,5 +1,7 @@
 """Source-agnostic game model. Every data source normalizes into these.
 
+Why: the feeds are undocumented and fields can vanish mid-season, so every source normalizes here and None means unknown, never zero (docstring).
+
 Every field is optional except the identity fields, because the feeds are
 undocumented and any field can disappear mid-season. Code that reads a
 GameState must treat None as "unknown", never as zero.

@@ -388,7 +388,8 @@ async def test_an_unparked_replay_holds_still_while_waiting_for_a_safe_moment(tw
     assert pause < last_play < flip
 
 
-async def test_single_stick_replay_rewind_counts_the_tune_time(cfg, tmp_path, monkeypatch):
+async def test_single_stick_replay_is_refused_never_rewound_on_screen(cfg, tmp_path, monkeypatch):
+    """[S-11] One stick has no hidden stick to seek on: a replay is refused before any key, for every app."""
     cfg.update({"mode": {"dry_run": False}, "replay": {"seek_step_s": 0.5, "seek_wake_presses": 0,
                                                                 "seek_stall_min_s": 0, "seek_stall_max_s": 0}})
     ch = ChannelMap(tmp_path / "ch.json")
@@ -397,8 +398,7 @@ async def test_single_stick_replay_rewind_counts_the_tune_time(cfg, tmp_path, mo
     c.sticks = [FakeStick("a:5555")]
     monkeypatch.setitem(ctl.TUNERS, "youtubetv", FakeTuner(slow={"youtubetv:espn": 0.6}))
     out = await c.execute("youtubetv:espn", replay_back_s=3.0)
-    # 3.0s back + ~0.6s spent tuning (- 1s allowed late) = 6 presses of 0.5s; ignoring the tune time gave 4
-    assert out.ok and out.path == "single" and rewind_presses(c.sticks[0]) >= 6
+    assert not out.ok and out.screen_unchanged and rewind_presses(c.sticks[0]) == 0
 
 
 # --- learned switch times -----------------------------------------------------------------------
@@ -901,3 +901,67 @@ def test_the_game_on_a_channel_is_the_live_one(eng):
                     "cin_hou": Where("youtubetv:fox", "FOX", "sure", True)})
     assert e._game_on_target("youtubetv:fox") == "cin_hou"
     assert e._game_on_target("youtubetv:espn") is None
+
+
+def test_jump_refill_is_urgent_and_logs_why_the_standby_waits(eng, tmp_path, monkeypatch):
+    """[overseer Nov 7 20:05] After a jump the standby is refilled at once (no 5 s preload gap), and a row in
+    jump_status.jsonl (not jumps.jsonl: Nov 8, a status row there read as an all-None jump) says what it holds,
+    whether it's ready and why a preload was refused."""
+    import json
+    from conftest import nfl
+    from redzone.decider.decider import Candidate
+    e, _ = eng
+    e.cfg.update({"jump_mode": {"enabled": True}})
+    e._jump_log_path = tmp_path / "jumps.jsonl"
+    e._jump_status_path = tmp_path / "jump_status.jsonl"
+    g = nfl("cin_hou", "HOU", "CIN")
+    e.merger.games["cin_hou"] = g
+    cands = {"cin_hou": Candidate(None, "youtubetv:fox")}
+    monkeypatch.setattr(e, "_replay_standby", lambda c: None)
+    monkeypatch.setattr(e.decider, "jump_next", lambda c, standby=None, tunable=None: "cin_hou")
+    calls = []
+
+    def preload(target, urgent=False, **kw):
+        calls.append((target, urgent))
+        e.control.preload_why = "a switch or preload is running"
+        return False
+    monkeypatch.setattr(e.control, "preload", preload)
+    e.decider.jump_holds["standby_not_ready"] = 3
+    assert e._jump_standby(cands, urgent=True)
+    assert calls == [("youtubetv:fox", True)]
+    row = json.loads(e._jump_status_path.read_text().splitlines()[-1])
+    assert row["want"] == "cin_hou" and row["standby_plan"] == "refill" and row["pending"] is None
+    assert row["preload"] == "a switch or preload is running" and row["holds"] == {"standby_not_ready": 3}
+    assert not e._jump_log_path.exists()
+    e._jump_status()   # the tick's heartbeat within 30 s: no second row
+    assert len(e._jump_status_path.read_text().splitlines()) == 1
+    # a queued replay: the plan yields, and the next heartbeat says so
+    monkeypatch.setattr(e, "_replay_standby", lambda c: object())
+    assert not e._jump_standby(cands)
+    e._jump_status(force=True)
+    assert json.loads(e._jump_status_path.read_text().splitlines()[-1])["standby_plan"] == "yields to a queued replay"
+
+
+def test_jump_standby_never_loads_a_game_outside_the_rotation(eng, monkeypatch):
+    """[overseer Nov 8 21:00] With UGA@MISS (CFB) on screen and no other rotation game tunable, the normal standby plan
+    loaded ORL@GS (NBA): the rotation can't jump there. While the screen is in the rotation, the standby keeps what
+    it has instead."""
+    from conftest import nfl
+    from redzone.decider.decider import Candidate
+    from redzone.models import League
+    from redzone.scoring.engine import Scored
+    e, _ = eng
+    e.cfg.update({"jump_mode": {"enabled": True, "leagues": ["cfb"]}})
+    sc = lambda gid, lg: Scored(gid, lg, 50, 50, 50, 1.0, 0.0, "r", [], False, None, None, 1.0)
+    cands = {"uga_miss": Candidate(sc("uga_miss", League.CFB), "youtubetv:espn"),
+             "orl_gs": Candidate(sc("orl_gs", League.NBA), "youtubetv:fox")}
+    e.merger.games["uga_miss"] = nfl("uga_miss", "MISS", "UGA")
+    e.decider.current = "uga_miss"
+    monkeypatch.setattr(e, "_replay_standby", lambda c: None)
+    loads = []
+    monkeypatch.setattr(e.control, "preload", lambda target, **kw: loads.append(target) or True)
+    assert e.decider.jump_next(cands) is None   # NBA isn't in the rotation
+    assert e._jump_standby(cands) is True        # handled: the normal plan doesn't run
+    assert loads == [] and e._jump_standby_note["standby_plan"] == "no other tunable game"
+    e.decider.current = "orl_gs"                 # an NBA game on screen: not the rotation's business
+    assert e._jump_standby(cands) is False

@@ -13,6 +13,7 @@ Row schema:
   id, game_id, night, split, league, i (play index), brief (exactly what the model sees live),
   target (the JSON the model should write), and the hindsight facts behind it: y, big_next,
   crunch_next, t_big, t_break, next_text, garbage, crunch, late, mine, head_p (out-of-fold).
+Why: Exports briefs and hindsight targets for the reasoner LoRA on the shared base (docstring).
 """
 import argparse
 import gzip

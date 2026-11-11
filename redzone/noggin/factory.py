@@ -1,5 +1,7 @@
 """Noggin data factory: labeled dead-ball moments from free public play-by-play with real wall clocks.
 
+Why: the Noggin needs labeled dead-ball moments at scale from free play-by-play, built on Kaggle CPU, never the Mac (decisions 2026-11-04, 15:06 UTC).
+
     python scripts/noggin_factory.py nba --seasons 2019-2026      # Kaggle CPU / GitHub Actions, never the Mac
 
 One row per dead window (a stoppage on the feed, start -> the real restart), labeled by the SAME code the
@@ -55,7 +57,7 @@ SOURCES = {
 }
 # First night of the pinned scorecard window (data/eval_pin.json, eval-data-v1). Nothing on or after it
 # is ever written by the factory. College has no scorecard yet; it uses the NBA date as a safe cut.
-EVAL_FIRST_NIGHT = {"nba": "20261020", "cbb": "20261020", "wcbb": "20261020", "nfl": "20250905", "cfb": "20250801",
+EVAL_FIRST_NIGHT = {"nba": "20261020", "cbb": "20261020", "wcbb": "20261020", "wnba": "20261020", "nfl": "20250905", "cfb": "20250801",
                     "nhl": "20261019", "mlb": "20250301"}   # MLB: no scorecard yet; all of 2025 is held out for one
 
 def night_of(epoch: float) -> str:

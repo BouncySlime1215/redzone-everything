@@ -7,6 +7,7 @@
 Feed timing is real (recorded nights); the screen side is simulated (see redzone/lab/syncsim.py)
 until data/sync.jsonl holds real nights. Target: error under 2 s, interval misses ~0, synced within
 2 minutes of every tune.
+Why: Sync-error scorecard: the delay the app uses vs the screen's real delay (docstring, delay predictor commit).
 """
 import argparse
 import json

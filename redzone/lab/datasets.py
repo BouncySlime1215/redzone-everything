@@ -1,5 +1,7 @@
 """Training datasets: per-league game-state snapshots with break / key-moment / hotness labels.
 
+Why: training needs per-league game-state rows with break, key-moment and hotness labels (commit 2026-11-03, 'Training data').
+
 Built by ``scripts/build_training.py`` (logic in ``redzone.lab.sportsdata``) into
 ``data/training/<league>.parquet`` (git-ignored). One row = the state of a game right
 after one logged event (play, shot, stoppage, plate appearance). Games are sorted and

@@ -1,5 +1,7 @@
 """[edge prior, Nick Nov 7] Measure YouTube TV's live-edge delay on the HIDDEN stick, numbers only.
 
+Why: Nick's Nov 7 method found YouTube TV's live edge ~34.9 s behind; this re-measures it on the hidden stick (commit 2026-11-07).
+
 Nick's method (hidden stick, Nov 7 ~10:55 ET, 17 reads on 7 channels, 34.3-35.5 s, mean 34.9, sd ~0.4):
   1. a fresh live edge: tune another channel, then back (a same-channel deep link does not reset a stick that is
      behind, #391), so the playhead is AT the live edge;

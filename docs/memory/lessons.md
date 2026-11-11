@@ -4,8 +4,11 @@ Bugs we hit and why, so nobody hits them twice. Newest first. **Add one after ev
 auto-fix brain and the watchdog read this file before acting
 ([memory hook](runbooks/README.md#memory-hook)).
 
-Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words that point to it
-(comma separated); the watchdog matches them against error signatures, so keep them literal.
+Each lesson is a `## ` heading plus four lines: `Symptom:`, `Cause:`, `Fix:`, `Signals:`. `Signals:` holds the log
+words that point to it (comma separated); the watchdog matches them against error signatures, so keep them literal.
+New lessons also add `Repro:` (the command and its output before the fix) and `Bisected-to:` (the sha and subject,
+or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name the regression test in `Fix:` as
+`Test: tests/...`.
 
 ## A fixed blend weight left the NHL break odds miscalibrated
 - **Symptom:** after #51's log-odds fix, NHL break-forecast ECE was still 0.095 on held-out nights (brain alone 0.041).
@@ -360,6 +363,23 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   behind live). On a stick scrubbed 60 s back that turns the believed delay 60 s too short: every cut would plan the
   dead ball a minute early. Lesson: a "reset to safe defaults" must keep what was MEASURED about this tune (its
   behind_live), and only throw away what was guessed.
+- 2026-11-07 (jump mode, overseer 20:01:50): a jump decided on a READY standby still went out "tuned" (30 s): at the
+  flip `_execute_two` needs the hidden stick steady-PLAYING (FLIP_STEADY_WAIT_S 3 s) and otherwise re-tunes it on the
+  spot. The readiness check in the decider and the one at the flip were different. Fix: a jump submits with
+  `preloaded_only`, which refuses ("standby not ready", screen unchanged) instead of re-tuning.
+- 2026-11-08 (jump mode): a long timeout blocked jumps because the leave gate only trusts a break with no resume in
+  the data while the data "covers" the screen or the break is under its usual length. A slow feed fails "covered",
+  so a timeout past its floor read as "play on screen". The feed is ~35 s ahead of the screen: if the fresh feed is
+  still in the break, the screen is too (once the play before it has aired). The jump gate uses that now.
+- 2026-11-07 (buffered jumps, overseer 22:30): 0 buffered cuts for an hour because `Engine._game_on(target, False)`
+  returned None when several games map to one channel (FOX: IOWA@NU live + Sunday's NFL). behind_of/scrub_of then
+  said 0/off and the hidden stick was never scrubbed; only single-game SEC Network worked. `_game_on_target` had the
+  same bug fixed at 19:10. Lesson: every target -> game lookup must prefer the one LIVE game; grep for siblings when
+  fixing one.
+- 2026-11-07 (Mac, 22:00-22:09): 7.7 GB swapped on the 8 GB Mac froze the API (3 misses) and rolled back a good
+  deploy (e5876ea0); the rollback itself was logged "rollback_failed" because the app was still frozen. Lesson: check
+  swap/load before blaming a build; `deploy.py confirm` clears an interrupted watch.
+- 2026-11-07 (overseer tooling): macOS has no `timeout`; `perl -e 'alarm N; exec @ARGV' cmd` instead.
 - 2026-11-07 (session guard, sync hardening item 4): **"no evidence" read as "fine" in every session check we had.**
   An adb drop, an unread playback state or an unreadable screen left a scrubbed stick's buffer looking valid, the
   post-tune LIVE banner (Nov 6) passed as the overlay, and a reboot hidden inside an adb drop was never noticed because
@@ -387,3 +407,93 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   control._execute ("no stick connected", ok=True, 0 s) and set on_target: the switch log filled with phantom
   "start ALA@LSU ok=True took 0 s" rows that inflated switch counts. Only mode.dry_run is a simulated success now;
   no stick is a refused switch (ok=False, screen_unchanged, not the target's fault).
+- 2026-11-08: A snap-parked standby was "ready" (standby_ready) but "steady playing" refused it, and the PLAY that fixes
+  that sat after the check: every jump to a parked standby was refused. **A paused-on-purpose standby is a preloaded path
+  of its own**, and the wait after PLAY must be short: buffered.park_lead_s plans the picture rolling from PLAY to the flip.
+- 2026-11-08: A closure that polls for 25 s must not keep the tick's snapshot (jump may_cut read cands from decision time):
+  rebuild from live state on each poll, as _entry_valid does.
+- 2026-11-08: A check at decision time isn't a check at the flip: the flip can come 25 s later, so `_entry_valid` re-plans every timed league, not only football (P1-REVIEW-01). And a wait with no end is a freeze: every "wait for data" needs a timer that hands the pick to the next choice, not a go-live cap (P1-REVIEW-05).
+
+- 2026-11-09 (WP-01): the plan's status only asked "is it tunable", so 11 Prime routes with a geo flag read "ready" on Nov 8 and 0 games were verified in 7 plans. A route is "at risk" until a hidden-stick check plays it. Lesson: a status that a person trusts must come from the same evidence the action needs.
+
+- 2026-11-09 (WP-04): Prime's tune loop stopped at a rent or buy prompt, and then the "focused button" path pressed OK anyway. A second press path needs the same purchase guard as the first; "More purchase options" alone is on every Prime page and is not a purchase screen.
+
+- 2026-11-09 (WP-05 review, W2-LOCKED-07): the documented scorecard command had no `--split`, and the default `all` grades the locked nights. Any builder following CLAUDE.md would have spent the locked set. The command now says `--split fit`.
+
+- 2026-11-09 (WP-04 full suite): `isinstance(tuner, PrimeTuner)` never matched in the running app, because `providers.DiagnosingTuner` wraps each built-in tuner. Passing only in import order that skips the wrap is a false pass: test the wrapped object too.
+
+- 2026-11-09 (data research): the license check treated NBA terms and Statcast as blocked, and the coordinator asked Nick again, though his Nov 5 ruling ("data = B", personal use) already allowed public sports APIs with restrictive terms. Lesson: read decisions.md for a standing ruling before asking or blocking.
+
+- 2026-11-09 (coordinator): a one-line wiring change called `apply_config` on the module instead of the `ChannelMap` object, and the commit went out in the same command as a failing test. It lasted one commit. Lesson: gate the commit on the test result; a script that prints a failure and commits anyway is no gate.
+- 2026-11-09 (AUDIT-OLD): with `sources.nba_primary` on, every NBA game read HALFTIME from the end of Q2 to the final. `enrich_nba` starts from a copy of the merged game, so a guard meant for "the board just said halftime" also caught the old one, and the merger's stoppage owner then forced it onto ESPN's copy too. Lesson: a value copied in from the previous state is not evidence; only what this payload says may keep a state alive. Test: tests/test_audit_old_feeds.py.
+
+- 2026-11-09 (AUDIT-OLD): a source benched for backward jumps could stay benched for the whole game. Each poll behind its own high-water mark counted as another jump and pushed the bench end out again, so the re-baseline that ends a bench never came. Lesson: a timeout that the failing condition can renew is not a timeout. Test: tests/test_audit_old_feeds.py.
+
+- 2026-11-09 (AUDIT-OLD): the first NHL power play of a game stayed on the merged state to the final, and suppressed the TV-timeout forecast with it. `_fill_gaps` reads None as "unknown", but a feed that can see strength means "even strength" by it. Lesson: before filling a gap, ask whether the copy could have known; a missing value and a stated "none" look the same in a dataclass. Test: tests/test_audit_old_feeds.py.
+
+- 2026-11-09 (AUDIT-OLD): the poll loop and keep-awake both treated a game as "about to start" only while its listed start was in the future. Past it, a game ESPN still calls `pre` fell back to `polling.idle_s` (300 s, more under the governor), so an early-slot kickoff could be first seen minutes late and caffeinate stopped right at kickoff. Lesson: a listed time is an estimate; a window that closes on it needs the event itself, or a grace period, to close it. Test: tests/test_audit_old_governor.py.
+
+- 2026-11-09 (AUDIT-OLD): `rule_stuck_switch` returned early while a switch was in flight, so its "controller command running" clock never saw the gap and a brand-new command could be cancelled as stuck the moment the switch ended. Lesson: a "held since" clock only means "without a break" if every path through the rule updates it. Test: tests/test_audit_old_supervisor.py.
+
+- 2026-11-09 (AUDIT-OLD): a TV key that timed out waiting for the socket was reported "maybe delivered" whenever an older timed-out `warm()` had left `_drop_pending` set, so a key that never ran blocked the fallback. Lesson: tell two kinds of timeout apart at the place that knows which one it is, not later from shared state. Test: tests/test_audit_old_tv.py.
+
+- 2026-11-09 (AUDIT-OLD): the stick breaker only guarded `shell()`. `screen_text`, `screencap` and the raw `exec-out` reads start their own adb process, so a hung stick still cost 12 to 15 s each. Lesson: a guard on the common path doesn't cover the paths written to avoid it; check each door. Test: tests/test_audit_old_adb.py.
+
+- 2026-11-09 (AUDIT-OLD): `adb._adb` killed its process on timeout but not on cancel, unlike `Stick.run`, so a cancelled `adb connect` or `disconnect` outlived its caller. Lesson: two copies of the same subprocess wrapper drift; when one gets a cleanup, grep for the other. Test: tests/test_audit_old_adb.py.
+
+- 2026-11-09 (AUDIT-OLD): `ensure_awake` marked a stick awake even when the WAKEUP key was refused (breaker open, shell failure), so for 60 s nothing tried to wake it again. Lesson: record the state you confirmed, not the one you asked for. Test: tests/test_audit_old_adb.py.
+
+- 2026-11-09 (AUDIT-4): a tune that found the stream still playing sent no link, yet `_tune` booked it at the live edge, so a stick held 75 s behind read as live. Lesson: "ok" and "something happened" are different answers; a result has to say which. Test: tests/test_audit4_flip.py.
+
+- 2026-11-09 (AUDIT-4): `behind_on` was set after a scrub returned, so a cancel (the usual end of a scrub in buffered mode) skipped it and the next same-channel tune claimed the live edge. Lesson: bookkeeping for something already done to a device belongs on the cancel path too. Test: tests/test_audit4_behind.py.
+
+- 2026-11-09 (AUDIT-4): a failed read before a deep link looked like "nothing was playing", so the old channel confirmed as the new one. Lesson: a missing answer is not a negative answer. Test: tests/test_audit4_tuners.py.
+
+- 2026-11-09 (AUDIT-4): a refused pause dropped the stick's anchor and the standby was still called ready, so every jump was refused and nothing replaced it. Lesson: "ready" has to mean what the consumer checks; a refusal that proves it isn't should clear it. Test: tests/test_audit4_hold.py.
+
+- 2026-11-09 (AUDIT-4): `on_target` was cleared before a tune that then sent no key, which left the watchdog blind with the old game still on screen. Lesson: clear a belief when the world may have changed, not when you intend to change it. Test: tests/test_audit4_screen.py.
+
+- 2026-11-09 (AUDIT-4): the age check in `restore_held` also threw away `behind_on`, a fact about the stick that doesn't age. Lesson: a staleness rule covers estimates, not facts that only an action can change. Test: tests/test_audit4_behind.py.
+
+- 2026-11-09 (AUDIT-5): `_preload`, `_hold_standby` and the rebuild called a standby ready whenever the target still matched, so a hold a switch displaced could mark that same target ready mid-tune. Lesson: "the target still matches" doesn't say what the stick is doing; ask the one who did the work how it ended. Test: tests/test_audit5_hold.py.
+
+- 2026-11-09 (AUDIT-5): Prime ignores a link to the game already playing, the tuner counted that as a fresh tune, and `held` went to 0 for a stream still behind. Lesson: AUDIT-4's "ok and something happened are different answers" had a second door. Test: tests/test_audit5_prime.py.
+
+- 2026-11-09 (AUDIT-5): `_fill` runs after `_dwell` and the arbiter, so its switch skipped the rules those stages apply. Lesson: a stage late in the pipeline owes every earlier stage's rule itself. Test: tests/test_audit5_fill.py.
+
+- 2026-11-09 (AUDIT-5): the clock tape and the no-bug stretch both treated "not observed" as "unchanged", because their reads stop when nobody is looking. Lesson: an observation stream needs its own gap rule. Tests: tests/test_audit5_clock.py, tests/test_audit5_labels.py.
+
+- 2026-11-09 (AUDIT-5): `_fill_seen` compared feed time to the screen log. Lesson: a timestamp has one clock; check which when it meets another. Test: tests/test_audit5_fill.py.
+
+- 2026-11-09 (SUITE-FIX): `dumpsys | grep` exits 1 on no match, so "no media session" read as a failed read, and AUDIT-4's "an unread before is no proof" (56db03e1) cost a tune from nothing its fast path: 30 s, then "video never started". Lesson: a pipe's exit code is the last command's; check what a "failed" read really was before trusting the flag. Test: tests/test_audit4_tuners.py.
+
+- 2026-11-09 (SUITE-FIX): mutant ids carried line numbers, so a 2-line import shift (2505c35a) renamed every listed equivalent. Ids now name the code they change; editing that code is what needs a re-review. Test: tests/test_mutation_gate.py.
+
+- 2026-11-09 (AUDIT-6): the delay book holds samples relative to the live edge and adds `behind` back, but every sample read off a picture is the picture's whole delay, so a hold counted twice. Lesson: a stored number needs one stated reference point, checked at each door it comes in by. Test: tests/test_audit6_delay.py.
+
+- 2026-11-09 (AUDIT-6): a stoppage was dated by `g.last_play` even when another feed's flag set it and that play was 50 s old. Lesson: two fields on one object can come from two sources; don't read one as the cause of the other. Test: tests/test_audit6_stoppage.py.
+
+- 2026-11-09 (AUDIT-6): `_lg()` folds college into the pro league for the tables, which also gave college the NBA's 24 s shot clock and baseball football's after-a-score break. Lesson: when a rule is keyed "not X", list who else falls in. Tests: tests/test_audit6_shotclock.py, tests/test_audit6_quiet.py.
+
+- 2026-11-09 (AUDIT-6): a count over plays is only a count of the plays we were given: ESPN hands over the last 8, so a mid-quarter join called the third timeout the first. A foul as the next quarter's first entry also kept the break open across the tip. Tests: tests/test_audit6_timeouts.py, tests/test_audit6_windows.py.
+
+- 2026-11-09 (data reports): `.gitignore`'s `data/` matched `docs/agents/data/` too, so every data report looked committed but wasn't; `git add` skipped them silently and CI's index check caught it. Lesson: after adding reports, check them in a clean checkout.
+- 2026-11-09 (AUDIT-8): NHL dead windows never read the game clock, only NBA's did, so a faceoff the live feed dropped left live hockey looking dead. Lesson: a rule keyed on one league needs a reason in the code, or it is an accident. Test: tests/test_audit8_clock.py.
+
+- 2026-11-09 (AUDIT-8): a visit's return time outlived its visit and its home game outlived arriving there by another switch kind. Lesson: state set by a plan has to be cleared by every way the plan can end. Test: tests/test_audit8_home.py.
+
+- 2026-11-09 (AUDIT-8): the decider re-proposed a home trip the flip keeps vetoing (seed-2 night: 16 x 12 s of held lock at halftime). Lesson: a veto at the last gate must feed the planner, or the plan repeats until the world changes. Test: tests/test_audit8_home.py.
+
+- 2026-11-09 (AUDIT-8): MEDIAN_S was keyed "timeout" while the tracker produces timeout_long / media_timeout, so every NBA-base lookup fell back to 30 s. Lesson: a table's keys are a contract with what fills them; test the kinds, not just the table. Test: tests/test_audit8_median.py.
+- 2026-11-09 (MORE-DATA, Statcast fetch kept ~4.9 M of ~7 M pitches): our fetch made a month one item of ~30 day requests, so one day that failed (a short read raises `http.client.IncompleteRead`, which the engine's retry does not catch; a 60 s timeout; an HTML page parsed as csv and dropped with no error) cost the whole month. Fix in agent/kaggle/fetch_sports_mlb.py: week items, per-day retries, 180 s timeout, HTML refused, a failed day raises. Lesson: make the unit of failure the smallest unit that retries cleanly, and never turn a failed request into an empty file. Cause inferred from the code; the original run's log was not available.
+- 2026-11-09 (LEAVE-AT-FLIP): `arbiter.catchup_pick` reads an empty option list as "the leave gate said no", so listing cuts with the gate shut would have let a catch-up replay start mid-play. Lesson: when a list gains entries, check who reads its emptiness as a signal. Test: tests/test_leave_at_flip.py.
+
+- 2026-11-09 (ZERO-LOSS): `dead_air_pct` rose when `arbiter.last_game_to_live` put a picture on the last live game, and it looked like a bug. The grader only counts seconds inside a game, so a blank or finished screen is neither dead nor watched. Lesson: before calling a rate change a regression, check whether the denominator changed; a rate that ignores idle time rewards idling.
+- 2026-11-09 (EXITS, audit): a scratch copy of the veto audit drove the wait but never called `_note_route`, so `lost_after_catchup` looked unchanged with `legal.leave_at_flip` on. Lesson: port the whole tick, not just the path under test: an audit that drops a side effect reads as a rule with no cost.
+- 2026-11-09 (CATCHUP-ROUTE): `Decider._start_replay` calls `abort_replay` first, so a confirm of the same clip cleared its piece and it restarted from the top. Lesson: when a field starts to carry a clip's progress, check every path that resets the clip, including the confirm of the clip itself.
+- 2026-11-09 (P1-TIER-PREFIX, leak check refused features v4 on nfl/2003 and nfl/2004): `rz_trip` fires once per drive on the first qualifying snap the detector walks, and a drive is walked in play_id order. A snap stamped earlier than the snap before it fired on the cut feed, while the full game had already used up the drive on the earlier-listed snap, so `t2_5m` and `value_10m` differed by one trip. `wall_ordered` had skipped football on the claim that per-drive state cannot break a prefix. Fix: `value_shards.feature_detect` walks each drive in wall order for features; labels keep hindsight. Reproduced on synthetic nflverse-shaped games; the raw 2003-04 rows are on Kaggle only, so the real stamps are inferred. Lesson: "only per-drive state" is still state: a cut feed is a prefix only in the order the feed grows, so check the order the detector walks, not just how far its state reaches. Test: tests/test_value_shards_rz_order.py.
+- 2026-11-09 (P1-FAILURE-FIXES): seven review findings shared one shape: a check that passes because it saw nothing. `all([])` wrote `complete=True` for no leagues, a raw file missing columns yielded no nights and the run still finished, a missing content-length read as size 0, an unset token read as no lock, and a held cut outlived a silent brain. Lesson: "nothing to check" must be a refusal on any path that vouches for something; count what you were asked to read and compare it with what you got. Test: tests/test_gamevalue_v5.py, tests/test_leave_at_flip.py, tests/test_exits_catchup.py, tests/test_personal_intake.py.
+- 2026-11-09 (P1-FAILURE-FIXES, finding 4): refusing the held low-leverage exit whenever `_ending_still_airing > 0` closed it for every live game mid-play, because the last event is nearly always still airing; it only opened on a stale feed. Lesson: before reusing a check inside a new path, ask how often it is true in that path's normal case; this one is only meaningful for a game that ended (gate's `ending_airing`). Test: tests/test_exits_catchup.py.
+- 2026-11-09 (ZERO-LOSS-4): `scripts/veto_audit.py` printed the route's "latest" air as 1,423 s although no row was above 179.6 s: the summary line added the per-row maximum across rows with `Counter.update`, and then rounded 179.6 to "180". Lesson: a maximum never goes through a summing merge, and a number that guards a strict cap prints with a decimal. Test: tests/test_catchup_short.py.
+- 2026-11-10 (CI-FIX, PR #423): **The Linux test job could never finish in 45 min, and it was size, not a hang.** Since Nov 8 the unit suite grew from ~3,600 to ~7,000 tests (298 to 455 files); a new replay file (`tests/test_adversarial_replay.py`) alone takes ~9 min on a runner. The e2e nights took 17-23 min first, so pytest was cancelled at 17% (3.12) and 37% (3.13) with every progress line still advancing. Fix: the e2e nights are their own job and the unit suite runs in 4 shards per Python, split by file after collection (`scripts/ci_shard.py`); a `test-results` job fails unless the shards ran every file exactly once, then merges the junit for playbook coverage. Lesson: read the `[ NN%]` timestamps of a cancelled run before suspecting a hang; a growing suite needs more jobs, not a longer limit. Signals: "The job has exceeded the maximum execution time", test job cancelled, timeout-minutes, shard
+- 2026-11-10 (SHADOW-R1, PR #423): **A buffer-shadow entry landed 6.4 s after a made free throw (live on cutgrade) because the editor planned at the live edge.** The controller preloads the standby 90.1 s behind live; `BufferedDelays.get` then passed the live delay through with `behind` 90.1, and the planner's fresh tune (`mu - behind`) stripped it, so the editor planned a 45 s picture while its row (and the real buffered picture) ran 135 s: a rewind of 48 s instead of 78 s, its landing 93 s off what it checked. Fixed, the same tick rewinds 78 s and lands 16.4 s into a shooting-foul stoppage, dead on both graders. a3e43ffb only exposed it: its pre-game polling shifted the night so the editor first entered a target the controller held behind live. Fix: the editor counts as `behind` only the part of a live hold past B. Lesson: a wrapper that shifts one field of a record must re-derive every field a consumer combines with it. Test: tests/test_buffer_shadow.py, tests/test_buffer_shadow_contract.py. Signals: buffer_shadow R1 FAIL, cutgrade live / clock_truth dead, rewind_s too short, standby held behind live.

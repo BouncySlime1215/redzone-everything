@@ -46,7 +46,8 @@ def test_scorecard_runner_records_each_card_and_survives_a_crash(tmp_path):
     res = json.loads(out.read_text())
     assert set(res["cards"]) == {"nfl", "nba", "nhl", "nfl_resync", "nba_resync", "nhl_resync"}
     assert "eval_config rejected" in res["cards"]["nfl"]["error"]
-    assert res["cards"]["nba"]["metrics"] == {"league": "nba", "mid_play_cuts": 0, "nights": 2}
+    assert res["cards"]["nba"]["metrics"] == {"league": "nba", "mid_play_cuts": 0, "nights": 2,
+                                                  "split": "all"}   # [grader v47, F4] every card is tagged with its split
     assert res["cards"]["nhl"]["error"].startswith(ci_report.MISSING)
 
 
@@ -55,7 +56,7 @@ def test_full_mode_uses_the_merge_scorecard_sizes(tmp_path):
     out = tmp_path / "out.json"
     ci_scorecard.main(["--root", str(root), "--out", str(out), "--demo-day", "", "--full"])
     res = json.loads(out.read_text())
-    assert res["slice"]["full"] and res["cards"]["nfl"]["metrics"] == {"n": "16"}
+    assert res["slice"]["full"] and res["cards"]["nfl"]["metrics"] == {"n": "16", "split": "all"}
     assert res["cards"]["nba"]["metrics"]["nights"] == 14
 
 

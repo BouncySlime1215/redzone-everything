@@ -15,6 +15,9 @@ def sc(gid, score, lock=None, is_break=False, league=League.NFL):
 @pytest.fixture
 def dec(cfg, clock):
     delays = DelayBook({"youtubetv": 40.0, "prime": 35.0}, sigma_default=15.0, clock=clock)
+    # these selection tests model catch-ups of any age; the YouTube TV scrub's park-age cap (replay.scrub_max_play_age_s,
+    # a stick limit) has its own tests in tests/test_replay_fail_backoff.py
+    cfg.update({"replay": {"scrub_max_play_age_s": 0}}, record=False)
     d = Decider(cfg, delays, clock=clock)
     with_fresh_timing(d, clock)
     return d
@@ -26,6 +29,8 @@ def with_fresh_timing(dec, clock):
     Supply that observation explicitly. Outage/no-evidence behavior is covered
     by test_midplay and test_play_evidence, which do not use this fixture wrapper.
     """
+    # [D-01] these games have no play-by-play marks: the Rule #1 no-data wait is covered by tests/test_landing_bars.py
+    dec.cfg.data["decider"]["entry"]["allow_live_fallback"] = True   # direct: cfg.update would drop _apply's direct writes
     decide = dec.decide
 
     def observed(candidates, *args, **kwargs):
@@ -54,6 +59,8 @@ def cands(**scores):
 
 
 def start_on(dec, clock, gid, others):
+    # [D-01] a game with no play-by-play marks: the Rule #1 no-data wait is covered by tests/test_landing_bars.py
+    dec.cfg.data["decider"]["entry"]["allow_live_fallback"] = True   # direct: cfg.update would drop _apply's direct writes
     dec.timeline(gid, League.NFL)
     d = dec.decide(cands(**{gid: 99, **others}))
     assert d.action == "switch" and d.target == gid

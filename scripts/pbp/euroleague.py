@@ -35,6 +35,7 @@ Header date (local European date) as YYYYMMDD.
 Plan B: personal use only (PERSONAL tag, LICENSE). Polite: one requests.Session, UA "redzone-personal-research/1.0",
 <= 1 request/s (a larger rps is capped), backoff on 429/5xx honouring Retry-After, 404 -> empty, raw gz JSON cached
 per game under <out>/<league>/raw/<seasoncode>/ (resumable), deleted after the shard unless keep_raw.
+Why: Converts the EuroLeague live API into the shared play table (docstring, Data A EuroLeague commit).
 """
 from __future__ import annotations
 

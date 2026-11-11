@@ -1,5 +1,7 @@
 """[Prime buffer] Put a HIDDEN Prime Video stick a set time behind live by pausing it.
 
+Why: Nick's order, Nov 7 12:26 AM: put a hidden Prime stick behind live, because pause holds on Prime (decisions 2026-11-07, flag off).
+
 Measured (overseer, Nov 7 ~12:25 AM ET, POR@LAL on the hidden stick, auto-switching paused):
   * MEDIA_PAUSE 60 s then MEDIA_PLAY: 67.7 s behind (from 6.6), and Prime's own timecode went 02:20:54 -> 02:24:44
     across exactly 230 s of wall time. It held for the 4 minutes checked, no snap back to live. On YouTube TV pause

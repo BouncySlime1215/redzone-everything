@@ -13,6 +13,7 @@ fails closed after open_tries. Each scenario reports:
   wasted    keys sent while the banner was up (they did nothing, and each is a chance to land on a half-drawn overlay)
 
     python scripts/session_drill.py [--json]
+Why: Drills the session guard against the post-tune banner (sync hardening commit, docstring).
 """
 from __future__ import annotations
 

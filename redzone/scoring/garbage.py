@@ -14,6 +14,8 @@ Glass for NBA) but made stricter where we have no lineup data:
   NHL  P2 >= 5 · P3 >= 4 · P3 <= 10:00 >= 3 · P3 <= 1:00 >= 2 with the trailing goalie still in
   MLB  5th+ >= 8 · 7th+ >= 6 · 9th >= 5
 Never garbage: overtime/extra innings, or anything before these windows.
+
+Why: first added in e5db8dba (2026-11-02) as "Garbage time (all leagues, your team included): no team boost, no locks, comeback revival with bo..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -34,8 +36,8 @@ _REGULATION = ByLeague({League.NFL: 4, League.NBA: 4, League.NHL: 3, League.MLB:
 def threshold(g: GameState) -> int | None:
     """Smallest margin that counts as garbage time right now (None = can't be garbage yet)."""
     per = pro_period(g.league, g.period, g.clock_s)  # men's college halves read as NBA quarters
-    if per > _REGULATION[g.league] and g.league != League.MLB:
-        return None  # overtime is never garbage
+    if per > _REGULATION[g.league]:
+        return None  # overtime and extra innings are never garbage (grader v47, F13: MLB used to be exempt)
     best = None
     for min_per, max_clock, margin in _RULES[g.league]:
         if per < min_per:

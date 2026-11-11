@@ -9,6 +9,7 @@ A test claims an entry with `@pytest.mark.playbook("SAFE-01")` (several ids allo
 - an entry whose status starts with `done` has no marked test, or (with --junit) its tests did not
   all pass (a skip counts as not run).
 Everything else is reported, never failed: entries are built top-down over many cycles.
+Why: Checks which playbook entries have a passing test; CI fails only on marked entries (docstring).
 """
 from __future__ import annotations
 

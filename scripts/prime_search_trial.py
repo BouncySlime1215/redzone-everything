@@ -4,6 +4,7 @@
 Does not connect/pair devices, change monitor inputs, or enable the live engine.
 The --execute flag permits search/navigation and --play additionally permits the
 verified replay button. Individual menu screenshots stay in a temporary folder.
+Why: Supervised Prime replay navigation trial on one authorized stick (docstring, hardware trial commit).
 """
 import argparse
 import asyncio

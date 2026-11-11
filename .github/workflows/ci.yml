@@ -5,6 +5,7 @@ name: CI
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [codex/resume-redzone, integration/next, integration/release]
   workflow_dispatch:
@@ -22,7 +23,7 @@ env:
   EVAL_DATA_ASSET: eval-archive.tgz
   PYTHONDONTWRITEBYTECODE: "1"
   # The integration train gets every scorecard in full; other PRs get the fast smoke slice.
-  RZ_SCORECARD_FULL: ${{ (github.base_ref == 'integration/next' || github.ref == 'refs/heads/integration/next' || github.ref == 'refs/heads/integration/release' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
+  RZ_SCORECARD_FULL: ${{ (github.event_name == 'merge_group' || github.base_ref == 'integration/next' || github.ref == 'refs/heads/integration/next' || github.ref == 'refs/heads/integration/release' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
 
 jobs:
   lint:
@@ -49,6 +50,8 @@ jobs:
         run: test "$(cat lint-status.txt)" = 0
       - name: contract kernel (new violations fail; baseline in docs/contract_baseline.json)
         run: python scripts/contract_check.py
+      - name: every module says what it is and why (ratchet, docs/module_headers_baseline.json)
+        run: python scripts/module_headers.py
 
   memory:
     # CLAUDE.md and docs/memory/ links resolve; a PR that changes a default or a gate also adds a
@@ -70,6 +73,41 @@ jobs:
             python scripts/check_memory.py --base "origin/$BASE_REF"
           else
             python scripts/check_memory.py
+          fi
+      - name: state machine doc is current
+        # redzone/machines/ specs -> docs/state-machines.md (stdlib only, no install needed).
+        run: python scripts/state_machines.py --check
+      - name: agent reports follow docs/STANDARD.md (front matter, ids, generated index)
+        run: pip install pyyaml >/dev/null 2>&1 || true; python scripts/doc_index.py --check
+      - name: no edits inside another agent's open claim
+        # docs/coordination.md "Claims": one writer per file across parallel agents.
+        if: ${{ github.base_ref != '' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python scripts/claims.py check --base "origin/$BASE_REF"
+      - name: every commit says why
+        if: ${{ github.base_ref != '' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python scripts/commit_why.py --base "origin/$BASE_REF"
+      - name: a fix carries a regression test; no deleted or skipped tests
+        # W1-RULES gap 1. Title and body come through env, never spliced into the script.
+        if: ${{ github.base_ref != '' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python scripts/fix_needs_test.py --base "origin/$BASE_REF"
+      - name: one plan, with its required sections
+        run: python scripts/plan_check.py
+      - name: results ledger intact and append-only (W2-LOCKED, scripts/results_ledger.py)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            python scripts/results_ledger.py verify --base "origin/$BASE_REF"
+          else
+            python scripts/results_ledger.py verify
           fi
 
   graders:
@@ -136,14 +174,17 @@ jobs:
           path: eval-data
           retention-days: 1
 
-  test:
+  # The Linux tests are three jobs per Python version (CI-FIX, Nov 10). On one job the suite outgrew its 45
+  # min limit: ~7,000 unit tests plus the e2e nights (17-23 min) need ~75 min on a slow runner. Now:
+  #   e2e            the replayed nights (whole-night system test, the integration gate), on their own
+  #   test           the unit suite in SHARDS parallel jobs, split by file (scripts/ci_shard.py)
+  #   test-results   proves the shards ran every file exactly once, merges the junit, playbook coverage
+  e2e:
     needs: data
     # Tests run even if the dataset job failed (a bad checksum must not hide test results).
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45   # base took 19m50s on 3.12 (Nov 4 12:12 run): three replayed-night tests (~3 min each);
-                          # +10 for a slow apt mirror (16 and 21 min on Nov 4), which the apt step now also caps;
-                          # +5: with ~20 PRs at once (go wide, Nov 4) one leg ran past 30 min on slow runners
+    timeout-minutes: 45   # 17-23 min on Nov 10 (42 tests, 6 files) + ~1 min setup; apt is capped at 14 below
     strategy:
       fail-fast: false
       matrix:
@@ -180,17 +221,102 @@ jobs:
       - name: leakage checks (research 05 §3; PENDING never fails, FAIL does)
         run: python scripts/leak_check.py
       - name: end-to-end replayed night (when the suite has it)
-        # The whole-night system test (real Engine + Controller + fakes) is the integration gate:
-        # run it on its own first so its result is visible apart from the unit tests.
+        # The whole-night system test (real Engine + Controller + fakes) is the integration gate.
         run: |
           shopt -s nullglob
           e2e=(tests/test_e2e*.py)
           if [ ${#e2e[@]} -eq 0 ]; then echo "no end-to-end night test in this branch yet"; exit 0; fi
-          python -m pytest -q -rs -p no:cacheprovider --junitxml=e2e-${{ matrix.python }}.xml "${e2e[@]}"
-      - name: pytest (mac_only tests are skipped by name on Linux; the e2e nights ran in the step above)
-        # The e2e nights take ~3 min each; running them twice pushed the job past its limit (Nov 4, #145, #173).
-        run: python -m pytest -q -rs -p no:cacheprovider --ignore-glob='tests/test_e2e*.py' --junitxml=unit-${{ matrix.python }}.xml
-      - name: one junit report (unit + e2e) for playbook coverage and the CI comment
+          python -m pytest -q -rs -p no:cacheprovider --durations=15 --junitxml=e2e-${{ matrix.python }}.xml "${e2e[@]}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-${{ matrix.python }}
+          path: e2e-${{ matrix.python }}.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  test:
+    needs: data
+    if: ${{ !cancelled() }}
+    name: test (${{ matrix.python }}, ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    # Each shard is ~1/4 of ~57 min of unit tests (Nov 10 estimate on the slower 3.12 leg) + ~1 min collection
+    # + ~1 min setup: ~17 min, well inside 45 even with the 14-min apt cap.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+        shard: [1, 2, 3, 4]    # keep in step with SHARDS in the test-results job
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-ci.txt
+      - name: system tools (PortAudio for sounddevice, ffmpeg for the catch-up reel, as on the Mac)
+        timeout-minutes: 14
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
+          for i in 1 2; do
+            timeout 360 sh -c "sudo apt-get $APT update -qq && sudo apt-get $APT install -y --no-install-recommends libportaudio2 ffmpeg" && exit 0
+            echo "::warning::apt try $i timed out or failed, retrying"
+          done
+          exit 1
+      - run: pip install -r requirements-ci.txt
+      - uses: actions/download-artifact@v4
+        if: needs.data.outputs.available == 'true'
+        with:
+          name: eval-data
+          path: eval-data
+      - name: unpack pinned data (archive-backed tests run when it is there)
+        if: needs.data.outputs.available == 'true'
+        run: tar -xzf "eval-data/$EVAL_DATA_ASSET"
+      - name: pytest, shard ${{ matrix.shard }} of 4 (mac_only tests are skipped by name on Linux; the e2e nights run in their own job)
+        # Every shard collects the whole suite and keeps its own files (scripts/ci_shard.py); test-results
+        # checks the shards' reports cover every file exactly once.
+        run: >-
+          python scripts/ci_shard.py run --shard ${{ matrix.shard }}/4 --report shard-${{ matrix.python }}-${{ matrix.shard }}.json --
+          -q -rs -p no:cacheprovider --durations=15 --ignore-glob='tests/test_e2e*.py'
+          --junitxml=unit-${{ matrix.python }}-${{ matrix.shard }}.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shard-${{ matrix.python }}-${{ matrix.shard }}
+          path: |
+            shard-${{ matrix.python }}-${{ matrix.shard }}.json
+            unit-${{ matrix.python }}-${{ matrix.shard }}.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  test-results:
+    # One junit report per Python version (e2e + every unit shard) for playbook coverage and the CI comment.
+    needs: [e2e, test]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    env:
+      SHARDS: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          path: results
+          pattern: "{shard,e2e}-${{ matrix.python }}*"
+          merge-multiple: true
+      - name: the shards ran every unit test file exactly once
+        run: python scripts/ci_shard.py check --count "$SHARDS" results/shard-${{ matrix.python }}-*.json
+      - name: one junit report (unit shards + e2e)
         if: always()
         run: |
           python - "${{ matrix.python }}" <<'PY'
@@ -198,14 +324,28 @@ jobs:
           from pathlib import Path
           py = sys.argv[1]
           root = ET.Element("testsuites")
-          for f in (f"e2e-{py}.xml", f"unit-{py}.xml"):
-              if Path(f).exists():
+          files = [Path(f"results/e2e-{py}.xml")] + sorted(Path("results").glob(f"unit-{py}-*.xml"))
+          for f in files:
+              if f.exists():
                   r = ET.parse(f).getroot()
                   root.extend(r.iter("testsuite") if r.tag == "testsuites" else [r])
           ET.ElementTree(root).write(f"pytest-{py}.xml", encoding="utf-8", xml_declaration=True)
           PY
       - name: playbook coverage (a `done` entry must have a marked test that passed)
+        # As before the split: judged when every test ran and passed (a failed test already fails its job).
+        if: needs.e2e.result == 'success' && needs.test.result == 'success'
         run: python scripts/playbook_coverage.py --junit pytest-${{ matrix.python }}.xml
+      - name: slowest test files (paste into scripts/ci_shard_weights.json when the shards drift apart)
+        if: always()
+        run: |
+          python scripts/ci_shard.py weights results/unit-${{ matrix.python }}-*.xml > weights.json || exit 0
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          w = json.load(open("weights.json"))
+          print(f"#### Slowest unit test files ({sum(w.values()) / 60:.1f} min in all)")
+          for f, s in sorted(w.items(), key=lambda x: -x[1])[:15]:
+              print(f"- `{f}` {s:.0f} s")
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -273,18 +413,28 @@ jobs:
         # Report on every run; it only FAILS the job on the release PR (into codex/resume-redzone).
         # PENDING gates (not measurable yet) never count as passing. --robust adds sync +-3 s and a
         # dropping/late feed; those cards must pass the same hard gates.
+        # W2-LOCKED-01: this repo is public, so the log and the summary get verdicts only. The raw scorecard stays in
+        # $RUNNER_TEMP, outside the artifact glob below, and public-gate leaves out the value column.
         run: |
-          python head/scripts/ci_scorecard.py --root head --split test --robust --no-resync --out locked.json
+          locked="$RUNNER_TEMP/locked.json"
+          python head/scripts/ci_scorecard.py --root head --split test --robust --no-resync --out "$locked" > /dev/null
           set +e
-          python head/scripts/release_gate.py locked.json --baseline head/docs/gate_baseline.json --md gate.md
+          python head/scripts/results_ledger.py public-gate "$locked" --baseline head/docs/gate_baseline.json --md gate-public.md
           rc=$?
           set -e
-          { echo "#### Release gate (LOCKED test split + robustness)"; cat gate.md; } >> "$GITHUB_STEP_SUMMARY"
+          rm -f "$locked"
+          [ "$rc" -le 1 ] || { echo "::error::could not read the locked scorecard"; exit "$rc"; }
+          { echo "#### Release gate (LOCKED test split + robustness): verdicts only"; cat gate-public.md; } >> "$GITHUB_STEP_SUMMARY"
           if [ "$rc" != "0" ] && [ "${{ github.base_ref }}" = "codex/resume-redzone" ]; then
             echo "::error::release gate failed on the locked test split"; exit 1
           fi
-      - uses: actions/upload-artifact@v4
+      - name: drop per-night rows before the public artifact (smoke nights overlap the locked window, W2-LOCKED-02)
+        id: scrub
         if: always()
+        run: python head/scripts/results_ledger.py scrub head.json base.json
+      - uses: actions/upload-artifact@v4
+        # A failed scrub means no upload: a missing artifact is visible, a leaked one is forever.
+        if: always() && steps.scrub.outcome == 'success'
         with:
           name: scorecard
           path: |
@@ -297,7 +447,7 @@ jobs:
           cat scorecard.md >> "$GITHUB_STEP_SUMMARY"
 
   report:
-    needs: [lint, data, test, scorecard]
+    needs: [lint, data, e2e, test, test-results, scorecard]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -318,7 +468,7 @@ jobs:
       - name: build the comment
         env:
           DATA_AVAILABLE: ${{ needs.data.outputs.available }}
-          JOBS: "Jobs: lint ${{ needs.lint.result }}, tests ${{ needs.test.result }} (3.12 + 3.13), scorecard ${{ needs.scorecard.result }}. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          JOBS: "Jobs: lint ${{ needs.lint.result }}, e2e nights ${{ needs.e2e.result }}, unit tests ${{ needs.test.result }} (3.12 + 3.13, 4 shards each), shard coverage and playbooks ${{ needs.test-results.result }}, scorecard ${{ needs.scorecard.result }}. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         run: |
           args=()
           [ -f results/pytest-3.12.xml ] && args+=(--junit results/pytest-3.12.xml)

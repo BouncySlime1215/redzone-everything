@@ -85,7 +85,7 @@ def test_crunch_block_starts_no_catch_up_while_any_game_is_in_crunch():
     class Cfg(dict):
         def get(self, k, default=None):
             return super().get(k, default)
-    dec = Decider(Cfg({"replay.crunch_block": True}), DelayBook({}, 15.0))
+    dec = Decider(Cfg({"replay.crunch_block": True, "replay.scrub_max_play_age_s": 0}), DelayBook({}, 15.0))
     dec.current = "A"
     dec.queue = [Missed("B", "p1", "goal", "goal", 1000.0, 50.0)]
     calm = NS(crunch=False, crunch_now=False, garbage=False)

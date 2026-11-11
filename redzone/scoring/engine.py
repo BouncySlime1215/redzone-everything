@@ -6,6 +6,8 @@ M = live moment (0-100), S = stakes (0.8-1.2), P = personal boosts (capped).
 A neutral game tops out at 90; only games you care about reach 90-100.
 
 Every input is optional. Missing data lowers confidence, never crashes.
+
+Why: first added in 9faa350e (2026-11-02) as "RedZone Everything: core engine, scorer, decider, replays, backtest lab, server"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

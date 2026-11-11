@@ -8,6 +8,8 @@ Guardrails:
   of concurrent requests dying in one Wi-Fi blip) count once.
 - A host in backoff is skipped, not hammered; callers get the last good copy.
 - Every response is size-capped so a broken feed can't eat memory.
+
+Why: first added in 9faa350e (2026-11-02) as "RedZone Everything: core engine, scorer, decider, replays, backtest lab, server"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -30,6 +32,7 @@ BROWSER_HEADERS = {
 }
 MAX_BYTES = 8_000_000
 MAX_BACKOFF_S = 600.0
+MAX_CACHE_ENTRIES = 1000           # last-good copies kept; game URLs change daily, so the oldest are dropped
 LIVE_MAX_BACKOFF_S = 10.0          # ESPN is the live feed: an outage (5xx/network) is retried every 10 s at most
 LIVE_LIMITED_BACKOFF_S = 60.0      # ...but "too many requests" (403/429) backs off up to a minute
 FEED_STALE_S = 5.0                 # data this late past its next due poll = stale (see sources/feeds.py)
@@ -47,12 +50,20 @@ class _Cached:
     etag: str | None
     fetched_at: float
     last_modified: str | None = None   # [sync 5] for If-Modified-Since on hosts that send no ETag
+    age: float = 0.0                   # [F15] seconds the CDN had already held this copy when we got it (Age header)
 
 
 @dataclass
 class _Backoff:
     until: float = 0.0
     delay: float = 0.0
+
+
+def _age(r) -> float:
+    """[F15] The response's Age header in seconds (0 when absent or not a number). Last-Modified is not used on purpose:
+    an old date there means the file hasn't changed (a quiet game), not that our copy is stale."""
+    v = str(r.headers.get("Age") or "").strip()
+    return float(v) if v.isdigit() else 0.0
 
 
 class Fetcher:
@@ -78,7 +89,7 @@ class Fetcher:
         """When url last returned a fresh 200/304. get_json hands back the cached copy when the
         host is down or backing off, so callers check this to tell fresh data from stale."""
         c = self._cache.get(url)
-        return c.fetched_at if c else None
+        return c.fetched_at - c.age if c else None   # [F15] a CDN copy is as old as its Age, not as old as our request
 
     def is_fresh(self, url: str, max_age_s: float) -> bool:
         t = self.fetched_at(url)
@@ -118,7 +129,7 @@ class Fetcher:
                 self._bump(host)
                 return cached.body if cached else None
             if r.status_code == 304 and cached:
-                cached.fetched_at = self._clock()
+                cached.fetched_at, cached.age = self._clock(), _age(r)
                 self._reset(host, url)
                 return cached.body
             if r.status_code in (403, 404) and host.endswith(PATH_SCOPED_HOSTS):
@@ -135,9 +146,20 @@ class Fetcher:
                 body = r.json()
             except ValueError:
                 return cached.body if cached else None
-            self._cache[url] = _Cached(body, r.headers.get("ETag"), self._clock(), r.headers.get("Last-Modified"))
+            self._cache[url] = _Cached(body, r.headers.get("ETag"), self._clock(), r.headers.get("Last-Modified"), _age(r))
+            self._trim(keep=url)
             self._reset(host, url)
             return body
+
+    def _trim(self, keep: str) -> None:
+        """Bound the per-URL state: drop the oldest cached copies (never `keep`) and idle locks past the cap."""
+        if len(self._cache) > MAX_CACHE_ENTRIES:
+            old = sorted((u for u in self._cache if u != keep), key=lambda u: self._cache[u].fetched_at)
+            for u in old[:len(self._cache) - MAX_CACHE_ENTRIES]:
+                del self._cache[u]
+        if len(self._locks) > MAX_CACHE_ENTRIES:
+            for u in [u for u, lk in self._locks.items() if u != keep and not lk.locked()]:
+                del self._locks[u]
 
     async def get_bytes(self, url: str, max_bytes: int = 4_000_000) -> tuple[bytes, str] | None:
         """Raw bytes (images). Same backoff rules; no in-memory cache (callers cache on disk)."""
@@ -153,6 +175,7 @@ class Fetcher:
             return None
         if r.status_code != 200 or len(r.content) > max_bytes:
             return None
+        self._reset(urlparse(url).netloc, url)   # a good answer ends the host's backoff, as in get_json
         return r.content, r.headers.get("content-type", "application/octet-stream")
 
     def _bump(self, key: str, retry_after: str | None = None, limited: bool = False,

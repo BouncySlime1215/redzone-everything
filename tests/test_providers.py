@@ -86,6 +86,21 @@ class FakeStick(Stick):
         return [c for c in self.cmds if c.startswith("am start")]
 
 
+class PeacockLike(more.AppTuner):
+    """A TEST DOUBLE (not registered, not in EXTRA_TUNERS): the real PeacockTuner was removed (never Peacock,
+    DEV-01). Peacock's shape (a component activity, a timed OK) is the generic AppTuner case these tests cover."""
+    app = role = "peacock"
+    name = "Peacock"
+    components = {"com.peacock.peacockfiretv": "com.peacock.peacocktv.AmazonMainActivity"}
+    press_after = (12.0,)
+
+    def url(self, ref: str) -> str:
+        if ref.startswith("https://"):
+            return ref
+        data = json.dumps({"pvid": ref, "type": "SLE", "action": "PLAY"}, separators=(",", ":"))
+        return "https://www.peacocktv.com/deeplink?deeplinkData=" + more.quote(data, safe="")
+
+
 def tuner(cls, clock):
     return cls(sleep=clock.sleep, clock=clock)
 
@@ -159,7 +174,7 @@ def _punch(p):
 def test_peacock_link_matches_apples_exactly():
     pl = APPLE["events"]["umc.cse.1xkb26oj1fnifcpnmf5r15w14"]["data"]["playables"]
     apple_url = next(_punch(p) for p in pl.values() if p["externalId"] == OKC_CLE_MAIN)
-    t = more.PeacockTuner()
+    t = PeacockLike()
     assert t.url(OKC_CLE_MAIN) == apple_url
     assert t.url(apple_url) == apple_url                              # a full link passes through
     fire = t.command(OKC_CLE_MAIN, "com.peacock.peacockfiretv")
@@ -211,7 +226,7 @@ def test_shell_quoting_guard():
 async def test_tune_plays_first_try():
     clock = Clock()
     st = FakeStick({"peacock": "com.peacock.peacockfiretv"}, playing=lambda s: bool(s.launches))
-    res = await tuner(more.PeacockTuner, clock).tune(st, OKC_CLE_MAIN, f"peacock:{OKC_CLE_MAIN}")
+    res = await tuner(PeacockLike, clock).tune(st, OKC_CLE_MAIN, f"peacock:{OKC_CLE_MAIN}")
     assert res.ok and len(st.launches) == 1 and st.keys == ["KEYCODE_WAKEUP"]
 
 
@@ -225,13 +240,13 @@ async def test_external_event_link_cannot_leave_its_provider(url):
 
 async def test_unchanged_previous_video_never_confirms_new_provider_game():
     st = FakeStick({"peacock": "com.peacock.peacockfiretv"}, playing=lambda s: True)
-    res = await tuner(more.PeacockTuner, Clock()).tune(st, OKC_CLE_MAIN, "peacock:new-game")
+    res = await tuner(PeacockLike, Clock()).tune(st, OKC_CLE_MAIN, "peacock:new-game")
     assert not res.ok and st.tuned is None
 
 
 async def test_generic_live_label_does_not_authorize_a_selection():
     st = FakeStick({"peacock": "com.peacock.peacockfiretv"}, screen="Home | Live | Sports | Play")
-    res = await tuner(more.PeacockTuner, Clock()).tune(st, OKC_CLE_MAIN, "peacock:new-game")
+    res = await tuner(PeacockLike, Clock()).tune(st, OKC_CLE_MAIN, "peacock:new-game")
     assert not res.ok and "KEYCODE_DPAD_CENTER" not in st.keys
 
 
@@ -252,7 +267,7 @@ async def test_tune_stops_at_profile_picker_without_configured_identity():
 async def test_tune_stops_at_walls_without_pressing_ok(screen, kind, err):
     clock = Clock()
     st = FakeStick({"peacock": "com.peacock.peacockfiretv"}, screen=screen)
-    res = await tuner(more.PeacockTuner, clock).tune(st, OKC_CLE_MAIN, f"peacock:{OKC_CLE_MAIN}")
+    res = await tuner(PeacockLike, clock).tune(st, OKC_CLE_MAIN, f"peacock:{OKC_CLE_MAIN}")
     assert not res.ok and err in res.error
     assert "KEYCODE_DPAD_CENTER" not in st.keys and len(st.launches) == 1     # no retry into a wall
     assert prov.parse_verdict(res.error).kind == kind
@@ -281,7 +296,7 @@ async def test_missing_activity_falls_back_to_plain_view_without_force_stop():
     st = FakeStick({"peacock": "com.peacock.peacockfiretv"},
                    launch_out=lambda cmd: "Error: Activity class {x} does not exist." if " -n " in cmd else "Status: ok",
                    playing=lambda s: len(s.launches) >= 2)
-    res = await tuner(more.PeacockTuner, clock).tune(st, OKC_CLE_MAIN, "peacock:x")
+    res = await tuner(PeacockLike, clock).tune(st, OKC_CLE_MAIN, "peacock:x")
     assert res.ok and " -n " in st.launches[0] and " -n " not in st.launches[1]
     assert not any(c.startswith("am force-stop") for c in st.cmds)
 
@@ -297,10 +312,10 @@ async def test_video_never_starts_retries_once_without_force_stop():
 async def test_refuses_missing_app_and_odd_links():
     clock = Clock()
     st = FakeStick({})
-    res = await tuner(more.PeacockTuner, clock).tune(st, OKC_CLE_MAIN, "peacock:x")
+    res = await tuner(PeacockLike, clock).tune(st, OKC_CLE_MAIN, "peacock:x")
     assert not res.ok and "isn't installed" in res.error and st.cmds == []
     st = FakeStick({"peacock": "com.peacock.peacockfiretv"})
-    res = await tuner(more.PeacockTuner, clock).tune(st, "x'; reboot; '", "peacock:x")
+    res = await tuner(PeacockLike, clock).tune(st, "x'; reboot; '", "peacock:x")
     assert not res.ok and "doesn't look right" in res.error and st.cmds == []
 
 
@@ -332,6 +347,7 @@ def test_register_adds_tuners_and_wraps_builtins_once():
     assert isinstance(tuners["youtubetv"], more.DiagnosingTuner)
     more.register(tuners)
     assert not isinstance(tuners["youtubetv"].inner, more.DiagnosingTuner)       # no double wrap
+    assert "peacock" not in more.EXTRA_TUNERS and not hasattr(more, "PeacockTuner")   # DEV-01
     assert set(more.EXTRA_TUNERS) | {"youtubetv", "prime", "espn"} == prov.TUNER_APPS
 
 
@@ -380,43 +396,43 @@ def src(provider, target, tunable=True, **kw):
 
 def test_youtube_tv_wins_when_it_can_tune():
     g = game(broadcasts=["ESPN"])
-    p = prov.best_source(g, [src("peacock", "peacock:1"), src("prime", "prime:amzn1.x"),
+    p = prov.best_source(g, [src("prime", "prime:amzn1.x"),
                              src("youtubetv", "youtubetv:espn", kind="channel", feed="national", label="ESPN · YouTube TV"),
                              src("espn", "espn:abc")])
     assert p.target == "youtubetv:espn" and p.tunable and "rewind" in p.why
-    assert [a.provider for a in p.alternates] == ["espn", "peacock", "prime"]  # League Pass blackout risk
+    assert [a.provider for a in p.alternates] == ["espn", "prime"]  # League Pass blackout risk
 
 
-def test_provider_order_prime_espn_fubo_and_peacock_last():
+def test_provider_order_prime_espn_fubo_then_the_rest():
     g = game()
-    order = ["fubo", "peacock", "espn", "prime", "max"]
+    order = ["fubo", "espn", "prime", "max"]
     picks = []
     cands = [src(k, f"{k}:1") for k in order]
     while cands:
         best = prov.best_source(g, cands).provider
         picks.append(best)
         cands = [c for c in cands if c.provider != best]
-    assert picks == ["prime", "espn", "fubo", "max", "peacock"]   # Peacock: last resort
+    assert picks == ["prime", "espn", "fubo", "max"]   # Peacock is banned, not a last resort
 
 
 def test_tunable_beats_better_app_that_cannot_tune_yet():
     g = game(broadcasts=["NBCSN"])
     p = prov.best_source(g, [src("youtubetv", "youtubetv:nbcsn", False, kind="channel", feed="national"),
-                             src("peacock", f"peacock:{OKC_CLE_MAIN}")])
-    assert p.provider == "peacock" and p.tunable
+                             src("fubo", "fubo:1")])
+    assert p.provider == "fubo" and p.tunable
 
 
 def test_unavailable_apps_are_skipped_with_reasons():
     g = game()
     states = {"youtubetv": prov.ProviderState("youtubetv", installed=False),
               "prime": prov.ProviderState("prime", True, False, "Prime Video: signed out — sign in on the TV once"),
-              "peacock": prov.ProviderState("peacock", True)}
+              "fubo": prov.ProviderState("fubo", True)}
     p = prov.best_source(g, [src("youtubetv", "youtubetv:espn"), src("prime", "prime:x"),
-                             src("peacock", "peacock:1")], states)
-    assert p.provider == "peacock"
+                             src("fubo", "fubo:1")], states)
+    assert p.provider == "fubo"
     assert "YouTube TV isn't installed on your Fire TV sticks." in p.reasons
     assert any("signed out" in r for r in p.reasons)
-    only = prov.best_source(g, [src("youtubetv", "youtubetv:espn")], {"peacock"})   # a set of usable apps
+    only = prov.best_source(g, [src("youtubetv", "youtubetv:espn")], {"fubo"})   # a set of usable apps
     assert only.target is None and "isn't installed" in only.label
 
 
@@ -425,8 +441,8 @@ def test_blackout_is_never_picked_and_geo_blocked_only_as_last_resort():
     p = prov.best_source(g, [src("prime", "prime:a", blackout=True)])
     assert p.target is None and "blacked out" in p.label
     p = prov.best_source(g, [src("prime", "prime:a", geo_ok=False, confidence="sure"),
-                             src("peacock", "peacock:b", geo_ok=True)])
-    assert p.provider == "peacock"
+                             src("espn", "espn:b", geo_ok=True)])
+    assert p.provider == "espn"
     p = prov.best_source(g, [src("prime", "prime:a", geo_ok=False, confidence="sure")])
     assert p.target == "prime:a" and "may be blacked out" in p.label and p.confidence == "likely"
 
@@ -446,16 +462,16 @@ def test_your_team_gets_its_own_broadcast_others_get_national():
 
 def test_alt_casts_and_spanish_feeds_come_last():
     g = okc_cle()
-    p = prov.best_source(g, [src("peacock", f"peacock:{OKC_CLE_PERF}", feed="alt"),
-                             src("peacock", f"peacock:{OKC_CLE_MAIN}")])
-    assert p.target == f"peacock:{OKC_CLE_MAIN}"
+    p = prov.best_source(g, [src("espn", f"espn:{OKC_CLE_PERF}", feed="alt"),
+                             src("espn", f"espn:{OKC_CLE_MAIN}")])
+    assert p.target == f"espn:{OKC_CLE_MAIN}"
 
 
 def test_league_pass_is_a_last_resort_during_national_tv():
     g = okc_cle()   # NBCSN national: League Pass feeds on Prime are blacked out in the US
-    p = prov.best_source(g, [src("prime", "prime:lp"), src("peacock", f"peacock:{OKC_CLE_MAIN}")])
-    assert p.provider == "peacock"
-    p = prov.best_source(game(home="ORL", away="WSH"), [src("prime", "prime:lp"), src("peacock", "peacock:x")])
+    p = prov.best_source(g, [src("prime", "prime:lp"), src("espn", f"espn:{OKC_CLE_MAIN}")])
+    assert p.provider == "espn"
+    p = prov.best_source(game(home="ORL", away="WSH"), [src("prime", "prime:lp"), src("espn", "espn:x")])
     assert p.provider == "prime"                                       # no national TV: Prime first
 
 
@@ -470,10 +486,12 @@ def test_your_phone_choice_always_wins_and_empty_is_unknown():
 
 
 def test_channel_fallbacks_fubo_and_label_only():
-    g = game(broadcasts=["ESPN", "Peacock"])
+    g = game(broadcasts=["ESPN", "Netflix"])
     cands = prov.channel_sources(g)
     assert [c.target for c in cands] == ["fubo:10179", None]
-    assert cands[1].label == "Peacock (game link not found yet)" and not cands[1].tunable
+    assert cands[1].label == "Netflix (game link not found yet)" and not cands[1].tunable
+    # Peacock is never offered, not even as a label-only entry
+    assert [c.target for c in prov.channel_sources(game(broadcasts=["ESPN", "Peacock"]))] == ["fubo:10179"]
 
 
 # --- 6. eventlinks additions (saved Apple TV / ESPN responses) --------------------------------
@@ -585,12 +603,11 @@ async def test_choose_end_to_end_okc_cle(monkeypatch, tmp_path):
     cm.codes.clear()
     monkeypatch.setattr(channels_mod, "SEARCH_CHANNELS", frozenset())   # no YouTube TV route at all:
     pick = book.choose(g, cm.where(g))
-    assert pick.target == f"peacock:{OKC_CLE_MAIN}"        # ...the chooser takes Peacock's main broadcast
-    assert pick.tunable and pick.confidence == "sure" and pick.provider == "peacock"
+    assert pick.provider == "prime" and "may be blacked out" in pick.label   # ...Peacock is banned: Prime, flagged risky
+    assert not any((a.target or "").startswith("peacock:") for a in pick.alternates)
     book.saw_apps("10.0.0.5:5555", {"youtubetv": "com.amazon.firetv.youtube.tv", "prime": "com.amazon.firebat"})
-    pick = book.choose(g, cm.where(g))                     # Peacock not on the sticks: say so
+    pick = book.choose(g, cm.where(g))
     assert pick.provider == "prime" and "may be blacked out" in pick.label
-    assert "Peacock isn't installed on your Fire TV sticks." in pick.reasons
 
 
 def test_learning_from_tunes(tmp_path):
@@ -709,11 +726,11 @@ def test_failed_preloads_teach_the_book(tmp_path):
     toasts = []
     rt.engine = SimpleNamespace(toast=lambda *a: toasts.append(a))
     g = game("CLE", "OKC", gid="g7")
-    rt.book.links[g.game_id] = {"providers": {"peacock": [{"ref": "main"}]}}
-    assert rt.book.game_for("peacock:main") == "g7" and rt.book.game_for("youtubetv:espn") is None
-    rt.on_preload_fail("peacock:main", "video never started")
-    rt.on_preload_fail("peacock:main", "video never started")
-    assert rt.book.skips["peacock:main"]["kind"] == "failed" and toasts
+    rt.book.links[g.game_id] = {"providers": {"fubo": [{"ref": "main"}]}}
+    assert rt.book.game_for("fubo:main") == "g7" and rt.book.game_for("youtubetv:espn") is None
+    rt.on_preload_fail("fubo:main", "video never started")
+    rt.on_preload_fail("fubo:main", "video never started")
+    assert rt.book.skips["fubo:main"]["kind"] == "failed" and toasts
     rt.on_preload_fail(None, "x")                            # never raises
 
 
@@ -777,7 +794,7 @@ async def test_backgrounded_app_gets_the_link_resent_as_a_fresh_task():
     st = FakeStick({"peacock": "com.peacock.peacockfiretv"},
                    launch_out=lambda cmd: "Status: ok\n" + ("" if "0x14000000" in cmd else FRONT),
                    playing=lambda s: any("0x14000000" in c for c in s.launches))
-    res = await tuner(more.PeacockTuner, Clock()).tune(st, OKC_CLE_MAIN, "peacock:x")
+    res = await tuner(PeacockLike, Clock()).tune(st, OKC_CLE_MAIN, "peacock:x")
     assert res.ok and len(st.launches) == 2
     assert st.launches[1].startswith("am start -W -f 0x14000000 -n com.peacock.peacockfiretv/")
     assert any("resent the link as a new task" in s for s in res.steps)
@@ -819,6 +836,78 @@ async def test_app_tuner_never_stops_or_presses_on_the_launcher():
     async def launcher():
         return "com.amazon.tv.launcher/.ui.HomeActivity"
     st.foreground = launcher
-    res = await tuner(more.PeacockTuner, Clock()).tune(st, OKC_CLE_MAIN, "peacock:x")
+    res = await tuner(PeacockLike, Clock()).tune(st, OKC_CLE_MAIN, "peacock:x")
     assert not res.ok and prov.parse_verdict(res.error) is None and not st.keys[1:]
     assert any("not in front" in s for s in res.steps)
+
+
+# --- [WP-01] route truth: a flagged pick says so; an NFL Sunday game waits for its Sunday Ticket slot -------
+
+def nfl_sunday(home="KC", away="NYJ"):
+    # Sun 2026-11-08 13:00 ET
+    return GameState(league=League.NFL, game_id="nfl1", home=Team(home), away=Team(away), phase=Phase.PRE,
+                     broadcasts=["CBS"], start_time=1794160800)
+
+
+def test_a_pick_made_only_of_flagged_routes_carries_the_flag():
+    g = game()
+    p = prov.best_source(g, [src("prime", "prime:a", geo_ok=False, confidence="sure")])
+    assert p.risky is True
+    assert prov.best_source(g, [src("espn", "espn:b", geo_ok=True)]).risky is False
+
+
+def test_unmatched_ticket_slot_loses_to_a_flagged_prime_route_when_the_flag_is_off():
+    g = nfl_sunday()
+    cands = [src("youtubetv", "youtubetv:st", tunable=False, kind="channel"),
+             src("prime", "prime:amzn1.dv.gti.x", geo_ok=False)]
+    p = prov.best_source(g, cands)
+    assert p.target == "prime:amzn1.dv.gti.x" and p.risky          # today's behaviour, unchanged
+
+
+def test_st_wait_keeps_an_nfl_game_on_its_unmatched_ticket_slot():
+    g = nfl_sunday()
+    cands = [src("youtubetv", "youtubetv:st", tunable=False, kind="channel"),
+             src("prime", "prime:amzn1.dv.gti.x", geo_ok=False)]
+    p = prov.best_source(g, cands, st_wait=True)
+    assert p.target == "youtubetv:st" and not p.tunable and not p.risky
+    assert "Waiting for its Sunday Ticket slot" in p.reasons[0]
+
+
+def test_st_wait_keeps_a_local_game_on_its_local_route_and_matched_slots_tune():
+    g = nfl_sunday(home="CAR", away="DEN")
+    local = src("youtubetv", "youtubetv:cbs", kind="channel")
+    assert prov.best_source(g, [local, src("prime", "prime:p", geo_ok=False)], st_wait=True).target == "youtubetv:cbs"
+    matched = src("youtubetv", "youtubetv:st:ABCDEFGHIJK", kind="channel")
+    assert prov.best_source(nfl_sunday(), [matched], st_wait=True).target == "youtubetv:st:ABCDEFGHIJK"
+    nba = game()
+    assert prov.best_source(nba, [src("youtubetv", "youtubetv:st", tunable=False)], st_wait=True).target == "youtubetv:st"
+
+
+def test_st_wait_does_not_override_a_choice_made_on_the_phone():
+    g = nfl_sunday()
+    mine = src("prime", "prime:mine", confidence="you set it")
+    cands = [src("youtubetv", "youtubetv:st", tunable=False, kind="channel"), mine]
+    assert prov.best_source(g, cands, st_wait=True).target == "prime:mine"
+
+
+def test_channel_map_gives_a_local_carolina_game_its_local_route_and_others_the_pending_slot(tmp_path):
+    cm = ChannelMap(tmp_path / "c.json")
+    cm.codes["cbs"] = "AAAAAAAAAAA"
+    assert cm.where(nfl_sunday(home="CAR", away="DEN")).target == "youtubetv:cbs"
+    assert cm.where(nfl_sunday()).target == "youtubetv:st"
+
+
+@pytest.mark.parametrize("flag", [False, True])
+def test_runtime_choose_passes_st_wait_so_real_tuning_honours_the_flag(flag):
+    """Why: only the plan honoured discovery.st_wait; the engine's route goes through DiscoveryRuntime.choose (WP-01)."""
+    from types import SimpleNamespace
+
+    from redzone.discovery.runtime import DiscoveryRuntime
+
+    seen = {}
+    rt = object.__new__(DiscoveryRuntime)
+    values = {"teams": [], "sunday_ticket": True, "discovery.st_wait": flag}
+    rt.engine = SimpleNamespace(cfg=SimpleNamespace(get=lambda k, d=None: values.get(k, d)), channels=None)
+    rt.book = SimpleNamespace(choose=lambda g, base, teams, channels, **kw: seen.update(kw) or "pick")
+    assert rt.choose("game", "base") == "pick"
+    assert seen["st_wait"] is flag

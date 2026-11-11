@@ -9,6 +9,8 @@ logged event, sorted by game then event order) with these columns:
 ``derive`` then adds the shared features and labels documented in
 ``redzone.lab.datasets``. Win probability comes from the source when it has one
 (nflverse, cfbfastR, ESPN); otherwise from the small analytic models below.
+
+Why: first added in 9b3a6b41 (2026-11-03) as "Training data: per-league game-state snapshots with break/key/hotness labels"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

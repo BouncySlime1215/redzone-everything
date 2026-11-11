@@ -2,6 +2,8 @@
 
 Guardrail: requests from anything other than a private/home-network address get a 403,
 so even if a port were ever forwarded by mistake, the internet can't drive your TV.
+
+Why: first added in 9faa350e (2026-11-02) as "RedZone Everything: core engine, scorer, decider, replays, backtest lab, server"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 import re
 
 from redzone.channels import parse_yttv_link
+from redzone import userstate
 from redzone.config import LIMITS, ConfigError
 from redzone.engine import Engine
 from redzone.web import phone_v2
@@ -29,6 +32,33 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 IMG_CACHE = ROOT / "data" / "imgcache"
 IMG_PATH = re.compile(r"[A-Za-z0-9_/.\-]{3,200}\.(png|jpg|jpeg|svg|webp)")
 IMG_TYPES = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "svg": "image/svg+xml", "webp": "image/webp"}
+
+
+# Settings the phone page may not change: server.port is read from the PORT env var in the plist, so editing it
+# did nothing, and a re-rendered plist without PORT would have moved the app off the 8778 that the watchdog and
+# deploy.py hard-code (P-19).
+READ_ONLY = ("server.port",)
+SECRET_KEY = re.compile(r"topic|token|secret|password|passwd|api_?key|credential", re.I)
+
+
+def redact(node):
+    """GET /api/settings without secrets: the ntfy topic is the only thing between the public ntfy.sh server and
+    this Mac's pushes, so any guest on the Wi-Fi could read it (P-14). A set secret reads "(set)", an empty one ""."""
+    if isinstance(node, dict):
+        return {k: (("(set)" if v else "") if SECRET_KEY.search(str(k)) and isinstance(v, str) else redact(v))
+                for k, v in node.items()}
+    if isinstance(node, list):
+        return [redact(v) for v in node]
+    return node
+
+
+def _changes_key(changes, dotted: str) -> bool:
+    node = changes
+    for part in dotted.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return False
+        node = node[part]
+    return True
 
 
 def _private(host: str | None) -> bool:
@@ -65,8 +95,56 @@ def _tap_status(engine: Engine, rec: dict) -> dict:
     return {"state": "done"}
 
 
+# ---- phone queue card (flag queue.enabled; WP-14) --------------------------------------------------------
+# Why: the phone shows what the hidden stick is lining up, in plain words, and never what happens next.
+# Only these keys ever leave the server: no tier, join time, value or outcome (gamequeue.view is already
+# spoiler-safe; this is the second lock).
+_CARD_KEYS = ("game", "level", "app", "prep_s", "owner", "reason", "flippable")
+LEVEL_WORDS = {
+    "R0": "No way to reach it", "R1": "Found, not tried yet", "R2": "Tried tonight, works",
+    "R3": "Playing on the other stick", "R4": "Buffered and read", "R5": "Ready to flip",
+}
+QUEUE_ROWS = 5
+
+
+def _queue_on(engine) -> bool:
+    try:
+        return bool(engine.cfg.get("queue.enabled", False))
+    except Exception:
+        return False
+
+
+def _safe_card(c) -> dict | None:
+    if not isinstance(c, dict) or not c.get("game"):
+        return None
+    out = {k: c.get(k) for k in _CARD_KEYS}
+    out["level_word"] = LEVEL_WORDS.get(str(c.get("level")), "")
+    return out
+
+
+def queue_card(gq, pins=()) -> dict:
+    """The phone card from snapshot["game_queue"]: top 5 rows (hidden stick first), plus the can't-reach list."""
+    gq = gq if isinstance(gq, dict) else {}
+    cards = [_safe_card(gq.get("hidden"))] + [_safe_card(c) for c in gq.get("up_next") or []]
+    rows = [c for c in cards if c][:QUEUE_ROWS]
+    pinned = set(pins)
+    for r in rows:
+        r["pinned"] = r["game"] in pinned or r.get("owner") == "pin"
+    return {"rows": rows, "cant_reach": [g for g in gq.get("cant_reach") or [] if isinstance(g, str)],
+            "pins": list(pins)}
+
+
 def build_app(engine: Engine) -> FastAPI:
     app = FastAPI(title="RedZone Everything", docs_url=None, redoc_url=None)
+    def _pins() -> list[str]:
+        """Nick's pins, in order. The engine owns and saves them (user_state.json); the phone only shows them."""
+        return list(getattr(engine, "queue_pins", None) or [])
+
+    def _snap() -> dict:
+        snap = engine.snapshot()
+        if _queue_on(engine) and "game_queue" in snap:
+            snap = {**snap, "game_queue_card": queue_card(snap["game_queue"], _pins())}
+        return snap
 
     @app.middleware("http")
     async def lan_only(request: Request, call_next):
@@ -123,13 +201,32 @@ def build_app(engine: Engine) -> FastAPI:
 
     @app.get("/api/state")
     async def state():
-        return JSONResponse(json.loads(json.dumps(engine.snapshot(), default=str)))
+        return JSONResponse(json.loads(json.dumps(_snap(), default=str)))
+
+    @app.get("/api/machines")
+    def machines_view(name: str = ""):
+        """Every explicit state machine: state, since, why, recent moves (redzone/fsm.py)."""
+        from redzone import fsm
+        rows = fsm.snapshot_all()
+        if name:
+            rows = [r for r in rows if r["machine"] == name or r["machine"].startswith(name + ".")]
+        return JSONResponse(json.loads(json.dumps({"machines": rows}, default=str)))
+
+    @app.get("/api/machines/history")
+    def machines_history(name: str = "", limit: int = 50):
+        """Saved moves from data/transitions.jsonl (survives restarts), newest last."""
+        from pathlib import Path
+
+        from redzone import fsm
+        from redzone.config import DATA
+        rows = fsm.read_transitions(DATA / "transitions.jsonl", name, max(1, min(limit, 500)))
+        return JSONResponse({"transitions": rows})
 
     @app.get("/api/stream")
     async def stream(request: Request):
         q: asyncio.Queue = asyncio.Queue()
         engine.subscribers.add(q)
-        q.put_nowait(("state", json.dumps(engine.snapshot(), default=str)))
+        q.put_nowait(("state", json.dumps(_snap(), default=str)))
 
         async def gen():
             try:
@@ -145,6 +242,38 @@ def build_app(engine: Engine) -> FastAPI:
                 engine.subscribers.discard(q)
         return StreamingResponse(gen(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.get("/api/queue")
+    async def queue_api():
+        if not _queue_on(engine):
+            return JSONResponse({"ok": False, "message": "queue is off"}, status_code=404)
+        return {"ok": True, **queue_card(engine.snapshot().get("game_queue"), _pins())}
+
+    async def _queue_tap(kind: str, body: dict):
+        if not _queue_on(engine):
+            return JSONResponse({"ok": False, "message": "queue is off"}, status_code=404)
+        gid = body.get("game_id")
+        if not isinstance(gid, str) or not gid:
+            return {"ok": False, "message": "which game?"}
+        value = body.get("value", True if kind == "pin" else "up")
+        if kind == "pin":
+            value = bool(value)
+        elif value not in ("up", "down"):
+            return {"ok": False, "message": "move up or down"}
+        # a tap id makes a retry or a double tap land once ("Move up" twice moved a game two places)
+        rec = engine.commands.run(body.get("id"), kind, gid, value, lambda: engine.action(kind, gid, value))
+        if rec["ok"] and not rec["duplicate"]:
+            for fn in ("decide", "broadcast"):
+                getattr(engine, fn, lambda: None)()
+        return {"ok": rec["ok"], "message": rec["message"], "duplicate": rec["duplicate"]}
+
+    @app.post("/api/queue/pin")
+    async def queue_pin(body: dict):
+        return await _queue_tap("pin", body)
+
+    @app.post("/api/queue/move")
+    async def queue_move(body: dict):
+        return await _queue_tap("move", body)
 
     @app.post("/api/action")
     async def action(body: dict):
@@ -179,10 +308,14 @@ def build_app(engine: Engine) -> FastAPI:
 
     @app.get("/api/settings")
     async def get_settings():
-        return {"config": engine.cfg.data, "limits": {k: list(v) for k, v in LIMITS.items()}}
+        return {"config": redact(engine.cfg.data),
+                "limits": {k: list(v) for k, v in LIMITS.items() if k not in READ_ONLY}}
 
     @app.post("/api/settings")
     async def set_settings(body: dict):
+        locked = [k for k in READ_ONLY if _changes_key(body.get("changes"), k)]
+        if locked:   # a control that would do nothing (the port comes from the plist) or could look like an outage
+            return {"ok": False, "message": f"{locked[0]} can't be changed from the phone"}
         try:
             engine.cfg.update(body.get("changes") or {})
         except ConfigError as e:
@@ -195,7 +328,8 @@ def build_app(engine: Engine) -> FastAPI:
     @app.post("/api/settings/rollback")
     async def rollback():
         ok = engine.cfg.rollback()
-        return {"ok": ok, "message": "Undid the last change" if ok else "Nothing to undo"}
+        note = getattr(engine.cfg, "rollback_note", "") or ("Undid the last change" if ok else "Nothing to undo")
+        return {"ok": ok, "message": note}
 
     @app.get("/api/channels")
     async def channels():
@@ -219,12 +353,15 @@ def build_app(engine: Engine) -> FastAPI:
 
     @app.post("/api/override")
     async def override(body: dict):
+        gid = body.get("game_id")
+        if not isinstance(gid, str) or not gid.strip():
+            return {"ok": False, "message": "Pick a game first"}
         target = body.get("target")
         if isinstance(target, str) and ("://" in target or "gti=" in target):
             target = _target_from_link(target)
             if not target:
                 return {"ok": False, "message": "Couldn't read that link — paste a tv.youtube.com/watch/… or Prime link"}
-        engine.channels.set_override(str(body.get("game_id")), target)
+        engine.channels.set_override(gid, target)
         engine.decide()
         engine.broadcast()
         return {"ok": True, "message": "Saved — I'll remember this"}
@@ -345,6 +482,38 @@ def build_app(engine: Engine) -> FastAPI:
         except Exception as e:   # a fix never takes the server down
             ok, msg = False, f"crashed: {type(e).__name__}: {str(e)[:100]}"
         return {"ok": ok, "message": msg}
+
+    @app.post("/api/personal/app-open")
+    async def personal_app_open(request: Request):
+        """iOS Shortcuts 'app opened' event: {"app", "timestamp"} only (redzone/personal/store.py). Off unless
+        personal.enabled (then 404, nothing written). Same LAN-only middleware as every route, and the X-RedZone-Token
+        header must match REDZONE_PERSONAL_TOKEN in the Mac's environment (unset: 503, nothing written)."""
+        if not engine.cfg.get("personal.enabled", False):
+            return JSONResponse({"ok": False, "message": "not found"}, status_code=404)
+        import hmac
+        import os
+        want = os.environ.get("REDZONE_PERSONAL_TOKEN", "")
+        if not want:
+            return JSONResponse({"ok": False, "message": "the intake token is not set on the Mac"}, status_code=503)
+        if not hmac.compare_digest(want.encode(), request.headers.get("x-redzone-token", "").encode()):
+            return JSONResponse({"ok": False, "message": "bad token"}, status_code=401)
+        raw = bytearray()
+        async for chunk in request.stream():          # counted as it arrives: a chunked body has no content-length to believe
+            raw += chunk
+            if len(raw) > 2048:
+                return JSONResponse({"ok": False, "message": "payload too large"}, status_code=413)
+        from redzone.personal import store
+        try:
+            body = json.loads(bytes(raw))
+        except ValueError:
+            body = None
+        ts = store.parse_ts(body.get("timestamp")) if isinstance(body, dict) else None
+        app_name = store.text(body.get("app"), 64) if isinstance(body, dict) else ""
+        if not isinstance(body, dict) or set(body) != {"app", "timestamp"} or not ts or not app_name:
+            return JSONResponse({"ok": False, "message": "send exactly {app, timestamp}"}, status_code=400)
+        data_dir = Path(engine.cfg.user_path).parent
+        store.append(store.store_path(data_dir), [{"ts": ts, "service": app_name, "source": "shortcut"}])
+        return {"ok": True}
 
     @app.get("/api/health")
     async def health():

@@ -9,6 +9,7 @@ redzone/lab/decision_records.py and docs/decision-records.md).
 Read-only on the database and logs, never uploads, and never reads the feedback table (Nick's taps:
 the Noggin is self-taught). The output holds game ids and reasons only, but keep it out of the public
 repo like every other night log. Light: one night is a few thousand rows, well under a second on the Mac.
+Why: Exports a night's decision records for the Teacher's nightly review (docstring, commit).
 """
 from __future__ import annotations
 

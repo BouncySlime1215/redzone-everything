@@ -11,6 +11,7 @@ By default the change goes to the running app (POST /api/settings on 127.0.0.1:<
 on the next fresh hidden-stick tune with no restart. --offline writes data/config.yaml instead (app stopped).
 Only league_overrides.<league> is ever sent: never a global key (global keys leak into ungraded leagues).
 The screen moves only after the next fresh tune of that league's game; the game on screen now is not re-held.
+Why: Turns the time-shift buffer on or off for one league; Nick runs it himself (docstring, RC8 commit).
 """
 from __future__ import annotations
 

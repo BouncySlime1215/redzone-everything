@@ -2,6 +2,8 @@
 North Star line a tree model feeds (big_plays_live, crunch_live_*, entries_mid_play via Noggin PICK and
 the timing model), and the tick budget (one numpy walk per tree level).
 
+Why: one brain step 4 (docs/onebrain-migration.md, 2026-11-04): four copies of the tree walker and loader became this one.
+
 Before this, four copies of the LightGBM tree walk lived in scoring/brain.py (Trees, Forest),
 scoring/brain3.py (Forest3) and noggin/timing.py (Forest, also used by predict.py and pick.py), and five
 npz + meta loaders read the files their own way. Now:

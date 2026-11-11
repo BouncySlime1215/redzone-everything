@@ -7,6 +7,8 @@ a second "Watch this" is "Go now" (it cuts over at once, even mid-play), and a s
 games. GET /api/action/{id} reads a tap's status, so the phone can confirm what happened.
 
 Taps without an id (old phone pages, scripts) run every time, as before.
+
+Why: recorded in docs/memory/lessons.md (phone taps must land exactly once); first added in 1fce8cf5 (2026-11-04) as "Phone controls: tap ids land once, faster Go now, skips that leave, press_to_tv_p95".
 """
 from __future__ import annotations
 

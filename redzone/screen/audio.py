@@ -10,6 +10,8 @@ number (dB); only those numbers are kept, for 10 minutes.
 Guardrails: a measurement only counts when exactly one clear surge lands in the plausible window
 (your yelling at the wrong time, or two plays close together, is ignored), and every accepted
 sample still goes through the delay book's median filter.
+
+Why: first added in d10b4289 (2026-11-02) as "Screen Lab recorder/report; optional mic auto-calibration of stream delay (loudness only, nothing..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

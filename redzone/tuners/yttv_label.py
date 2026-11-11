@@ -1,5 +1,7 @@
 """[YTTV scrub buffer, item 2] Read YouTube TV's overlay time label -> numbers only.
 
+Why: after an overlay scrub media_session is wrong, so the overlay time label is the behind-live truth (decisions 2026-11-06 22:15 ET, flag off).
+
 Spec: docs/sync/2026-11-06-yttv-scrub-buffer-spec.md. After an overlay scrub, media_session position is
 wrong, so the truth meter is the player overlay's time label (the 'MM:SS' / 'H:MM:SS' above the scrubber
 knob = playhead seconds since the EPG program start) against the wall clock.
@@ -393,7 +395,10 @@ class LabelProbe:
         from redzone.tuners import yttv_seek
         w0 = time.time()
         try:
-            png = await stick.screencap()
+            png = await yttv_seek.band_png(stick, yttv_seek.overlay_band(self.cfg))
+            if not png:
+                w0 = time.time()      # cap_wall is the midpoint of the capture that worked
+                png = await stick.screencap()
         except (asyncio.TimeoutError, OSError):
             return None, None
         wall = (w0 + time.time()) / 2

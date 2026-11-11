@@ -8,6 +8,8 @@ The production SamsungTV runs unchanged (set_input, readback verify, backoff); o
 calls are faked: setInputSource makes the house's TV follow that stick after a seeded draw from the
 measured distribution, and the status read reports what the house's TV shows. Nothing is pressed on
 either stick, so both keep playing (the point of the TV path).
+
+Why: first added in 28e7207f (2026-11-04) as "Switch timing: plan TV-input flips with the measured SmartThings latency; e2e night on that path"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -76,7 +78,7 @@ def make_tv_class(tv_mod, house, rng: random.Random):
             s = house.tv.source
             return s.hdmi if s is not None else house.tv.other
 
-        async def warm(self) -> bool:
+        async def warm(self, probe: bool = False) -> bool:   # the keepalive passes probe=True (DEV-07)
             return True
 
     return NightSmartThingsTV

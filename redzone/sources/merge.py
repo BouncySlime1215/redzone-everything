@@ -9,6 +9,8 @@ Guardrail: a source that jumps *backwards* (period or clock goes back) is ignore
 for that update, and repeated regressions bench it for that game for a few minutes.
 A score that drops at the same period and clock is a correction (overturned goal,
 a 3 rescored as a 2, a reversed TD), not a regression: it is accepted.
+
+Why: first added in 9faa350e (2026-11-02) as "RedZone Everything: core engine, scorer, decider, replays, backtest lab, server"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -17,6 +19,8 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from redzone.fsm import MachineMap
+from redzone.machines.platform import MERGE_FEED
 from redzone.models import GameState, Phase, Stoppage
 
 STALE_AFTER_S = 60.0       # a live game with no fresh data this long is "stale"
@@ -30,7 +34,8 @@ def progress_key(g: GameState) -> tuple:
     phase_rank = {Phase.PRE: 0, Phase.UNKNOWN: 0, Phase.LIVE: 1, Phase.POST: 2}[g.phase]
     period = g.period or 0
     half = 1 if g.half == "bottom" else 0
-    clock = -(g.clock_s if g.clock_s is not None else 0.0)
+    # No clock is "don't know", never "end of period" (-0.0 outranked every real reading): it ranks last.
+    clock = -g.clock_s if g.clock_s is not None else float("-inf")
     total = (g.home.score or 0) + (g.away.score or 0)
     plays = len(g.recent_plays)
     return (phase_rank, period, half, clock, total, plays)
@@ -98,7 +103,22 @@ class Merger:
         self.race: list[RaceEvent] = []
         self._race_open: dict[tuple[str, str], RaceEvent] = {}
         self._regress_at: dict[tuple[str, str], list[float]] = defaultdict(list)
-        self._bench_until: dict[tuple[str, str], float] = {}
+        # merge.feed, one per (source, game): trusted -> regressing -> benched -> (after BENCH_S) trusted.
+        # SourceHealth.benched is derived from it for every source (_refresh_benched).
+        self.feeds = MachineMap(MERGE_FEED, clock=clock)
+        self._bench_end: dict[tuple[str, str], float] = {}
+
+    @staticmethod
+    def _fkey(key: tuple[str, str]) -> str:
+        return f"{key[0]}|{key[1]}"
+
+    @property
+    def _bench_until(self) -> dict[tuple[str, str], float]:
+        """(source, game) -> bench end, for the benched feeds only (a read-only view of merge.feed)."""
+        return {k: u for k, u in self._bench_end.items() if self.feeds.state(self._fkey(k)) == "benched"}
+
+    def _benched(self, key: tuple[str, str]) -> bool:
+        return self.feeds.state(self._fkey(key)) == "benched"
 
     def record_error(self, source: str) -> None:
         self.health[source].errors += 1
@@ -115,7 +135,7 @@ class Merger:
             if src not in self._per_source or game_id not in self._per_source[src]:
                 continue
             seen = self._owner_at.get((src, game_id), -1e18)
-            if (now - seen <= STOPPAGE_OWNER_FRESH_S and (src, game_id) not in self._bench_until
+            if (now - seen <= STOPPAGE_OWNER_FRESH_S and not self._benched((src, game_id))
                     and now - self._err_at.get(src, -1e18) > OWNER_ERROR_HOLD_S):
                 return src
         return None
@@ -130,14 +150,23 @@ class Merger:
         correction = False
         if prev_same is not None:
             kg, kp = progress_key(g), progress_key(prev_same)
+            if g.clock_s is None or prev_same.clock_s is None:
+                # One side has no clock: it says nothing about direction, so it is neither a jump back nor ahead.
+                kg, kp = kg[:3] + (0.0,) + kg[4:], kp[:3] + (0.0,) + kp[4:]
             if _position(kg) < _position(kp):
                 h.regressions += 1
                 hits = [t for t in self._regress_at[bkey] if now - t < REGRESSION_WINDOW_S]
                 hits.append(now)
                 self._regress_at[bkey] = hits
+                feed = self.feeds[self._fkey(bkey)]
                 if len(hits) >= UNHEALTHY_REGRESSIONS:
-                    self._bench_until[bkey] = now + BENCH_S
+                    if not feed.is_("benched"):
+                        feed.to("benched", f"{len(hits)} backward jumps in {REGRESSION_WINDOW_S:.0f}s", now)
+                        self._bench_end[bkey] = now + BENCH_S   # set once: a jump while benched must not extend it
+                        self._drop_benched_leader(source, g.game_id, now)
                     h.benched = True
+                elif not feed.is_("benched"):   # a benched feed stays benched until its bench ends
+                    feed.to("regressing", f"{len(hits)} backward jump(s)", now)
                 return self.games.get(g.game_id, prev_same)
             if kg < kp:
                 # Same period and clock, lower score or fewer plays. A score drop with both
@@ -148,27 +177,51 @@ class Merger:
                 correction = True
         h.updates += 1
         h.last_ok = now
+        feed = self.feeds.get(self._fkey(bkey))
+        if feed is not None and feed.is_("regressing") and \
+                not any(now - t < REGRESSION_WINDOW_S for t in self._regress_at.get(bkey, ())):
+            feed.to("trusted", "its backward jumps aged out", now)
+            self.feeds.prune()
         self._per_source[source][g.game_id] = g
         self._note_race(source, g, now)
 
         cur = self.games.get(g.game_id)
-        if bkey in self._bench_until and cur is not None:
+        if self._benched(bkey) and cur is not None:
             return cur
         takes = (cur is None or _takes_over(g, cur)
                  or (correction and _position(progress_key(g)) >= _position(progress_key(cur))))
         if takes:
             merged = g
             if cur is not None:
-                merged = _fill_gaps(g, cur)
+                merged = _fill_gaps(_carry_plays(g, cur), cur, moment=not _sees_strength(g))
             merged.sources = dict(cur.sources) if cur else {}
             merged.sources[source] = now
             merged.updated_at = now
             self.games[g.game_id] = merged
             return merged
         # Behind the leader: only contribute fields the leader lacks.
-        _fill_gaps(cur, g)
+        _fill_gaps(cur, g, moment=not _sees_strength(cur))
         cur.sources[source] = now
         return cur
+
+    def _drop_benched_leader(self, source: str, game_id: str, now: float) -> None:
+        """A source just benched for this game may be what put the merged game where it is (a glitched period
+        or clock that nothing could overtake). If the merged copy came from it, rebuild from the best copy
+        another unbenched source holds; with no one else the merged copy stays (nothing to check it against)."""
+        cur = self.games.get(game_id)
+        if cur is None or cur.sources.get(source) != cur.updated_at:
+            return
+        rivals = [(progress_key(c), s, c) for s, per in self._per_source.items()
+                  if s != source and (c := per.get(game_id)) is not None and not self._benched((s, game_id))]
+        if not rivals:
+            return
+        _, best_src, best = max(rivals, key=lambda r: r[0])
+        merged = copy.copy(best)
+        merged.sources = {s: t for s, t in cur.sources.items() if s != source}
+        merged.sources[best_src] = now
+        merged.updated_at = now
+        _fill_gaps(merged, cur, moment=not _sees_strength(merged))
+        self.games[game_id] = merged
 
     def _owned_stoppage(self, source: str, g: GameState, now: float) -> GameState:
         order = self.stoppage_owner.get(g.league)
@@ -197,15 +250,26 @@ class Merger:
 
     def _expire_bench(self, source: str, now: float) -> None:
         """Lift benches older than BENCH_S. The source re-baselines for that game, so a feed
-        whose clock was legitimately set back (a review) is judged afresh."""
+        whose clock was legitimately set back (a review) is judged afresh. Every source's
+        SourceHealth.benched is refreshed, not just the one updating: a benched source that went
+        quiet used to stay flagged after its bench ended."""
         for key, until in list(self._bench_until.items()):
             if until <= now:
-                del self._bench_until[key]
+                self.feeds[self._fkey(key)].to("trusted", "bench over: re-baselined", now)
+                self._bench_end.pop(key, None)
                 self._regress_at.pop(key, None)
                 self._per_source[key[0]].pop(key[1], None)
-        h = self.health.get(source)
-        if h is not None:
-            h.benched = any(k[0] == source for k in self._bench_until)
+        self.feeds.prune()
+        self._refresh_benched()
+
+    def _refresh_benched(self) -> None:
+        benched = {k[0] for k in self._bench_until}
+        for src, h in self.health.items():
+            h.benched = src in benched
+
+    def expire(self, now: float | None = None) -> None:
+        """Lift benches that are over without waiting for an update (status readers call this)."""
+        self._expire_bench("", self._clock() if now is None else now)
 
     def _note_race(self, source: str, g: GameState, now: float) -> None:
         for label in race_labels(g):
@@ -262,8 +326,41 @@ def _takes_over(g: GameState, cur: GameState) -> bool:
     return a is None or b is None or a >= b
 
 
-def _fill_gaps(dst: GameState, src: GameState) -> GameState:
-    """Copy fields that dst doesn't know but src does. Never overwrites."""
+CARRY_CLOCK_S = STALE_AFTER_S / 4   # about one poll: how far apart two readings may be for one to speak for the other
+
+
+def _carry_plays(g: GameState, cur: GameState) -> GameState:
+    """[grader v47, F10] A scoreboard poll (clock and score only) that is a few seconds fresher than the
+    summary must not wipe the summary's last play and stoppage: the dead-ball flag flickered to UNKNOWN and the
+    play timeline saw a play-less state. Carry them over from the previous leader when g has none and the two
+    are the same moment (same period, same score, clocks within one poll). Never overwrites anything g knows."""
+    if g.last_play is not None or g.recent_plays or (cur.last_play is None and not cur.recent_plays):
+        return g
+    if (g.period != cur.period or (g.home.score, g.away.score) != (cur.home.score, cur.away.score)
+            or g.phase != cur.phase):
+        return g
+    if g.clock_s is not None and cur.clock_s is not None and abs(g.clock_s - cur.clock_s) > CARRY_CLOCK_S:
+        return g
+    g = copy.copy(g)   # the per-source copy of this feed stays as the feed sent it
+    g.last_play, g.recent_plays = cur.last_play, list(cur.recent_plays)
+    if g.stoppage == Stoppage.UNKNOWN:
+        g.stoppage = cur.stoppage
+    return g
+
+
+MOMENT_FIELDS = ("power_play", "strength", "empty_net")   # None here can mean "even strength", not "don't know"
+
+
+def _sees_strength(g: GameState) -> bool:
+    """Does this copy read on-ice strength for itself? The NHL feed's code always names one; a play-by-play source
+    derives it from its plays. A bare scoreboard does neither, so its None really is a gap. Ask before _carry_plays,
+    which lends a scoreboard the plays it never read."""
+    return g.situation.strength is not None or g.last_play is not None or bool(g.recent_plays)
+
+
+def _fill_gaps(dst: GameState, src: GameState, moment: bool = True) -> GameState:
+    """Copy fields that dst doesn't know but src does. Never overwrites.
+    moment=False: dst can see strength, so its empty power-play fields are an answer and stay empty."""
     for attr in ("home_win_prob", "spread", "period", "clock_s", "half"):
         if getattr(dst, attr) is None and getattr(src, attr) is not None:
             setattr(dst, attr, getattr(src, attr))
@@ -285,6 +382,8 @@ def _fill_gaps(dst: GameState, src: GameState) -> GameState:
                 setattr(t_dst, attr, getattr(t_src, attr))
     ds, ss = dst.situation, src.situation
     for attr in vars(ss):
+        if not moment and attr in MOMENT_FIELDS:
+            continue
         if getattr(ds, attr) is None and getattr(ss, attr) is not None:
             setattr(ds, attr, getattr(ss, attr))
     return dst

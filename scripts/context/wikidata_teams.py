@@ -18,6 +18,7 @@ Rivalries: Wikidata items that are an instance of a class labelled "sports rival
 (P1923) or participants (P710) among our QIDs. If Wikidata has none, rivalries.csv is just a header.
 
 Endpoints: en.wikipedia.org/w/api.php and query.wikidata.org/sparql, public, no key; UA set, <= 5 req/s.
+Why: Builds data/context/teams.csv and rivalries.csv from Wikipedia and Wikidata (docstring, Data B commit).
 """
 from __future__ import annotations
 

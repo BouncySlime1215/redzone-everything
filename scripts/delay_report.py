@@ -8,6 +8,7 @@ For every channel with samples: hide that channel's own samples, predict it from
 predicted interval (mu +- 2 sigma). Too narrow an interval is what cuts plays mid-play, so the line
 that matters is "outside". Prints both delay models (channel = per-channel predictor, legacy = one
 figure per app). Read-only: the database is opened in read-only mode.
+Why: Shows how well each channel's stream delay is predicted (docstring, delay predictor commit).
 """
 import argparse
 import json

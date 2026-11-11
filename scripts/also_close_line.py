@@ -1,6 +1,7 @@
 """[EXP-039] Print the "Also close" line: manual-switch share on nights with phone.also_close on vs off.
 
     python scripts/also_close_line.py --db <mac repo>/data/redzone.db --on 2026-11-08 ... --off 2026-11-09 ...
+Why: EXP-039: measures manual-switch share with phone.also_close on vs off (docstring).
 """
 from __future__ import annotations
 

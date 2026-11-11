@@ -1,5 +1,7 @@
 """Automatic per-channel sync: each channel's screen delay tracked by a small Kalman filter, no taps.
 
+Why: each channel's screen delay is tracked automatically, with no taps (commit 2026-11-03, 'Per-channel delay predictor and automatic Kalman sync').
+
 What is tracked, per channel (tuner target):
 
     d   the screen delay now: how far the frame on screen runs behind real life (s)
@@ -27,6 +29,14 @@ predictor's prior (delaymodel.py) and the drift is forgotten. Only a new tune fo
 sigmas from the prediction is not used and the channel is flagged uncertain; two in a row from
 different moments mean the stream really jumped, and the filter restarts from the newest one.
 
+[robust / change-point model, Nov 8, delay.sync.robust, OFF] Delay is constant between tune, seek, pause and
+stall events, so it is modelled as a constant plus explicit jumps instead of a random walk: a measurement a
+little off is down-weighted (Student-t), one far off is ignored without flagging the channel (one bad OCR read
+used to cost 300 s of "uncertain"), and two far-off ones only restart the filter when they agree with each
+other. The relative meters (YouTube TV's E = wall - position, Prime's epoch position) are position reads: E = o + d.
+Fed every couple of seconds they hold d flat between events; anchors then only refine the per-tune constant o.
+An E step confirmed by two reads is a change point: d moves by the step and o stays.
+
 Pure python, a few multiply-adds per measurement: nothing here costs the Mac anything.
 """
 from __future__ import annotations
@@ -34,9 +44,12 @@ from __future__ import annotations
 import json
 import logging
 import math
+import statistics
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from dataclasses import dataclass, field
+from zoneinfo import ZoneInfo
 
 log = logging.getLogger("redzone.sync")
 
@@ -54,6 +67,19 @@ UNCERTAIN_HOLD_S = 300.0      # a disagreement flags the channel this long
 STALE_S = 1800.0              # no measurement this long: not synced any more
 POS_LOG_S = 10.0              # data/sync.jsonl: at most one position row per channel this often
 LOG_MAX_BYTES = 20_000_000    # ... and the file rolls over at 20 MB (one old copy kept)
+
+
+@dataclass(frozen=True)
+class RobustParams:
+    """[robust / change-point model] Its tuning, one place; the filter takes a copy (delay.sync.robust)."""
+    nu: float = 4.0                  # Student-t degrees of freedom of the measurement noise
+    hard: float = 6.0                # further than this many sigmas: an outlier, not used at all
+    outliers_agree_s: float = 3.0    # two outliers within this of each other mean the stream really moved
+    cp_agree_s: float = 1.0          # [change point] two meter reads this close confirm a new level
+    cp_min_dt_s: float = 0.5         # ... and they must come from two moments
+    cp_max_s: float = 180.0          # a bigger step isn't a delay change: a different clock (new origin)
+    meter_live_s: float = 15.0       # a relative meter read this recently: the delay is held by the meter
+    q_meter: float = 0.002 ** 2      # delay random walk while a meter holds it (constant between events), s^2 per s
 
 
 def _mat(n):
@@ -78,6 +104,12 @@ class ChannelSync:
     has_origin: bool = False
     q_scale: float = 1.0                       # [SYNC 4] network condition: process noise multiplier
     plan_mu: float | None = None               # [SYNC 6] the delay when it (re)synced: drift is measured from it
+    robust: bool = False                       # [robust] Student-t weights + change points (delay.sync.robust)
+    meter_at: float | None = None              # [robust] last accepted relative-meter (position) read
+    changepoints: int = 0                      # [change point] level changes of the meter booked
+    _cp: tuple | None = None                   # [change point] (t, z) of a meter read waiting for a second one
+    params: RobustParams = field(default_factory=RobustParams)
+    anchors: int = 0                           # [timing] absolute delay samples accepted since this stream's tune
 
     # ------------------------------------------------------------------ model
     def reset(self, t: float, mu: float, sd: float, new_stream: bool = False) -> None:
@@ -89,6 +121,7 @@ class ChannelSync:
         if new_stream:
             self.has_origin, self.o_ref = False, None
             self.x[2] = 0.0
+            self.anchors = 0
         self.x[0], self.x[1] = mu, 0.0
         for i in range(3):
             self.P[0][i] = self.P[i][0] = 0.0
@@ -110,9 +143,16 @@ class ChannelSync:
         p01 = P[0][1] + dt * P[1][1]
         p02 = P[0][2] + dt * P[1][2]
         P[0][0], P[0][1], P[1][0], P[0][2], P[2][0] = p00, p01, p01, p02, p02
-        P[0][0] += Q_DELAY * self.q_scale * dt
+        P[0][0] += self._q(t) * self.q_scale * dt
         P[1][1] += Q_DRIFT * dt
         self.t = t
+
+    def _q(self, t: float) -> float:
+        """Between events the delay is constant: while a meter holds it the random walk all but stops."""
+        return self.params.q_meter if self._meter_live(t) else Q_DELAY
+
+    def _meter_live(self, t: float) -> bool:
+        return self.robust and self.meter_at is not None and t - self.meter_at <= self.params.meter_live_s
 
     def _update(self, h: list, z: float, r_sd: float, t: float, kind: str) -> bool:
         self._predict(t)
@@ -120,7 +160,14 @@ class ChannelSync:
         Ph = [sum(P[i][j] * h[j] for j in range(3)) for i in range(3)]
         s = sum(h[i] * Ph[i] for i in range(3)) + r_sd ** 2
         innov = z - sum(h[i] * x[i] for i in range(3))
-        if innov * innov > GATE * GATE * s and s < (GATE * 20) ** 2:
+        if self.robust:
+            e2 = innov * innov / s
+            if e2 > self.params.hard * self.params.hard and s < (GATE * 20) ** 2:
+                return self._outlier(h, z, r_sd, t, kind, innov, s)
+            if e2 > 1.0:                          # Student-t: the further off, the less it counts
+                r2 = r_sd ** 2
+                s += r2 * ((self.params.nu + e2) / (self.params.nu + 1.0) - 1.0)
+        elif innov * innov > GATE * GATE * s and s < (GATE * 20) ** 2:
             # Disagrees with what the other signals said. Twice in a row, from two moments: the stream
             # really moved (an unseen seek, a restart). Start over from the newest measurement.
             self.rejected += 1
@@ -149,9 +196,24 @@ class ChannelSync:
         self._accepted(t)
         return True
 
+    def _outlier(self, h: list, z: float, r_sd: float, t: float, kind: str, innov: float, s: float) -> bool:
+        """[robust] One far-off measurement is noise: ignored, nothing flagged. Two from different moments that
+        agree with each other mean the stream moved: flagged, and the filter restarts from the newest."""
+        self.rejected += 1
+        prev, self._last_reject = self._last_reject, (t, kind, z)
+        log.info("%s: %s says %.1f, the filter %.1f +- %.1f; outlier, not used", self.target, kind, z, z - innov,
+                 math.sqrt(s))
+        if prev is None or t - prev[0] < 1.0 or abs(z - prev[2]) > max(self.params.outliers_agree_s, 2.0 * r_sd):
+            return False
+        self.uncertain_until = t + UNCERTAIN_HOLD_S
+        self._restart_on(h, z, r_sd, t)
+        return True
+
     def _restart_on(self, h: list, z: float, r_sd: float, t: float) -> None:
         log.info("%s: two signals in a row disagree with the filter; re-syncing from the newest", self.target)
         plan = self.plan_mu        # [SYNC 6] the stream moved under us: that IS drift, keep measuring from the plan
+        if self.robust and self.has_origin and not h[2] and self._meter_live(t):
+            self.x[2] -= z - self.x[0]   # the meter says the picture didn't move: the per-tune constant was wrong
         if h[2]:                                # a position read: the origin is suspect, the delay too
             self.has_origin = False
             self.reset(t, self.x[0], 30.0)
@@ -187,14 +249,56 @@ class ChannelSync:
     # ------------------------------------------------------------------ measurements
     def delay(self, t: float, z: float, kind: str, sd: float | None = None) -> bool:
         """A direct measurement of the screen delay at t (flip, score, clock, tap, mic)."""
-        return self._update([1.0, 0.0, 0.0], z, sd if sd is not None else SIGMA.get(kind, 4.0), t, kind)
+        ok = self._update([1.0, 0.0, 0.0], z, sd if sd is not None else SIGMA.get(kind, 4.0), t, kind)
+        if ok:
+            self.anchors += 1
+        return ok
 
     def position(self, t: float, position_s: float, sd: float = POSITION_SIGMA_S) -> bool:
         """A stick playback read: the frame at stream position `position_s` was on screen at t."""
         y = t - position_s                       # = origin + delay
         if self.o_ref is None:
             self.o_ref = y - self.x[0]
-        return self._update([1.0, 0.0, 1.0], y - self.o_ref, sd, t, "position")
+        if self.robust and not self._changepoint(t, y - self.o_ref, sd):
+            return False
+        if self.o_ref is None:                   # the change point was a different clock altogether
+            self.o_ref = y - self.x[0]
+        ok = self._update([1.0, 0.0, 1.0], y - self.o_ref, sd, t, "position")
+        if ok:                                  # only robust filters act on it (_meter_live); meter_anchored reads it too
+            self.meter_at = t
+        return ok
+
+    def _changepoint(self, t: float, z: float, sd: float) -> bool:
+        """[change point] A meter read off its level: held until a second read from another moment agrees. Then the
+        delay moved by the step (d changes, the per-tune constant o doesn't). False = this read waits."""
+        if not self.has_origin:
+            return True
+        self._predict(t)
+        P = self.P
+        s = P[0][0] + 2 * P[0][2] + P[2][2] + sd * sd
+        innov = z - self.x[0] - self.x[2]
+        if innov * innov <= GATE * GATE * s or s >= (GATE * 20) ** 2:
+            self._cp = None
+            return True
+        prev, self._cp = self._cp, (t, z)
+        if prev is None or t - prev[0] < self.params.cp_min_dt_s or abs(z - prev[1]) > self.params.cp_agree_s:
+            return False
+        self._cp = None
+        self.changepoints += 1
+        if abs(innov) > self.params.cp_max_s:
+            log.info("%s: position clock changed by %.0f s; forgetting the origin", self.target, innov)
+            self.reset(t, self.x[0], max(30.0, math.sqrt(P[0][0])), new_stream=True)
+            return True
+        log.info("%s: the stream moved %+.1f s (change point on the meter)", self.target, innov)
+        self.x[0] += innov
+        self.P[0][0] += sd * sd
+        return True
+
+    def meter_anchored(self, t: float, min_anchors: int, meter_s: float) -> bool:
+        """[timing] Absolute anchors on this stream (a stream's arena-to-frame offset K is per game, not per app) AND a
+        position read so recent that the meter is holding the delay right now."""
+        return (self.anchors >= int(min_anchors) and self.meter_at is not None and t - self.meter_at <= float(meter_s)
+                and not self.uncertain(t))
 
     # ------------------------------------------------------------------ outputs
     def mu(self, t: float) -> float:
@@ -202,7 +306,7 @@ class ChannelSync:
 
     def sd(self, t: float) -> float:
         dt = max(0.0, t - self.t)
-        v = self.P[0][0] + 2 * dt * self.P[0][1] + dt * dt * self.P[1][1] + Q_DELAY * self.q_scale * dt
+        v = self.P[0][0] + 2 * dt * self.P[0][1] + dt * dt * self.P[1][1] + self._q(t) * self.q_scale * dt
         return math.sqrt(max(v, 0.0))
 
     def uncertain(self, t: float) -> bool:
@@ -225,7 +329,7 @@ class ChannelSync:
                 "since_tune_s": None if self.tuned_at is None else round(t - self.tuned_at),
                 "synced_after_s": None if self.synced_at is None or self.tuned_at is None
                 else round(self.synced_at - self.tuned_at, 1),
-                "accepted": self.accepted, "rejected": self.rejected}
+                "accepted": self.accepted, "rejected": self.rejected, "changepoints": self.changepoints}
 
 
 class SyncBook:
@@ -242,6 +346,10 @@ class SyncBook:
         self._was: dict[str, tuple[bool, bool]] = {}
         self._pos_logged: dict[str, float] = {}
         self.behind_of = None   # [calib.auto] target -> s this tune is deliberately behind live (DelayBook)
+        self.robust = False     # [robust] delay.sync.robust: new filters use Student-t weights + change points
+        # [live measurement] one numbers-only row per anchor: its error against the prediction, per app and HDMI
+        # (data/sync_truth/delay_error/<night>.jsonl). `python -m redzone.decider.sync --report <folder>` sums it up.
+        self.error_dir = self.log_path.parent / "sync_truth" / "delay_error" if self.log_path else None
 
     def _log(self, kind: str, target: str, t: float, **kw) -> None:
         f = self.filters.get(target)
@@ -274,7 +382,7 @@ class SyncBook:
         if f is None:
             t = self._clock()
             mu, sd = self._prior(target)
-            f = self.filters[target] = ChannelSync(target, t)
+            f = self.filters[target] = ChannelSync(target, t, robust=self.robust)
             f.P[2][2] = O0_SD ** 2
             f.reset(t, mu, sd)
         return f
@@ -329,16 +437,40 @@ class SyncBook:
             err = round(z - f.mu(t), 2)
         except Exception:
             err = None
+        sd_before = f.sd(t)
         ok = f.delay(t, z, kind, sd)
         self._log(kind, target, t, z=round(z, 2), used=ok, err=err, **({"stick": stick} if stick else {}))
+        self.note(target, kind, t, z, sd=sd, stick=stick, err=err, pred_sd=round(sd_before, 2), used=ok)
         self.on_change(target)
         return ok
+
+    def note(self, target: str, kind: str, t: float, z: float, sd: float | None = None, stick: str | None = None,
+             **kw) -> None:
+        """[live measurement] One numbers-only row: what this anchor measured and how far off the prediction was.
+        Also for shadow anchors (a Prime clock stop against the feed) that never reach the filter."""
+        if self.error_dir is None:
+            return
+        f = self.filters.get(target)
+        if "err" not in kw and f is not None:
+            kw["err"] = round(z - f.mu(t), 2)
+        row = {"t": round(t, 3), "night": _night(t), "app": target.split(":", 1)[0], "hdmi": stick or "?",
+               "kind": kind, "z": round(z, 2), **({"sd": round(float(sd), 2)} if sd is not None else {}), **kw}
+        try:
+            self.error_dir.mkdir(parents=True, exist_ok=True)
+            with (self.error_dir / f"{row['night']}.jsonl").open("a") as fh:
+                fh.write(json.dumps(row, separators=(",", ":")) + "\n")
+        except OSError:
+            log.debug("could not append to %s", self.error_dir)
 
     def position(self, target: str, position_s: float, t: float | None = None,
                  sd: float = POSITION_SIGMA_S) -> bool:
         t = self._clock() if t is None else t
-        ok = self.get(target).position(t, position_s, sd)
+        f = self.get(target)
+        steps = f.changepoints
+        ok = f.position(t, position_s, sd)
         self._log("position", target, t, position=round(position_s, 3), pos_sd=round(sd, 3), used=ok)
+        if f.changepoints != steps:
+            self.note(target, "changepoint", t, f.mu(t), sd=sd, err=None)
         self.on_change(target)
         return ok
 
@@ -383,6 +515,83 @@ def clock_sample(bug_clock_s: float, frame_wall: float, plays: list[tuple[float,
     return None
 
 
+@dataclass(frozen=True)
+class ClockFit:
+    """A running game clock fitted over a window of frames. clock(wall) = clock_ref - (wall - wall_ref)."""
+    slope: float        # clock s per wall s of the free fit (-1 when it truly runs)
+    wall_ref: float     # centre of the inliers' frame times
+    clock_ref: float    # the clock at wall_ref (the intercept, slope held at -1)
+    resid_sd: float     # s, scatter of the inliers around the line
+    n: int              # inliers
+    span_s: float
+    clock_lo: float     # the inliers' clock range
+    clock_hi: float
+    min_sd: float = 0.4 # the least doubt one fitted window can claim
+
+    def wall_at(self, clock_s: float) -> float:
+        return self.wall_ref + (self.clock_ref - clock_s)
+
+    @property
+    def sd(self) -> float:
+        return max(self.min_sd, self.resid_sd)
+
+
+def fit_clock_window(points: list[tuple[float, float]], min_n: int = 5, min_span_s: float = 8.0,
+                     slope_tol: float = 0.05, max_resid_sd: float = 0.7) -> ClockFit | None:
+    """(frame wall, clock s) over a stretch of frames -> one fit, or None. Robust: Theil-Sen slope and the median
+    intercept pick the inliers (an OCR misread is dropped by its residual), then the slope must be -1 within
+    slope_tol (else the clock stopped somewhere in the window, or these aren't one running clock), the inliers must
+    be at least 70% of the frames, and their scatter under max_resid_sd."""
+    pts = sorted(points)
+    if len(pts) < min_n or pts[-1][0] - pts[0][0] < min_span_s:
+        return None
+    pairs = [(c2 - c1) / (t2 - t1) for i, (t1, c1) in enumerate(pts) for t2, c2 in pts[i + 1:] if t2 - t1 >= 1.0]
+    if not pairs:
+        return None
+    slope = statistics.median(pairs)
+    tref = statistics.fmean(t for t, _ in pts)
+    b = statistics.median(c - slope * (t - tref) for t, c in pts)
+    res = [c - (b + slope * (t - tref)) for t, c in pts]
+    mad = statistics.median(abs(r) for r in res)
+    cut = max(1.25, 3.0 * 1.4826 * mad)
+    keep = [p for p, r in zip(pts, res) if abs(r) <= cut]
+    if len(keep) < max(min_n, 0.7 * len(pts)):
+        return None
+    wall_ref = statistics.fmean(t for t, _ in keep)
+    mc = statistics.fmean(c for _, c in keep)
+    den = sum((t - wall_ref) ** 2 for t, _ in keep)
+    if den <= 0:
+        return None
+    slope = sum((t - wall_ref) * (c - mc) for t, c in keep) / den
+    if abs(slope + 1.0) > slope_tol:
+        return None
+    clock_ref = statistics.fmean(c + (t - wall_ref) for t, c in keep)
+    sd = statistics.pstdev([c - (clock_ref - (t - wall_ref)) for t, c in keep])
+    if sd > max_resid_sd:
+        return None
+    cs = [c for _, c in keep]
+    return ClockFit(slope, wall_ref, clock_ref, sd, len(keep), keep[-1][0] - keep[0][0], min(cs), max(cs))
+
+
+def fit_delay(fit: ClockFit, plays: list[tuple[float, float]], tol_s: float = 1.5) -> float | None:
+    """The delay from a fitted window against the feed's plays (as clock_sample: only between two plays whose wall
+    gap matches their clock gap, so the clock ran the whole time), weighted by how much of the window each covers."""
+    tot, weight = 0.0, 0.0
+    for (w0, c0), (w1, c1) in zip(plays, plays[1:]):
+        if c0 <= c1 or abs((w1 - w0) - (c0 - c1)) > tol_s:
+            continue
+        lo, hi = max(c1, fit.clock_lo), min(c0, fit.clock_hi)
+        if lo > hi:
+            continue
+        c = (lo + hi) / 2
+        d = fit.wall_at(c) - (w0 + (c0 - c))
+        tot, weight = tot + d * (hi - lo + 0.1), weight + hi - lo + 0.1
+    if not weight:
+        return None
+    d = tot / weight
+    return d if 2.0 <= d <= 180.0 else None
+
+
 class KalmanSync:
     """[contracts] SyncModel over the delay book with its Kalman filters attached (DelayBook.attach_sync).
 
@@ -419,3 +628,47 @@ class KalmanSync:
             s.measure(target, sample_s, kind, t=at)
         else:
             raise ValueError(f"KalmanSync can't take {kind!r} samples")
+
+
+# ---------------------------------------------------------------------- [live measurement] the night's report
+def _night(t: float) -> str:
+    """The US/Eastern evening a row belongs to (before 6 AM counts as the night before)."""
+    d = datetime.fromtimestamp(t, ZoneInfo("America/New_York"))
+    return (d - timedelta(days=1) if d.hour < 6 else d).strftime("%Y-%m-%d")
+
+
+def summarize_errors(rows: list[dict]) -> list[dict]:
+    """Delay error per (app, HDMI, kind): n, mean, sd, median and 90th percentile of |error|, share used."""
+    by: dict[tuple, list[dict]] = {}
+    for r in rows:
+        if r.get("err") is not None:
+            by.setdefault((r.get("app", "?"), r.get("hdmi", "?"), r.get("kind", "?")), []).append(r)
+    out = []
+    for (app, hdmi, kind), rs in sorted(by.items()):
+        es = [float(r["err"]) for r in rs]
+        ab = sorted(abs(e) for e in es)
+        out.append({"app": app, "hdmi": hdmi, "kind": kind, "n": len(es), "mean_s": round(statistics.fmean(es), 2),
+                    "sd_s": round(statistics.pstdev(es), 2), "p50_abs_s": round(ab[len(ab) // 2], 2),
+                    "p90_abs_s": round(ab[min(len(ab) - 1, int(len(ab) * 0.9))], 2),
+                    "used": round(sum(1 for r in rs if r.get("used", True)) / len(rs), 2)})
+    return out
+
+
+def _report(path: Path) -> None:
+    files = sorted(path.glob("*.jsonl")) if path.is_dir() else [path]
+    rows = []
+    for f in files:
+        for line in f.read_text().splitlines():
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    for r in summarize_errors(rows):
+        print(json.dumps(r))
+
+
+if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser(description="Delay error per app and HDMI from data/sync_truth/delay_error")
+    ap.add_argument("--report", type=Path, required=True, help="a <night>.jsonl file, or the folder")
+    _report(ap.parse_args().report)

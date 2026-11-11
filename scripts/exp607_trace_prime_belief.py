@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """[EXP-607, info only] Trace believed vs true delay for Prime targets at each switch decision (EXP-605 resync).
-usage: python scripts/exp607_trace_prime_belief.py OUT.json <eval_sports args...>"""
+usage: python scripts/exp607_trace_prime_belief.py OUT.json <eval_sports args...>
+Why: EXP-607, info only: traces believed vs true Prime delay at each switch (docstring)."""
 import contextlib, io, json, runpy, sys
 sys.path.insert(0, ".")
 from redzone.lab import backtest

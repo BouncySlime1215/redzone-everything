@@ -11,6 +11,7 @@ Inputs (both public, no key):
 Writes <out>/<league>-stakes/<season>.parquet (tokens.COLUMNS) and <out>/<league>-stakes/edges.json (16 quantile
 buckets per field, fit on TRAIN games only: kickoff before 2022-09-01 NFL / 2022-03-01 MLB). Unplayed games of the
 current season within 8 days of now are written with asof = now (the pregame "tonight" case).
+Why: Standings, Elo and playoff-odds swing per game as stakes context (docstring, Data B commit).
 """
 from __future__ import annotations
 

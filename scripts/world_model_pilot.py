@@ -19,6 +19,7 @@ owner: lane 1 (Noggin training). Plumbing proof for Saturday's ~100M run (Nick, 
    frequency after the previous kind) and break-timing MAE (the seconds from a break to the next event, vs the
    train median per stoppage type). Plus training/inference throughput (tokens/s) to size the 100M run.
 Writes OUT/grades.json and prints it.
+Why: EXP-100 pilot: event tokens to a small transformer, graded on held-out nights (docstring).
 """
 from __future__ import annotations
 

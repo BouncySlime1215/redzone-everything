@@ -9,11 +9,12 @@ import { patch } from "./rz-dom.js?v=40";
 import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=40";
 import { heroCard, fantasyCard } from "./rz-cards.js?v=40";
 import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=40";
-import { act } from "./rz-api.js?v=43";
+import { act } from "./rz-api.js?v=44";
 import { screenEvidence } from "./rz-evidence.js?v=40";
-import { recordedPanel } from "./rz-recorded.js?v=40";
-import { tonightCard } from "./rz-plan.js?v=40";
-import { switchExtras, missedBar } from "./rz-v2.js?v=30";
+import { recordedPanel } from "./rz-recorded.js?v=41";
+import { tonightCard } from "./rz-plan.js?v=41";
+import { queueCard } from "./rz-queue.js?v=41";
+import { switchExtras, missedBar } from "./rz-v2.js?v=31";
 
 const STATE_LABEL = { idle: "Idle", watching: "Watching", locked: "Locked in", break: "On a break", paused: "Paused",
   frozen: "Holding still", safe: "Safe mode", replay: "Replay" };
@@ -38,12 +39,13 @@ export function renderNow(root) {
   const ghost = before && n && before.dataset.gid !== n.game_id ? before.cloneNode(true) : null;
   const html = [
     modeRow(S),
-    n ? `<div class="hero-wrap" data-key="hero-wrap">${heroCard(n, g, S)}</div>` : idle(S),
+    n ? `<div class="hero-wrap" data-key="hero-wrap">${heroCard(n, g, S)}</div>${screenClockNote(g)}` : idle(S),
     screenEvidence(S),
     calibrate(S),
     dock(S),
     plan(S),
     tonightCard(S),
+    queueCard(S),
     controlPanel(S),
     S.fantasy ? `<div data-key="fantasy">${sec("Fantasy", { key: "sec-fantasy" })}${fantasyCard(S.fantasy)}</div>` : "",
     queue(S),
@@ -51,6 +53,13 @@ export function renderNow(root) {
   ].join("");
   patch(root, html);
   if (ghost) heroSwitch(root, ghost);
+}
+
+/* Screen-time clock: the card's clock is as of the TV, not the feed (server flag views.screen_clock; absent = off). */
+function screenClockNote(g) {
+  if (!g || !g.screen_clock) return "";
+  const t = g.screen_clock === "ok" ? `Clock is as of your screen (${Math.round(num(g.screen_delay_s))} s behind live)` : "Clock hidden until your screen's delay is known";
+  return `<div class="t2" data-key="screen-clock-note" style="padding:4px 4px 0">${esc(t)}</div>`;
 }
 
 function modeRow(S) {

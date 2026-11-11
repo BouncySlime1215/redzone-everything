@@ -14,6 +14,7 @@ And with `behind` logged on sync rows (#140), each channel's fresh-tune delay (c
 
 Grade: PASS / FAIL against 2 s once there are at least MIN_ANCHORS graded anchors, else PENDING. Prints JSON,
 never addresses (sticks are numbered).
+Why: EXP-084: one live night's sync calibration and delay error from the app's logs (docstring).
 """
 from __future__ import annotations
 

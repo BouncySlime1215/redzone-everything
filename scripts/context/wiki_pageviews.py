@@ -13,6 +13,7 @@ hours:   hourly dumps pageviews-YYYYMMDD-HH0000.gz streamed line by line and fil
          make the count usable only at HH+1:00 (if HH were the end, this is one hour late, never early).
 
 Facts are built by run_buzz.py (pageviews_z pregame, pageviews_live_z hourly); see docs/datasources/context-buzz.md.
+Why: Wikipedia pageviews per team as buzz signals (docstring, Data B buzz commit).
 """
 from __future__ import annotations
 

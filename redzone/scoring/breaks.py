@@ -25,6 +25,8 @@ NBA/college/NHL mark is still owed); forecast() is pure given that list.
 With the learned brain on (brain.enabled), a forecast that isn't already in the data blends in
 the brain's break_soon_p (redzone/scoring/brain.py): blend() below. A break already in the data
 is never second-guessed.
+
+Why: first added in 8172d040 (2026-11-02) as "Break predictor: chance a commercial reaches the screen within a minute, and its measured length"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -252,7 +254,7 @@ def forecast(g: GameState | None, clocks: tuple = ()) -> Forecast:
     if base == League.NFL:
         if p in (1, 3) and clk <= 60:
             return Forecast(0.8, LEN["nfl_quarter"], "the quarter's about to end")
-        if p in (2, 4) and 120 < clk <= 165:
+        if p in (2, 4) and 120 < clk <= 165 and not lg.college:   # college has no two-minute warning (F11)
             return Forecast(0.8, LEN["nfl_2min"], "two-minute warning coming")
         if kind == "punt":
             return Forecast(0.75, LEN["nfl_punt"], "punt: commercial before the next snap")

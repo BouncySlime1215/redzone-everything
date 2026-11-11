@@ -19,6 +19,8 @@ half), 3rd & 7+ in its own half, and a run of drives that ended without points.
 The decider reads Scored.factors["drive_heat"] (decider.nfl_priority): while an NFL drive is hot,
 other sports' non-crunch moments rank below it. Crunch time, your teams and garbage time are
 untouched (garbage time keeps the scorer's verdict: a decided game isn't worth a whip-around).
+
+Why: first added in e165368d (2026-11-03) as "Port RedZone mode from redzone-mode (4c36104): NFL drive heat, NFL priority, live drive before ca..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

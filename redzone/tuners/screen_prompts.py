@@ -1,5 +1,7 @@
 """Clear YouTube TV's own prompts from a screenshot: "Who's watching?" and "Still watching?".
 
+Why: YouTube TV draws its UI itself and uiautomator reads nothing there, so its prompts are cleared from a screenshot with local OCR (docstring).
+
 YouTube TV (Cobalt) draws its UI itself, so uiautomator reads nothing there, but `adb screencap`
 shows it (only the video is DRM-black). So: one screenshot, the Mac's local Vision OCR for the
 words and where they are, and the screenshot's pixels for which item is lit up. Focused items on

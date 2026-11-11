@@ -6,7 +6,7 @@ import pytest
 
 from redzone.discovery.stickio import clear_prompt
 from redzone.tuners.profiles import ProfileSelectionRequired, select_profile
-from redzone.tuners.providers import DiagnosingTuner, PeacockTuner
+from redzone.tuners.providers import AppTuner, DiagnosingTuner
 from redzone.tuners.tuners import CutGuard, CutWindowClosed, YouTubeTVTuner
 
 
@@ -97,8 +97,14 @@ async def test_cut_window_rechecked_after_each_slow_profile_read():
     assert guard.changed and st.keys == ["KEYCODE_DPAD_RIGHT"]
 
 
+class GenericAppTuner(AppTuner):
+    """A TEST DOUBLE: the real PeacockTuner was removed (never Peacock, DEV-01); any AppTuner shows the forwarding."""
+    app = role = "generic"
+    name = "Generic"
+
+
 async def test_diagnosing_wrapper_forwards_preference_and_app_tuner_uses_it():
-    tuner = DiagnosingTuner(PeacockTuner())
+    tuner = DiagnosingTuner(GenericAppTuner())
     tuner.preferred_profile = "Taylor"
     st = FakeStick([picker("Taylor")])
     await tuner._read_screen(st, [], scheduled=True)

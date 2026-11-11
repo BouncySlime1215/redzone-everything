@@ -18,6 +18,7 @@ ending at the last layer (train_peft.py does).
 dequantized base) writes its greedy answer, then mlx_lm with the 4-bit base + converted adapter
 scores that same answer in one forward pass. If MLX's argmax matches every answer token, MLX's
 greedy decoding writes the identical answer. Also reports the largest logit gap.
+Why: Converts a PEFT LoRA adapter to the mlx_lm format the Mac loads (docstring).
 """
 from __future__ import annotations
 

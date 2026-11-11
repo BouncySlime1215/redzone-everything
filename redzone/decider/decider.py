@@ -1,5 +1,7 @@
 """The switch decider: a producer that never cuts you off mid-play.
 
+Why: Rule #1 in the switch decision: states and locks decide when a cut is allowed, so a play is never cut off (commit 2026-11-02 'Mid-play guard').
+
 States (shown on the phone):
   IDLE       nothing live
   WATCHING   on a game, free to leave at the next safe gap
@@ -34,16 +36,26 @@ from typing import Callable
 
 from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S, PLAY_LEN_S, DelayBook, Event, Gate,
                                     Timeline, break_on_arrival, catchable, final_play_aired, leave_gate,
-                                    leave_window, resume_lead, resume_play)
+                                    leave_window, resume_lead, resume_play, STALE_DATA_S, _stoppage_reached)
 from redzone.decider.cuts import EntryPlan, plan_entry
+from redzone.decider import buffered as bj
+from redzone.decider import cuts
 from redzone.decider.playbooks import Safety
 from redzone.decider.scenarios import Scenarios
+from redzone.contracts import brain
+from redzone.moments import fill as fill_ladder
+from redzone.moments import slate as slate_mod
+from redzone.noggin import arbiter, catchup, legal
 from redzone.noggin.lookahead import ahead
-from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
+from redzone.noggin.priority import NO_MOMENT as P_NO_MOMENT
+from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage, league_index
 from redzone import config as _config
+from redzone import measured_timing
 from redzone.decider import core
 from redzone.decider.core import BreakView, CoreState, DecisionCore, Knobs, MomentView, Option, SwitchPath
 from redzone.scoring.engine import Scored
+from redzone.fsm import MachineMap
+from redzone.machines import decider as M
 
 log = logging.getLogger(__name__)
 
@@ -107,6 +119,7 @@ START_RETRY_MAX_S = 60.0
 ENTRY_EXEMPT = {"user", "resume", "skip"}   # resume/skip land on a planned frame of the same tune
 PICK_KEEPS = {"user", "crunch", "home", "must_see", "live"}
 # [jump mode] switches the normal decider makes that the rotation never overrides (they already go at once)
+ARBITER_KEEPS = {"user", "crunch", "ended", "start", "chase", "must_see", "drive", "home", "live", "resume", "skip"}   # [arbiter] never its call
 JUMP_KEEPS = {"user", "crunch", "ended", "start", "chase", "must_see", "drive", "replay", "resume", "skip"}   # [noggin PICK] app-only switch kinds
 ENTRY_SLACK_S = 2.0       # the tune's own timing doubt, on top of the delay's 2 sigma
 # Once the delay's doubt grows (sigma drifts up between calibrations) no landing fits a 30 s huddle
@@ -192,6 +205,25 @@ class Decision:
     cue: str = ""             # [seek model] "pause": the hidden stick cues the rewind before the flip
     defer_s: float = 0.0      # [EXP-803 A1] cut this long after the decision (a break's tail inside one tick)
     jump: dict | None = None  # [jump mode] why this jump: numbers and short codes only (data/jumps.jsonl)
+    owner: str = ""           # [owner] which decider owned the TV on this tick (decider.owner: jump, normal, user...)
+    leave_held: bool = False  # [LEAVE-AT-FLIP] listed with the leave gate shut: the commit gate judges its flip, whatever commit_gate.enabled says
+
+
+def flip_gate():
+    """redzone.decider.gate: it imports this module, so it is imported on first use."""
+    from redzone.decider import gate
+    return gate
+
+
+@dataclass(frozen=True)
+class LeaveHold:
+    """[LEAVE-AT-FLIP] The arbiter's cut, waiting on the leave rules or a landing: what was picked, off which game, since when."""
+    option_id: str
+    target: str
+    kind: str
+    why: str              # the arbiter's reason ("floor:td", "brain"): says what "still worth it" means
+    current: str | None
+    at: float
 
 
 @dataclass
@@ -209,10 +241,15 @@ class Missed:
     due_s: float = 0.0        # [replay.redzone_way] replay it within this long of the play (0 = old rule)
     must: bool = False        # [T4] missed because another big play was on screen: head of the queue
     aired: float = 0.0        # when it aired on the screen (wallclock; 0 = unknown, use t)
+    retry_at: float = 0.0     # [Nick, Nov 8 live] a failed replay of this play isn't tried again before this
+    fails: int = 0            # failed replays of this play (replay.max_fails drops it)
+    offset_s: float = 0.0     # [arbiter.catchup_route] where in the clip this airing starts: a later piece seeks past what already aired
+    piece_s: float = 0.0      # ...how long this piece holds the screen (0 = the old whole-replay timing)
+    marked_replay: bool = False   # ...the screen already showed this result: it airs labelled as a replay, never as news
 
     def back_s(self, now: float, delay_mu: float, play_len: float, lead_s: float = 3.0) -> float:
         """How far to rewind from the live edge (which shows real time now - delay)."""
-        return max(0.0, (now - delay_mu) - (self.t - play_len - lead_s))
+        return max(0.0, (now - delay_mu) - (self.t - play_len - lead_s + self.offset_s))
 
 
 REPLAY_BASE = {"td": 75, "goal": 75, "safety": 70, "turnover": 65, "hr": 60, "fg": 35}
@@ -242,6 +279,30 @@ class Decider:
         self.cfg = cfg
         self.delays = delays
         self._clock = clock
+        # [state machines] redzone/machines/decider.py: each is the one source of truth for its state; the old
+        # attribute names (current, replaying, after_replay, home_break_visit, safe_mode, ...) are properties on them
+        self.owner_m = M.OWNER.new(clock=clock)          # which decider owns the TV this tick
+        self.screen_m = M.DECIDER_SCREEN.new(clock=clock)        # unknown / tuning / live / replaying / after_replay
+        self.start_m = M.START.new(clock=clock)          # the first pick after a (re)start, and its backoff
+        self.gone_m = M.SCREEN_GONE.new(clock=clock)     # [buffered jump] keeping a buffered standby (was _bj_gone_since)
+        self.home_m = M.DECIDER_HOME.new(clock=clock)            # a break visit (home_break_visit / home_return_at)
+        self.safe_m = M.SAFE.new(clock=clock)            # safe mode (safe_mode / safe_since)
+        self.override_m = M.OVERRIDE.new(clock=clock)    # your strongest override this tick
+        self.lock_m = M.LOCK_WAIT.new(clock=clock)       # [lock wait]
+        self.entry_m = M.ENTRY_WAIT.new(clock=clock)     # [cut timing] a whistle wait (was _entry_wait)
+        self.leave_m = M.LEAVE_WAIT.new(clock=clock)     # [legal.leave_at_flip] the arbiter's cut waiting on the leave rules
+        self._dark_since: dict[str, float] = {}      # [P1-REVIEW-05] gid -> when an entry first waited on a feed that can't prove a dead ball
+        self._dark_said: set[str] = set()            # ...and told the phone once
+        self.entry_stuck: str | None = None          # the engine toasts this once: nothing else to go to
+        self._restored_screen: tuple[str, float, bool] | None = None   # [P-04] note_restart: (game, saved at, high leverage)
+        self.jump_break_m = MachineMap(M.JUMP_BREAK, clock=clock)   # [jump mode] per game (was _jump_break_at)
+        self._current: str | None = None
+        self._clip: "Missed | None" = None               # the replay clip while screen_m is 'replaying'
+        self._home: str | None = None
+        self._home_at: float | None = None
+        self._arrival: float = 0.0
+        self._start_retry_at = 0.0
+        self.home_leaks = 0                              # a filter's stay that left a new visit set (restored)
         self.overlap_why: Counter = Counter()   # [GAME-05] overlap calls (audit)
         self.lookahead_why: dict[str, int] = {}   # [GAME-04] outcomes by reason (audit)
         # [possession start] the per-possession jump / stay policy: (decision, candidate, now) -> "jump" |
@@ -269,29 +330,36 @@ class Decider:
         # engine knows one. None = unknown, and the 'wait for your team' rule stays off.
         self.my_tip_at: Callable[[], float | None] | None = None
         self.user = UserState()
-        self.current: str | None = None
+        # current: property (screen_m's game)
         self.pick_log: deque = deque(maxlen=2000)   # [noggin PICK] (t, on, pick, app action, app target)
         self.since: float = 0.0
-        self._arrival_until: float = 0.0   # simulated transport work, not a viewing-time quota
+        # _arrival_until: property (screen_m 'tuning' until then; simulated transport work, not a viewing-time quota)
         self.stack: deque[str] = deque(maxlen=3)   # where we came from, for "go back"
-        self.home_break_visit: str | None = None   # game we left only for its break
-        self.home_return_at: float | None = None    # long break: head back at this time at the latest
+        # home_break_visit (game we left only for its break) / home_return_at (long break: head back by then): home_m
         self.history: deque[tuple[float, str, str]] = deque(maxlen=50)
+        self.arbiter_brain: brain.Brain = arbiter.NullBrain()   # [arbiter] no brain yet; read only with arbiter.enabled on
+        self.arbiter_log: Counter = Counter()                   # [arbiter] why each tick's choice went that way
+        self.arbiter_plan_memo: tuple = (None, None)            # [MUST-LIVE] (clips and stick it was asked about, its answer)
+        self.slate_scene: slate_mod.Scene | None = None         # [slate] this tick's scene; None: flag off, today's rotation
+        self.slate_log: Counter = Counter()                     # [slate] which mode each tick ran in
+        self._slate_block: slate_mod.Block | None = None
+        self._slate_peak = 0                                    # the night's most live games, so one left reads as the ending
+        self._slate_owed: set[str] = set()
+        self.fill_choice: fill_ladder.FillChoice | None = None  # [fill] the ladder's last answer (phone / reel read it)
+        self.fill_log: Counter = Counter()
         self.frozen_until = 0.0
         self.margin_bump_until = 0.0
         self.errors: deque[float] = deque(maxlen=10)
-        self.safe_mode = False
-        self.safe_since = 0.0   # when safe mode last turned on (for the timed auto-resume)
+        # safe_mode / safe_since: properties on safe_m (when safe mode last turned on, for the timed auto-resume)
         self.timelines: dict[str, Timeline] = {}
         self.log: deque[Decision] = deque(maxlen=500)
         self._screen_break: set[str] = set()
         # Catch-up replays
         self.queue: list[Missed] = []
         self.done_replays: deque[Missed] = deque(maxlen=200)
-        self.replaying: Missed | None = None
+        # replaying / after_replay: properties on screen_m
         self.replay_until = 0.0
         self.replay_exit_after = 0.0   # retained if interrupted: old footage may still be mid-play
-        self.after_replay = False
         self._screen_log: deque[tuple[float, str | None]] = deque(maxlen=400)  # (from, game | "replay" | None=black)
         self._judged: set[tuple[str, str]] = set()
         self._target_of: dict[str, str] = {}
@@ -311,8 +379,8 @@ class Decider:
         self._last_target = self._known_target   # (crunch-time code's name for the same memory)
         self._proposal_home: tuple | None = None
         self.start_fails = 0            # start picks in a row that didn't land
-        self.start_retry_at = 0.0       # ...so the next start pick waits until then
-        self._entry_wait: tuple | None = None   # (target, waiting since, last tick) for a whistle wait
+        # start_retry_at (the next start pick waits until then): property on start_m
+        self._entry_last = 0.0          # last tick of the whistle wait (entry_m: key = target, since = first wait)
         # [core] Every soft choice (which game, visit or not, reel, replay vs live, go back) is scored by
         # the one expected-value function in core.py; the rules left in here are the hard guards.
         self.core = DecisionCore(Knobs.from_cfg(cfg))
@@ -330,7 +398,204 @@ class Decider:
         # ready for a ~3 s flip (None: no such knowledge, e.g. the simulator); and is it a slow search tune (a local)
         self.standby_ready: Callable[[str], bool] | None = None
         self.slow_tune: Callable[[str], bool] | None = None
+        # [jump mode] why the rotation didn't jump, since the last switch of any kind (reset in _commit; the tick's owner
+        # is in owner_m, so a 'safe_mode' / 'normal_crunch' count says which decider held the TV)
         self.jump_holds: Counter = Counter()
+        self.snap_parked: Callable[[str | None], float | None] | None = None   # [buffered jump] the engine's control
+        self._bj_pair: tuple[frozenset, float] | None = None   # [buffered jump] the two games on the sticks, since when
+
+    # ----- state machines: the old attribute names ------------------------------------------------------------
+    # Defaults at class level, and machines made on first use, so a Decider built without __init__ (unit tests use
+    # Decider.__new__) still works.
+    _current: str | None = None
+    _clip: "Missed | None" = None
+    _home: str | None = None
+    _home_at: float | None = None
+    _arrival: float = 0.0
+    _start_retry_at: float = 0.0
+    _entry_last: float = 0.0
+    home_leaks: int = 0
+    _leave_pick: LeaveHold | None = None
+    _route_doing: tuple[Missed, float] | None = None   # [arbiter.catchup_route] the clip in pieces: (the play, seconds of it already aired)
+    _route_clip: tuple[Missed, float] | None = None    # [arbiter.catchup_route_short] (the play, its clip's own length) of the piece last offered
+    _route_stick_at: float = float("-inf")   # [arbiter.catchup_route] when the hidden stick's last job began (a cut, a replay or piece that
+                                             # ended): it is loading until this + the route's prep_s. Read only by the route
+    _LAZY = {"owner_m": M.OWNER, "screen_m": M.DECIDER_SCREEN, "start_m": M.START, "gone_m": M.SCREEN_GONE, "home_m": M.DECIDER_HOME,
+             "safe_m": M.SAFE, "override_m": M.OVERRIDE, "lock_m": M.LOCK_WAIT, "entry_m": M.ENTRY_WAIT, "leave_m": M.LEAVE_WAIT,
+             "catchup_m": M.CATCHUP_ROUTE}
+
+    def __getattr__(self, name: str):
+        spec = Decider._LAZY.get(name)
+        clock = self.__dict__.get("_clock", time.time)
+        if spec is not None:
+            m = self.__dict__[name] = spec.new(clock=clock)
+            return m
+        if name == "jump_break_m":
+            m = self.__dict__[name] = MachineMap(M.JUMP_BREAK, clock=clock)
+            return m
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+
+    # Writes from outside the decider (tests, the recorded session, a restart) land here; the decider's own moves go
+    # through screen_m.to() / home_m.to() / ... with a reason. A direct write is a restore: reset() with its name.
+
+    @property
+    def current(self) -> str | None:
+        """The game on screen (screen_m says whether it's live, landing, a replay or old footage)."""
+        return self._current
+
+    @current.setter
+    def current(self, gid: str | None) -> None:
+        self._current = gid
+        if gid is None:
+            self.screen_m.reset("unknown", "current cleared")
+        elif self.screen_m.is_("unknown"):
+            self.screen_m.reset("live", "current set")
+
+    @property
+    def replaying(self) -> "Missed | None":
+        return self._clip if self.screen_m.is_("replaying") else None
+
+    @replaying.setter
+    def replaying(self, m: "Missed | None") -> None:
+        self._clip = m
+        if m is not None:
+            self.screen_m.reset("replaying", "replaying set")
+        elif self.screen_m.is_("replaying"):
+            self.screen_m.reset("live" if self._current else "unknown", "replaying cleared")
+
+    @property
+    def after_replay(self) -> bool:
+        return self.screen_m.is_("after_replay")
+
+    @after_replay.setter
+    def after_replay(self, on: bool) -> None:
+        if on:
+            self.screen_m.reset("after_replay", "after_replay set")
+        elif self.screen_m.is_("after_replay"):
+            self.screen_m.reset("live" if self._current else "unknown", "after_replay cleared")
+
+    @property
+    def _arrival_until(self) -> float:
+        return self._arrival
+
+    @_arrival_until.setter
+    def _arrival_until(self, t: float) -> None:
+        self._arrival = t
+        if self.screen_m.is_("tuning") and t <= self._clock():
+            self.screen_m.to("live" if self._current else "unknown", "arrival confirmed")
+
+    def _screen_tick(self, now: float) -> None:
+        """A dry-run / simulated tune lands once its estimated cost has passed."""
+        if self.screen_m.is_("tuning") and now >= self._arrival:
+            self.screen_m.to("live" if self._current else "unknown", "the tune's estimated arrival passed", now=now)
+
+    @property
+    def home_break_visit(self) -> str | None:
+        return self._home
+
+    @home_break_visit.setter
+    def home_break_visit(self, gid: str | None) -> None:
+        self._home_set(gid, self._home_at, "home_break_visit set")
+
+    @property
+    def home_return_at(self) -> float | None:
+        return self._home_at
+
+    @home_return_at.setter
+    def home_return_at(self, t: float | None) -> None:
+        self._home_set(self._home, t, "home_return_at set")
+
+    def _home_set(self, gid: str | None, at: float | None, why: str) -> None:
+        """The one way a break visit changes: home_m follows (none / visit / visit_timed)."""
+        if gid is None:
+            at = None   # [AUDIT-8] a return time dies with its visit: kept, the next visit started out overdue
+        self._home, self._home_at = gid, at
+        self.home_m.to("none" if gid is None else "visit_timed" if at is not None else "visit", why)
+
+    def _home_restore(self, home_before: tuple, why: str) -> None:
+        """A filter turned this tick's switch into a stay: whatever visit the switch planned waits with it."""
+        if (self._home, self._home_at) != tuple(home_before):
+            self._home_set(home_before[0], home_before[1], f"restored: {why}")
+
+    @property
+    def safe_mode(self) -> bool:
+        return self.safe_m.is_("safe")
+
+    @safe_mode.setter
+    def safe_mode(self, on: bool) -> None:
+        self.safe_m.to("safe" if on else "ok", "safe_mode set")
+
+    @property
+    def safe_since(self) -> float:
+        return self.safe_m.since if self.safe_m.is_("safe") else self._safe_since_off
+
+    @safe_since.setter
+    def safe_since(self, t: float) -> None:
+        if self.safe_m.is_("safe"):
+            self.safe_m.since = t
+        else:
+            self._safe_since_off = t
+
+    _safe_since_off = 0.0
+
+    @property
+    def start_retry_at(self) -> float:
+        return self._start_retry_at
+
+    @start_retry_at.setter
+    def start_retry_at(self, t: float) -> None:
+        self._start_retry_at = t
+        if t <= 0.0 and self.start_m.is_("backoff"):
+            self.start_m.to("ready", "start backoff cleared")
+
+    @property
+    def _entry_wait(self) -> tuple | None:
+        """(target, waiting since, last tick) of a whistle wait, or None (entry_m)."""
+        m = self.entry_m
+        return (m.key, m.since, self._entry_last) if m.is_("waiting") else None
+
+    @_entry_wait.setter
+    def _entry_wait(self, w: tuple | None) -> None:
+        if w is None:
+            self.entry_m.to("idle", "cleared")
+            return
+        tgt, since, last = w
+        if not self.entry_m.is_("waiting") or self.entry_m.key != tgt or self.entry_m.since != since:
+            if self.entry_m.is_("waiting"):
+                self.entry_m.to("idle", f"a new wait for {tgt}")
+            self.entry_m.key = tgt
+            self.entry_m.to("waiting", f"switch to {tgt} waits for a dead ball", now=since)
+        self._entry_last = last
+
+    @property
+    def _jump_break_at(self) -> dict[str, float]:
+        """When the feed first said 'break' per game (jump_break_m); read-only view."""
+        return {g: m.since for g, m in self.jump_break_m.items() if m.is_("break")}
+
+    @property
+    def _bj_gone_since(self) -> float | None:
+        return self.gone_m.since if self.gone_m.is_("keeping", "let_go") else None
+
+    def _override_tick(self, now: float) -> None:
+        """decider.override: your strongest override, in the order _decide honours them (a view: UserState is what the
+        phone writes and redzone/userstate.py persists; this says which part of it is in charge now)."""
+        u = self.user
+        st, why = (("safe", "safe mode") if self.safe_mode else ("paused", "paused") if u.paused
+                   else ("locked", f"locked on {u.locked_game}") if u.locked_game
+                   else ("manual", "you just picked a game") if now < u.manual_until
+                   else ("focus", f"{getattr(u.focus_mode, 'value', u.focus_mode)} on {u.focus_game}")
+                   if u.focus_mode != FocusMode.AUTOPILOT else ("auto", "autopilot"))
+        self.override_m.to(st, why, now=now)
+
+    def machines(self, now: float | None = None) -> dict:
+        """[state machines] Every decider machine now (snapshot()['machines'], jump_status)."""
+        return {"owner": self.owner_m.view(now, history=0), "screen": self.screen_m.view(now, history=0),
+                "start": self.start_m.view(now, history=0), "screen_gone": self.gone_m.view(now, history=0),
+                "home": {**self.home_m.view(now, history=0), "game": self._home, "return_at": self._home_at},
+                "safe": self.safe_m.view(now, history=0), "override": self.override_m.view(now, history=0),
+                "lock_wait": self.lock_m.view(now, history=0), "entry_wait": self.entry_m.view(now, history=0),
+                "leave_wait": self.leave_m.view(now, history=0),
+                "jump_break": self.jump_break_m.view(now), "home_leaks": self.home_leaks}
 
     # ----- inputs -----------------------------------------------------------
 
@@ -372,8 +637,7 @@ class Decider:
         self.errors.append(now)
         recent = [t for t in self.errors if now - t < 300]
         if len(recent) >= 3 and not self.safe_mode:
-            self.safe_mode = True
-            self.safe_since = now
+            self.safe_m.to("safe", f"{len(recent)} errors in 5 minutes", now=now)
 
     def auto_resume(self, after_s: float) -> bool:
         """Leave safe mode on its own once it has been on for after_s seconds: nobody is in the
@@ -382,12 +646,15 @@ class Decider:
         again within three errors."""
         if not self.safe_mode or self._clock() - self.safe_since < after_s:
             return False
-        self.safe_mode = False
+        self._safe_since_off = self.safe_since
+        self.safe_m.to("ok", f"auto-resumed after {after_s:.0f}s")
         self.errors.clear()
         return True
 
     def resume(self) -> None:
-        self.safe_mode = False
+        if self.safe_mode:
+            self._safe_since_off = self.safe_since
+            self.safe_m.to("ok", "Resume tapped")
         self.user.paused = False
         self.frozen_until = 0.0
         self.errors.clear()
@@ -421,83 +688,223 @@ class Decider:
         cands = self._nfl_priority(cands)
         self._learn_entries(cands)
         self._scan_missed(cands, now)
+        self._screen_tick(now)
         if self.replaying:
             if self.safe_mode or self.user.paused or self.on_screen_at(now) != "replay":
                 self.abort_replay()
+            elif now >= self.replay_until and self._route_piece_ended(now):
+                pass
             elif now >= self.replay_until:
-                self.replaying.replayed = True
-                self.done_replays.append(self.replaying)
-                self.replaying = None
-                self.after_replay = True
+                self._route_stick_at = now     # [catchup_route] the hidden stick is free to load the next clip from here
+                self._clip.replayed = True
+                self.done_replays.append(self._clip)
+                self._clip = None
+                self.screen_m.to("after_replay", "the replay clip ended", now=now)
+        self._override_tick(now)
         home_before = (self.home_break_visit, self.home_return_at)
+        cands = self._without_dark_targets(cands, now)
         d0 = d = self._decide(cands, now)
         d = self._scenario(d, cands, now, home_before)
         d = self._clairvoyant(d, cands, now, home_before)
         d = self._crunch_guard(d, cands, now, home_before)
         d = self._pick(d, cands, now)
+        d = self._arbiter(d, cands, now, home_before)
         d = self._hold_for_big(d, cands, now, home_before)
         d = self._time_entry(d, cands, now, home_before)
         d = self._dwell(d, cands, now, home_before)
         d = self._crunch_floor(d, d0, cands, now, home_before)
-        j = self._jump(d, cands, now)
+        if self._slate_on():
+            self._slate_tick(cands, now)
+        else:
+            self.slate_scene = None   # turned off at runtime: today's rotation from this tick on
+        # [owner] exactly one decider owns the TV this tick; the rotation's switch and its veto of the normal
+        # decider's optional switches both follow from this one call (they used to check 8 and 4 conditions)
+        owner, why = self._own(d, cands, now)
+        self.owner_m.to(owner, why, now=now)
+        if owner in ("jump", "buffered") and why != "just_arrived":
+            j = self._jump(d, cands, now, why)
+        else:
+            self._count_hold(why)
+            j = None
         if j is not None:
-            self.home_break_visit, self.home_return_at = None, None   # a rotation has no home to go back to
+            self._home_set(None, None, "a rotation has no home to go back to")
             d = j
-        elif self._jump_owns(d, cands):
+        elif self._jump_owns(d, cands, owner, why):
             # [jump mode] the rotation owns every optional switch (a break visit, the way home, a better game):
             # the normal decider's would fight it. Its hard switches (crunch, a finished game, a chase...) still go.
-            self.home_break_visit, self.home_return_at = None, None
+            # The visit that switch planned waits with it, like every other filter's stay.
+            self._home_restore(home_before, "jump mode owns optional switches")
             d = Decision(now, "stay", self.current, f"jump mode: {d.reason}", d.state, d.gate, want=d.target)
+        d = self._fill(d, cands, now, owner)
+        if d.action == "switch" and d.kind == "start" and self._restart_hold(cands, now):
+            # [P-04] jump mode off too: the rotation's own hold (_jump) only runs when it owns the TV
+            self._home_restore(home_before, "restart hold: a stay")
+            d = Decision(now, "stay", self.current, f"restart: holding the saved game's leverage ({d.reason})", d.state,
+                         d.gate, want=d.target)
         d = self._safe(d, cands, now, home_before)
+        self._leave_settle(d, now)
+        if d.action not in ("switch", "replay") and self._home is not None and self._home != home_before[0]:
+            # [home] a filter turned a switch into a stay without putting the planned visit back: never leak it
+            self.home_leaks += 1
+            log.warning("home visit leaked by a stay (%s): restored", d.reason[:80])
+            self._home_restore(home_before, "a stay can't start a visit")
+        d.owner = owner
         if not commit and d.action in ("switch", "replay"):
             # The simulator can commit synchronously. A real TV must confirm
             # the command first: a proposal is not a watched game or replay.
             self._proposal_home = (d, self.home_break_visit, self.home_return_at)
-            self.home_break_visit, self.home_return_at = home_before
+            self._home_restore(home_before, "a proposal: the visit starts when the TV confirms it")
             self.log.append(d)
             return d
         if d.action == "switch" and d.target:
             if d.target == self.current and not self.after_replay and d.kind != "skip":
-                d = Decision(now, "stay", self.current, "already here", d.state)
+                d = Decision(now, "stay", self.current, "already here", d.state, owner=owner)
             else:
                 if d.kind in ("resume", "skip"):
                     self.resume_log.append((now, d.kind, d.target, d.rewind_s))
-                self._commit(d.target, kind=d.kind)
+                self._commit(d.target, kind=d.kind)   # after_replay ends here: screen_m -> tuning
                 self._land_behind(d.target, d.rewind_s)
-                self.after_replay = False
         elif d.action == "replay" and d.replay:
             self._pause_for(d, now)
             self._start_replay(d.replay, cands, now)
         self.log.append(d)
         return d
 
+    def legal_facts(self, cands: dict[str, Candidate], now: float | None = None) -> legal.Facts:
+        """[WP-16] The facts legal.legal_options reads, for WP-17's arbiter. Reads only; decide() doesn't call it, so the
+        decision can't depend on it. A game with no entry plan isn't landable, unless it's a pseudo channel."""
+        from redzone.noggin.priority import HardRules
+        now = self._clock() if now is None else now
+        u, c = self.user, self.cfg
+        cur = cands.get(self.current) if self.current else None
+        gate = self._gate(cur, now) if cur is not None else None
+        hold = c.get("decider.crunch.hold_personal", 5)
+        rows = []
+        for gid, x in cands.items():
+            s = x.scored
+            plan = None if gid in PSEUDO else self.entry_plan(gid, cands, now)
+            cost = (self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target)) if x.target else 0.0
+            resume = plan.landing.resume if plan is not None and plan.landing is not None else None
+            big = cur is not None and legal.must_see(s.score, cur.scored.score, c.get("decider.must_see_score"),
+                                                     c.get("decider.must_see_lead"))
+            rows.append(legal.GameRow(
+                game_id=gid, app=(x.target or "").split(":", 1)[0], tunable=legal.tunable(gid, x, u.muted),
+                dark=self._entry_dark(gid, x, now), landable=gid in PSEUDO or bool(plan and plan.ok), reel=gid == REEL,
+                l1_class=0 if (gid in self._yours or s.personal >= hold) else 1 if s.crunch else 2, must_see=big,
+                latest_s=max(0.0, resume - now) if resume is not None else 0.0, needs_prep_s=cost if math.isfinite(cost) else 0.0))
+        on_game = bool(self.current) and self.current not in PSEUDO
+        return legal.Facts(
+            now=now, current=self.current, safe_mode=self.safe_mode, paused=u.paused, locked_game=u.locked_game,
+            manual_until=u.manual_until, arrival_until=self._arrival_until, since=self.since,
+            dwell_min_s=float(self._lc("decider.dwell.min_s", cur, 0) or 0) if on_game else 0.0,
+            dwell_kinds=tuple(self._lc("decider.dwell.kinds", cur, None) or ()),
+            last_switch_at=self.history[-1][0] if self.history else None,
+            min_gap_s=float(c.get("noggin.pick.min_gap_s", 0.0)),
+            gate_ok=bool(gate and gate.safe), leave_at_flip=self._leave_at_flip(),
+            moment_lock=(cur.scored.lock or "") if cur is not None else "",
+            focus_game=u.focus_game if u.focus_mode != FocusMode.AUTOPILOT else None,
+            focus_must_see=u.focus_mode == FocusMode.FOCUS_MUST_SEE,
+            banned_apps=HardRules.from_config(c).banned_apps, games=tuple(rows))
+
+    def legal_options(self, cands: dict[str, Candidate], now: float | None = None) -> tuple:
+        """[WP-16] What the show may do right now (brain.Option), stay first."""
+        return legal.legal_options(self.legal_facts(cands, now))
+
+    def forget_screen(self, why: str) -> None:
+        """Nothing is known on screen any more (dry run turned off, a recorded session): current None, no replay
+        footage, no tune landing. (recorded.py writes the same attributes one by one; they land here too.)"""
+        self._current, self._clip, self._arrival = None, None, 0.0
+        self._screen_log.clear()
+        self.replay_exit_after = 0.0
+        self.screen_m.reset("unknown", why)
+
+    def adopt(self, gid: str) -> None:
+        """[overseer Nov 7 23:00] The TV already shows gid (read back from the stick after a restart): learn the
+        screen game without a tune, so jump mode stops holding 'screen_game_unknown'."""
+        self._restored_screen = None
+        self._commit(gid, kind="adopt", arrived=True)
+
+    def note_restart(self, gid: str | None, at: float, high_leverage: bool = False) -> None:
+        """[P-04] The app restarted with gid on screen (from the engine's saved state; `at` = the saving wall time). Until
+        adopt() or buffered_jump.restart_hold_s after it, the unknown screen counts as that game for the leave rule."""
+        self._restored_screen = (gid, at, bool(high_leverage)) if gid else None
+
+    def restart_state(self, s=None) -> tuple[str, bool] | None:
+        """[P-04] What a restart would need to know: (the game on screen, is it high leverage). s: its fresh Scored."""
+        gid = self.current
+        if gid is None or gid in PSEUDO:
+            return None
+        if s is None:
+            x = self._known.get(gid)
+            s = x.scored if x is not None else None
+        lev = s is not None and bool(getattr(s, "high_leverage", False) or s.crunch or self._mine_late(s))
+        return gid, lev
+
+    def _restart_hold(self, cands: dict[str, Candidate], now: float) -> bool:
+        """[P-04] Don't free-cut away from an unknown screen while it is probably the close, late game we saved."""
+        saved = self._restored_screen
+        if saved is None or self.current is not None:
+            return False
+        gid, at, lev = saved
+        if now - at > float(self.cfg.get("buffered_jump.restart_hold_s", 120.0)):
+            self._restored_screen = None
+            return False
+        x = cands.get(gid)
+        if x is not None:
+            lev = bool(getattr(x.scored, "high_leverage", False) or x.scored.crunch or self._mine_late(x.scored))
+        return lev
+
     def confirm(self, d: Decision, cands: dict[str, Candidate]) -> None:
         """Commit an observed playback change, with screen time from confirmation."""
         if self._proposal_home and self._proposal_home[0] is d:
-            _, self.home_break_visit, self.home_return_at = self._proposal_home
+            _, home, at = self._proposal_home
+            self._home_set(home, at, f"the TV confirmed the {d.kind or d.action}")
         self._proposal_home = None
         if d.action == "replay" and d.replay:
             self._pause_for(d, self._clock())
             self._start_replay(d.replay, cands, self._clock(), confirmed=True)
         elif d.target:
             self.abort_replay()
-            self._commit(d.target, kind=d.kind)
+            # _commit's future estimate is for offline simulation. The TV already confirmed: no extra tune or
+            # watched time (arrived=True logs the picture once, instead of popping the estimate back off)
+            self._commit(d.target, kind=d.kind, arrived=True)
             self._land_behind(d.target, d.rewind_s)
-            # _commit's future estimate is for offline simulation. The TV
-            # already confirmed: don't fabricate an extra tune or watched time.
-            self._screen_log.pop()
-            self._screen_log.pop()
-            self._screen_log.append((self._clock(), d.target))
-            self._arrival_until = 0.0
-            self.after_replay = False
 
-    def reject(self, d: Decision) -> None:
+    def replay_failed(self, m: Missed, now: float | None = None) -> None:
+        """[Nick, Nov 8 live, UGA@MISS] A replay that failed (any path) backs off: it was decided again every tick
+        and failed at ~2 Hz ('replay seek failed; kept current game'). replay.fail_retry_s before it may be tried
+        again; after replay.max_fails failures it leaves the queue."""
+        now = self._clock() if now is None else now
+        m.fails += 1
+        if m.fails >= int(self.cfg.get("replay.max_fails", 2)):
+            self.queue = [q for q in self.queue if q is not m]
+            m.retry_at = float("inf")
+        else:
+            m.retry_at = now + float(self.cfg.get("replay.fail_retry_s", 120))
+
+    def reject(self, d: Decision, backoff: bool = True) -> None:
+        """The TV didn't take d. backoff=False: it was superseded by a newer switch (not a failed start)."""
         if self._proposal_home and self._proposal_home[0] is d:
             self._proposal_home = None
-        if d.kind in ("start", "user") and self.current is None:   # a first pick, or a lock/hold restored at start
+        if backoff and d.kind == "home" and d.target == self._home and self._home_at is not None \
+                and self._home_still_in_break(d.target):
+            # [AUDIT-8] the flip keeps a home trip out of a break it would land in (Engine._entry_valid: seed-2 night,
+            # 16 refusals in a row at 12 s each with the control lock held): the planned time has passed, so go back
+            # on the data, when the break has aired, instead of re-proposing the same refused switch
+            self._home_set(self._home, None, "the flip won't land in its break: back when the break has aired")
+        if backoff and d.kind in ("start", "user") and self.current is None:   # a first pick, or a lock/hold restored at start
             self.start_fails += 1
             wait = min(START_RETRY_MAX_S, START_RETRY_S * 2 ** (self.start_fails - 1))
-            self.start_retry_at = self._clock() + wait
+            self._start_retry_at = self._clock() + wait
+            self.start_m.to("backoff", f"start pick #{self.start_fails} didn't land: next in {wait:.0f}s")
+
+    def _home_still_in_break(self, home: str) -> bool:
+        """Would a return to the game we left for its break land in that break (the flip's check)?"""
+        tl, x = self.timelines.get(home), self._known.get(home)
+        if tl is None or x is None:
+            return False
+        now = self._clock()
+        return break_on_arrival(tl, self.delays.get(x.target or "unknown"), now, now + self._deadline_cost(x.target))
 
     def lock_failed(self, d: Decision, why: str) -> None:
         """[lock wait] A switch to your locked game failed for a reason that is the target's
@@ -512,12 +919,18 @@ class Decider:
     def _lock_note(self, gid: str, why: str, now: float) -> None:
         if self.lock_gid != gid:
             self.lock_gid, self.lock_since, self.lock_retry_at = gid, None, 0.0
+            self.lock_m.to("idle", f"now about {gid}", now=now)
         if self.lock_since is None:
             self.lock_since = now
         self.lock_why = why
+        self.lock_m.key = gid
+        if self.lock_m.is_("idle"):
+            self.lock_m.to("waiting", why, now=now)
 
     def _lock_reset(self) -> None:
         self.lock_gid, self.lock_since, self.lock_retry_at, self.lock_why = None, None, 0.0, ""
+        self.lock_m.key = ""
+        self.lock_m.to("idle", "reachable / released")
 
     def _lock_wait(self, gid: str, x: Candidate, now: float) -> Decision | None:
         """[lock wait] Why a switch to the locked game can't go now, or None to switch.
@@ -531,6 +944,7 @@ class Decider:
         waited = now - self.lock_since
         if waited >= self.cfg.get("decider.lock_wait.max_s"):
             self.lock_expired = gid
+            self.lock_m.to("expired", f"unreachable for {waited:.0f}s: {self.lock_why}", now=now)
             return Decision(now, "stay", self.current, f"gave up on your locked game after {waited:.0f}s: "
                             f"{self.lock_why}", State.PAUSED, want=gid)
         if x.target and now >= self.lock_retry_at:
@@ -548,6 +962,20 @@ class Decider:
         also RedZone's channel while it's a candidate."""
         x = self._known.get(game_id or "")
         return x.target if x else self._target_of.get(game_id or "")
+
+    def _parkable(self, m: Missed, now: float) -> bool:
+        """[Nick, Nov 8 live, 879d99ed] A YouTube TV replay is a hidden-stick scrub of at most replay.yttv_max_lefts
+        15 s steps (~117 s back at the park), so a play older than replay.scrub_max_play_age_s (tune + park time and
+        the live-edge delay counted) can never be parked: every catch-up at 164-694 s was refused. Not queued."""
+        cap = float(self.cfg.get("replay.scrub_max_play_age_s", 95) or 0)
+        if cap <= 0 or self.cfg.get("replay.yttv_seek", "scrub") != "scrub":
+            return True
+        if self.cfg.get("arbiter.catchup_route", False):   # the route's own reach decides, and catchup.py caps it under 180 s
+            meas = measured_timing.route_costs(self.cfg)     # [timing.measured] the measured reach replaces the configured one
+            cap = max(cap, float(self.cfg.get("arbiter.catchup_route_reach_s", 95) or 0) if meas is None else meas["reach_s"])
+        if (self.target_of(m.game_id) or "youtubetv:").split(":", 1)[0] != "youtubetv":
+            return True
+        return now - m.t <= cap
 
     def _replayable(self, x: Candidate | None) -> bool:
         if x is None or not x.target:
@@ -576,8 +1004,8 @@ class Decider:
 
     def _scan_missed(self, cands: dict[str, Candidate], now: float) -> None:
         """After each big play has aired, note whether you saw it. If not, queue a replay."""
-        if not self.cfg.get("replay.enabled", True):
-            return
+        if not self.cfg.get("replay.enabled", True) or self.buffered_on():
+            return   # [buffered jump] the hidden stick is the editor's next cut: no catch-up queue (overseer Nov 8 22:15)
         max_age = self.cfg.get("replay.max_age_s", 1800)
         pool = self._replay_pool(cands)
         for gid, tl in self.timelines.items():
@@ -614,7 +1042,7 @@ class Decider:
                     self.queue.append(m)
         montage_age = max(max_age, self.cfg.get("replay.montage_age_s", 14400))
         self.queue = [m for m in self.queue if not m.replayed and m.game_id in pool
-                      and now - m.t <= (montage_age if self._rw(m.game_id) else max_age)]
+                      and now - m.t <= (montage_age if self._rw(m.game_id) else max_age) and self._parkable(m, now)]
 
     # ----- [replay.redzone_way] catch-up the RedZone way (Nick, Nov 4) ----------------------------
     # T1 everything dead: replay / reel (as before). T2 lull: nothing live worth staying for and a
@@ -731,7 +1159,8 @@ class Decider:
         team's own game is on screen, so its live snaps aren't traded for its old ones."""
         crunch_on = not montage and self._crunch_on(cands)
         games = self._replay_pool(cands)
-        pool = [m for m in self.queue if m.game_id != exclude and self._replayable(games.get(m.game_id))
+        pool = [m for m in self.queue if m.game_id != exclude and m.retry_at <= now and self._parkable(m, now)
+                and self._replayable(games.get(m.game_id))
                 and (not crunch_on or self._mine_cant_wait(m, now))]
         if not montage:     # [T5] older plays wait for the end-of-window montage (RedZone way, per league)
             pool = [m for m in pool if not self._rw(m.game_id) or now - m.t <= self.cfg.get("replay.max_age_s", 1800)]
@@ -746,7 +1175,8 @@ class Decider:
         if allow_seen and not pool:
             recent = now - self.cfg.get("replay.instant_window_s", 900)
             done_ids = {(d.game_id, d.pid) for d in self.done_replays if d.replayed}
-            pool = [m for m in self.done_replays if m.seen_live and m.t >= recent
+            pool = [m for m in self.done_replays if m.seen_live and m.t >= recent and m.retry_at <= now
+                    and self._parkable(m, now)
                     and (m.game_id, m.pid) not in done_ids and m.game_id in cands and m.game_id != exclude
                     and self._replayable(cands[m.game_id])]
         if budget is not None:
@@ -852,6 +1282,8 @@ class Decider:
         to one step early, and if the screen runs 2σ further behind than we think, 2σ earlier
         still. clip_s alone (15 s from 3 s before the snap) can end mid-play. (Padding by the
         exact overshoot instead measured worse on the scorecard, so: the worst case.)"""
+        if m.piece_s > 0:
+            return 0.0        # [arbiter.catchup_route] a piece is timed to fit the screen's dead time and shows its play whole
         x = cands.get(m.game_id)
         d = self.delays.get((x.target if x else None) or self._known_target.get(m.game_id) or "unknown")
         tl = self.timelines.get(m.game_id)
@@ -867,28 +1299,37 @@ class Decider:
             return
         if not m.replayed and not m.seen_live and m not in self.queue:
             self.queue.append(m)
-        self.replaying = None
+        self._route_stick_at = self._clock()    # [arbiter.catchup_route] the stick that showed it re-seeks from here
+        if m.piece_s > 0:         # [arbiter.catchup_route] interrupted: the clip starts over from the top if the cap allows
+            m.offset_s, m.piece_s, self._route_doing = 0.0, 0.0, None
+            self.catchup_m.to("idle", "the piece was interrupted")
+        self._clip = None
         self.replay_until = 0.0
-        self.after_replay = True   # the current picture is still old footage until a live tune
+        # the current picture is still old footage until a live tune
+        self.screen_m.to("after_replay", f"replay of {m.game_id} interrupted")
         self._screen_log.append((self._clock(), None))
 
     def _start_replay(self, m: Missed, cands, now: float, *, confirmed: bool = False) -> None:
+        piece = (m.offset_s, m.piece_s)
         self.abort_replay()
+        m.offset_s, m.piece_s = piece          # a confirm restarts the same replay: its piece keeps its place
         self._land_behind(None, 0.0)   # the replay seeks from the live edge; nothing stays behind
         if m in self.queue:
             self.queue.remove(m)
-        self.replaying = m
-        self.after_replay = False
+        self._clip = m
+        self.screen_m.to("replaying", f"{'confirmed ' if confirmed else ''}replay: {m.kind} in {m.game_id}", now=now)
         # A real controller has already tuned, sought, and begun playback at
         # confirmation. Counting preparation again needlessly holds old footage.
-        duration = self.cfg.get("replay.clip_s", 15) if confirmed else self._replay_cost(m, cands)
+        duration = m.piece_s if m.piece_s > 0 else self.cfg.get("replay.clip_s", 15) if confirmed else self._replay_cost(m, cands)
+        if m.piece_s > 0 and not self.catchup_m.is_("airing"):
+            self.catchup_m.to("airing", f"piece at {m.offset_s:.0f} s of {m.game_id}:{m.pid}", now=now)
         self.replay_until = now + duration + self._replay_overrun(m, cands, now)
         self.replay_exit_after = self.replay_until
         if confirmed:
-            self._arrival_until = 0.0
+            self._arrival = 0.0
         if self.current and self.current != m.game_id and self.current != self.home_break_visit:
             self.stack.append(self.current)
-        self.current = m.game_id
+        self._current = m.game_id
         self.since = now
         self.history.append((now, m.game_id, "replay"))
         self._screen_log.append((now, "replay"))
@@ -906,9 +1347,23 @@ class Decider:
         # restart: an unmeasured lag reads 10 s, which landed NHL entries after the faceoff (EXP-303).
         tl.dead.lag_floor = float(self._lc("decider.entry.lag_floor_s", x, 0.0) or 0.0)
         try:
-            return self._entry_plan(gid, cands, now, cost, urgent, possession)
+            return self._after_bucket(gid, cands, now, cost, self._entry_plan(gid, cands, now, cost, urgent, possession))
         finally:
             tl.dead.lag_floor = 0.0
+
+    def _after_bucket(self, gid: str, cands: dict[str, Candidate], now: float, cost: float | None,
+                      plan: EntryPlan | None) -> EntryPlan | None:
+        """[NBA-BUCKET] Nick's rule, basketball.join_after_bucket: a live-edge join right after a made basket takes over a
+        rewind or a wait (never a landing already on a dead ball, never when the plan had no data to judge)."""
+        from redzone.decider import gate
+        if plan is None or (plan.ok and not plan.rewind_s) or not gate.bucket_on(self.cfg):
+            return plan
+        x, tl = cands.get(gid) or self._known.get(gid), self.timelines.get(gid)
+        if x is None or tl is None or not x.target:
+            return plan
+        c = cost if cost is not None else (self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target))
+        return gate.bucket_plan(self.cfg, tl, x.scored, self.delays.get(x.target), now, c,
+                                float(self.cfg.get("decider.entry.fastest_s", ENTRY_FASTEST_S))) or plan
 
     def _entry_plan(self, gid: str, cands: dict[str, Candidate], now: float, cost: float | None,
                     urgent: bool, possession: bool) -> EntryPlan | None:
@@ -941,17 +1396,22 @@ class Decider:
         if c.get("decider.entry.conformal.enabled"):
             floor = float(c.get(f"decider.entry.conformal.tau.{x.scored.league.base.value}") or 0.0) * d.current_sigma(now)
         lo_cost = min(cost, float(c.get("decider.entry.fastest_s", ENTRY_FASTEST_S)))
+        # [D-08] the centred / urgent thin-margin passes only for leagues that passed their gate on them
+        thin = x.scored.league.value in (c.get("decider.entry.thin_margin_leagues") or [])
+        relaxed = float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)) if thin else None
+        urg = float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent and thin else None
+        join = self._join_args(x, urgent)
         if cue == "hidden" and can:
             # [seek model] seek on the hidden stick, then flip: the stall passes before the flip and
             # puts the stream just as far behind, so the picture's content doesn't depend on it (no
             # stall doubt); the flip waits for the presses (replay.hidden_seek_keys_s) and the stall (mid).
             plan = plan_entry(tl.dead, base_mu, margin, now, cost + float(self.cfg.get("replay.hidden_seek_keys_s")), can_rewind=can,
                               step=sk.step, max_back=float(c.get("decider.entry.max_rewind_s", ENTRY_MAX_REWIND_S)),
-                              relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
+                              relaxed=relaxed,
                               cost_lo=lo_cost + float(self.cfg.get("replay.hidden_seek_keys_s")),
-                              urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None,
+                              urgent=urg,
                               lag=float(self._lc("decider.entry.landing_lag_s", x, 0.0)), possession=possession,
-                              unknown_ok=unknown_ok, floor=floor)
+                              unknown_ok=unknown_ok, floor=floor, **join)
             if plan.ok and plan.rewind_s:
                 plan.rewind_s += sk.stall_mid
             return plan
@@ -960,11 +1420,78 @@ class Decider:
                           step=float(self.cfg.get("replay.pause_cue_grain_s")) if pause else sk.step,
                           stall=(0.0, 0.0) if pause else (sk.stall_lo, sk.stall_hi),
                           max_back=float(c.get("decider.entry.max_rewind_s", ENTRY_MAX_REWIND_S)),
-                          relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
+                          relaxed=relaxed,
                           cost_lo=min(cost, float(c.get("decider.entry.fastest_s", ENTRY_FASTEST_S))),
-                          urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None,
+                          urgent=urg,
                           lag=float(self._lc("decider.entry.landing_lag_s", x, 0.0)), possession=possession,
-                          unknown_ok=unknown_ok, floor=floor)
+                          unknown_ok=unknown_ok, floor=floor, **join)
+
+    def _join_args(self, x: Candidate, urgent: bool) -> dict:
+        """[landing bars, jump/buffered only] plan_entry's walk / after-play arguments for this league (basketball's
+        walk up court after a shot; football's preference for landing after the replay). Normal mode keeps its graded
+        dead-ball landings."""
+        if not self.jump_on():
+            return {}
+        walk = cuts.walk_params(self.cfg, x.scored.league)
+        after = 0.0
+        if x.scored.league.base == League.NFL and not urgent:
+            after = float(cuts.join_cfg(self.cfg, "after_play_s"))
+        return {"walk": walk, "after_play_s": after}
+
+    def _live_fallback(self) -> bool:
+        """[D-01] Rule #1: an entry with no proven dead ball waits, in every league. decider.entry.allow_live_fallback
+        (off) brings back the old go-in-live exits (crunch_now live/rewind, max_wait_s, rewind_only, no_wait_leagues)."""
+        return bool(self.cfg.get("decider.entry.allow_live_fallback", False))
+
+    def _entry_no_data(self, gid: str, x: Candidate | None) -> bool:
+        """[D-01] A live game with no dead windows in the data (first poll, a feed gap): nothing proves a dead ball, so
+        the entry waits instead of going in blind. The RedZone channel and an entry-timing kill switch aren't that."""
+        if gid in PSEUDO or x is None or not x.target or not self.cfg.get("decider.entry.enabled", True):
+            return False
+        tl = self.timelines.get(gid)
+        return legal.no_dead_ball_data(tl is not None, tl.dead.marks if tl else None)
+
+    def _entry_dark(self, gid: str, x: Candidate | None, now: float) -> bool:
+        """[P1-REVIEW-05] This game's feed can't prove a dead ball: no marks at all, or the data has gone quiet."""
+        if gid in PSEUDO or x is None or not x.target or not self.cfg.get("decider.entry.enabled", True):
+            return False
+        tl = self.timelines.get(gid)
+        return legal.feed_dark(tl is not None, tl.dead.marks if tl else None, tl.fresh_at if tl else None, now,
+                               STALE_DATA_S)
+
+    def _without_dark_targets(self, cands: dict[str, Candidate], now: float) -> dict[str, Candidate]:
+        """[P1-REVIEW-05] An entry waits on a dark feed (Rule #1 forbids going in blind) only for
+        decider.entry.no_data_wait_s: after that the game sits out this pick, so the next game with a provable landing
+        gets its turn instead of the screen freezing on a finished game. It comes back the moment its feed does. With
+        nothing else to go to the wait goes on (no last resort: Nick's phone, tapped twice, forces it) and says so once.
+        Your locked or focused game is never dropped."""
+        for gid in list(self._dark_since):
+            if gid not in cands or not self._entry_dark(gid, cands[gid], now):
+                del self._dark_since[gid]
+                self._dark_said.discard(gid)
+        wait = float(self.cfg.get("decider.entry.no_data_wait_s", 45.0))
+        dropped = {gid for gid, at in self._dark_since.items() if now - at >= wait and gid != self.current
+                   and gid not in (self.user.locked_game, self.user.focus_game)}
+        if not dropped:
+            return cands
+        kept = {gid: x for gid, x in cands.items() if gid not in dropped}
+        if any(x.target and gid != self.current and not self._entry_dark(gid, x, now) for gid, x in kept.items()):
+            return kept
+        if self.current not in cands:
+            for gid in sorted(dropped - self._dark_said):
+                self._dark_said.add(gid)
+                self.entry_stuck = gid
+        return cands
+
+    def _entry_urgent(self, d: Decision, x: Candidate | None, cands) -> bool:
+        """May this entry take the thin-margin landing? The flip's re-check (Engine._entry_valid) asks the same question."""
+        # [nhl pp] A power play or a close 3rd makes a game sticky for break visits, but is no reason
+        # to come in on a tighter margin: that only buys mid-play entries.
+        urgent = d.kind == "crunch" or (x is not None and (x.scored.crunch or
+                                                           self._sticky_home(d.target, cands, entry=True)))
+        if d.kind == "ended" and self._lc("decider.entry.ended_strict", x, False):
+            urgent = False   # [landing lag] the game on screen is over: nothing is lost by a strict landing
+        return urgent
 
     def _cut_timed(self, gid: str | None, cands) -> bool:
         """Cut timing is on for this game's league (decider.entry.leagues). Scorecards, Nov 3: NFL
@@ -986,16 +1513,16 @@ class Decider:
             return False
         if d.kind == "start" and not self._lc("decider.entry.start_timed", x, False):
             return False   # [EXP-739] off: the night's first pick goes in live (6 of 8 NHL mid-play entries, #302)
-        if x.scored.crunch_now and self._crunch_entry_mode(x) == "live":
+        if x.scored.crunch_now and self._crunch_entry_mode(x) == "live" and self._live_fallback():
             return False
         if x.scored.crunch and not x.scored.crunch_now and \
                 not self.cfg.get("decider.entry.hold_crunch_runup", True):
             return False
         if x.scored.league.base.value in (self.cfg.get("decider.entry.rewind_only") or []):
             return True    # plan the landing; _time_entry never waits for these (see there)
-        if d.kind == "chase" and x.scored.imminent:
+        if d.kind == "chase" and x.scored.imminent and self._live_fallback():
             # A chase for a goal off a 5-on-3, a fresh power play, a late empty net or a penalty
-            # shot: waiting for a whistle misses it. Every other chase waits like any entry.
+            # shot: waiting for a whistle misses it (behind the Rule #1 fallback since D-01).
             return False
         return x.scored.league.base.value in (self.cfg.get("decider.entry.hold_only") or [])
 
@@ -1028,13 +1555,11 @@ class Decider:
         if d.action != "switch" or not self.current or self.current in PSEUDO:
             return d
         x = cands.get(self.current)
-        min_s = float(self._lc("decider.dwell.min_s", x, 0) or 0)
-        if min_s <= 0 or d.kind not in set(self._lc("decider.dwell.kinds", x, None) or ()):
-            return d
-        left = self.since + min_s - now
+        left = legal.dwell_left(self.since, float(self._lc("decider.dwell.min_s", x, 0) or 0), d.kind,
+                                self._lc("decider.dwell.kinds", x, None), now)
         if left <= 0:
             return d
-        self.home_break_visit, self.home_return_at = home_before
+        self._home_restore(home_before, "dwell: a stay")
         state = State.REPLAY if self.after_replay else d.state
         return Decision(now, "stay", self.current, f"just got here: {left:.0f}s before an optional switch: {d.reason}",
                         state, d.gate, want=d.target)
@@ -1048,23 +1573,25 @@ class Decider:
             return d
         if d.target == self.current and not self.after_replay:
             return d
-        # [nhl pp] A power play or a close 3rd makes a game sticky for break visits, but is no reason
-        # to come in on a tighter margin: that only buys mid-play entries.
-        urgent = d.kind == "crunch" or (x is not None and (x.scored.crunch or
-                                                           self._sticky_home(d.target, cands, entry=True)))
-        if d.kind == "ended" and self._lc("decider.entry.ended_strict", x, False):
-            urgent = False   # [landing lag] the game on screen is over: nothing is lost by a strict landing
+        urgent = self._entry_urgent(d, x, cands)
         pos = self._possession_start(x, d)
         if pos and self.possession_policy is not None:
             # [possession start] the learned jump / stay policy (lane 1); default (None) is jump
             if self.possession_policy(d, x, now) == "stay":
-                self.home_break_visit, self.home_return_at = home_before
+                self._home_restore(home_before, "time_entry: a stay")
                 state = State.REPLAY if self.after_replay else d.state
                 return Decision(now, "stay", self.current, f"possession policy: stay: {d.reason}", state,
                                 d.gate, want=d.target)
         plan = self.entry_plan(d.target, cands, now, urgent=urgent or pos, possession=pos)
         if plan is None:
-            return d
+            if self._live_fallback() or not self._entry_no_data(d.target, x):
+                return d
+            # [D-01] nothing proves a dead ball yet: wait for the first dead window in the data (Rule #1)
+            self._dark_since.setdefault(d.target, now)   # [P1-REVIEW-05] for no_data_wait_s, then the next game
+            self._home_restore(home_before, "time_entry: a stay")
+            state = State.REPLAY if self.after_replay else d.state
+            return Decision(now, "stay", self.current, f"no play-by-play to time the landing: {d.reason}", state,
+                            d.gate, want=d.target)
         if plan.ok and not plan.rewind_s and not (urgent or pos):
             wait = self._break_tail_wait(d.target, x, cands, now)
             if 0 < wait <= float(self.cfg.get("polling.live_s", 10)) and self.cfg.get("decider.entry.break_tail_defer"):
@@ -1072,7 +1599,7 @@ class Decider:
                 wait = 0.0
             if wait > 0:
                 # [EXP-728/736] the picture would come up early in the break: hold on what's on screen
-                self.home_break_visit, self.home_return_at = home_before
+                self._home_restore(home_before, "time_entry: a stay")
                 state = State.REPLAY if self.after_replay else d.state
                 return Decision(now, "stay", self.current, f"break tail: in {wait:.0f}s: {d.reason}", state,
                                 d.gate, want=d.target)
@@ -1081,12 +1608,13 @@ class Decider:
             if plan.rewind_s and self._lc("decider.entry.cue", x, "seek") in ("pause", "hidden"):
                 d.cue = self._lc("decider.entry.cue", x)
             return d
+        fallback = self._live_fallback()   # [D-01] every exit below that goes in live needs it
         if pos:
             pass   # no dead ball in reach behind the picture: wait for one (rule #1), never go live
-        elif x is not None and (x.scored.crunch_now and self._crunch_entry_mode(x) == "rewind"
-                              or x.scored.league.base.value in (self.cfg.get("decider.entry.rewind_only") or [])):
+        elif fallback and x is not None and (x.scored.crunch_now and self._crunch_entry_mode(x) == "rewind"
+                                             or x.scored.league.base.value in (self.cfg.get("decider.entry.rewind_only") or [])):
             return d   # no clean landing in reach: crunch time (and rewind-only leagues) don't wait
-        if not pos and x is not None and \
+        if fallback and not pos and x is not None and \
                 x.scored.league.base.value in (self.cfg.get("decider.entry.no_wait_leagues") or []):
             # Continuous play: holding a switch for a dead ball missed more than it saved (scorecards,
             # Nov 3); enter live unless a rewind lands it clean (decided above).
@@ -1100,11 +1628,13 @@ class Decider:
         if w is None or w[0] != d.target or now - w[2] > 3 * float(self.cfg.get("polling.live_s", 10)):
             w = (d.target, now, now)
         self._entry_wait = (d.target, w[1], now)
-        if not pos and cap is not None and now - w[1] >= float(cap) and (
+        if fallback and not pos and cap is not None and now - w[1] >= float(cap) and (
                 d.kind == "ended" or (x is not None and getattr(x.scored, "late", False))):
             return d
         # Not yet: whatever the switch planned (a visit's way home) waits with it.
-        self.home_break_visit, self.home_return_at = home_before
+        if self._entry_dark(d.target, x, now):
+            self._dark_since.setdefault(d.target, now)   # [P1-REVIEW-05] a dark feed never logs the dead ball we wait for
+        self._home_restore(home_before, "time_entry: a stay")
         state = State.REPLAY if self.after_replay else d.state
         return Decision(now, "stay", self.current, f"{plan.why}: {d.reason}", state, d.gate,
                         want=d.target)
@@ -1174,7 +1704,7 @@ class Decider:
         if br["do"] == "hold":
             if d.action in ("switch", "replay") and d.target != self.current:
                 sc.seen[br["id"]] = sc.seen.get(br["id"], 0) + 1
-                self.home_break_visit, self.home_return_at = home_before
+                self._home_restore(home_before, "scenario: a stay")
                 return Decision(now, "stay", self.current, f"{tag}: your team's crunch time: {d.reason}",
                                 d.state, d.gate)
             return d
@@ -1191,7 +1721,7 @@ class Decider:
             return d    # rule #1: a branch never cuts out of a play; it acts at A's next safe moment
         sc.seen[br["id"]] = sc.seen.get(br["id"], 0) + 1
         if br.get("back") == "restart":
-            self.home_break_visit = plan.a
+            self._home_set(plan.a, self._home_at, "scenario")
         kind = "break_visit" if br["do"] == "visit" else "crunch"
         return Decision(now, "switch", b, self._why(cands[b], f"{tag}: "), d.state, d.gate, kind=kind)
 
@@ -1207,7 +1737,7 @@ class Decider:
         pid, why = hit
         sf.seen[pid] = sf.seen.get(pid, 0) + 1
         sf.events.append((now, pid, d.target))
-        self.home_break_visit, self.home_return_at = home_before
+        self._home_restore(home_before, "safe: a stay")
         state = State.REPLAY if self.after_replay else d.state
         return Decision(now, "stay", self.current, f"playbook={pid}: {why}: {d.reason}", state, d.gate,
                         want=d.target if d.action == "switch" else None)
@@ -1231,7 +1761,7 @@ class Decider:
         if cur is None or not self._lookahead_on(cur) or not cur.scored.crunch_now or (d.replay and d.replay.game_id == self.current):
             return d
         self.lookahead_why["crunch_guard"] = self.lookahead_why.get("crunch_guard", 0) + 1
-        self.home_break_visit, self.home_return_at = home_before
+        self._home_restore(home_before, "crunch_guard: a stay")
         return Decision(now, "stay", self.current, f"crunch time here: catch-up waits ({d.reason})", d.state, d.gate)
 
     def _crunch_floor(self, d: Decision, d0: Decision, cands, now: float, home_before) -> Decision:
@@ -1266,7 +1796,7 @@ class Decider:
             return d
         why = "an overlay can't leave crunch for a non-crunch game" if overlay else f"{value:.0f} is a low-value game"
         self.lookahead_why["crunch_floor"] = self.lookahead_why.get("crunch_floor", 0) + 1
-        self.home_break_visit, self.home_return_at = home_before
+        self._home_restore(home_before, "crunch_floor: a stay")
         return Decision(now, "stay", self.current, f"crunch floor: {why} ({d.reason})", d.state, d.gate)
 
     @staticmethod
@@ -1301,7 +1831,7 @@ class Decider:
             return d                       # our own big play is on its way: stay for it
         best = None
         for gid, x in cands.items():
-            if gid == self.current or gid in PSEUDO or not x.target or x.stale or gid in self.user.muted \
+            if gid == self.current or gid in PSEUDO or not legal.tunable(gid, x, self.user.muted) \
                     or not self._lookahead_on(x):
                 continue
             a = ahead(self.timelines.get(gid), self.delays.get(x.target), now, maxs)
@@ -1344,7 +1874,7 @@ class Decider:
             return Decision(now, "switch", gid, f"{tag} ({tb - land:.0f} s after we land)", d.state, d.gate,
                             kind="break_visit")
         why["switch"] = why.get("switch", 0) + 1
-        self.home_break_visit = self.current
+        self._home_set(self.current, self._home_at, "a chase: back here after")
         return Decision(now, "switch", gid, f"{tag} ({tb - land:.0f} s after we land)", d.state, d.gate,
                         kind="chase")
 
@@ -1446,7 +1976,8 @@ class Decider:
         if target and target != self.current:
             # [switch-rate cap] PICK alone never flips again within min_gap_s of the last switch
             gap = float(self.cfg.get("noggin.pick.min_gap_s", 0.0))
-            if self.history and now - self.history[-1][0] < gap and not (d.action == "switch" and d.target == target):
+            if legal.too_soon(self.history[-1][0] if self.history else None, gap, now) \
+                    and not (d.action == "switch" and d.target == target):
                 return d if d.action == "stay" else Decision(now, "stay", self.current, "pick: too soon after a switch",
                                                              d.state, d.gate)
             # Rule #1: the app's own leave gate decides when, for whatever is on screen (also a game PICK
@@ -1454,13 +1985,508 @@ class Decider:
             on = cands.get(self.current) if self.current else None
             gate = self._gate(on, now) if on is not None else None
             why = f"pick {scores[target]:.2f} vs {scores.get(cur, 0):.2f}"
-            if self.current and not (gate and gate.safe and not on.scored.lock):
+            if self.current and not legal.may_leave(bool(gate and gate.safe), on.scored.lock if on else None):
                 return Decision(now, "stay", self.current, f"{why} — waiting: {gate.why if gate else 'no timeline'}",
                                 d.state, gate.why if gate else "", want=target)
             return Decision(now, "switch", target, why, d.state, kind="better")
         if d.action == "switch" and cur is not None:
             return Decision(now, "stay", cur, f"pick stays ({scores.get(cur, 0):.2f})", d.state)
         return d
+
+    # ----- [arbiter, WP-17] flag arbiter.enabled; redzone/noggin/arbiter.py is the choice, these only gather its facts --
+
+    def _arbiter_on(self) -> bool:
+        return bool(self.cfg.get("arbiter.enabled", False))
+
+    def _arbiter_params(self) -> arbiter.Params:
+        return arbiter.Params.from_config(self.cfg.get)
+
+    def _arbiter_musts(self, cands: dict[str, Candidate], now: float, p: arbiter.Params) -> tuple[arbiter.Must, ...]:
+        """Every must-show in the feed that hasn't started airing on its game's picture yet. Facts only."""
+        out = []
+        for gid, x in cands.items():
+            tl = self.timelines.get(gid)
+            if gid in PSEUDO or tl is None or not x.target:
+                continue
+            dl = self.delays.get(x.target)
+            play_len = PLAY_LEN_S.get(tl.league, 8.0) or 8.0
+            for e in reversed(tl.events):
+                if e.kind != "play":
+                    continue
+                air_at = e.lo + dl.mu - play_len
+                if air_at < now:
+                    break
+                m = arbiter.must_of(tl.league.value, self._moment_word(tl, e), gid, air_at, f"{gid}:{e.pid or e.label}", p)
+                if m is not None:
+                    out.append(m)
+        return tuple(out)
+
+    def _moment_word(self, tl: Timeline, e: Event) -> str:
+        """The floor's word for a live play. With slate on, football adds what the Timeline now carries (10+ gains, 3rd and
+        4th downs); off, exactly arbiter.timeline_word."""
+        word = arbiter.timeline_word(tl.league.base.value, e.play_kind, e.big)
+        if not self._slate_on() or tl.league.base != League.NFL or word in ("td", "turnover", "fg"):
+            return word
+        return slate_mod.football_word(e.ptype, e.gain, e.down, e.to_go) or word
+
+    def _arbiter_class(self, gid: str | None, x: Candidate) -> int:
+        """L1 class, the same one legal_facts gives an option: 0 your team, 1 crunch, 2 open."""
+        hold = self.cfg.get("decider.crunch.hold_personal", 5)
+        return 0 if (gid in self._yours or x.scored.personal >= hold) else 1 if x.scored.crunch else 2
+
+    def _arbiter_show(self, cands: dict[str, Candidate], now: float, p: arbiter.Params) -> arbiter.Show:
+        """The screen and the slate as the arbiter reads them. The visit count is the switch history, which is capped."""
+        live = {gid: x for gid, x in cands.items() if gid not in PSEUDO and x.target}
+        cur = cands.get(self.current or "")
+        cls = self._arbiter_class(self.current, cur) if cur is not None else 2
+        replay_rank = arbiter.NOT_FLOOR
+        tl = self.timelines.get(self.current or "")
+        if tl is not None and cur is not None and p.stay_replay_s > 0:
+            dl = self.delays.get(cur.target or "unknown")
+            for e in reversed(tl.events):
+                if e.kind != "play":
+                    continue
+                aired = e.seen + dl.mu
+                if aired > now:
+                    continue
+                if now - aired <= p.stay_replay_s:
+                    word = arbiter.timeline_word(tl.league.base.value, e.play_kind, e.big)
+                    if word in arbiter.SCORE_KINDS:
+                        replay_rank = arbiter.trigger_rank(tl.league.value, word, p)
+                break
+        close = frozenset(g for g, x in live.items() if x.scored.crunch or x.scored.high_leverage)
+        visits: Counter = Counter(g for t, g, kind in self.history if now - t <= p.visit_window_s
+                                  and kind not in ("break_visit", "home", "replay"))   # a filled break isn't a visit
+        return arbiter.Show(current=self.current, current_class=cls, live_games=len(live),
+                            cuts_60s=sum(1 for t, _, _ in self.history if now - t < 60.0), replay_rank=replay_rank,
+                            late=bool(close) and any(x.scored.late for x in live.values()), close=close, visits=visits,
+                            final_two=frozenset(g for g, x in live.items() if x.scored.lock == "final two minutes"),
+                            league_rank={g: league_index(x.scored.league, self.cfg) for g, x in live.items()} if p.class_bonus else {})  # read only by class_bonus
+
+    def _arbiter_think(self, inp: brain.BrainInput) -> brain.BrainOutput | None:
+        """The brain's scores for this tick. One that raises counts as no opinion; the tick goes on without it."""
+        try:
+            return self.arbiter_brain.think(inp)
+        except Exception:  # noqa: BLE001 - a brain's bug must never stop the TV
+            log.exception("arbiter brain")
+            return None
+
+    def _arbiter(self, d: Decision, cands: dict[str, Candidate], now: float, home_before) -> Decision:
+        """The must-show floor and the copied RedZone rules over the tick's decision. A Null brain with nothing owed
+        leaves d alone. Every switch made here is an ordinary 'better' switch: the later stages and the commit gate
+        all still run on it. Your tap, crunch, a finished game and the other hard kinds are never touched."""
+        if not self._arbiter_on() or self.replaying or self.after_replay or d.action == "replay" or self.safe_mode \
+                or self.user.paused or (d.action == "switch" and d.kind in ARBITER_KEEPS):
+            self._leave_end("the arbiter isn't choosing this tick", now)
+            return d
+        if self._leave_pick is not None and (held := self._leave_held(d, cands, now, home_before)) is not None:
+            return held
+        p = self._arbiter_params()
+        facts = self.legal_facts(cands, now)
+        opts = legal.legal_options(facts)
+        inp = brain.BrainInput(tick=len(self.log), now=now, options=opts)
+        base = arbiter.STAY_ID if d.action != "switch" else f"cut:{d.target}"
+        show = self._arbiter_show(cands, now, p)
+        planned = self._arbiter_plan({g: x for g, x in cands.items() if g != self.current}, None, now, p)
+        ch = arbiter.choose(inp, self._arbiter_think(inp), base, musts=self._arbiter_musts(cands, now, p), show=show, p=p,
+                            planned=f"cut:{planned}" if planned is not None else None)
+        self.arbiter_log[ch.why] += 1
+        o = ch.option
+        if d.action == "stay" and o is not None and o.verb == "stay" and not ch.why.startswith("floor:") \
+                and (rp := self._arbiter_catchup(cands, legal.legal_options(replace(facts, leave_at_flip=False)) if facts is not None and self._leave_at_flip() else opts,
+                                                show, now, p)) is not None:
+            self.arbiter_log["catchup"] += 1
+            return self._replay_decision(rp, State.REPLAY, f"arbiter: catch-up ({d.reason})", now)
+        if o is None or o.id == base or (ch.why == "thinned" and d.kind == "break_visit"):
+            return d        # the budget trims whipping, never a break visit: that one fills dead air
+        if o.verb == "stay":
+            self._home_restore(home_before, f"arbiter: {ch.why}")
+            return Decision(now, "stay", self.current, f"arbiter: {ch.why} ({d.reason})", d.state, d.gate, want=d.target)
+        if o.game_id is None or legal.kind_of(o.verb) is None:
+            return d
+        self._home_restore(home_before, f"arbiter: {ch.why}")
+        if self._leave_at_flip():   # the flag lists it whatever the leave and the landing say: it goes only when both allow it
+            cut = Decision(now, "switch", o.game_id, f"arbiter: {ch.why}", d.state, kind=legal.kind_of(o.verb), leave_held=True)
+            veto = self._leave_blocker(cut, facts, cands, now)
+            if not veto:
+                return cut
+            self._leave_begin(LeaveHold(o.id, o.game_id, cut.kind, ch.why, self.current, now), veto, now)
+            return Decision(now, "stay", self.current, f"arbiter: {ch.why}, waiting ({veto})", d.state, d.gate, want=o.game_id)
+        return Decision(now, "switch", o.game_id, f"arbiter: {ch.why}", d.state, kind=legal.kind_of(o.verb))
+
+    # ----- [LEAVE-AT-FLIP] a cut refused only by the leave or the landing is remembered, and goes when neither refuses -----
+
+    def _leave_at_flip(self) -> bool:
+        return bool(self.cfg.get("legal.leave_at_flip", False))
+
+    def _leave_begin(self, h: LeaveHold, veto: str, now: float) -> None:
+        self._leave_pick, self.leave_m.key = h, h.target
+        self.leave_m.to("waiting", f"{h.why}: {h.target} waits ({veto})", now=now)
+
+    def _leave_end(self, why: str, now: float) -> None:
+        if self._leave_pick is None:
+            return
+        self._leave_pick = None
+        self.leave_m.to("idle", why, now=now)
+
+    def _leave_settle(self, d: Decision, now: float) -> None:
+        """The tick's verdict on a held pick. A stay: it keeps waiting (a later stage may hold a released cut for a tick)."""
+        h = self._leave_pick
+        if h is not None and d.action != "stay":
+            self._leave_end("released" if d.target == h.target else f"a {d.kind or d.action} switch came first", now)
+
+    def _leave_wait_s(self, h: LeaveHold) -> float:
+        """How long a held pick waits (legal.leave_wait_s, per league via league_overrides): a football play clock is not a
+        hockey shift. The slower of the game being left and the game landed on, since either can be the one holding it."""
+        return max(float(self._lc("legal.leave_wait_s", g, 45.0)) for g in (h.current, h.target))
+
+    def _leave_expired(self, h: LeaveHold, cands: dict[str, Candidate], now: float) -> str:
+        """Why the remembered pick is off ("" = still good): too long, the screen moved, the target can't be entered at all
+        (gone, dark, untunable, a lock or a block of Nick's), not worth it. A landing that isn't there yet is what it waits for."""
+        if now - h.at >= self._leave_wait_s(h):
+            return "waited too long"
+        if self.current != h.current:
+            return "the screen moved"
+        facts = self.legal_facts(cands, now)
+        refused = legal.refusals(facts, h.target)
+        if refused:
+            return f"entry not clean: {refused[0]}"
+        return "" if self._leave_worth(h, facts, cands, now) else "no longer worth it"
+
+    def _leave_worth(self, h: LeaveHold, facts: legal.Facts, cands: dict[str, Candidate], now: float) -> bool:
+        """A pick of the floor: its must-show is still owed. A brain's: no must-show is owed anywhere else, and it still beats
+        staying by the margin. A brain with no opinion doesn't end a fresh wait, but past legal.leave_silent_s the pick has nothing behind it."""
+        p = self._arbiter_params()
+        inp = brain.BrainInput(tick=len(self.log), now=now, options=legal.legal_options(facts))
+        show = self._arbiter_show(cands, now, p)
+        pool = arbiter.lowest_l1_class([o for o in inp.options if o.verb == "stay" or legal.kind_of(o.verb)], show.current_class)
+        floor = arbiter.must_show_floor(pool, self._arbiter_musts(cands, now, p), show.current, now, p)
+        if h.why.startswith("floor:"):
+            return h.option_id in floor
+        if floor and h.option_id not in floor:
+            return False
+        out = self._arbiter_think(inp)
+        if out is None or not brain.valid(out, inp) or not out.scores:
+            return now - h.at <= float(self.cfg.get("legal.leave_silent_s", 5.0))
+        s = out.scores
+        return s.get(h.option_id, -math.inf) - s.get(arbiter.STAY_ID, -math.inf) >= p.brain_margin
+
+    def _leave_blocker(self, cut: Decision, facts: legal.Facts, cands: dict[str, Candidate], now: float) -> str:
+        """What stops this cut this tick ("" = nothing): no dead-ball landing, else the flip's leave rules."""
+        row = next((g for g in facts.games if g.game_id == cut.target), None)
+        return "no_landing" if row is None or not row.landable else flip_gate().leave_veto(self, cut, cands, now)
+
+    def _leave_status(self, cands: dict[str, Candidate], now: float) -> tuple[str, str]:
+        """The held pick this tick: ("go", ""), ("wait", what stops it) or ("over", why it expired; the hold is cleared)."""
+        h = self._leave_pick
+        why = self._leave_expired(h, cands, now)
+        if why:
+            self._leave_end(why, now)
+            return "over", why
+        cut = Decision(now, "switch", h.target, "", State.WATCHING, kind=h.kind, leave_held=True)
+        veto = self._leave_blocker(cut, self.legal_facts(cands, now), cands, now)
+        return ("wait", veto) if veto else ("go", "")
+
+    def _leave_held(self, d: Decision, cands: dict[str, Candidate], now: float, home_before) -> Decision | None:
+        """This tick's decision while a cut waits to leave. The pick is not chosen again. None: it expired, the arbiter chooses."""
+        h = self._leave_pick
+        status, veto = self._leave_status(cands, now)
+        if status == "over":
+            return None
+        self._home_restore(home_before, f"arbiter: {h.why}, waiting to leave")
+        if status == "go":
+            return Decision(now, "switch", h.target, f"arbiter: {h.why}, left at the flip", d.state, kind=h.kind, leave_held=True)
+        return Decision(now, "stay", self.current, f"arbiter: {h.why}, waiting ({veto})", d.state, d.gate, want=h.target)
+
+    def _arbiter_catchup(self, cands: dict[str, Candidate], opts: tuple, show: arbiter.Show, now: float,
+                         p: arbiter.Params) -> Missed | None:
+        """[ARBITER-LIVE] A must-show that aired unseen, as an ordinary replay decision (arbiter.catchup_s). Only the existing
+        queue, so everything that keeps a replay off the screen still applies (_parkable: YouTube TV reaches about 95 s
+        back), and the commit gate judges it at the flip like any other replay. Not with buffered jump: its hidden stick is
+        the next cut and the engine parks no replay on it (_scan_missed keeps no queue then)."""
+        if p.catchup_route:
+            return self._catchup_route(cands, now, p)
+        queue = getattr(self, "queue", ())       # empty on every tick without a missed play
+        cur = cands.get(self.current or "")
+        if not queue or self.buffered_on() or not self.cfg.get("replay.enabled", True) or self._home is not None \
+                or self.current is None or cur is None or _holds_replays(cur.scored) or cur.scored.crunch_now or cur.scored.high_leverage or self._crunch_on(cands):
+            return None
+        games = self._replay_pool(cands)
+        ready = {f"{m.game_id}:{m.pid}": m for m in queue
+                 if m.game_id != self.current and not (m.seen_live or m.replayed) and m.retry_at <= now
+                 and self._parkable(m, now) and self._replayable(games.get(m.game_id))}
+        pick = arbiter.catchup_pick([(i, self._arbiter_missed_rank(m, p), m.t) for i, m in ready.items()], opts, show, now, p)
+        return ready.get(pick) if pick is not None else None
+
+    # ----- [arbiter.catchup_route] noggin/catchup.py: a missed must-see in the screen's dead time, in pieces if it must ---------
+
+    def catchup_gates(self, cur: Candidate | None, cands: dict[str, Candidate], now: float) -> tuple[bool, bool]:
+        """(the route may run at all, it may also run at a plain dead ball). Anything of Nick's stops it. A commercial is open whatever
+        is on screen; a plain dead ball keeps the old route's checks: not a held moment, a crunch or a high-leverage game."""
+        u = self.user
+        if cur is None or not self.cfg.get("replay.enabled", True) or self._home is not None or self.safe_mode or u.paused or u.locked_game \
+                or (u.manual_until or 0.0) > now or u.focus_mode != FocusMode.AUTOPILOT or self.buffered_on():
+            return False, False
+        s = cur.scored
+        return True, not (_holds_replays(s) or s.crunch_now or s.high_leverage or self._crunch_on(cands))
+
+    def _catchup_route_params(self, p: arbiter.Params) -> catchup.Route:
+        """[timing.measured] on: the TV's measured flip, clip load and reach (redzone/measured_timing.py). Off: today's costs, the clip
+        load now named in one place (it was catchup.Route's default 15 s)."""
+        m = measured_timing.route_costs(self.cfg)
+        if m is None:
+            return catchup.Route(reach_s=min(p.catchup_route_reach_s, catchup.HARD_CAP_S), clip_s=p.plan_clip_s, flip_s=float(bj.cfg_get(self.cfg, "flip_s")),
+                                 prep_s=catchup.Route.prep_s, short=p.catchup_route_short)
+        return catchup.Route(reach_s=min(m["reach_s"], catchup.HARD_CAP_S), clip_s=p.plan_clip_s, flip_s=m["flip_s"], prep_s=m["prep_s"],
+                             short=p.catchup_route_short)
+
+    def _catchup_span(self, cur: Candidate, now: float) -> tuple[float, bool] | None:
+        """How long the dead time on screen lasts, surely: (when play can restart on screen at the earliest, in a commercial?). None: mid-play."""
+        tl, dl = self.timelines.get(self.current or ""), self.delays.get(cur.target or "unknown")
+        dead = getattr(tl, "dead", None)
+        if dead is None:
+            return None
+        m = 2.0 * dl.current_sigma(now)
+        until = dead.dead_until(now - dl.mu - m)
+        return (until + dl.mu - m, bool(cur.scored.is_break)) if until is not None else None
+
+    def _catchup_seen(self, gid: str, since: float, now: float) -> bool:
+        """Has the screen shown this game since the moment aired? Then its result is known: the clip airs marked as a replay."""
+        return any(g == gid and t >= since for t, g in self._screen_log) or self.on_screen_at(since) == gid
+
+    def _catchup_route(self, cands: dict[str, Candidate], now: float, p: arbiter.Params) -> Missed | None:
+        """The missed must-see to air this tick as a piece, or None. Runs after the arbiter chose to stay; the commit gate still judges the flip."""
+        cur = cands.get(self.current or "")
+        doing = self._route_doing
+        if doing is not None and doing[0] not in self.queue:
+            doing = self._route_doing = None
+        ok, plain = self.catchup_gates(cur, cands, now)
+        span = self._catchup_span(cur, now) if ok else None
+        if span is None or not (span[1] or plain):
+            return None
+        r, games = self._catchup_route_params(p), self._replay_pool(cands)
+        def moment(m: Missed) -> catchup.Moment:
+            tl = self.timelines.get(m.game_id)
+            return catchup.Moment(f"{m.game_id}:{m.pid}", m.game_id, float(arbiter.clip_weight([self._arbiter_missed_rank(m, p)])), m.aired or m.t,
+                                  PLAY_LEN_S.get(tl.league, 8.0) if tl else 8.0)
+        ready = {f"{m.game_id}:{m.pid}": m for m in self.queue
+                 if m.game_id != self.current and not (m.seen_live or m.replayed) and m.retry_at <= now
+                 and self._replayable(games.get(m.game_id)) and self._arbiter_missed_rank(m, p) != arbiter.NOT_FLOOR}
+        free = self._route_stick_at + r.prep_s      # the hidden stick is still loading until then (the audit's `ready`)
+        if doing is not None and doing[0] is not None:
+            mine = moment(doing[0])
+            if catchup.overdue(mine, doing[1], now, r):
+                self._route_end(doing[0], "past the 180 s cap or the reach: dropped, counted lost", now)
+                return None
+            piece = catchup.next_piece((), now, span[0], doing=(mine, doing[1]), ready_at=free,
+                                       known=lambda x: self._catchup_seen(x.game_id, x.aired - x.play_s, now), r=r)
+        else:
+            piece = catchup.next_piece([moment(m) for m in ready.values()], now, span[0], ready_at=free,
+                                       known=lambda x: self._catchup_seen(x.game_id, x.aired - x.play_s, now), r=r)
+        if piece is None:
+            return None
+        m = doing[0] if doing is not None else ready[piece.moment.id]
+        m.offset_s, m.piece_s, m.marked_replay = piece.offset_s, piece.seconds, m.marked_replay or piece.marked
+        self._route_clip = (m, piece.clip_s)      # [catchup_route_short] this clip's own length: a short one ends with this piece
+        return m
+
+    def _route_end(self, m: Missed, why: str, now: float) -> None:
+        if m in self.queue:
+            self.queue.remove(m)
+        self._route_doing = None
+        self.catchup_m.to("idle", why, now=now)
+
+    def _route_piece_ended(self, now: float) -> bool:
+        """A piece of a catch-up clip just ended on screen. More to come: the clip stays owed, and True is 'the tick is handled'."""
+        m = self._clip
+        if m is None or m.piece_s <= 0:
+            return False
+        self._route_stick_at = now      # the hidden stick re-seeks (the next piece) or loads another clip from here
+        cut = self._route_clip
+        clip = cut[1] if cut is not None and cut[0] is m and cut[1] > 0 else self._arbiter_params().plan_clip_s
+        offset = m.offset_s + m.piece_s
+        if offset >= clip - 0.5:
+            m.piece_s, m.offset_s, self._route_doing = 0.0, 0.0, None
+            self.catchup_m.to("idle", "the clip finished", now=now)
+            return False
+        m.piece_s, self._route_doing = 0.0, (m, offset)
+        if m not in self.queue:
+            self.queue.append(m)
+        self._clip = None
+        self.catchup_m.to("between", f"{clip - offset:.0f} s of the clip left", now=now)
+        self.screen_m.to("after_replay", "a piece of the clip ended", now=now)
+        return True
+
+    def _arbiter_missed_rank(self, m: Missed, p: arbiter.Params) -> int:
+        """The trigger rank of a queued play, from its own Timeline row. A play the Timeline no longer holds isn't owed."""
+        tl = self.timelines.get(m.game_id)
+        e = next((e for e in reversed(tl.events) if e.kind == "play" and (e.pid or e.label) == m.pid), None) if tl else None
+        return arbiter.trigger_rank(tl.league.value, self._moment_word(tl, e), p) if e is not None else arbiter.NOT_FLOOR
+
+    def _arbiter_rotation(self, rows: list, baseline: str, cands: dict[str, Candidate], now: float) -> tuple[str, dict] | None:
+        """[jump mode] The floor and the copied rules over the rotation's pick, among games already proven to land on
+        a dead ball (`rows`). None: hold this tick. The rotation's own switch and the commit gate still follow."""
+        p = self._arbiter_params()
+        infos = {gid: info for _, gid, info in rows}
+        opts = (legal.STAY, *(brain.Option(id=f"cut:{g}", verb="cut", game_id=g, l1_class=self._arbiter_class(g, cands[g])) for g in infos))
+        inp = brain.BrainInput(tick=len(self.log), now=now, options=opts)
+        musts = self._arbiter_musts(cands, now, p)
+        planned = self._arbiter_plan({g: cands[g] for g in infos}, None, now, p)
+        ch = arbiter.choose(inp, self._arbiter_think(inp), f"cut:{baseline}", musts=musts,
+                            show=self._arbiter_show(cands, now, p), p=p, planned=f"cut:{planned}" if planned is not None else None)
+        self.arbiter_log[ch.why] += 1
+        if ch.option is None or ch.option.game_id is None:
+            self.jump_holds[f"arbiter_{ch.why}"] += 1
+            return None
+        return ch.option.game_id, infos[ch.option.game_id]
+
+    def _arbiter_preload(self, pool: dict[str, Candidate], keep: str | None, now: float) -> str | None:
+        """[jump mode] The game the hidden stick should take for the floor, when a route's deadline is still ahead."""
+        p = self._arbiter_params()
+        planned = self._arbiter_plan_memoed(pool, keep, now, p)
+        if planned is not None:
+            return planned
+        prep = {g: float(self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target))
+                for g, x in pool.items()}
+        return arbiter.preload_target(self._arbiter_musts(pool, now, p), prep, keep, now, p)
+
+    # ----- [MUST-LIVE] plan_clips on a buffered picture: arbiter.plan picks the hidden stick's game and orders the floor -----
+
+    def _arbiter_prep_s(self, target: str | None) -> float:
+        return float(self.entry_cost(target) if self.entry_cost is not None else self._deadline_cost(target))
+
+    def _arbiter_plan_clips(self, pool: dict[str, Candidate], keep: str | None, now: float, p: arbiter.Params) -> tuple[arbiter.Clip, ...]:
+        """Every must-show this rewind can still reach and the screen hasn't shown, in the feed already (so causal). The
+        window is the sim's: from min_behind_s behind the live edge to replay.scrub_max_play_age_s behind it. A new park also
+        has to start within that age (_parkable); the stick already on the game (`keep`) needs no new one."""
+        flip = float(bj.cfg_get(self.cfg, "flip_s"))
+        shallow = float(bj.cfg_get(self.cfg, "min_behind_s"))
+        deep = max(shallow, float(self.cfg.get("replay.scrub_max_play_age_s", 95) or 95))
+        out = []
+        for gid, x in pool.items():
+            tl = self.timelines.get(gid)
+            if gid in PSEUDO or tl is None or not x.target:
+                continue
+            prep = 0.0 if gid == keep else self._arbiter_prep_s(x.target)
+            if not math.isfinite(prep):
+                continue
+            dl = self.delays.get(x.target)
+            edge = dl.mu - dl.behind
+            play_len = PLAY_LEN_S.get(tl.league, 8.0) or 8.0
+            for e in reversed(tl.events):
+                if e.kind != "play":
+                    continue
+                land = e.lo - play_len
+                last_flip = land + edge + deep - flip
+                if last_flip < now:
+                    break
+                if gid != keep and now - e.seen > deep:
+                    continue
+                rank = arbiter.trigger_rank(tl.league.value, self._moment_word(tl, e), p)
+                if rank == arbiter.NOT_FLOOR or self._saw(gid, e.lo + dl.mu - play_len, e.seen + dl.mu):
+                    continue
+                out.append(arbiter.Clip(f"{gid}:{e.pid or e.label}", gid, rank, land + edge + shallow - flip, last_flip,
+                                        p.plan_clip_s, max(now + prep, land + edge + 1.0)))
+        return tuple(out)
+
+    def _arbiter_stick_legal(self, cands: dict[str, Candidate], now: float) -> set[str]:
+        """Games a hidden stick may prepare: legal_options with the rules about this instant's flip set aside (the gate on
+        screen, a landing, a cut just made), because the flip comes later and is judged then. Nick's blocks and the
+        game-level rules (tunable, dark, banned app, focus) still apply."""
+        f = self.legal_facts(cands, now)
+        f = replace(f, gate_ok=True, moment_lock="", arrival_until=0.0, last_switch_at=None, dwell_min_s=0.0,
+                    games=tuple(replace(g, landable=True) for g in f.games))
+        return {o.game_id for o in legal.legal_options(f) if o.verb == "cut"}
+
+    def _arbiter_flip_legal(self, cands: dict[str, Candidate], now: float) -> set[str]:
+        """Games a buffered jump may cut to this tick: legal_options, with the two checks the buffered editor proves on its own
+        picture (the dead ball on screen, the landing) taken from it. The commit gate re-judges both at the flip."""
+        f = self.legal_facts(cands, now)
+        f = replace(f, gate_ok=True, games=tuple(replace(g, landable=True) for g in f.games))
+        return {o.game_id for o in legal.legal_options(f) if o.verb == "cut"}
+
+    def _arbiter_plan_input(self, pool: dict[str, Candidate], keep: str | None, now: float,
+                            p: arbiter.Params) -> tuple[arbiter.Clip, ...]:
+        """The plan's clips on legal games. Empty: not a buffered picture, arbiter.plan off, or nothing owed."""
+        if not p.plan or not self.buffered_on():
+            return ()
+        clips = self._arbiter_plan_clips(pool, keep, now, p)
+        if not clips:
+            return ()
+        ok = self._arbiter_stick_legal(pool, now)
+        return tuple(c for c in clips if c.game_id in ok)
+
+    def _arbiter_plan_answer(self, clips: tuple[arbiter.Clip, ...], pool: dict[str, Candidate], keep: str | None,
+                             now: float) -> str | None:
+        costs = sorted(c for c in (self._arbiter_prep_s(pool[g].target) for g in {x.game_id for x in clips}) if math.isfinite(c))
+        mid = costs[len(costs) // 2] if costs else 0.0
+        return arbiter.plan_game(clips, now, float(bj.cfg_get(self.cfg, "flip_s")), mid, keep, costs[-1] if costs else 0.0)
+
+    def _arbiter_plan(self, pool: dict[str, Candidate], keep: str | None, now: float, p: arbiter.Params) -> str | None:
+        """The game of the best run's first clip, or None: the usual pick decides."""
+        clips = self._arbiter_plan_input(pool, keep, now, p)
+        return self._arbiter_plan_answer(clips, pool, keep, now) if clips else None
+
+    def _arbiter_plan_memoed(self, pool: dict[str, Candidate], keep: str | None, now: float, p: arbiter.Params) -> str | None:
+        """The hidden stick's plan, asked again only when the clips or the stick change. Why: the answer moves with the clock
+        while nothing new is known, and every change of mind is a re-tune (the sim replans only when the feed reports a play)."""
+        clips = self._arbiter_plan_input(pool, keep, now, p)
+        if not clips:
+            self.arbiter_plan_memo = (None, None)
+            return None
+        key = (keep, tuple(sorted(c.id for c in clips)))
+        if self.arbiter_plan_memo[0] != key or self.arbiter_plan_memo[1] not in pool:
+            self.arbiter_plan_memo = (key, self._arbiter_plan_answer(clips, pool, keep, now))
+        return self.arbiter_plan_memo[1]
+
+    def _arbiter_save_leave(self, gid: str | None, cands: dict[str, Candidate], now: float) -> str | None:
+        """arbiter.save_leave (default off): the hidden stick's game when its must-show would die waiting out the play on the
+        screen and leaving that play is one the rules allow: gid low leverage, nothing owed airing there. The landing is
+        still judged, and the commit gate still refuses a high-leverage leave."""
+        if not self._arbiter_on():
+            return None
+        p = self._arbiter_params()
+        if not (p.plan and p.save_leave) or not self.buffered_on():
+            return None
+        cur, tl = cands.get(gid or ""), self.timelines.get(gid or "")
+        if cur is None or tl is None or not cur.target:
+            return None
+        s = cur.scored
+        if s.high_leverage or s.crunch or s.crunch_now or s.lock:
+            return None
+        dl = self.delays.get(cur.target)
+        play_len = PLAY_LEN_S.get(tl.league, 8.0) or 8.0
+        flip = float(bj.cfg_get(self.cfg, "flip_s"))
+        for e in reversed(tl.events):
+            if e.kind != "play":
+                continue
+            if e.seen + dl.mu + AFTER_PLAY_BUFFER_S < now:
+                break
+            if e.lo + dl.mu - play_len <= now + flip \
+                    and arbiter.trigger_rank(tl.league.value, self._moment_word(tl, e), p) != arbiter.NOT_FLOOR:
+                return None
+        ready = self.standby_ready
+        for g, x in self._jump_pool(cands).items():
+            if g != gid and (ready is None or ready(x.target)) and self._bj_pic(g, x, now) is not None \
+                    and arbiter.dying(self._arbiter_plan_clips({g: x}, g, now, p), now, flip, play_len):
+                return g
+        return None
+
+    def _arbiter_moment_tiers(self, watchable: dict[str, Candidate], now: float) -> dict[str, int]:
+        """gid -> the highest moment tier owed there (lower is better), for Ranked.key."""
+        tier_of: dict[str, int] = {}
+        for m in self._arbiter_musts(watchable, now, self._arbiter_params()):
+            tier_of[m.game_id] = min(tier_of.get(m.game_id, P_NO_MOMENT), m.tier)
+        return tier_of
+
+    def _arbiter_rank(self, watchable: dict[str, Candidate], ids: list[str], yours: set[str], values: dict,
+                      tier_of: dict[str, int]) -> str | None:
+        """wire.pick with the moment tier filled in: L1 still comes first, the tier orders inside it."""
+        from redzone.noggin import priority as P, wire
+        ins = [replace(wire.game_input(g, watchable[g], g in yours, values.get(g)), moment_tier=tier_of.get(g, P_NO_MOMENT))
+               for g in ids]
+        ranked = P.rank(ins, wire.rules(self.cfg, {i.league for i in ins}), P.Preferences.from_config(self.cfg))
+        return ranked[0].game_id if ranked else None
 
     def _hold_for_big(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[cut timing] A big play is in the data but hasn't finished airing here yet: stay for it.
@@ -1484,7 +2510,7 @@ class Decider:
                 break
         if until is None:
             return d
-        self.home_break_visit, self.home_return_at = home_before
+        self._home_restore(home_before, "hold_for_big: a stay")
         return Decision(now, "stay", self.current, f"staying for it to air here ({until - now:.0f}s): {label}",
                         d.state, d.gate, want=d.target)
 
@@ -1535,13 +2561,15 @@ class Decider:
                 if x.scored.raw > 0 or x.scored.moment > 0 or x.scored.is_break or gid in PSEUDO}
         cur = cands.get(self.current) if self.current else None
         watchable = {gid: x for gid, x in live.items()
-                     if x.target and not x.stale and gid not in u.muted}
+                     if legal.tunable(gid, x, u.muted)}
 
-        if self.safe_mode:
+        block = legal.user_block(self.safe_mode, u.paused, u.locked_game if u.locked_game in cands else None,
+                                 u.manual_until, now)
+        if block == "safe_mode":
             return Decision(now, "stay", self.current, "safe mode: too many errors — tap Resume", State.SAFE)
-        if u.paused:
+        if block == "paused":
             return Decision(now, "stay", self.current, "auto-switching paused", State.PAUSED)
-        if u.locked_game and u.locked_game in cands:
+        if block == "locked_game":
             if self.current != u.locked_game:
                 if self.current is None and now < self.start_retry_at:
                     return Decision(now, "stay", None, f"couldn't get to your locked game yet — trying again in "
@@ -1553,9 +2581,9 @@ class Decider:
                 return Decision(now, "switch", u.locked_game, "you locked this game", State.PAUSED, kind="user")
             self._lock_reset()
             return Decision(now, "stay", self.current, "locked here by you", State.PAUSED)
-        if now < u.manual_until:
+        if block == "manual_pause":
             return Decision(now, "stay", self.current, "you just picked this — hands off for a minute", State.PAUSED)
-        if now < self._arrival_until:
+        if legal.arriving(now, self._arrival_until):
             return Decision(now, "stay", self.current, "switch in progress", State.WATCHING)
         self._target_of.update({gid: x.target for gid, x in cands.items() if x.target})
         self._known_target.update(self._target_of)  # [mid-play guard] remembered after a game drops out
@@ -1618,7 +2646,8 @@ class Decider:
         if home and not focus_on and home in watchable and (
                 cands[home].scored.score + c.get("decider.switch_margin") < s_cur.score
                 or self._crunch_outranks(s_cur, cands[home].scored)):
-            self.home_break_visit = home = None   # what we're on now is clearly better: stay
+            home = None   # what we're on now is clearly better: stay
+            self._home_set(home, self._home_at, "what we're on is clearly better")
         if home and home != self.current and home in watchable:
             if self._home_due(home, cands[home], now):
                 if gate_ok:
@@ -1631,7 +2660,7 @@ class Decider:
         focus = u.focus_game if u.focus_game in cands else None
         if focus and u.focus_mode != FocusMode.AUTOPILOT:
             if self.current != focus:
-                if not cands[focus].scored.is_break and gate_ok and not s_cur.lock:
+                if not cands[focus].scored.is_break and legal.may_leave(gate_ok, s_cur.lock):
                     return Decision(now, "switch", focus, "back to your focus game", state, gate_txt, kind="home")
                 return Decision(now, "stay", self.current, "away from focus game until this moment ends",
                                 state, gate_txt)
@@ -1642,19 +2671,19 @@ class Decider:
                 dest = self._break_destination(watchable, exclude=focus)
                 rp = self._replay_option(cands, dest, now)
                 if rp:
-                    self.home_break_visit = focus
+                    self._home_set(focus, self._home_at, "a visit away from your focus game")
                     return self._replay_decision(rp, state, gate_txt, now)
                 if dest:
-                    self.home_break_visit = focus
+                    self._home_set(focus, self._home_at, "a visit away from your focus game")
                     return Decision(now, "switch", dest, self._why(cands[dest], f"{_short(s_cur)} on a break → "),
                                     state, gate_txt, kind="break_visit")
                 return Decision(now, "stay", self.current, "your game is on a break; nothing better to visit",
                                 state, gate_txt)
-            if u.focus_mode == FocusMode.FOCUS_MUST_SEE and gate_ok and not s_cur.lock:
+            if u.focus_mode == FocusMode.FOCUS_MUST_SEE and legal.may_leave(gate_ok, s_cur.lock):
                 best = self._best(watchable, exclude=focus)
                 if best:
                     b = cands[best].scored
-                    if b.score >= c.get("decider.must_see_score") and b.score >= s_cur.score + c.get("decider.must_see_lead"):
+                    if legal.must_see(b.score, s_cur.score, c.get("decider.must_see_score"), c.get("decider.must_see_lead")):
                         return Decision(now, "switch", best, self._why(cands[best], "must-see"),
                                         state, gate_txt, kind="must_see")
             return Decision(now, "stay", self.current, "focused: " + s_cur.reason, state, gate_txt)
@@ -1663,7 +2692,7 @@ class Decider:
         crunch = self._crunch_time(cands, watchable, s_cur, on_break, gate_ok, gate_txt, state, now)
         if crunch:
             return crunch
-        chase = self._chase(watchable, s_cur, now) if gate_ok and not s_cur.lock else None
+        chase = self._chase(watchable, s_cur, now) if legal.may_leave(gate_ok, s_cur.lock) else None
         if chase and self._mine_first(s_cur) and cands[chase[0]].scored.personal < s_cur.personal:
             chase = None   # [EXP-214] a big play elsewhere doesn't pull the TV off your team late and close
         # [chained visit] Already away from home on a break visit: the game we're visiting can hit its
@@ -1677,7 +2706,7 @@ class Decider:
                             state, gate_txt, kind="home")
         if on_break:
             if chase:
-                self.home_break_visit = visit_home
+                self._home_set(visit_home, self._home_at, "a break visit")
                 return self._chase_decision(chase, cands, state, gate_txt, now)
             planned = None if away_home else self._long_break_visit(watchable, cands, self.current, gate_ok,
                                                                      state, gate_txt, now)
@@ -1686,14 +2715,14 @@ class Decider:
             dest = self._break_destination(watchable, exclude=self.current, home=away_home)
             rp = self._replay_option(cands, dest, now)
             if rp:
-                self.home_break_visit = visit_home
+                self._home_set(visit_home, self._home_at, "a break visit")
                 return self._replay_decision(rp, state, gate_txt, now)
             if dest and gate_ok and not self._short_stop(self.current, s_cur):
-                self.home_break_visit = visit_home
+                self._home_set(visit_home, self._home_at, "a break visit")
                 return Decision(now, "switch", dest, self._why(cands[dest], f"{_short(s_cur)} on a break → "),
                                 state, gate_txt, kind="break_visit")
         elif self._routine_tail(cur, gate, watchable, now):
-            self.home_break_visit = visit_home
+            self._home_set(visit_home, self._home_at, "a break visit")
             return Decision(now, "switch", REDZONE, "break's ending on a routine snap → NFL RedZone",
                             state, gate_txt, kind="break_visit")
 
@@ -1712,7 +2741,7 @@ class Decider:
             return self._chase_decision(chase, cands, state, gate_txt, now)
 
         # [drive in 20] A drive inside the 20 elsewhere: that's where the touchdown will be.
-        d20 = (self._rz_drive(watchable, now) if gate_ok and not s_cur.lock
+        d20 = (self._rz_drive(watchable, now) if legal.may_leave(gate_ok, s_cur.lock)
                and (self.current != REDZONE or self.cfg.get("redzone_mode.drive_in_20_from_redzone", True)) else None)
         if d20 and not self._mine_late(s_cur):
             return Decision(now, "switch", d20, self._why(cands[d20], "inside the 20 →"), state, gate_txt,
@@ -1722,7 +2751,7 @@ class Decider:
         if best is None:
             # [replay.when_alone] Nothing else live to switch to (your team's game on a break, say) is
             # no reason to skip the catch-up check below: the missed play still beats this moment.
-            if gate_ok and not s_cur.lock and self.cfg.get("replay.when_alone", False):
+            if legal.may_leave(gate_ok, s_cur.lock) and self.cfg.get("replay.when_alone", False):
                 rp = self._best_replay(cands, now, None, False, top=self._vs_replay(self.current, cands),
                                        margin=self.core.k.switch_margin, yours=self.current not in self._yours)
                 if rp and rp.mine:   # your team's missed play only: other games' wait for a real break
@@ -1733,7 +2762,7 @@ class Decider:
         cost = self._rank_cost(b.target)
 
         # Catch-up between plays: a missed big play is worth more than this ordinary moment.
-        if gate_ok and not s_cur.lock:
+        if legal.may_leave(gate_ok, s_cur.lock):
             lull = self._rw() and self._lull(watchable)
             rp = self._best_replay(cands, now, None, False,
                                    top=-1.0 if lull else max(self._vs_replay(self.current, cands),
@@ -1754,7 +2783,7 @@ class Decider:
             return Decision(now, "stay", self.current, f"your team, late and close — {s_cur.reason}", state, gate_txt)
 
         # Go back to where we were if this moment is over and that game is about as good.
-        if self.stack and not s_cur.lock and gate_ok and not self._mine_first(s_cur, late_only=True):
+        if self.stack and legal.may_leave(gate_ok, s_cur.lock) and not self._mine_first(s_cur, late_only=True):
             prev = self.stack[-1]
             if prev in watchable and not cands[prev].scored.is_break and prev not in self._screen_break:
                 st = self._cstate(cands, now)
@@ -1848,7 +2877,7 @@ class Decider:
         return 0.0 if gid in PSEUDO else cands[gid].scored.score
 
     def _replay_decision(self, rp: Missed, state, gate_txt: str, now: float) -> Decision:
-        name = "instant replay" if rp.seen_live else "catch-up"
+        name = "instant replay" if rp.seen_live or rp.marked_replay else "catch-up"
         return Decision(now, "replay", rp.game_id, f"{name}: {rp.label}", State.REPLAY, gate_txt,
                         kind="replay", replay=rp)
 
@@ -1894,6 +2923,7 @@ class Decider:
         w = float(c.get("replay.resume_window_s", 180))
         games = self._replay_pool(cands)
         fresh = [m for m in self.queue if m.game_id != self.current and not m.seen_live and not m.replayed
+                 and m.retry_at <= now and self._parkable(m, now)
                  and self._aired_age(m, now) <= w and self._replayable(games.get(m.game_id))]
         if not fresh:
             return None
@@ -1927,7 +2957,7 @@ class Decider:
         if x is None or not x.target:
             return None
         cost = self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target)
-        self.home_break_visit = None
+        self._home_set(None, self._home_at, "back where the replay paused")
         return Decision(now, "switch", gid, "back where we paused it for the replay", State.WATCHING,
                         "replay finished", kind="resume", rewind_s=extra + (now - at) + cost)
 
@@ -1955,7 +2985,8 @@ class Decider:
         home = self.home_break_visit
         hot = self._crunch_pick(watchable)
         if hot and (home not in watchable or not self._crunch_outranks(cands[home].scored, cands[hot].scored)):
-            self.home_break_visit = home = hot   # leaving a replay needs no gap: get to crunch time
+            home = hot   # leaving a replay needs no gap: get to crunch time
+            self._home_set(home, self._home_at, "after a replay: crunch time first")
         d20 = self._rz_drive(watchable, now) if self.cfg.get("redzone_mode.drive_in_20_after_replay", False) else None
         if d20 and not (home and home in watchable and cands[home].scored.crunch):
             return Decision(now, "switch", d20, self._why(cands[d20], "inside the 20 →"), State.WATCHING,
@@ -2047,7 +3078,7 @@ class Decider:
         With decider.crunch.by_value: the value with those as priors (_crunch_value)."""
         if self.cfg.get("decider.crunch.by_value", False):
             return (self._crunch_value(s),)
-        return (round(s.personal), core.league_rank(s.league.value, self.core.k), s.closeness, s.score)
+        return (round(s.personal), self._value_league_rank(s.league.value), s.closeness, s.score)
 
     def _crunch_value(self, s: Scored) -> float:
         """[crunch by value, TREE-6 Mac half; Nick Nov 4 4:15 PM] Crunch vs crunch is decided by value: watch
@@ -2063,7 +3094,8 @@ class Decider:
         return base + mine + float(c.get("decider.crunch.value_league_prior")) * self._value_league_rank(s.league.value)
 
     def _value_league_rank(self, league: str) -> int:
-        """core.league_rank with NFL = CFB (Nick, Nov 4 3:15 PM)."""
+        """core.league_rank with NFL = CFB: only used between two crunch games (N3, Nick Nov 8: NFL = CFB only when both
+        are in crunch; NFL first otherwise, Nick Nov 4 3:15 PM)."""
         lg = league.lower()
         if lg in ("nfl", "cfb"):
             return max(core.league_rank("nfl", self.core.k), core.league_rank("cfb", self.core.k))
@@ -2100,7 +3132,7 @@ class Decider:
         dp = p.personal - s_cur.personal
         if abs(dp) >= self.cfg.get("decider.crunch.personal_lead", 5):
             return dp > 0   # your team (then your bet) wins an overlap outright
-        lp, lc = (core.league_rank(x.league.value, self.core.k) for x in (p, s_cur))
+        lp, lc = (self._value_league_rank(x.league.value) for x in (p, s_cur))   # [N3] NFL = CFB when both are in crunch
         if lp != lc:
             return lp > lc  # [core] the league order decides between crunch times; the other gets a replay after
         if self.cfg.get("playbooks.game.crunch_overlap", False):
@@ -2145,7 +3177,7 @@ class Decider:
             if gate_ok:
                 # Its stoppage has room: fill it with a replay on the way (no gap needed to leave one).
                 rp = self._crunch_replay(cands, now, pick)
-                self.home_break_visit = pick if rp else None
+                self._home_set(pick if rp else None, self._home_at, "crunch_time")
                 if rp:
                     return self._replay_decision(rp, state, gate_txt, now)
                 return Decision(now, "switch", pick, self._why(cands[pick], "crunch time"), state, gate_txt,
@@ -2161,7 +3193,7 @@ class Decider:
         if on_break and gate_ok and not _nhl_ot(s_cur):
             rp = self._crunch_replay(cands, now, self.current)
             if rp:
-                self.home_break_visit = self.current
+                self._home_set(self.current, self._home_at, "crunch_time")
                 return self._replay_decision(rp, state, gate_txt, now)
         return Decision(now, "stay", self.current, f"crunch time: {s_cur.reason}", state, gate_txt)
 
@@ -2216,32 +3248,97 @@ class Decider:
     def jump_on(self) -> bool:
         return bool(self.cfg.get("jump_mode.enabled", False))
 
+    # ----- [slate, WP-18] flag slate.enabled; redzone/moments/slate.py is the choice, these only gather its facts ------
+
+    def _slate_on(self) -> bool:
+        return bool(self.cfg.get("slate.enabled", False))
+
+    def _slate_params(self) -> slate_mod.Params:
+        return slate_mod.Params.from_config(self.cfg.get)
+
+    def _slate_tick(self, cands: dict[str, Candidate], now: float) -> None:
+        """This tick's scene for the rotation: built once, read by _jump_best, _buffered_jump and jump_next."""
+        pool = self._jump_pool(cands)
+        self._slate_owed = {m.game_id for m in self._arbiter_musts(pool, now, arbiter.DEFAULT_PARAMS)}
+        facts = [self._slate_facts(gid, x, now) for gid, x in pool.items()]
+        self._slate_peak = max(self._slate_peak, len(facts)) if facts else 0
+        scene = slate_mod.plan(facts, now=now, block=self._slate_block, peak=self._slate_peak, params=self._slate_params())
+        self._slate_block, self.slate_scene = scene.block or self._slate_block, scene
+        self.slate_log[f"{scene.mode}:{scene.phase}"] += 1
+
+    def _slate_facts(self, gid: str, x: Candidate, now: float) -> slate_mod.Facts:
+        s, tl = x.scored, self.timelines[gid]
+        left = self.jump_left_at.get(gid)
+        unseen = left is not None and any(e.kind == "play" and e.big and e.seen > left for e in tl.events)
+        return slate_mod.Facts(gid, s.league.value, float(s.score), bool(s.mine) or s.personal >= self.cfg.get("decider.crunch.hold_personal", 5),
+                               bool(s.crunch or s.crunch_now), bool(s.crunch or s.high_leverage), bool(s.late),
+                               bool(s.is_break or gid in self._screen_break), gid in self._slate_owed, unseen)
+
+    def _slate_allows(self, gid: str, now: float) -> bool:
+        """The scene allows this cut, and it isn't a ping-pong return. Flag off: always."""
+        scene = self.slate_scene
+        if scene is None:
+            return True
+        if gid not in scene.games:
+            self.jump_holds["slate_out_of_scene"] += 1
+            return False
+        if slate_mod.returns_too_soon(self.jump_left_at, gid, now, len(scene.games), gid in self._slate_owed, self._slate_params()):
+            self.jump_holds["slate_ping_pong"] += 1
+            return False
+        return True
+
+    def _may_leave_on_walk(self, gid: str | None, x: Candidate | None, now: float) -> bool:
+        """[slate] Basketball may be left in the walk up court after a shot, but only at low leverage (Rule #1)."""
+        if x is None or not self._slate_on() or x.scored.league.base != League.NBA or not self._slate_params().leave_after_shot:
+            return False
+        s = x.scored
+        if s.high_leverage or s.crunch or s.crunch_now or s.lock in CRUNCH_LOCKS or s.mine:
+            return False
+        recent = float(self.cfg.get("decider.leave.high_leverage_recent_s", 30.0))
+        return now - self._high_lev_at.get(gid or "", -math.inf) > recent
+
     def _jump_league(self, x: Candidate | None) -> bool:
-        lgs = self.cfg.get("jump_mode.leagues") or []
+        lgs = list(self.cfg.get("jump_mode.leagues") or [])
+        if lgs and self.buffered_on():   # [overseer Nov 8 22:15] buffered runs in its own leagues too (NBA, CBB)
+            lgs += list(bj.cfg_get(self.cfg, "leagues") or [])
+        if lgs and self._slate_on():     # [slate] NHL and MLB join the rotation
+            lgs += list(self._slate_params().leagues)
         return x is not None and (not lgs or x.scored.league.value in lgs)
 
     def _jump_pool(self, cands: dict[str, Candidate]) -> dict[str, Candidate]:
         """Every live tunable game the rotation may visit (its leagues, a timeline, not muted or stale)."""
         u = self.user
         return {gid: x for gid, x in cands.items()
-                if gid not in PSEUDO and x.target and not x.stale and gid not in u.muted and gid in self.timelines
+                if gid not in PSEUDO and legal.tunable(gid, x, u.muted) and gid in self.timelines
                 and (x.scored.raw > 0 or x.scored.moment > 0 or x.scored.is_break) and self._jump_league(x)}
 
     def _jump_hold(self, x: Candidate) -> str | None:
         """Why the game on screen keeps the screen past its play budget (None: it doesn't)."""
         s = x.scored
-        if s.crunch or s.crunch_now or s.lock in CRUNCH_LOCKS:
-            return "crunch"
+        hold_personal = self.cfg.get("decider.crunch.hold_personal", 5)
+        if (s.crunch or s.crunch_now or s.lock in CRUNCH_LOCKS) and (
+                not s.is_break or s.personal >= hold_personal or _nhl_ot(s)):
+            return "crunch"   # [D-03] a neutral crunch game keeps the screen only while it's live: every break held is ads
+        if self._mine_late(s) and not s.is_break:
+            return "mine_late"   # [D-04] your team late and close, not at a break (the ads go to the rotation)
         if self.cfg.get("jump_mode.hold_rz_drive", True) and s.lock == "red zone drive" and not s.garbage:
             return "rz_drive"
         return None
+
+    def _jump_prior(self, s: Scored) -> float:
+        """[D-04] Your team and the league order in the rotation's value: without these the snap, big-play and fairness
+        bonuses (up to 65 points) outrank both. jump_mode.mine_prior / league_prior (points per league step)."""
+        c = self.cfg
+        mine = float(c.get("jump_mode.mine_prior", 30)) if s.personal >= c.get("decider.crunch.hold_personal", 5) else 0.0
+        return mine + float(c.get("jump_mode.league_prior", 4)) * core.league_rank(s.league.value, self.core.k)
 
     def _jump_margin(self, d, now: float) -> float:
         """Delay doubt each side of a jump's leave / landing: jump_mode.margin_sigmas x the delay's sigma
         (2 = the rule every other entry uses)."""
         return float(self.cfg.get("jump_mode.margin_sigmas", 2.0)) * d.current_sigma(now)
 
-    def _jump_gate(self, cur: Candidate, now: float, gid: str | None = None, required_s: float | None = None) -> Gate | None:
+    def _jump_gate(self, cur: Candidate, now: float, gid: str | None = None, required_s: float | None = None,
+                   strict: bool | None = None) -> Gate | None:
         """[Nick Nov 7 1:05, "Rule #1 kept for JOINS"] May the rotation leave gid (default: the game on screen)?
         The normal gate (official breaks, low-leverage leaves per decider.leave.low_leverage) or, in any jump
         league, the play-by-play's dead window between plays: the feed lags the TV and goes quiet in the ads,
@@ -2252,24 +3349,68 @@ class Decider:
             return None
         d = self.delays.get(cur.target or "unknown")
         flip = float(self.cfg.get("jump_mode.flip_s", 3.2)) if required_s is None else required_s
+        if self._jump_break_on_screen(gid, cur, tl, d, now):
+            return Gate(True, "break on screen (jump: nothing to cut)", True)
         if tl.dead.marks:
             m = self._jump_margin(d, now)
             until = tl.dead.dead_until(now - d.mu - m)
             if until is not None and until >= now + flip - d.mu + m:
                 return Gate(True, "dead ball on screen (play-by-play)")
-        saved, self.current = self.current, gid
-        try:
-            return self._gate(cur, now)
-        finally:
-            self.current = saved
+            walk = cuts.walk_params(self.cfg, cur.scored.league) if self._may_leave_on_walk(gid, cur, now) else None
+            if walk and tl.dead.landing(now - d.mu - m, now + flip - d.mu + m, walk=walk).state == "dead":
+                return Gate(True, "the walk after a shot, low leverage")
+        # (this used to swap self.current for the call: another game's gate is asked by name now)
+        g = self._gate(cur, now) if gid == self.current else self._gate_at(cur, now, gid)
+        if g is not None and g.safe and (self.buffered_on() if strict is None else strict) \
+                and g.why.startswith("low-leverage"):
+            # [Nick 22:15 Nov 7 pass bar: "Can't leave mid play"] buffered mode leaves only at a dead ball, never on
+            # the low-leverage exception
+            return Gate(False, "dead balls only (buffered: no mid-play leave)")
+        return g
+
+    def _jump_break_on_screen(self, gid: str, cur: Candidate, tl: Timeline, d, now: float) -> bool:
+        """[overseer Nov 8 01:16Z: a timeout on MIA@ND held the screen 46 s with the standby ready] A break
+        (timeout, end of quarter, injury, review, score) that the FRESH feed is still in, and that has reached
+        the screen, is a dead ball for a jump: the feed runs ~mu ahead of the screen, so a break that hasn't
+        ended in the data can't have ended on screen, and no visit-and-return length is needed (the rotation
+        doesn't come back). The break counts as on screen once the play before it surely finished airing."""
+        m = self.jump_break_m[gid]
+        if not cur.scored.is_break:
+            if m.to("play", "the feed is back in play", now=now):
+                self.jump_break_m.prune()
+            return False
+        m.to("break", "the feed says break", now=now)
+        first = m.since
+        if tl.fresh_at is None or now - tl.fresh_at > STALE_DATA_S:
+            return False
+        m = 2 * d.current_sigma(now)
+
+        def resumed(since: float, pid=None) -> bool:   # a play logged after the break began: it's over in the data
+            return any(e.kind == "play" and e.seen > since and not (pid and e.pid == pid) for e in tl.events)
+        start = tl.last("stop_start")
+        if start is not None and not resumed(start.lo, start.pid):
+            reached = _stoppage_reached(tl, start, d.mu, m)
+        elif not resumed(first):   # no stoppage entry for it: from when the feed first said "break" (it began no later)
+            reached = first + d.mu + m + AFTER_PLAY_BUFFER_S
+        else:
+            return False
+        return now >= reached
 
     def jump_may_leave(self, gid: str | None, cands: dict[str, Candidate], now: float, required_s: float) -> bool:
         """At the flip: the jump may cut away from gid now (the engine's may_cut for a jump)."""
         x = cands.get(gid or "") or self._known.get(gid or "")
         if not gid or gid in PSEUDO or x is None:
             return True
+        if gid not in cands and self.buffered_on():
+            # [buffered: the screen's game left the feed] no fresh play-by-play left to show a play: a free leave
+            # [D-05] the buffered screen runs mu behind the data: a feed dark past STALE_DATA_S still has mu + 2 sigma of
+            # play left on the picture
+            tl = self.timelines.get(gid)
+            d = self.delays.get(x.target or "unknown")
+            if tl is None or tl.fresh_at is None or now - tl.fresh_at > STALE_DATA_S + d.mu + 2 * d.current_sigma(now):
+                return True
         g = self._jump_gate(x, now, gid=gid, required_s=required_s)
-        return bool(g and g.safe)
+        return bool(g and g.safe) or self._arbiter_save_leave(gid, cands, now) is not None
 
     def _jump_plays_seen(self, gid: str, x: Candidate, now: float) -> int:
         """Plays that started and finished airing on screen since we landed on gid."""
@@ -2297,13 +3438,33 @@ class Decider:
             return False
         if break_on_arrival(tl, d, now, now + cost):
             return False   # a commercial on arrival: not where a rotation lands
+        pic = self._bj_pic(gid, x, now)
+        at = self.snap_parked(x.target) if pic is not None and self.snap_parked is not None else None
+        if at is not None:
+            pic = bj.frozen(pic, now, at)   # paused on the line-up: the picture stood still since `at`
+        if pic is not None:
+            # [buffered jump] the standby plays behind live (scrubbed, label read): its picture is d.mu behind
+            ok, _ = bj.lands(pic, now, float(bj.cfg_get(self.cfg, "flip_fast_s")),
+                             max(float(bj.cfg_get(self.cfg, "flip_s")), cost),
+                             float(bj.cfg_get(self.cfg, "lead_min_s")), float(bj.cfg_get(self.cfg, "margin_sigmas")))
+            return ok
         if tl.dead.marks:
             mu = d.mu - d.behind   # a fresh tune or a live standby shows the live edge
             m = self._jump_margin(d, now)
             lo = min(cost, float(self.cfg.get("decider.entry.fastest_s", ENTRY_FASTEST_S)))
             x0 = now + lo - mu - m
             x1 = now + cost + float(self.cfg.get("jump_mode.land_dead_s", 2.0)) - mu + m
-            return tl.dead.landing(x0, x1).state == "dead"
+            join = self._join_args(x, urgent=False)
+            land = tl.dead.landing(x0, x1, walk=join.get("walk"))
+            if land.state != "dead":
+                from redzone.decider import gate
+                return gate.bucket_plan(self.cfg, tl, x.scored, d, now,
+                                        cost + float(self.cfg.get("jump_mode.land_dead_s", 2.0)),
+                                        float(self.cfg.get("decider.entry.fastest_s", ENTRY_FASTEST_S))) is not None
+            if land.kind != "walk" and join.get("after_play_s"):
+                # [landing bars] football: hold for the replay while this same dead window still has room after it
+                return cuts.settle_wait(tl.dead, now + cost - mu, m, join["after_play_s"], land) <= 0
+            return True
         g = leave_window(tl, d, now, self.cfg.get("decider.uncalibrated_sigma_s"),
                          cost + AFTER_PLAY_BUFFER_S)
         return g.safe and not g.on_screen_break
@@ -2324,7 +3485,7 @@ class Decider:
         big = any(e.kind == "play" and e.big and e.seen + d.mu >= now - recent for e in tl.events)
         away = now - self.jump_left_at.get(gid, now - float(c.get("jump_mode.rotate_cap_s", 300)))
         away = min(away, float(c.get("jump_mode.rotate_cap_s", 300)))
-        v = (x.scored.score + float(c.get("jump_mode.snap_bonus", 15)) * snap
+        v = (x.scored.score + self._jump_prior(x.scored) + float(c.get("jump_mode.snap_bonus", 15)) * snap
              + float(c.get("jump_mode.big_bonus", 20)) * big
              + float(c.get("jump_mode.rotate_per_min", 6)) * away / 60.0)
         return v, {"snap": snap, "snap_in_s": round(snap_in, 1), "big": big, "away_s": round(away),
@@ -2342,24 +3503,34 @@ class Decider:
         return self._next_snap_s(gid, cands, now) - after_s
 
     def _jump_best(self, cands, now: float, exclude: str | None) -> tuple[str, dict] | None:
-        rows, unready = [], 0
+        rows, unready, ready = [], 0, 0
         ready_only = bool(self.cfg.get("jump_mode.ready_only", True)) and self.standby_ready is not None
         for gid, x in self._jump_pool(cands).items():
             if gid == exclude:
+                continue
+            if not self._slate_allows(gid, now):
                 continue
             if ready_only and not self.standby_ready(x.target):
                 # [overseer Nov 7 18:55] the first live jump tuned a search local on the spot (30 s) and lost the
                 # dead ball: jump only onto the hidden stick's ready game; the standby re-tunes for the next one
                 unready += 1
                 continue
+            ready += 1
             r = self._jump_value(gid, x, cands, now)
             if r is not None:
                 rows.append((r[0], gid, r[1]))
         if not rows:
-            if unready:
-                self.jump_holds["standby_not_ready"] += 1
+            # [overseer Nov 7 20:05] one code per tick: nothing ready on the standby / the ready game is mid-play
+            # or in an ad on arrival / no other game at all (they were counted together before)
+            self.jump_holds["standby_not_ready" if unready and not ready else "ready_not_dead"
+                            if ready_only and ready else "no_game_at_dead_ball"] += 1
             return None
         _, gid, info = max(rows, key=lambda z: z[0])
+        if self._arbiter_on():
+            picked = self._arbiter_rotation(rows, gid, cands, now)
+            if picked is None:
+                return None     # counted in jump_holds with the arbiter's reason
+            gid, info = picked
         return gid, info
 
     def jump_next(self, cands: dict[str, Candidate], standby: str | None = None,
@@ -2372,7 +3543,8 @@ class Decider:
         # [overseer Nov 7 18:55] a target the hidden stick can't tune right now (a failed tune's backoff, an app it
         # lacks) is skipped: picking it every tick left the standby empty all afternoon
         pool = {gid: x for gid, x in self._jump_pool(cands).items()
-                if gid != self.current and (tunable is None or x.target == standby or tunable(x.target))}
+                if gid != self.current and (tunable is None or x.target == standby or tunable(x.target))
+                and slate_mod.may_cut_to(self.slate_scene, gid)}
         if not pool:
             return None
         cap = float(c.get("jump_mode.rotate_cap_s", 300))
@@ -2383,40 +3555,274 @@ class Decider:
             away = min(cap, now - self.jump_left_at.get(gid, now - cap))
             # a code channel tunes in ~3-4 s, a local by search ~11-15 s: the local only for a much bigger moment
             pen = slow if self.slow_tune is not None and self.slow_tune(pool[gid].target) else 0.0
-            return pool[gid].scored.score + per * away / 60.0 - pen - (100.0 if gid in self._screen_break else 0.0)
+            return pool[gid].scored.score + self._jump_prior(pool[gid].scored) + per * away / 60.0 - pen \
+                - (100.0 if gid in self._screen_break else 0.0)
         best = max(pool, key=val)
         keep = next((gid for gid, x in pool.items() if standby and x.target == standby), None)
+        if self._arbiter_on():
+            floor = self._arbiter_preload(pool, keep, now)
+            if floor is not None:
+                return floor
+        if keep is not None and self.buffered_on():
+            # [buffered jump] a scrubbed standby is ~60 s of tune + scrub: keep it (ping-pong with the screen) until
+            # its game goes to a long stoppage or the pair has been on rotate_every_s
+            pair = frozenset((self.current or "", keep))
+            if self._bj_pair is None or self._bj_pair[0] != pair:
+                self._bj_pair = (pair, now)
+            pic = self._bj_pic(keep, pool[keep], now)
+            if pic is None or bj.rotate_due(pic, now, now - self._bj_pair[1], self.cfg) is None:
+                return keep
         if keep is not None and val(keep) >= val(best) - float(c.get("jump_mode.standby_margin", 8)):
             return keep
         return best
 
-    def _jump_owns(self, d: Decision, cands: dict[str, Candidate]) -> bool:
-        """[jump mode] Is d an optional switch out of a rotation game, which the rotation decides instead?"""
-        if not self.jump_on() or d.action != "switch" or d.kind in JUMP_KEEPS or d.kind == "jump":
-            return False
-        u = self.user
-        if u.paused or u.locked_game or u.focus_mode != FocusMode.AUTOPILOT or self.safe_mode:
-            return False
-        cur = cands.get(self.current or "")
-        return cur is not None and self.current not in PSEUDO and self._jump_league(cur)
+    # ----- [buffered jump] ----------------------------------------------------
+    # Both sticks ~60-90 s behind live (scrubbed, label read): the play-by-play already holds every snap and whistle
+    # about to air, so the cut points are known in advance (redzone/decider/buffered.py). Only when BOTH pictures
+    # are buffered; otherwise jump mode's own rules run (a fresh live-edge tune until its scrub lands).
 
-    def _jump(self, d: Decision, cands: dict[str, Candidate], now: float) -> Decision | None:
-        """[jump mode] The rotation's switch for this tick, or None (keep the normal decision)."""
+    def buffered_on(self) -> bool:
+        return self.jump_on() and bool(self.cfg.get("buffered_jump.enabled", False))
+
+    def _bj_pic(self, gid: str, x: Candidate | None, now: float) -> bj.Pic | None:
+        """gid's picture as the editor sees it, or None: flag off, not a buffered league, no play-by-play dead windows,
+        or its stick isn't at least min_behind_s behind live (by the label)."""
+        if x is None or not x.target or not self.buffered_on():
+            return None
+        lgs = list(bj.cfg_get(self.cfg, "leagues") or [])
+        if lgs and self._slate_on():
+            lgs += list(self._slate_params().leagues)
+        tl = self.timelines.get(gid)
+        if tl is None or not tl.dead.marks or (lgs and x.scored.league.value not in lgs):
+            return None
+        d = self.delays.get(x.target)
+        if d.behind < float(bj.cfg_get(self.cfg, "min_behind_s")):
+            return None
+        walk = cuts.walk_params(self.cfg, x.scored.league)
+        return bj.Pic(tl.dead, d.mu, d.current_sigma(now), gid, walk, walk if self._may_leave_on_walk(gid, x, now) else None)
+
+    def _bj_lands(self, gid: str, p: bj.Pic, cands: dict[str, Candidate], now: float) -> tuple[bool, float]:
+        at = self.snap_parked(cands[gid].target) if self.snap_parked is not None else None
+        hp = bj.frozen(p, now, at) if at is not None else p
+        return bj.lands(hp, now, float(bj.cfg_get(self.cfg, "flip_fast_s")), self._bj_flip_cost(cands[gid].target),
+                        float(bj.cfg_get(self.cfg, "lead_min_s")), float(bj.cfg_get(self.cfg, "margin_sigmas")))
+
+    def _bj_flip_cost(self, target: str | None) -> float:
+        """[P1-ROOTCAUSE-04] The slowest arrival a buffered landing is judged with: the same max(flip_s, cost) the flip's
+        own check (jump_lands_dead) uses, so a cut decided here isn't vetoed a second later (00:15:41, 3.2 s vs 4.1 s)."""
+        flip = float(bj.cfg_get(self.cfg, "flip_s"))
+        return max(flip, self._deadline_cost(target)) if self.deadline_cost is not None else flip
+
+    def _bj_screen_gone(self, cands: dict[str, Candidate], now: float) -> Decision | None:
+        """The game on screen isn't in the feed any more: jump to a ready standby that lands on a dead ball (buffered
+        picture by the play-by-play, else jump mode's own landing check)."""
+        ready = self.standby_ready
+        for gid, x in self._jump_pool(cands).items():
+            if gid == self.current or (ready is not None and not ready(x.target)):
+                continue
+            p = self._bj_pic(gid, x, now)
+            if p is not None:
+                ok, h_snap = self._bj_lands(gid, p, cands, now)
+            else:
+                ok, h_snap = self.jump_lands_dead(gid, x, now, self._bj_flip_cost(x.target)), -1.0
+            if not ok:
+                continue
+            info = {"why": "bj_screen_gone", "buffered": p is not None, "h_snap_s": round(h_snap, 1),
+                    "behind_s": round(self.delays.get(x.target).behind, 1), "here_behind_s": 0.0,
+                    "gate": "the screen's game left the feed", "holds": dict(self.jump_holds), "snap": False,
+                    "big": False, "cost_s": float(bj.cfg_get(self.cfg, "flip_s")), "held_s": round(now - self.since, 1)}
+            self.jump_holds = Counter()
+            return Decision(now, "switch", gid, f"jump: the game on screen left the feed -> {self._short_gid(gid)}",
+                            State.WATCHING, info["gate"], kind="jump", jump=info)
+        self.jump_holds["bj_screen_gone_no_landing"] += 1
+        return None
+
+    def _bj_keep_standby(self, d: Decision, cands: dict[str, Candidate], now: float) -> Decision | None:
+        """[overseer Nov 7 23:43] Screen game unknown or gone, a buffered standby ready: the normal decider's 'start' /
+        'ended' switch to ANOTHER game re-tunes that stick and throws the buffer away (live: a held Prime standby lost to
+        a WVU tune that never started). Hold it for buffered_jump.keep_standby_s while the free cut waits for its dead
+        ball; after that the normal switch goes."""
+        if d.action != "switch" or d.kind not in ("start", "ended"):
+            return None
+        ready = self.standby_ready
+        held = [gid for gid, x in self._jump_pool(cands).items() if gid != d.target and gid != self.current
+                and (ready is None or ready(x.target)) and self._bj_pic(gid, x, now) is not None]
+        if not held:
+            self.gone_m.to("present", "no buffered standby to keep", now=now)
+            return None
+        if self.gone_m.is_("present"):
+            self.gone_m.to("keeping", f"a {d.kind} switch would re-tune the buffered standby ({held[0]})", now=now)
+        if now - self.gone_m.since > float(self.cfg.get("buffered_jump.keep_standby_s", 120.0)):
+            self.gone_m.to("let_go", "keep_standby_s ran out: the normal switch goes", now=now)
+            return None
+        if self.gone_m.is_("let_go"):
+            return None
+        self.jump_holds["bj_keep_standby"] += 1
+        return Decision(now, "stay", self.current, f"jump mode: keeping the buffered standby ({d.reason})", d.state,
+                        d.gate, want=held[0])
+
+    def _buffered_jump(self, cur: Candidate, cands: dict[str, Candidate], now: float):
+        """The editor's call: a jump Decision, False (holds; counted as bj_<why>) or None (not both buffered: jump
+        mode's own rules decide)."""
+        v = self._bj_pic(self.current or "", cur, now)
+        ready = self.standby_ready
+        hs = [(gid, x) for gid, x in self._jump_pool(cands).items()
+              if gid != self.current and (ready is None or ready(x.target)) and self._slate_allows(gid, now)]
+        if hs and self._arbiter_on() and self._arbiter_params().plan:
+            ok = self._arbiter_flip_legal(cands, now)
+            if not any(gid in ok for gid, _ in hs):
+                self.jump_holds["bj_not_legal"] += 1
+                return False
+            hs = [(gid, x) for gid, x in hs if gid in ok]
+        pics = [(gid, p) for gid, x in hs if (p := self._bj_pic(gid, x, now)) is not None]
+        if v is None:
+            # [bootstrap, overseer Nov 8 21:47] the screen's stick was tuned at the live edge (before the flag, or a failed
+            # scrub): once the hidden stick holds a buffered game, go there at the next safe dead ball (jump mode's own
+            # leave gate; the landing on the buffered picture), and from then on both pictures are buffered
+            # [P1-ROOTCAUSE-01] counted only when a cut is actually wanted: the old every-tick counter fell through to
+            # play_on_screen on the same ticks, so the holds read as 126 min when they were 74
+            if pics:
+                self.jump_holds["bj_bootstrap_wanted"] += 1
+            g = self._jump_gate(cur, now, strict=True) if pics else None
+            for gid, p in pics:
+                ok, h_snap = self._bj_lands(gid, p, cands, now)
+                if g is not None and g.safe and ok:
+                    info = {"why": "bj_bootstrap", "buffered": True, "h_snap_s": round(h_snap, 1),
+                            "behind_s": round(self.delays.get(cands[gid].target).behind, 1), "here_behind_s": 0.0,
+                            "gate": g.why, "holds": dict(self.jump_holds), "snap": False, "big": False,
+                            "cost_s": float(bj.cfg_get(self.cfg, "flip_s")), "held_s": round(now - self.since, 1)}
+                    self.jump_holds = Counter()
+                    return Decision(now, "switch", gid, f"jump: onto the buffered picture -> {self._short_gid(gid)}",
+                                    State.WATCHING, g.why, kind="jump", jump=info)
+            return None
+        if not pics:
+            self.jump_holds["bj_standby_not_buffered" if hs else "bj_standby_not_ready"] += 1
+            return None if hs else False
+        seen = self._jump_plays_seen(self.current, cur, now)
+        park = bool(bj.cfg_get(self.cfg, "park"))
+        best = None
+        for gid, p in pics:
+            if park:
+                at = self.snap_parked(cands[gid].target) if self.snap_parked is not None else None
+                c = bj.cut_parked(v, bj.frozen(p, now, at), now, self.cfg, plays_seen=seen,
+                                  land_s=self._bj_flip_cost(cands[gid].target)) if at is not None \
+                    else bj.Cut(False, "not_parked")
+            else:
+                c = bj.cut_now(v, p, now, self.cfg, plays_seen=seen, land_s=self._bj_flip_cost(cands[gid].target))
+            if not c.go and c.why == "play_on_screen" and self._arbiter_save_leave(self.current, cands, now) == gid:
+                lands, h_snap = self._bj_lands(gid, p, cands, now)
+                if lands:
+                    c = bj.Cut(True, "save_leave", {"h_snap_s": round(h_snap, 1), "here_snap_s": 0.0, "plays_seen": seen})
+            if c.go and (best is None or c.info.get("h_snap_s", 99) < best[1].info.get("h_snap_s", 99)):
+                best = (gid, c)
+            elif best is None:
+                last = c
+        if best is None:
+            self.jump_holds[f"bj_{last.why}"] += 1
+            return False
+        gid, c = best
+        held = now - self.since
+        info = {**c.info, "why": f"bj_{c.why}", "buffered": True, "held_s": round(held, 1),
+                "behind_s": round(self.delays.get(cands[gid].target).behind, 1),
+                "here_behind_s": round(self.delays.get(cur.target).behind, 1),
+                "gate": "buffered: dead ball on screen (play-by-play)", "holds": dict(self.jump_holds),
+                "snap": c.why in ("snap_next", "parked_snap"), "big": False, "cost_s": float(bj.cfg_get(self.cfg, "flip_s"))}
+        self.jump_holds = Counter()
+        reason = (f"jump: dead ball after {seen} play{'s' if seen != 1 else ''} ({c.why.replace('_', ' ')}) -> "
+                  f"{self._short_gid(gid)}: snap in {c.info.get('h_snap_s')}s")
+        return Decision(now, "switch", gid, reason, State.WATCHING, info["gate"], kind="jump", jump=info)
+
+    def _own(self, d: Decision, cands: dict[str, Candidate], now: float) -> tuple[str, str]:
+        """[owner] (owner, why) for this tick: who owns the TV (decider.owner) and the short code jump_holds counts when
+        the rotation stands aside. The one place the handoff is decided: _jump runs only for 'jump' / 'buffered', and
+        the rotation vetoes the normal decider's optional switches only then (_jump_owns)."""
+        u = self.user
+        # the same reading _decide takes: a lock on a game that has left the board holds nothing (until the supervisor clears it)
+        block = legal.user_block(self.safe_mode, u.paused, u.locked_game if u.locked_game in cands else None,
+                                 u.manual_until, now)
+        if block:
+            return ("safe" if block == "safe_mode" else "user"), block
+        if u.focus_mode != FocusMode.AUTOPILOT:
+            return "user", "focus_mode"
+        # A replay owns the way back to live: its after-replay switch (live / home / break_visit) is never a jump-mode
+        # stay, or the screen sat on old replay footage (after_replay only clears on a live switch)
+        if self.replaying:
+            return "replay", "replaying"
+        if self.after_replay:
+            return "replay", "after_replay"
         if not self.jump_on():
-            return None
-        u, c = self.user, self.cfg
-        if (self.safe_mode or u.paused or u.locked_game or now < u.manual_until or now < self._arrival_until
-                or u.focus_mode != FocusMode.AUTOPILOT or self.replaying or self.after_replay):
-            return None
-        if d.action in ("switch", "replay") and d.kind in JUMP_KEEPS:
-            return None   # crunch time, a finished game, your tap, a chase: the normal decider already goes
+            return "normal", "jump_off"
         cur = cands.get(self.current or "")
-        if cur is None or self.current in PSEUDO or not self._jump_league(cur):
+        rotation = cur is not None and self.current not in PSEUDO and self._jump_league(cur)
+        rot = "buffered" if self.buffered_on() else "jump"
+        if legal.arriving(now, self._arrival_until):
+            # the tune is still landing: the rotation waits; it still owns the optional switches of a rotation game
+            return (rot if rotation else "normal"), "just_arrived"
+        # [overseer Nov 7 22:40] also current None: after every restart the screen's game is unknown and jump mode held
+        # 'screen_game_unknown' for 10+ min (514 ticks on 0b0f8534) with a ready, scrubbed standby. The normal decider
+        # already 'start's from an unknown screen; the landing is still timed on a dead ball (Rule #1 on entry).
+        if cur is None and (self.current is None or self.current not in PSEUDO) and self.buffered_on() \
+                and d.kind not in ("user", "crunch"):
+            return "buffered", "screen_gone"
+        if d.action in ("switch", "replay") and d.kind in JUMP_KEEPS:
+            return "hard", f"normal_{d.kind}"   # crunch time, a finished game, your tap, a chase: it already goes
+        if not rotation:
+            return "normal", "screen_not_in_rotation" if cur is not None else "screen_game_unknown"
+        return rot, "rotation"
+
+    def _jump_owns(self, d: Decision, cands: dict[str, Candidate], owner: str | None = None,
+                   why: str | None = None) -> bool:
+        """[jump mode] Is d an optional switch out of a rotation game, which the rotation decides instead? Derived from
+        the tick's owner (_own), so it can't disagree with _jump about who stands aside."""
+        if owner is None:
+            owner, why = self._own(d, cands, self._clock())
+        if owner not in ("jump", "buffered") or why == "screen_gone":
+            return False
+        return d.action == "switch" and d.kind not in JUMP_KEEPS and d.kind != "jump"
+
+    def _jump(self, d: Decision, cands: dict[str, Candidate], now: float, why: str | None = None) -> Decision | None:
+        """[jump mode] The rotation's switch for this tick, or None (keep the normal decision). Runs only when the
+        rotation owns the TV (decide() -> _own); every other owner's stand-aside code is counted in _count_hold."""
+        if why is None:
+            owner, why = self._own(d, cands, now)
+            if owner not in ("jump", "buffered") or why == "just_arrived":
+                self._count_hold(why)
+                return None
+        c = self.cfg
+        if why == "screen_gone" and self._restart_hold(cands, now):
+            # [P-04] after a restart the unknown screen is probably the close, late game we saved: no free cut, no 'start'
+            # switch away from it until adopt() learns the screen or the hold runs out
+            self.jump_holds["bj_restart_hold"] += 1
+            return Decision(now, "stay", self.current, f"restart: holding the saved game's leverage ({d.reason})", d.state,
+                            d.gate, want=d.target)
+        if why == "screen_gone" and self._gone_hold(None, now) is not None:
+            self.jump_holds["bj_screen_gone_hold"] += 1   # [D-05] the last play is still airing, or the gap isn't proven
+            return None   # the normal decider's own 'ended' waits on the same hold
+        if why == "screen_gone":
+            # [overseer Nov 8 22:15] the screen's game left the feed (over, or dropped from the list): nothing on screen
+            # to cut out of, so it's a free cut onto the first ready standby that lands on a dead ball (ahead of the
+            # normal 'ended' switch, which doesn't time the landing on a buffered picture)
+            gone = self._bj_screen_gone(cands, now)
+            if gone is not None:
+                self.gone_m.to("present", "free cut onto the ready standby", now=now)
+                return gone
+            keep = self._bj_keep_standby(d, cands, now)
+            if keep is not None:
+                return keep
+            if d.action in ("switch", "replay") and d.kind in JUMP_KEEPS:
+                self.jump_holds[f"normal_{d.kind}"] += 1
+                return None   # crunch time, a finished game, your tap, a chase: the normal decider already goes
+            self.jump_holds["screen_game_unknown"] += 1
             return None
+        cur = cands[self.current]
         hold = self._jump_hold(cur)
         if hold:
             self.jump_holds[hold] += 1
             return None
+        if self.buffered_on():
+            b = self._buffered_jump(cur, cands, now)
+            if b is not None:
+                return b or None   # False: the editor holds this tick (counted); a Decision: cut now
         g = self._jump_gate(cur, now)
         if g is None or not g.safe:
             self.jump_holds["play_on_screen"] += 1
@@ -2428,17 +3834,24 @@ class Decider:
             or held >= float(c.get("jump_mode.max_hold_s", 90))
         best = self._jump_best(cands, now, exclude=self.current)
         if best is None:
-            self.jump_holds["no_game_at_dead_ball"] += 1
-            return None
+            return None   # _jump_best counted why
         gid, info = best
         hot = info["snap"] or info["big"]
+        if self.slate_scene is not None and not slate_mod.pays_off(info["snap"], info["big"], on_break, gid in self._slate_owed,
+                                                                  self._slate_params()):
+            self.jump_holds["slate_no_payoff"] += 1
+            return None
         # [Nick: "at EVERY dead ball ... flip if the other stick holds a game whose next snap is coming"] even with
         # no play seen here yet, go where the next snap comes clearly sooner than ours (snap_gain_s): the
         # rotation chases snaps across games instead of sitting through this huddle
         mine = self._jump_snap_wait(self.current, cur, cands, now)
         sooner = info["snap"] and info["snap_in_s"] + info["cost_s"] + float(c.get("jump_mode.snap_gain_s", 10)) < mine
         info["here_snap_s"] = round(mine, 1)
-        if not due and not (seen >= int(c.get("jump_mode.min_plays", 1)) and hot) and not sooner:
+        # [overseer Nov 7 20:05] the standby's game is ready and lands on a dead ball: go at this dead ball (after
+        # min_plays here), not after the play budget. Readiness is the bottleneck, so a ready flip isn't wasted.
+        ready_go = bool(c.get("jump_mode.go_when_ready", True)) and self.standby_ready is not None \
+            and self.standby_ready(cands[gid].target) and seen >= int(c.get("jump_mode.min_plays", 1))
+        if not due and not (seen >= int(c.get("jump_mode.min_plays", 1)) and hot) and not sooner and not ready_go:
             self.jump_holds["budget_left"] += 1
             return None
         if on_break:
@@ -2450,7 +3863,7 @@ class Decider:
         elif seen >= int(c.get("jump_mode.min_plays", 1)) and hot:
             why = "hot_target"
         else:
-            why = "sooner_snap"
+            why = "sooner_snap" if sooner else "standby_ready"
         info = {**info, "why": why, "plays_seen": seen, "held_s": round(held, 1), "gate": g.why,
                 "holds": dict(self.jump_holds)}
         self.jump_holds = Counter()
@@ -2458,6 +3871,115 @@ class Decider:
         reason = (f"jump: dead ball after {seen} play{'s' if seen != 1 else ''} ({why.replace('_', ' ')})"
                   f" -> {self._short_gid(gid)}" + (f": {', '.join(tags)}" if tags else ""))
         return Decision(now, "switch", gid, reason, State.WATCHING, g.why, kind="jump", jump=info)
+
+    # ----- [fill, WP-19 wired here] flag fill.enabled; redzone/moments/fill.py is the ladder, these only gather its facts
+
+    def _fill_games(self, cands: dict[str, Candidate], now: float, no_join: bool) -> list[fill_ladder.GameInfo]:
+        """Every game the ladder may know about, each fact proven or left off: joinable only if a jump would land on a dead
+        ball on a ready stick, watchable unless we know the game is neither yours nor kept (fail closed: no spoilers)."""
+        ready, out, seen = self.standby_ready, [], set()
+        for gid, x in cands.items():
+            if gid in PSEUDO or not x.target:
+                continue
+            seen.add(gid)
+            s = x.scored
+            brk = bool(s.is_break or gid in self._screen_break)
+            ok = (not no_join and not brk and gid != self.current and gid in self.timelines and legal.tunable(gid, x, self.user.muted)
+                  and (ready is None or ready(x.target)) and self.jump_lands_dead(gid, x, now))
+            mine = bool(s.mine) or s.personal >= self.cfg.get("decider.crunch.hold_personal", 5)
+            out.append(fill_ladder.GameInfo(gid, s.league.value, "live", on_break=brk, joinable=ok, mine=mine,
+                                            crunch=bool(s.crunch), watchable=mine))
+        for gid, tl in self.timelines.items():
+            if gid in seen or tl.final_at is None:
+                continue
+            x = self._known.get(gid)
+            if x is not None:   # a game we saw finish; yours stays watchable, so its result never leaks
+                mine = bool(x.scored.mine) or gid in self._yours
+                out.append(fill_ladder.GameInfo(gid, tl.league.value, "final", mine=mine, watchable=mine))
+        return out
+
+    def _fill_moments(self, cands: dict[str, Candidate], now: float) -> list:
+        """Tier 1-3 moments from the live feed, for the ladder's reel and highlight steps. Each already aired."""
+        from redzone.moments import tiers
+        from redzone.moments.detect import Moment
+        out = []
+        for gid, x in cands.items():
+            tl = self.timelines.get(gid)
+            if gid in PSEUDO or tl is None:
+                continue
+            try:
+                tiers.family(tl.league.value)
+            except KeyError:
+                continue               # a league without a tier list (women's college) feeds nothing
+            for e in tl.events:
+                word = self._moment_word(tl, e) if e.kind == "play" else ""
+                tier = tiers.tier_of(tl.league.value, word) if word else None
+                if word and tier:      # a word the tier list doesn't know is not shown: fail closed
+                    out.append(Moment(e.seen, gid, tier, word, e.pid or ""))
+        return out
+
+    def _fill(self, d: Decision, cands: dict[str, Candidate], now: float, owner: str) -> Decision:
+        """[fill] What the screen does when nothing must be shown: the ladder's answer, acted on only for a cut it can make
+        (a dead-ball join, a ready reel). Scores and the question for Nick wait in fill_choice for the phone. Only when the
+        screen's game is on a break (or the block's catch-up is due) and that game isn't holding the screen; only at a
+        dead ball; every switch still goes through the commit gate."""
+        if not self.cfg.get("fill.enabled", False) or d.action != "stay" or owner not in ("normal", "jump", "buffered"):
+            return d
+        cur = cands.get(self.current or "")
+        if cur is None or self.current in PSEUDO or self.replaying or self.safe_mode:
+            return d
+        s = cur.scored
+        reel_ready = REEL in cands and bool(cands[REEL].target)
+        catch_up = self.slate_scene is not None and self.slate_scene.phase == slate_mod.CATCH_UP and reel_ready
+        if not (s.is_break or self.current in self._screen_break or catch_up) or self._jump_hold(cur) or s.mine or s.high_leverage:
+            return d
+        moments = self._fill_moments(cands, now) if reel_ready else []
+        pick = fill_ladder.plan(self.cfg.get, self._fill_games(cands, now, catch_up), moments, now=now, seen=self._fill_seen(moments, cands),
+                                clips_ready=reel_ready)
+        if pick is None:
+            return d
+        self.fill_choice = pick
+        self.fill_log[pick.action] += 1
+        kind = "jump" if pick.action == "join" else "break_visit"
+        g = self._jump_gate(cur, now)
+        if g is None or not g.safe or self._fill_must_wait(cur, kind, now):
+            return d
+        if pick.action == "join" and pick.game_id in cands:
+            x = cands[pick.game_id]
+            info = {"why": "fill_join", "buffered": self._bj_pic(pick.game_id, x, now) is not None, "gate": g.why, "snap": False,
+                    "big": False, "cost_s": round(self._bj_flip_cost(x.target), 1), "held_s": round(now - self.since, 1),
+                    "holds": dict(self.jump_holds)}
+            return Decision(now, "switch", pick.game_id, f"fill: on a break -> {self._short_gid(pick.game_id)}", State.WATCHING,
+                            g.why, kind="jump", jump=info)
+        if pick.action in ("reel", "highlights") and reel_ready:
+            self._home_set(self.current, None, "a fill reel")
+            return Decision(now, "switch", REEL, f"fill: {pick.reason}", State.WATCHING, g.why, kind="break_visit")
+        return d
+
+    def _fill_must_wait(self, cur: Candidate, kind: str, now: float) -> bool:
+        """The rules any optional switch obeys that the stages before _fill can't apply to it: it runs after them."""
+        last = self.history[-1][0] if self.history else None
+        if legal.arriving(now, self._arrival_until) or legal.too_soon(last, float(self.cfg.get("noggin.pick.min_gap_s", 0.0)), now):
+            return True
+        if legal.dwell_left(self.since, float(self._lc("decider.dwell.min_s", cur, 0) or 0), kind,
+                            self._lc("decider.dwell.kinds", cur, None), now) > 0:
+            return True
+        if not self._arbiter_on():
+            return False
+        cap = self._arbiter_params().ceiling_per_min
+        return cap > 0 and sum(1 for t, _, _ in self.history if now - t < 60.0) >= cap
+
+    def _fill_seen(self, moments: list, cands: dict[str, Candidate]) -> set:
+        """Moments already seen on the screen, by the ladder's key. A moment's t is feed time: judged when it aired."""
+        def mu(m) -> float:
+            return self.delays.get(cands[m.game_id].target or "unknown").mu
+        return {fill_ladder.moment_key(m) for m in moments if self._saw(m.game_id, m.t + mu(m) - 5.0, m.t + mu(m) + 5.0)}
+
+    def _count_hold(self, why: str) -> None:
+        """[overseer Nov 8 01:50Z: "no jump rows, decision text is the normal decider"] every way the rotation stands
+        aside is counted (data/jump_status.jsonl holds), not only the waits at a dead ball. Jump mode off: nothing."""
+        if self.jump_on() and why not in ("jump_off", "rotation"):
+            self.jump_holds[why] += 1
 
     @staticmethod
     def _short_gid(gid: str) -> str:
@@ -2492,7 +4014,7 @@ class Decider:
         """[redzone mode] The hottest watchable NFL drive (heat >= redzone_mode.hot_heat) whose next
         snap isn't behind a break, on the feed or on screen."""
         hot = [(x.scored.factors.get("drive_heat", 0.0), x.scored.score, gid) for gid, x in cands.items()
-               if gid not in PSEUDO and x.target and not x.stale and gid not in self.user.muted
+               if gid not in PSEUDO and legal.tunable(gid, x, self.user.muted)
                and self._is_hot(x, heat) and not x.scored.is_break and gid not in self._screen_break]
         return max(hot)[2] if hot else None
 
@@ -2505,8 +4027,8 @@ class Decider:
             return None
         cap = float(self.cfg.get("redzone_mode.takeover_break_p", 0.5))
         hot = [(x.scored.score, gid) for gid, x in watchable.items()
-               if gid != self.current and gid not in PSEUDO and x.target and not x.stale
-               and gid not in self.user.muted and x.scored.league.base == League.NFL
+               if gid != self.current and gid not in PSEUDO and legal.tunable(gid, x, self.user.muted)
+               and x.scored.league.base == League.NFL
                and x.scored.lock == "red zone drive" and not x.scored.is_break
                and gid not in self._screen_break and x.scored.factors.get("break_p", 0.0) < cap]
         return max(hot)[1] if hot else None
@@ -2541,7 +4063,7 @@ class Decider:
         if not c.get("redzone_mode.enabled", True) or not c.get("redzone_mode.nfl_priority", True):
             return cands
         hot = [x.scored for gid, x in cands.items()
-               if gid not in PSEUDO and x.target and not x.stale and gid not in self.user.muted
+               if gid not in PSEUDO and legal.tunable(gid, x, self.user.muted)
                and not x.scored.is_break and self._is_hot(x)]
         if not hot:
             return cands
@@ -2588,11 +4110,14 @@ class Decider:
 
     def _gate(self, cur: Candidate, now: float) -> Gate | None:
         """Can we leave what's on screen? RedZone is a whip-around: there's no play of ours to cut."""
-        if self.current == REDZONE:
+        return self._gate_at(cur, now, self.current)
+
+    def _gate_at(self, cur: Candidate, now: float, gid: str | None) -> Gate | None:
+        if gid == REDZONE:
             return Gate(True, "on RedZone: nothing to cut out of")
-        if self.current == REEL:
+        if gid == REEL:
             return Gate(True, "on the catch-up reel: nothing live to cut")
-        tl = self.timelines.get(self.current)
+        tl = self.timelines.get(gid)
         if tl is None:
             return None
         d = self.delays.get(cur.target or "unknown")
@@ -2612,14 +4137,29 @@ class Decider:
             return Gate(True, "low-leverage moment: leaving mid-play is OK")
         return g
 
-    def _leavable(self, cur: Candidate, now: float | None = None, d=None) -> bool:
+    def held_low_leverage_exit(self, gid: str | None, live: dict[str, Candidate], now: float) -> bool:
+        """[legal.leave_low_leverage, off] May a held pick leave this game mid-play? Only in the listed leagues, and only by every rule
+        of _leavable: redzone/lab/leverage.py's high-leverage floor (live as scoring.engine.high_leverage and _high_lev_at while
+        it may still be on screen), your team, crunch or its run-up, a locked moment, late and close. A pick that isn't held never reads this.
+        Never without screen timing (no timeline, or one with no events): that is gate.leave_open's own refusal, and this exit must not overrule it.
+        A live game's last play is nearly always still airing, so that alone refuses nothing here; gate._leave refuses it for a game that ended."""
+        lgs = self.cfg.get("legal.leave_low_leverage") or []
+        cur = live.get(gid or "")
+        if not lgs or cur is None:
+            return False
+        tl = self.timelines.get(gid)
+        if tl is None or not tl.events:
+            return False
+        return self._leavable(cur, now, self.delays.get(cur.target or "unknown"), leagues=lgs)
+
+    def _leavable(self, cur: Candidate, now: float | None = None, d=None, leagues=None) -> bool:
         """[cut rules, decider.leave.low_leverage] May the screen leave this game mid-play? Only at low
         leverage: never in crunch time or its run-up, a locked moment (red zone, power play, OT...), your
         team's game, or a close game late (decider.leave.sticky_*: down the stretch is sticky).
         [leave floor, EXP-208] Keyed on the FULL league (CBB is not NBA). Your team's game is never left
         mid-play, whatever its personal score (Q1 WSH sat under hold_personal), and neither is a
         close-and-late / overtime moment (scoring.engine.high_leverage, the grader's floor)."""
-        lgs = self.cfg.get("decider.leave.low_leverage") or []
+        lgs = self.cfg.get("decider.leave.low_leverage") or [] if leagues is None else leagues
         s = cur.scored
         if s.league.value not in lgs:
             return False
@@ -2777,7 +4317,9 @@ class Decider:
             values = {o.id: core.rate(o, self.core.k) for o in opts}
             for g in values:
                 values[g] += self._predict_points(g, watchable[g])
-            best = wire.pick(self.cfg, watchable, [o.id for o in opts], yours, values)
+            tier_of = self._arbiter_moment_tiers(watchable, self._clock()) if self._arbiter_on() else None
+            best = wire.pick(self.cfg, watchable, [o.id for o in opts], yours, values) if tier_of is None \
+                else self._arbiter_rank(watchable, [o.id for o in opts], yours, values, tier_of)
             if best is None:
                 return None   # every option on a banned app (never Peacock)
             # [nhl pp] the live guard below holds here too: the priority tiers rank a power play
@@ -3009,9 +4551,8 @@ class Decider:
         dest = max(options, key=lambda g: (core.window_value(st.options[g], self.core.k, watch(g)),
                                            core.rate(st.options[g], self.core.k)))
         buffer = RETURN_BUFFER_S if self._exits_often(dest) or dest in PSEUDO else RETURN_BUFFER_CONTINUOUS_S
-        self.home_break_visit = home
         # Head back early enough to find a clean exit AND finish the trip before the break ends.
-        self.home_return_at = now + left - buffer - back
+        self._home_set(home, now + left - buffer - back, "long-break visit")
         return Decision(now, "switch", dest, self._why(options[dest], f"{_short(cands[home].scored)} at the break → "),
                         state, gate_txt, kind="break_visit")
 
@@ -3116,9 +4657,12 @@ class Decider:
         sep = "" if lead.endswith("→ ") else ": "
         return f"{lead}{sep}{c.scored.reason}{tail}"
 
-    def _commit(self, target: str, kind: str = "") -> None:
+    def _commit(self, target: str, kind: str = "", arrived: bool = False) -> None:
+        """A switch lands (simulated: the tune's estimated cost is black first) or was confirmed (arrived=True: the
+        TV already shows it, so the screen log gets the game once, at now)."""
         now = self._clock()
         self.replay_exit_after = 0.0   # a live switch replaces the old replay picture
+        self._route_stick_at = now     # [arbiter.catchup_route] a cut takes the hidden stick: a clip loads only after it
         if kind == "return" and self.stack and self.stack[-1] == target:
             # Popped even when we're already on it (a "return" confirmed as "already on it"): left on
             # the stack, the same return was proposed again every tick, 348 times on the e2e night test.
@@ -3127,19 +4671,30 @@ class Decider:
             self.stack.append(self.current)
         if kind == "home" and self.stack and self.stack[-1] == target:
             self.stack.pop()
-        if kind == "home" and target == self.home_break_visit:
-            self.home_break_visit = None
-            self.home_return_at = None
+        if target == self.home_break_visit:
+            self._home_set(None, None, "back home")   # [AUDIT-8] by any switch: a stale home pulls the next game back here
         if kind == "user":
-            self.home_break_visit = None
+            self._home_set(None, self._home_at, "you picked a game")
         if self.current and self.current != target:
             self.jump_left_at[self.current] = now
-        self.current = target
+        self._current = target
         self.since = now
-        self.start_fails, self.start_retry_at = 0, 0.0
+        self.start_fails, self._start_retry_at = 0, 0.0
+        self.start_m.to("ready", f"{kind or 'switch'} landed on {target}", now=now)
+        # [buffered jump] a landing ends any keep-standby window: the next unknown/gone screen gets a fresh one
+        # (a stale window made keep-standby expire at once the next time)
+        self.gone_m.to("present", f"{kind or 'switch'} landed on {target}", now=now)
+        # [jump mode] holds count why the rotation didn't jump since the screen last changed, whoever changed it
+        self.jump_holds = Counter()
         self.history.append((now, target, kind))
+        if arrived:
+            self._arrival = 0.0
+            self.screen_m.to("live", f"{kind or 'switch'} to {target} confirmed on screen", now=now)
+            self._screen_log.append((now, target))
+            return
         # Black while the tuner works; padded so "did you see it?" errs toward "no" (-> replay).
         tune = self._deadline_cost(None if target is None else self._target_of.get(target)) + TUNE_SLACK_S
-        self._arrival_until = now + tune
+        self._arrival = now + tune
+        self.screen_m.to("tuning", f"{kind or 'switch'} to {target} (~{tune:.0f}s)", now=now)
         self._screen_log.append((now, None))
         self._screen_log.append((now + tune, target))

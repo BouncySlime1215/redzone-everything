@@ -5,6 +5,8 @@ Split is strictly by time: older seasons train; the newest season is cut in two 
 of games (schedule order), validates on the next 15% and tests on the last 15%. No game is in two
 splits. The ESPN archive (our own recorded feed, 2026-27 season for NBA/NHL/MLB) is a second,
 later test set graded through the live code path by ``live_eval``.
+
+Why: first added in b451dece (2026-11-03) as "Learned brain: per-league break / key-moment / game-flow models (LightGBM, numpy runtime), wired..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

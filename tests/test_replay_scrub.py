@@ -85,6 +85,7 @@ def test_a_youtubetv_replay_parks_on_the_hidden_stick_just_before_the_snap(scrub
     c, calls, result = scrub
     result["r"] = landing(0.6)                                # lands 0.6 s early: plays 0.6 s, then pauses
     hid = c.hidden
+    hid.playback_state = "paused"                              # the fake stick doesn't model MEDIA_PAUSE itself
     t = time.time()
     assert run(c._park(hid, "youtubetv:fox", 60.0, "p1"))
     assert 0.4 < time.time() - t < 2.0                         # waited out the 0.6 s to the park point
@@ -137,7 +138,9 @@ def test_a_too_deep_catchup_is_not_seeked(scrub):
 
 def test_single_stick_never_rewinds_on_screen(scrub):
     c, calls, _ = scrub
-    out = run(c._execute_one("youtubetv:espn", 60.0, time.time()))
+    c.sticks = c.sticks[:1]
+    c.sticks[0].log.clear()
+    out = run(c.execute("youtubetv:espn", replay_back_s=60.0))
     assert not out.ok and out.screen_unchanged and calls == [] and c.main.log == []
 
 
@@ -178,3 +181,126 @@ def test_a_failed_replay_scrub_is_not_retried_for_a_while(scrub):
     c._replay_scrub_backoff["youtubetv:fox"] = 0.0
     result["r"] = landing(0.1)
     assert run(c._park(c.hidden, "youtubetv:fox", 60.0, "p1")) and len(calls) == 2
+
+
+def test_nicks_espn_park_63s_lands_112_behind_and_is_1_5s_before_the_snap():
+    """Nick's stick run (Nov 8, ESPN, 63 s back): 5 LEFTs, label 111.8 s behind live. That is not 49 s too deep:
+    the scrub itself took ~37 s of wall time (17.3 s in the overlay + the label read + checks), so the snap was then
+    60 + 37 s behind live. The park waits until the picture is 1.5 s before it."""
+    from redzone.tuners import replay_park as rp
+
+    class Clock:
+        t = 1000.0
+
+        def __call__(self):
+            return self.t
+    clk = Clock()
+
+    class Stick:
+        log, host = [], "b:5555"
+
+        async def key(self, k):
+            self.log.append(k)
+            return types.SimpleNamespace(ok=True)
+
+        async def playback(self, pkg=None):
+            return {"state": "paused"}
+
+    async def enter_buffer(stick, seconds, **kw):
+        clk.t += 41.0                      # the scrub's wall time
+        return Res(ok=True, behind_s=111.8, presses=5)
+
+    async def sleep(dt):
+        clk.t += dt
+    mod = types.ModuleType("redzone.tuners.yttv_seek")
+    mod.enter_buffer = enter_buffer
+    sys.modules["redzone.tuners.yttv_seek"], old = mod, sys.modules.get("redzone.tuners.yttv_seek")
+    import redzone.tuners as _t
+    oldattr = getattr(_t, "yttv_seek", None)
+    _t.yttv_seek = mod
+    try:
+        r = run(rp.park(Stick(), 63.0, probe=Probe(), pkg="yttv.pkg", clock=clk, sleep=sleep))
+    finally:
+        sys.modules["redzone.tuners.yttv_seek"] = old
+        _t.yttv_seek = oldattr
+    assert r.ok and r.lefts == 5 and r.to_snap_s == pytest.approx(1.5, abs=0.3)
+    assert r.waited_s == pytest.approx(111.8 - 60 - 1.5 - 41.0, abs=0.3)      # played ~9.3 s, then paused
+
+
+def test_a_transient_none_after_pause_is_reread_not_a_lost_park():
+    """Nick's rerun on fd1ba542: to_snap_s 1.5, but 'player is none after PAUSE'; media_session read PAUSED right after
+    and +10 / +20 s. The park re-reads for pause_settle_s and accepts paused."""
+    from redzone.tuners import replay_park as rp
+
+    class Clock:
+        t = 1000.0
+
+        def __call__(self):
+            return self.t
+    clk = Clock()
+
+    class Stick:
+        log, host, reads = [], "b:5555", iter(["none", "none", "paused"])
+
+        async def key(self, k):
+            self.log.append(k)
+            return types.SimpleNamespace(ok=True)
+
+        async def playback(self, pkg=None):
+            return {"state": next(self.reads)}
+
+    async def enter_buffer(stick, seconds, **kw):
+        clk.t += 41.0
+        return Res(ok=True, behind_s=111.8, presses=5)
+
+    async def sleep(dt):
+        clk.t += dt
+    mod = types.ModuleType("redzone.tuners.yttv_seek")
+    mod.enter_buffer = enter_buffer
+    old = sys.modules.get("redzone.tuners.yttv_seek")
+    sys.modules["redzone.tuners.yttv_seek"] = mod
+    import redzone.tuners as _t
+    oldattr = getattr(_t, "yttv_seek", None)
+    _t.yttv_seek = mod
+    try:
+        r = run(rp.park(Stick(), 63.0, probe=Probe(), pkg="yttv.pkg", clock=clk, sleep=sleep))
+    finally:
+        sys.modules["redzone.tuners.yttv_seek"] = old
+        _t.yttv_seek = oldattr
+    assert r.ok and r.paused and r.to_snap_s == pytest.approx(1.5, abs=0.3)
+
+
+def test_a_park_without_the_youtubetv_package_presses_nothing():
+    """Nick's rerun on 89656de9: the try script never identify()'d the stick, so park() had no package and the pause
+    read 'none' among several media sessions. A park that can't confirm its pause never presses a key."""
+    from redzone.tuners import replay_park as rp
+
+    class Stick:
+        log, host = [], "b:5555"
+
+        async def key(self, k):
+            self.log.append(k)
+    probe = Probe()
+    r = run(rp.park(Stick(), 63.0, probe=probe))
+    assert not r.ok and "package" in r.reason and Stick.log == [] and probe.armed_on == []
+
+
+def test_a_freshly_tuned_stick_waits_out_the_banner_before_the_scrub(scrub):
+    """[Nick, Nov 8 3778a401] right after a tune YouTube TV's LIVE/title banner swallows keys ('focus guard: no scrub
+    label after the LEFT', 62 s). The park waits replay.park_after_tune_s from the tune, sends nothing meanwhile, and
+    asks the scrub for that much more."""
+    c, calls, result = scrub
+    c.cfg.update({"replay": {"park_after_tune_s": 0.6}})
+    result["r"] = landing(0.1)
+    c._tuned_at = {c.hidden.host: time.time()}
+    t = time.time()
+    assert run(c._park(c.hidden, "youtubetv:fox", 60.0, "p1"))
+    assert calls and calls[0][1] >= 60.5 and time.time() - t >= 0.5
+
+
+def test_a_stick_that_turns_visible_during_the_banner_wait_presses_nothing(scrub):
+    c, calls, result = scrub
+    c.cfg.update({"replay": {"park_after_tune_s": 5.0}})
+    c._tuned_at = {c.hidden.host: time.time()}
+    c._flipping = True
+    assert not run(c._park(c.hidden, "youtubetv:fox", 60.0, "p1")) and calls == [] and c.hidden.log == []

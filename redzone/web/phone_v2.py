@@ -6,6 +6,8 @@ North Star: none of these move a scoring line directly. They feed two of them:
     the phone page only; no training, labelling, suggestion or North Star path reads them.
 Nothing here touches the decider, the tick loop or the TV. Votes and misses only write rows to the
 existing `feedback` table (note = "switch" | "missed"), so turning the flag off leaves no trace in play.
+
+Why: first added in de443478 (2026-11-04) as "Phone v2 (flag off): reason chips + 👍/👎 per switch, 'I missed that', Priority L2 sliders"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -20,6 +22,8 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from redzone.crunch import ONE_SCORE_NFL
+from redzone.fsm import MachineMap
+from redzone.machines.platform import CRUNCH
 from redzone.models import PERIOD_S, REGULATION, League, Phase, league_order
 from redzone.noggin.priority import HardRules, Preferences
 from redzone.web import ledger as ledger_mod
@@ -964,13 +968,57 @@ CRUNCH_STATES = ("entering", "in", "leaving")
 STAKES_BIG, STAKES_SOME = 0.6, 0.3     # stub only: Scored.stakes (0..1) until lane 1 sets stakes_line
 
 
-def watch_values(scored: dict, games: dict) -> dict:
+class CrunchTracker:
+    """phone.crunch, one machine per game, for the stub (no crunch model yet). The flags alone are
+    memoryless, so "leaving" could never be produced: it needs to know the game WAS in crunch time.
+    in -> leaving when crunch_now drops; leaving shows for leave_s, then entering/out by the flags."""
+
+    def __init__(self, clock=time.time, leave_s: float = 60.0):
+        self.clock, self.leave_s = clock, leave_s
+        self.games = MachineMap(CRUNCH, clock=clock)
+
+    def state(self, gid: str, raw: str | None) -> str | None:
+        """raw: the flags' reading ("in" | "entering" | None). Returns what the phone shows."""
+        m, now = self.games[gid], self.clock()
+        if raw == "in":
+            m.to("in", "inside the crunch window", now)
+        elif m.is_("in"):
+            m.to("leaving", "dropped out of the crunch window", now)
+        elif m.is_("leaving"):
+            if m.age(now) >= self.leave_s:
+                m.to(raw or "out", f"{self.leave_s:.0f}s after leaving crunch time", now)
+        else:
+            m.to(raw or "out", "crunch run-up" if raw else "not crunch time", now)
+        return None if m.is_("out") else m.state
+
+    def keep(self, gids: set) -> None:
+        """Games no longer listed (ended, not live) go back to out and are forgotten."""
+        for gid, m in self.games.items():
+            if gid not in gids and not m.is_("out"):
+                m.to("out", "no longer a live game", self.clock())
+        self.games.prune()
+
+
+def crunch_tracker(engine) -> CrunchTracker | None:
+    """The engine's tracker (created on first use); None when the engine can't hold one."""
+    t = getattr(engine, "_crunch_tracker", None)
+    if t is None:
+        try:
+            t = CrunchTracker(leave_s=float(engine.cfg.get("phone.crunch_leave_s", 60.0)))
+            engine._crunch_tracker = t
+        except Exception:
+            return None
+    return t
+
+
+def watch_values(scored: dict, games: dict, tracker: CrunchTracker | None = None) -> dict:
     """Each live game's 0-100 watch value and its one-line why, best first (display only).
     Contract with lane 1 (HEAT 2.0): Scored.watch_value (0-100) and Scored.watch_why. While watch_value is
     None, the stub shows today's priority score clipped to 0-100 with its biggest factor, marked
     source="stub" so the phone says it's the old score.
     crunch_state: lane 1's crunch model sets `Scored.crunch_state` in CRUNCH_STATES; until then the stub
-    reads today's flags (crunch_now -> "in", crunch -> "entering"; "leaving" needs the model).
+    reads today's flags (crunch_now -> "in", crunch -> "entering"); with a CrunchTracker (the live /watch
+    route passes the engine's) a game that leaves crunch time shows "leaving" for phone.crunch_leave_s.
     stakes_line: lane 1 sets `Scored.stakes_line` (e.g. "AFC 1-seed race, top-5 matchup"); until then the
     stub turns Scored.stakes into "Big stakes" / "Some stakes" / ""."""
     rows = []
@@ -984,6 +1032,8 @@ def watch_values(scored: dict, games: dict) -> dict:
         cs = s.crunch_state                           # lane 1's crunch model: entering | in | leaving
         if cs not in CRUNCH_STATES:
             cs = "in" if s.crunch_now else ("entering" if s.crunch else None)
+            if tracker is not None:
+                cs = tracker.state(gid, cs)
         sl = s.stakes_line                            # lane 1: e.g. "AFC 1-seed race, top-5 matchup"
         stakes_rough = sl is None                     # #172 writes it (None = no stakes); the stub is "rough"
         if sl is None:
@@ -993,6 +1043,8 @@ def watch_values(scored: dict, games: dict) -> dict:
                      "league": s.league.value, "wv": int(round(max(0.0, min(100.0, val)))),
                      "why": str(why or "")[:120], "crunch": bool(s.crunch),
                      "is_break": bool(s.is_break), "source": "learned" if learned else "stub"})
+    if tracker is not None:
+        tracker.keep({r["game_id"] for r in rows})
     rows.sort(key=lambda r: -r["wv"])
     return {"games": rows, "source": "learned" if rows and all(r["source"] == "learned" for r in rows)
             else ("stub" if rows else None)}
@@ -1021,6 +1073,21 @@ def ladder_line(control, now: float) -> dict | None:
         return None
     v = lad.phone_view(now)
     return v if (v["last"] or v["cooling"]) else None
+
+
+def screen_behind(engine, gid: str | None) -> bool:
+    """True when the TV shows `gid` behind live: a catch-up replay, or a stick held (time-shifted: control.held
+    drops the entry when it is back at live). The live feed would spoil whatever is on screen, so the phone must say nothing from it."""
+    dec = engine.decider
+    if gid is None or gid != dec.current:
+        return False
+    if getattr(dec, "replaying", None):
+        return True
+    target = getattr(engine.where.get(gid), "target", None)
+    try:
+        return bool(target) and float(engine.control.held.get(target) or 0.0) > 0.0
+    except (TypeError, ValueError):
+        return False
 
 
 def router(engine) -> APIRouter:
@@ -1079,7 +1146,10 @@ def router(engine) -> APIRouter:
     async def vote(body: dict):
         if not _enabled(engine):
             return _off()
-        v = int(body.get("vote") or 0)
+        try:
+            v = int(body.get("vote") or 0)
+        except (TypeError, ValueError):   # "x", [1], {}: a 200 with ok false, not a 500 and a logged traceback
+            return {"ok": False, "message": "vote is -1, 0 or 1"}
         if v not in (-1, 0, 1):
             return {"ok": False, "message": "vote is -1, 0 or 1"}
         key = str(body.get("key") or "")
@@ -1162,11 +1232,19 @@ def router(engine) -> APIRouter:
         if not _enabled(engine):
             return _off()
         cur = engine.decider.current
-        return {"enabled": True, "now": time.time(), "current": cur,
-                "why_tag": why_tag(engine.scored.get(cur), float(engine.cfg.get("phone.why_tag_min"))) if cur else None,
-                "also_close": also_close(getattr(engine.merger, "games", {}), cur, league_order(engine.cfg))
-                if engine.cfg.get("phone.also_close") else [],
-                **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}))}
+        behind = screen_behind(engine, cur)
+        out = {"enabled": True, "now": time.time(), "current": cur,
+               "why_tag": None if behind else
+               why_tag(engine.scored.get(cur), float(engine.cfg.get("phone.why_tag_min"))) if cur else None,
+               "also_close": also_close(getattr(engine.merger, "games", {}), cur, league_order(engine.cfg))
+               if engine.cfg.get("phone.also_close") else [],
+               **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}),
+                              crunch_tracker(engine))}
+        if behind:   # the TV shows this game in the past: its live situation line and reason would spoil it
+            for row in out["games"]:
+                if row["game_id"] == cur:
+                    row["context"], row["why"] = None, ""
+        return out
 
     @r.get("/follow")
     async def get_follow():
@@ -1174,8 +1252,11 @@ def router(engine) -> APIRouter:
         if not _enabled(engine) or not engine.cfg.get("phone.follow"):
             return _off()
         players = follow_names(engine.cfg.get("noggin.priority.prefs.followed_players") or []) or []
-        return {"enabled": True, "players": players, "max": FOLLOW_MAX,
-                "live": follow_view(getattr(engine.merger, "games", {}), players, engine.decider.current)}
+        live = follow_view(getattr(engine.merger, "games", {}), players, engine.decider.current)
+        for row in live:
+            if row["on"] and screen_behind(engine, row["game_id"]):   # live stat lines of a game the TV shows in the past
+                row["players"] = [{**h, "text": ""} for h in row["players"]]
+        return {"enabled": True, "players": players, "max": FOLLOW_MAX, "live": live}
 
     @r.post("/follow")
     async def set_follow(body: dict):
@@ -1198,8 +1279,10 @@ def router(engine) -> APIRouter:
         if not _enabled(engine) or not engine.cfg.get("phone.orient"):
             return _off()
         gid = game or engine.decider.current
-        return {"enabled": True, "beat_s": float(engine.cfg.get("phone.orient_beat_s")),
-                "beat": orientation(getattr(engine.merger, "games", {}).get(gid)) if gid else None}
+        beat = orientation(getattr(engine.merger, "games", {}).get(gid)) if gid else None
+        if beat is not None and screen_behind(engine, gid):
+            beat = None   # the beat is the LIVE score and clock: never flash it over a replay or a time-shifted stream
+        return {"enabled": True, "beat_s": float(engine.cfg.get("phone.orient_beat_s")), "beat": beat}
 
     @r.get("/provenance")
     async def get_provenance(key: str = ""):

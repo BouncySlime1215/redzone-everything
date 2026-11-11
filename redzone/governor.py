@@ -1,5 +1,10 @@
 """Resource governor: keep the Mac cool, quiet and with free disk while RedZone runs.
 
+Why: the app shares an 8 GB MacBook Air that also goes to school, so extra work must keep it cool, quiet and with free disk (docstring; CLAUDE.md).
+Why (footprint log, WP-10 / P5): the app's memory was sampled every 30 s and never saved, so "did it grow
+over the night?" had no answer; one line every 5 minutes in data/footprint.jsonl answers it (the log never
+changes a level or a default).
+
 The Mac is an 8 GB MacBook Air with ~5 GB of free disk that also goes to school. RedZone shares
 it with everything else, so the extra work (catch-up reel downloads and trims, the lab, the
 archive, score-bug OCR, the local model) backs off when the Mac is busy, hot, on battery, short
@@ -8,11 +13,19 @@ run the same at every level.
 
 Levels (computed from one Sample every `every_s` seconds):
   normal    everything runs
-  eco       on battery, Low Power Mode, busy CPU, memory pressure "warn", swapping, thermal
-            warning, or disk under disk_low_mb:  no reel downloads, no lab, no archive; score-bug
-            OCR and idle polling at half rate; the local model still answers new errors
-  critical  battery low, memory pressure "critical", throttled CPU, disk under disk_critical_mb:
-            as eco, plus no score-bug OCR and no local model (rules only); idle polling at 1/4
+  eco       on battery, Low Power Mode, busy CPU, memory pressure "warn", swap GROWING while memory
+            is tight, thermal warning, or disk under disk_low_mb:  no reel downloads, no lab, no
+            archive; idle polling at half rate; the local model still answers new errors. Score-bug
+            OCR keeps its full rate in eco: it is the live delay/sync measurement (P-07).
+  critical  battery low, memory pressure "critical", swap nearly full, throttled CPU, disk under
+            disk_critical_mb: as eco, plus no score-bug OCR and no local model (rules only); idle
+            polling at 1/4. Only critical may touch OCR.
+A swap TOTAL is not a signal (some swap use is normal on an 8 GB Mac, P-07): growth while pressure
+is at least "warn", and a share of the total for critical, are.
+Footprint log: with a path (Governor.from_config gives data/footprint.jsonl; governor.footprint_log: false
+turns it off) one JSON line goes out every FOOTPRINT_EVERY seconds: app RSS and footprint, models, swap,
+memory pressure, disk, battery and level. It is trimmed to its newest lines past FOOTPRINT_LOG_MAX_BYTES and
+a write error is swallowed.
 A level goes up at once and comes down only after `calm_s` seconds below it (no flapping).
 
 Memory caps (macOS has no enforced RSS limit for launchd user agents, so they are enforced here):
@@ -21,11 +34,13 @@ Memory caps (macOS has no enforced RSS limit for launchd user agents, so they ar
     service_hard_mb (never during crunch time), and drops its own model when idle or when the
     model processes together go over models_mb
 
-Stdlib only: the watchdog's separate venv imports it too.
+Stdlib only (plus redzone.fsm / redzone.machines, which are stdlib too): the watchdog's separate venv
+imports it. The level is the explicit machine governor.level (redzone/machines/platform.py).
 """
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -37,9 +52,13 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from redzone.machines.platform import GOVERNOR_LEVEL
+
 log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
+FOOTPRINT_EVERY = 300.0            # one footprint line this often (seconds)
+FOOTPRINT_LOG_MAX_BYTES = 512_000  # past this the oldest half is dropped
 LEVELS = ("normal", "eco", "critical")
 
 DEFAULTS: dict = {
@@ -49,7 +68,9 @@ DEFAULTS: dict = {
     "busy_load": 0.85,         # 5-min load average per CPU core above this: the Mac is busy
     "battery_eco": True,       # running on battery: eco
     "battery_low_pct": 20,     # on battery and under this: critical
-    "swap_eco_mb": 1500,       # swap in use above this: eco (8 GB Mac is short of memory)
+    "swap_growth_mb": 300,     # swap grew by more than this in swap_window_s while memory pressure >= warn: eco
+    "swap_window_s": 600,      # ...measured over this long
+    "swap_critical_pct": 90,   # swap this much of its total (vm.swapusage): critical
     "disk_low_mb": 3000,       # free disk under this: eco (no new downloads)
     "disk_critical_mb": 1500,  # free disk under this: critical
     "service_soft_mb": 700,    # the app's resident memory: warn above this
@@ -67,7 +88,7 @@ ALLOWED: dict[str, tuple[str, ...]] = {
 }
 # Interval multipliers for loops that may slow down.
 SCALE: dict[str, dict[str, float]] = {
-    "ocr": {"normal": 1.0, "eco": 2.0, "critical": 5.0},
+    "ocr": {"normal": 1.0, "eco": 1.0, "critical": 5.0},   # eco never slows the score bug (P-07)
     "idle_poll": {"normal": 1.0, "eco": 2.0, "critical": 4.0},
 }
 
@@ -75,7 +96,8 @@ SCALE: dict[str, dict[str, float]] = {
 PROCESSES: tuple[tuple[re.Pattern, str], ...] = (
     (re.compile(r"scripts/service_runtime\.py|-m redzone(\s|$)"), "service"),
     (re.compile(r"agent[./]llm_server"), "llm_server"),
-    (re.compile(r"-m agent\.watchdog|agent/watchdog\.py"), "watchdog"),
+    # the plist runs it as `python -u -c "...runpy.run_module('agent.watchdog'..."` (P-08)
+    (re.compile(r"agent\.watchdog|agent/watchdog\.py"), "watchdog"),
 )
 MODEL_PROCESSES = ("llm_server", "watchdog")
 
@@ -91,9 +113,12 @@ class Sample:
     cpu_speed_limit: int | None = None    # percent (Intel Macs report it; 100 = not throttled)
     mem_pressure: int | None = None       # kern.memorystatus_vm_pressure_level: 1 normal, 2 warn, 4 critical
     swap_used_mb: float | None = None
+    swap_total_mb: float | None = None
+    swap_growth_mb: float | None = None   # swap_used now minus its lowest in the last swap_window_s (Governor fills it)
     load_per_core: float | None = None    # 5-minute load average / CPU count
     disk_free_mb: float | None = None
     procs: dict[str, float] = field(default_factory=dict)   # name -> resident MB (summed per name)
+    footprint: dict[str, float] = field(default_factory=dict)   # name -> phys_footprint MB (`footprint -p`; macOS only)
 
 
 def options(over: dict | None = None) -> dict:
@@ -185,6 +210,37 @@ def parse_swap(text: str | None) -> float | None:
     return float(m.group(1)) * (1024 if m.group(2) == "G" else 1)
 
 
+def parse_swap_total(text: str | None) -> float | None:
+    """`sysctl -n vm.swapusage`: the 'total = ...' part."""
+    m = re.search(r"total\s*=\s*([\d.]+)([MG])", text or "")
+    if not m:
+        return None
+    return float(m.group(1)) * (1024 if m.group(2) == "G" else 1)
+
+
+def parse_footprint(text: str | None) -> float | None:
+    """`footprint -p <pid>`: 'name [pid]: 64-bit    Footprint: 357 MB (16384 bytes per page)' -> MB.
+    macOS counts a process by this (compressed + swapped pages included), not by RSS (research rec 1)."""
+    m = re.search(r"Footprint:\s*([\d.]+)\s*([KMG]B)", text or "")
+    if not m:
+        return None
+    return float(m.group(1)) * {"KB": 1 / 1024, "MB": 1.0, "GB": 1024.0}[m.group(2)]
+
+
+def parse_ps_pids(text: str | None) -> dict[str, list[int]]:
+    """Same lines and patterns as parse_ps: {name: [pid, ...]}."""
+    out: dict[str, list[int]] = {}
+    for line in (text or "").splitlines():
+        parts = line.split(None, 2)
+        if len(parts) < 3 or not parts[0].isdigit() or not parts[1].isdigit() or "python" not in parts[2].lower():
+            continue
+        for rx, name in PROCESSES:
+            if rx.search(parts[2]):
+                out.setdefault(name, []).append(int(parts[0]))
+                break
+    return out
+
+
 def parse_ps(text: str | None) -> dict[str, float]:
     """`ps -axo pid=,rss=,command=` -> {name: MB}; rss is in KiB. The governor's own `ps` and any
     shell wrapping a match are skipped by requiring a python interpreter on the line."""
@@ -212,7 +268,8 @@ def sample(root: Path = ROOT, run: Callable[[list[str]], str | None] = _run,
     s.thermal_level, s.cpu_speed_limit = parse_therm(run(["pmset", "-g", "therm"]))
     p = (run(["sysctl", "-n", "kern.memorystatus_vm_pressure_level"]) or "").strip()
     s.mem_pressure = int(p) if p.isdigit() else None
-    s.swap_used_mb = parse_swap(run(["sysctl", "-n", "vm.swapusage"]))
+    swap = run(["sysctl", "-n", "vm.swapusage"])
+    s.swap_used_mb, s.swap_total_mb = parse_swap(swap), parse_swap_total(swap)
     try:
         s.load_per_core = round(os.getloadavg()[1] / (os.cpu_count() or 1), 2)
     except (OSError, AttributeError):
@@ -221,7 +278,13 @@ def sample(root: Path = ROOT, run: Callable[[list[str]], str | None] = _run,
         s.disk_free_mb = round(shutil.disk_usage(root).free / 1e6)
     except OSError:
         pass
-    s.procs = parse_ps(run(["ps", "-axo", "pid=,rss=,command="]))
+    ps = run(["ps", "-axo", "pid=,rss=,command="])
+    s.procs = parse_ps(ps)
+    if sys.platform == "darwin":   # the app's own footprint (one `footprint` call per matching pid)
+        for name, pids in parse_ps_pids(ps).items():
+            got = [parse_footprint(run(["footprint", "-p", str(pid)], 10.0)) for pid in pids]
+            if any(g is not None for g in got):
+                s.footprint[name] = round(sum(g for g in got if g is not None), 1)
     return s
 
 
@@ -241,8 +304,14 @@ def assess(s: Sample, opts: dict) -> tuple[str, list[str]]:
             crit.append("memory pressure is critical")
         elif s.mem_pressure >= 2:
             eco.append("memory is tight")
-    if s.swap_used_mb is not None and s.swap_used_mb > opts["swap_eco_mb"]:
-        eco.append(f"{s.swap_used_mb / 1000:.1f} GB swapped out")
+    # Swap SIZE says little (5.9 of 7 GB was this Mac's normal state, P-07). Growth while memory is
+    # tight is the signal; a nearly full swap is the only absolute line, and it is critical.
+    if s.swap_used_mb is not None and s.swap_total_mb:
+        if s.swap_used_mb / s.swap_total_mb * 100 >= opts["swap_critical_pct"]:
+            crit.append(f"swap is {s.swap_used_mb / s.swap_total_mb * 100:.0f}% full")
+    if (s.swap_growth_mb is not None and s.swap_growth_mb > opts["swap_growth_mb"]
+            and s.mem_pressure is not None and s.mem_pressure >= 2):
+        eco.append(f"swap grew {s.swap_growth_mb:.0f} MB in {int(opts['swap_window_s'] / 60)} min while memory is tight")
     if s.cpu_speed_limit is not None and s.cpu_speed_limit < 70:
         crit.append(f"the CPU is throttled to {s.cpu_speed_limit}%")
     if s.thermal_level:
@@ -269,19 +338,22 @@ class Governor:
     governor can slow optional work down, never break the app."""
 
     def __init__(self, opts: dict | None = None, *, root: Path = ROOT,
-                 probe: Callable[[], Sample] | None = None, clock: Callable[[], float] = time.time):
+                 probe: Callable[[], Sample] | None = None, clock: Callable[[], float] = time.time,
+                 footprint_log: Path | None = None):
         self.opts = options(opts)
+        self.footprint_log = footprint_log        # None = no log (the default for tests and the watchdog)
+        self._footprint_at = -1e18
         self.root = root
         self._probe = probe or (lambda: sample(root, clock=clock))
         self._clock = clock
-        self.level = "normal"
+        self.m = GOVERNOR_LEVEL.new(clock=clock)   # normal | eco | critical: the one place the level lives
         self.reasons: list[str] = []
         self.last: Sample | None = None
-        self.since = clock()
         self._calm_from: float | None = None   # when the raw level first dropped below self.level
         self._checked = -1e18
         self.changes: list[tuple[float, str, str]] = []   # (when, level, why), last 20
         self._source: Callable[[], dict] | None = None
+        self._swap_hist: list[tuple[float, float]] = []   # (when, swap used MB) inside swap_window_s
 
     @classmethod
     def from_config(cls, cfg, **kw) -> "Governor":
@@ -291,9 +363,24 @@ class Governor:
             except Exception:
                 over = {}
             return over if isinstance(over, dict) else {}
+        if "footprint_log" not in kw:
+            try:
+                wanted = cfg.get("governor.footprint_log", True)
+            except Exception:
+                wanted = True
+            if wanted is not False:
+                kw["footprint_log"] = Path(kw.get("root", ROOT)) / "data" / "footprint.jsonl"
         g = cls(read(), **kw)
         g._source = read   # settings changed on the phone apply at the next look
         return g
+
+    @property
+    def level(self) -> str:
+        return self.m.state
+
+    @property
+    def since(self) -> float:
+        return self.m.since
 
     # -- what callers ask --
     def allow(self, kind: str) -> bool:
@@ -314,8 +401,10 @@ class Governor:
     def update(self, s: Sample) -> str:
         """Fold one sample in (with hysteresis) and return the level."""
         self.last = s
+        self._note_swap(s)
         if not self.opts["enabled"]:
-            self.level, self.reasons = "normal", []
+            self.m.to("normal", "governor disabled")
+            self.reasons = []
             return self.level
         raw, reasons = assess(s, self.opts)
         now = self._clock()
@@ -333,9 +422,20 @@ class Governor:
                 self._set(raw, reasons, now)
         return self.level
 
+    def _note_swap(self, s: Sample) -> None:
+        """Swap growth over swap_window_s: now minus the lowest value seen inside the window."""
+        if s.swap_used_mb is None:
+            return
+        now = self._clock()
+        window = float(self.opts["swap_window_s"])
+        self._swap_hist = [(t, mb) for t, mb in self._swap_hist if now - t <= window]
+        self._swap_hist.append((now, s.swap_used_mb))
+        s.swap_growth_mb = round(s.swap_used_mb - min(mb for _, mb in self._swap_hist), 1)
+
     def _set(self, level: str, reasons: list[str], now: float) -> None:
         old = self.level
-        self.level, self.reasons, self.since = level, reasons, now
+        self.reasons = reasons
+        self.m.to(level, self.why(), now)
         self.changes = (self.changes + [(now, level, self.why())])[-20:]
         log.info("governor: %s -> %s (%s)", old, level, self.why())
 
@@ -355,7 +455,46 @@ class Governor:
         except Exception:
             log.exception("governor: probe failed")
             return self.level
-        return self.update(s)
+        level = self.update(s)
+        self.log_footprint()
+        return level
+
+    def footprint_line(self) -> dict | None:
+        """What one footprint log line holds, from the last sample (None before the first look)."""
+        s = self.last
+        if s is None:
+            return None
+        return {"at": round(s.at or self._clock(), 1), "level": self.level, "service_mb": self.service_mb(),
+                "service_rss_mb": s.procs.get("service"), "service_footprint_mb": s.footprint.get("service"),
+                "models_mb": round(self.models_mb(), 1), "swap_used_mb": s.swap_used_mb,
+                "swap_growth_mb": s.swap_growth_mb, "mem_pressure": s.mem_pressure,
+                "disk_free_mb": s.disk_free_mb, "on_battery": s.on_battery, "battery_pct": s.battery_pct}
+
+    def log_footprint(self, force: bool = False) -> bool:
+        """Append one line to the footprint log if a path is set and FOOTPRINT_EVERY has passed. Never
+        raises; True when a line was written."""
+        path = self.footprint_log
+        if path is None:
+            return False
+        now = self._clock()
+        if not force and now - self._footprint_at < FOOTPRINT_EVERY:
+            return False
+        line = self.footprint_line()
+        if line is None:
+            return False
+        self._footprint_at = now
+        try:
+            path = Path(path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.exists() and path.stat().st_size > FOOTPRINT_LOG_MAX_BYTES:
+                rows = path.read_text().splitlines()
+                path.write_text("\n".join(rows[len(rows) // 2:]) + "\n")
+            with path.open("a") as f:
+                f.write(json.dumps(line, separators=(",", ":")) + "\n")
+            return True
+        except Exception:
+            log.debug("governor: footprint log write failed", exc_info=True)
+            return False
 
     async def run(self) -> None:
         while True:
@@ -366,18 +505,49 @@ class Governor:
             await asyncio.sleep(max(5.0, float(self.opts["every_s"])))
 
     def service_mb(self) -> float | None:
-        return (self.last.procs.get("service") if self.last else None)
+        """The app's memory: the larger of its resident size and its footprint (RSS under-reads once
+        the compressor and swap hold its pages, P-08)."""
+        if not self.last:
+            return None
+        rss, fp = self.last.procs.get("service"), self.last.footprint.get("service")
+        got = [v for v in (rss, fp) if v is not None]
+        return max(got) if got else None
 
     def models_mb(self) -> float:
         return sum((self.last.procs.get(n, 0.0) for n in MODEL_PROCESSES), 0.0) if self.last else 0.0
 
     def view(self) -> dict:
         s = self.last
-        return {"level": self.level, "why": self.why(), "since": self.since,
+        return {"level": self.level, "why": self.why(), "since": self.since, "machine": self.m.view(history=0),
                 "paused": sorted(k for k in ALLOWED if not self.allow(k)),
                 "sample": asdict(s) if s else None,
-                "service_mb": self.service_mb(), "service_soft_mb": self.opts["service_soft_mb"],
+                "service_mb": self.service_mb(), "service_rss_mb": s.procs.get("service") if s else None,
+                "service_footprint_mb": s.footprint.get("service") if s else None, "service_soft_mb": self.opts["service_soft_mb"],
                 "models_mb": round(self.models_mb(), 1), "models_cap_mb": self.opts["models_mb"]}
+
+
+# ---- keep the Mac awake for games that are about to start (P-10) --------------------------
+
+def starting_soon(start_time: float | None, now: float, soon_s: float = 900.0, late_s: float = 3600.0) -> bool:
+    """A not-yet-started game inside its pre-game window. A listed start is an estimate (an NFL 1:00 game kicks off
+    about 1:03, and a rain delay runs far longer), so the window stays open past it until the feed says live, for
+    late_s at most: a game still "pre" after that stops counting as about to start."""
+    return bool(start_time) and -late_s < start_time - now < soon_s
+
+
+def keep_awake_wanted(games, now: float, soon_s: float = 900.0, planned: bool = False) -> bool:
+    """Should caffeinate run? While any game is live, inside its `soon_s` pre-game window, or planned for
+    tonight (a plan_*.json exists). The idle poll can sleep for up to an hour: a Mac that slept before
+    kickoff never notices the game is live (P-10). `planned` is the caller's "a planned game starts within
+    the next hour" (a plan_*.json), so it does not hold the Mac awake all day. `games` need .phase (a str or enum with .value) and
+    .start_time."""
+    for g in games:
+        phase = getattr(getattr(g, "phase", ""), "value", getattr(g, "phase", ""))
+        if str(phase).lower() == "live":
+            return True
+        if str(phase).lower() == "pre" and starting_soon(getattr(g, "start_time", None), now, soon_s):
+            return True
+    return bool(planned)
 
 
 # ---- helpers for heavy work ---------------------------------------------------------------

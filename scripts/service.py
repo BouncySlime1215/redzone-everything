@@ -1,4 +1,5 @@
-"""Prepare/manage the per-user launchd job; check/render never contact devices."""
+"""Prepare/manage the per-user launchd job; check/render never contact devices.
+Why: Manages the per-user launchd job so the app runs unattended on the Mac (docstring, launchd commit)."""
 from __future__ import annotations
 
 import argparse

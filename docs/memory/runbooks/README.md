@@ -10,10 +10,14 @@ Short, do-this-now steps. Each one links to the full doc. Run everything from th
 | A deploy made things worse | [rollback.md](rollback.md) |
 | Start or check a Kaggle training run | [kaggle-run.md](kaggle-run.md) |
 | Set up TV-side input switching | [tv-setup.md](tv-setup.md) |
+| Phone metadata intake (iPhone Shortcuts, exports) | [personal-intake.md](personal-intake.md) |
 | A stick looks offline | [stick-offline.md](stick-offline.md) |
 | A stick's session broke (prompt, crash, reboot, banner, label reset, new UI) | [stick-session.md](stick-session.md) |
 | A join didn't land where we wanted (buffer, live, other stick, hold) | [sync-fallback.md](sync-fallback.md) |
 | Weekly usage is near the cap | [usage-pause.md](usage-pause.md) |
+| Why did it do that? (any time, any setting) | [why.md](why.md) |
+| Find the cause of a bug (reproduce, minimal test, bisect, root cause) | [debugging.md](debugging.md) |
+| Merge two lines of work, or resolve a conflict | [merge.md](merge.md) |
 | A join landed off target / a buffer drifted | [join-watchdog.md](join-watchdog.md) |
 | The phone says the Mac is the problem (battery, sleep, memory, paused, no switches) | [mac-health.md](mac-health.md) |
 | The daily hidden-stick canary failed or warned | [canary.md](canary.md) |

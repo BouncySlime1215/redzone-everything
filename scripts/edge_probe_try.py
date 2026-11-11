@@ -10,6 +10,7 @@ start = the :00/:30 boundary (the EPG window when the overlay shows one). An emp
 Prints one row per read, then a summary (n, mean, sd, min, max) that you can compare with your 34.9 +-0.4.
 Rows also go to data/edge_probe.jsonl (numbers, channel key, status; never the label text or the stick address).
 HIDDEN stick only: this tunes it twice and opens the overlay.
+Why: Measures YouTube TV live-edge delay on the hidden stick, per Nick's Nov 7 edge prior (docstring).
 """
 import asyncio
 import json

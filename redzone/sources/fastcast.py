@@ -49,6 +49,8 @@ Turn it on with `sources: {fastcast: true}` in data/config.yaml, or from the Mac
          -d '{"changes": {"sources": {"fastcast": true}}}'
 No restart needed. Health then lists espn_fastcast, and data/recordings/<day>/plays.jsonl
 logs every play once per source, so each feed's real lag can be compared.
+
+Why: first added in 634e0a01 (2026-11-02) as "Recover RedZone engine with explicit screen evidence and safe switch transactions"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -75,6 +77,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from redzone.machines.platform import FASTCAST_CONNECTION, FASTCAST_TOPIC
 from redzone.models import GameState, League, Phase
 from redzone.sources import espn
 
@@ -675,10 +678,24 @@ def _checkpoint_ok(url: str) -> bool:
 class _Sub:
     name: str
     doc: TopicDoc
-    state: str = "subscribing"          # subscribing -> subscribed -> loading -> live
     loader: asyncio.Task | None = None
     since: float = 0.0
     in_order: int = 0                   # live messages applied in order since subscribing
+    clock: Callable[[], float] = time.time
+    m: Any = None                       # fastcast.topic: subscribing -> subscribed -> loading -> live (-> dropped)
+
+    def __post_init__(self):
+        if self.m is None:
+            self.m = FASTCAST_TOPIC.new(key=self.name, clock=self.clock)
+
+    @property
+    def state(self) -> str:
+        return self.m.state
+
+    @property
+    def live(self) -> bool:
+        """Live AND holding a usable document: a half-applied patch or a pending reload is not live."""
+        return self.m.is_("live") and self.doc.ready
 
 
 class FastcastClient:
@@ -706,7 +723,7 @@ class FastcastClient:
         self._rng = rng
         self.wanted: set[str] = set()
         self.topics: dict[str, _Sub] = {}
-        self.connected = False
+        self.conn = FASTCAST_CONNECTION.new(clock=clock)   # idle/connecting/connected/backing_off/stopped
         self.failures = 0
         self.last_message_at = 0.0
         self.last_error = ""
@@ -716,9 +733,22 @@ class FastcastClient:
         self._sid = ""
         self._ws = None
         self._quiet_limit = QUIET_LIMIT_S
-        self._stopping = False
         self._stop_event: asyncio.Event | None = None
         self._warned: dict[str, float] = {}
+
+    # ---- state (redzone/machines/platform.py)
+
+    @property
+    def connected(self) -> bool:
+        return self.conn.is_("connected")
+
+    @property
+    def _stopping(self) -> bool:
+        return self.conn.is_("stopped")
+
+    def _conn(self, state: str, why: str) -> None:
+        if not self.conn.is_("stopped"):   # stopped is final: a late finally/except can't revive it
+            self.conn.to(state, why)
 
     # ---- public
 
@@ -732,8 +762,10 @@ class FastcastClient:
 
     def status(self) -> dict:
         now = self._clock()
-        live = sorted(n for n, s in self.topics.items() if s.state == "live")
+        live = sorted(n for n, s in self.topics.items() if s.live)
         return {"connected": self.connected, "live_topics": live,
+                "connection": self.conn.view(now, history=0),
+                "topics": {n: s.state for n, s in sorted(self.topics.items())},
                 "waiting": sorted(self.wanted - set(live)),
                 "last_message_s": round(now - self.last_message_at, 1) if self.last_message_at else None,
                 "reconnects": max(0, self.stats["connects"] - 1), "updates": self.stats["updates"],
@@ -745,11 +777,14 @@ class FastcastClient:
         self._stop_event = asyncio.Event()
         while not self._stopping:
             if not self.wanted:      # no live games: no connection (and no reconnect warnings)
+                self._conn("idle", "nothing wanted")
                 await asyncio.sleep(TICK_S)
                 continue
             started = self._clock()
+            self._conn("connecting", f"{len(self.wanted)} topic(s) wanted")
             try:
                 if await self._session():
+                    self._conn("idle", "nothing wanted for a while: hung up")
                     continue         # hung up because nothing is wanted: not a failure
                 reason = "ESPN closed the connection"
             except asyncio.CancelledError:
@@ -761,11 +796,12 @@ class FastcastClient:
             self.failures = 0 if self._clock() - started >= HEALTHY_SESSION_S else self.failures + 1
             self.last_error = reason
             delay = backoff_s(self.failures, self._rng)
+            self._conn("backing_off", f"{reason}; retry in {delay:.0f}s")
             self._warn("disconnect", "Fastcast: %s; reconnecting in %.0fs (polling carries on)", reason, delay)
             await self._nap(delay)
 
     def stop(self) -> None:
-        self._stopping = True
+        self.conn.to("stopped", "stop() called")
         if self._stop_event is not None:
             self._stop_event.set()
         ws, self._ws = self._ws, None
@@ -823,7 +859,7 @@ class FastcastClient:
                     raise FastcastError("ESPN didn't start a session")
                 self._sid = hello.sid
                 self._quiet_limit = max(QUIET_LIMIT_S, 1.5 * (hello.hbi or 0))
-                self.connected = True
+                self._conn("connected", f"session {hello.sid[:8]}")
                 self.stats["connects"] += 1
                 self.last_message_at = idle_since = self._clock()
                 log.info("Fastcast connected")
@@ -844,11 +880,13 @@ class FastcastClient:
                     await self._flush(ws)
                 return False
             finally:
-                self.connected = False
+                if self.conn.is_("connected"):
+                    self._conn("connecting", "session ended")   # run() says next: idle or backing_off
                 self._ws = None
                 for sub in self.topics.values():
                     if sub.loader:
                         sub.loader.cancel()
+                    sub.m.to("dropped", "connection closed")
                 self.topics.clear()   # a new connection resubscribes everything from scratch
                 self._outbox.clear()
 
@@ -868,7 +906,7 @@ class FastcastClient:
                 break
             if self._retry.get(name, (0.0, 0))[0] > now:
                 continue
-            self.topics[name] = _Sub(name, TopicDoc(name), since=now)
+            self.topics[name] = _Sub(name, TopicDoc(name), since=now, clock=self._clock)
             self._outbox.append({"op": "S", "sid": self._sid, "tc": name})
 
     def _drop(self, name: str) -> None:
@@ -877,7 +915,9 @@ class FastcastClient:
             return
         if sub.loader:
             sub.loader.cancel()
-        if sub.state != "subscribing" and self.connected:
+        was = sub.state
+        sub.m.to("dropped", "no longer wanted or retrying later")
+        if was != "subscribing" and self.connected:
             self._outbox.append({"op": "U", "sid": self._sid, "tc": name})
 
     def _later(self, name: str, reason: str, first_wait: float, double: bool = True) -> None:
@@ -909,7 +949,8 @@ class FastcastClient:
         sub = self.topics.get(msg.topic) if msg.topic else None
         if msg.op == "S" and sub is not None:
             if msg.rc == 200:
-                sub.state = "subscribed"
+                if sub.m.is_("subscribing"):   # an H that raced ahead of the S answer already moved it on
+                    sub.m.to("subscribed", "ESPN accepted the subscription")
             else:
                 # Usually "No such Topic.": ESPN hasn't opened this game yet. Retry steadily, so
                 # we're on it within half a minute of it existing.
@@ -935,6 +976,8 @@ class FastcastClient:
                     self._retry.pop(sub.name, None)   # in sync: the next problem starts the backoff over
             if changed:
                 self._emit(sub, now)
+            elif sub.m.is_("live") and not sub.doc.ready:   # never seen: guard so status can't claim it
+                self._later(sub.name, "lost its document without an error", RESYNC_RETRY_S)
         elif msg.op == "ERROR":
             self.stats["errors"] += 1
             self._warn("server_error", "Fastcast: ESPN said %s", msg.error or msg.rc)
@@ -956,7 +999,7 @@ class FastcastClient:
     def _fetch_checkpoint(self, sub: _Sub, url: str, mid: int | None) -> None:
         if sub.loader:
             sub.loader.cancel()
-        sub.state = "loading"
+        sub.m.to("loading", "downloading a checkpoint")
         if not _checkpoint_ok(url):
             self._later(sub.name, f"checkpoint isn't on an ESPN host ({url[:60]})", TOPIC_MAX_RETRY_S)
             return
@@ -991,7 +1034,7 @@ class FastcastClient:
             self.stats["resyncs"] += 1
             self._later(sub.name, str(e), RESYNC_RETRY_S)
             return
-        sub.state = "live"
+        sub.m.to("live", f"checkpoint installed (mid {mid})")
         self._emit(sub, self._clock())
 
     async def _fetch_json(self, url: str):

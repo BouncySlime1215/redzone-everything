@@ -67,6 +67,7 @@ def test_plan_waits_when_it_cannot_rewind():
 
 def test_nba_restart_worked_back_from_the_clock():
     dt = DeadTracker(League.NBA)
+    dt.add("q", 1500, 1500, "jumper", "misses jumper", "Jump Shot", 700.0, 2)   # the quarter seen from its start
     dt.add("a", 2000, 2000, "jumper", "makes jumper", "Jump Shot", 300.0, 2)
     dt.add("b", 2010, 2010, "foul", "shooting foul", "Shooting Foul", 290.0, 2)
     dt.add("c", 2030, 2030, "free_throw_-_1_of_2", "makes free throw 1 of 2", "Free Throw - 1 of 2", 290.0, 2)
@@ -85,6 +86,7 @@ def test_nba_restart_worked_back_from_the_clock():
 
 def test_nba_open_window_floors_and_frozen_wallclock():
     dt = DeadTracker(League.NBA)
+    dt.add("q", 1500, 1500, "jumper", "misses jumper", "Jump Shot", 700.0, 2)   # the quarter seen from its start
     dt.add("a", 2000, 2000, "jumper", "makes jumper", "Jump Shot", 300.0, 2)
     dt.add("b", 2010, 2010, "timeout", "Full timeout", "Full Timeout", 290.0, 2)
     dt.seen(2020, 10)
@@ -124,7 +126,7 @@ def test_delaybook_behind_is_part_of_mu_until_a_fresh_tune():
     book = DelayBook({"youtubetv": 40.0}, 3.0, clock=lambda: 0.0)
     book.set_behind("youtubetv:espn", 20.0)
     assert book.get("youtubetv:espn").mu == 60.0
-    book.calibrate("youtubetv:espn", 41.0)       # a new measurement keeps the rewind on top
+    book.calibrate("youtubetv:espn", 61.0)       # a tap on this picture reads its whole delay, rewind included (AUDIT-6)
     assert book.get("youtubetv:espn").mu == 61.0
     book.set_behind("youtubetv:espn", 0.0)
     assert book.get("youtubetv:espn").mu == 41.0
@@ -159,6 +161,7 @@ def _feed(dec):
 
 def test_decider_rewinds_into_the_huddle_instead_of_joining_mid_play(cfg, clock):
     dec = _decider(cfg, clock)
+    cfg.update({"decider": {"entry": {"cue": "seek"}}}, record=False)   # the planner's stall model; the rewind itself always runs hidden (P1-REVIEW-03)
     _feed(dec)
     clock.t = 1070.0        # the picture would come up at real 1035: the 1030-1040 snap
     d = dec.decide(_cands("youtubetv:b"))
@@ -228,10 +231,10 @@ def test_hockey_waits_for_a_whistle_on_the_way_in_but_never_into_crunch(cfg, clo
     def d(kind):
         return Decision(0.0, "switch", "b", "r", State.WATCHING, "", kind=kind)
     assert dec._entry_only(x(League.NHL), d("better"))
-    # The last 2:00 plans a rewind landing on the last whistle but never waits (decider.entry.crunch_now)
-    assert dec._crunch_entry_mode() == "rewind"
+    # [D-01] the last 2:00 waits like any entry: no go-in-live exit without decider.entry.allow_live_fallback
+    assert dec._crunch_entry_mode() == "wait"
     assert dec._entry_only(x(League.NHL, crunch=True, now=True), d("crunch"))
     assert dec._entry_only(x(League.NHL, crunch=True), d("crunch"))           # the run-up waits
-    assert not dec._entry_only(x(League.NHL), d("start"))      # nothing on screen to protect
+    assert dec._entry_only(x(League.NHL), d("start"))          # [D-02] every restart is a 'start': it waits too
     assert dec._entry_only(x(League.NBA), d("better"))         # NBA waits too since Nov 3 (capped: max_wait_s)
-    assert not dec._entry_only(x(League.MLB), d("better"))
+    assert dec._entry_only(x(League.MLB), d("better"))         # [D-02] MLB waits between pitches / batters

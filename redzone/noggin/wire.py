@@ -4,6 +4,8 @@ The decider's candidates carry a Scored, not team names: "your team" is the deci
 (`Decider._yours`: the scorer's personal points, from the same `teams` / bets config L1 reads), passed
 through as a YOURS token so `HardRules.is_yours` sees it. L2-L4 enter as one live term, the rate the
 decider already ranks by (core.rate), until the Mind and Reflex terms are wired (docs/noggin.md Phase 2).
+
+Why: first added in 0e15b8c7 (2026-11-04) as "Wire Noggin Priority into the decider's pick, off: L1 hard rules first (tests through the decider)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -24,7 +26,7 @@ def game_input(gid: str, cand, yours: bool, value: float | None = None) -> P.Gam
     s = cand.scored
     app = (cand.target or "").split(":", 1)[0]
     big = bool(s.lock in BIG_LOCKS or s.pre_moment or s.crunch)
-    return P.GameInput(gid, s.league.base.value if s.league.base.value in P.DEFAULT_LEAGUE_ORDER else s.league.value,
+    return P.GameInput(gid, s.league.value if s.league.value in P.DEFAULT_LEAGUE_ORDER else s.league.base.value,
                        (YOURS,) if yours else (), app=app, crunch=bool(s.crunch), big_moment=big,
                        live={"score": float(s.score if value is None else value)}, label=gid)
 

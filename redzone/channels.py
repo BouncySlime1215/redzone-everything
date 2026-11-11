@@ -1,5 +1,7 @@
 """Where can you actually watch a game? Map each game to a tuner target.
 
+Why: a game counts only if Nick's subscriptions reach it (YouTube TV, Sunday Ticket, Prime; Raleigh-Durham), so each game maps to a real tuner target.
+
 Targets look like  "youtubetv:espn"  or  "prime:<gti>"  or  "youtubetv:st"  (Sunday Ticket slot TBD).
 
 Rules (Raleigh-Durham market, YouTube TV + Sunday Ticket + Prime):
@@ -15,6 +17,7 @@ Rules (Raleigh-Durham market, YouTube TV + Sunday Ticket + Prime):
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass
@@ -24,12 +27,14 @@ from zoneinfo import ZoneInfo
 
 from redzone.models import GameState, League, Phase
 
+log = logging.getLogger(__name__)
+
 DATA = Path(__file__).resolve().parent.parent / "data"
 
 # ESPN broadcast name (lowercased) -> our channel key
 NETWORKS = {
     "espn": "espn", "espn2": "espn2", "espnu": "espnu", "espnews": "espnews", "abc": "abc",
-    "espn+": "espnplus", "espn unlimited": "espnplus",
+    "espn+": "espnplus", "espn unlimited": "espnplus", "espn unlmtd": "espnplus",
     "fox": "fox", "fs1": "fs1", "fs2": "fs2", "cbs": "cbs", "nbc": "nbc", "cbssn": "cbssn",
     "nfl net": "nflnetwork", "nfl network": "nflnetwork", "nfln": "nflnetwork",
     "tnt": "tnt", "trutv": "trutv", "tbs": "tbs", "nba tv": "nbatv", "nbatv": "nbatv",
@@ -69,6 +74,30 @@ def _names_monumental(feed: dict, g: GameState) -> bool:
     return "monumental" in text
 
 
+# [WP-22, flag discovery.espn_on_yttv] ESPN Unlimited events inside YouTube TV. Unproven until a TV night, so a
+# game is only as sure as this table. A league YouTube's post names is "named"; "assumed" is ESPN Unlimited
+# inventory the post does not name. Any other league needs a matched row to prove it.
+ESPN_EVENT_LEAGUES = {League.NHL: "named", League.CFB: "named", League.CBB: "assumed"}
+ESPN_UNCONFIRMED_FEEDS = frozenset({"accnx", "acc network extra", "secn+", "sec network+"})   # not named in the rows
+ESPN_REASON_TEXT = {
+    "no_event_row": "event row not matched yet",
+    "league_not_confirmed": "this league is not confirmed in the YouTube TV rows",
+    "feed_unconfirmed": "this feed is not confirmed in the YouTube TV rows",
+    "local_blackout": "blacked out here (local team)",
+}
+ESPN_HARD_REASONS = frozenset({"local_blackout"})    # a matched row does not override these
+ESPN_LABEL = "ESPN Unlimited · YouTube TV"
+ESPN_REFUSED_PREFIX = "ESPN Unlimited: "
+
+
+@dataclass(frozen=True)
+class EspnReach:
+    """Can this game reach the TV as an ESPN event in YouTube TV? reason is a key of ESPN_REASON_TEXT."""
+    can_reach: bool
+    reason: str
+    proof: str = ""     # "named" | "assumed" | "" (refused)
+
+
 @dataclass
 class Where:
     target: str | None      # None = unknown
@@ -78,6 +107,8 @@ class Where:
 
 
 class ChannelMap:
+    espn_on_yttv = False   # discovery.espn_on_yttv, set through apply_config; False keeps today's ESPN+ route
+
     def __init__(self, path: Path = DATA / "channels.json"):
         self.path = path
         self.codes: dict[str, str] = {}        # channel key -> YouTube TV watch code
@@ -86,6 +117,7 @@ class ChannelMap:
         self.prime_gti: dict[str, str] = {}    # game_id -> Prime GTI
         self.st_slots: dict[str, str] = {}     # game_id -> Sunday Ticket slot code
         self.espn_ids: dict[str, str] = {}     # game_id -> ESPN watch id (ESPN+ events)
+        self.espn_events: dict[str, str] = {}  # game_id -> YouTube TV code of its ESPN event row (flag on only)
         self.st_codes: list[str] = []          # YouTube TV codes of "NFL Sunday Ticket 1..16" (fixed)
         self.link_notes: dict[str, str] = {}   # game_id -> "blacked out here" etc.
         self.local_search = False   # tuners.yttv_local_search (engine sets it): locals by search, see LOCAL_SEARCH_QUERY
@@ -95,7 +127,17 @@ class ChannelMap:
         if self.path.exists():
             try:
                 d = json.loads(self.path.read_text())
-            except ValueError:
+                if not isinstance(d, dict):
+                    raise ValueError("not a JSON object")
+            except ValueError as e:
+                # Never let the next save() overwrite the only copy of the pasted codes and your corrections.
+                bad = self.path.with_name(self.path.name + ".corrupt")
+                log.error("channels: %s is unreadable (%s); starting empty, the file is kept as %s",
+                          self.path, e, bad.name)
+                try:
+                    self.path.replace(bad)
+                except OSError:
+                    pass
                 d = {}
             self.codes = d.get("codes", {})
             self.overrides = d.get("overrides", {})
@@ -103,17 +145,24 @@ class ChannelMap:
             self.prime_gti = d.get("prime_gti", {})
             self.st_slots = d.get("st_slots", {})
             self.espn_ids = d.get("espn_ids", {})
+            self.espn_events = d.get("espn_events", {})
             self.st_codes = d.get("st_codes", [])
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"codes": self.codes, "overrides": self.overrides,
-                                   "team_rules": self.team_rules, "prime_gti": self.prime_gti,
-                                   "st_slots": self.st_slots, "espn_ids": self.espn_ids,
-                                   "st_codes": self.st_codes,
-                                   "saved": time.time()}, indent=1))
+        data = {"codes": self.codes, "overrides": self.overrides,
+                "team_rules": self.team_rules, "prime_gti": self.prime_gti,
+                "st_slots": self.st_slots, "espn_ids": self.espn_ids,
+                "st_codes": self.st_codes}
+        if self.espn_events:   # only ever filled with the flag on, so flag-off files keep today's keys
+            data["espn_events"] = self.espn_events
+        tmp.write_text(json.dumps({**data, "saved": time.time()}, indent=1))
         tmp.replace(self.path)
+
+    def apply_config(self, cfg) -> None:
+        """Read discovery.espn_on_yttv (code default off; not in default_config.yaml)."""
+        self.espn_on_yttv = bool(cfg.get("discovery.espn_on_yttv", False))
 
     # --- user input -----------------------------------------------------------
 
@@ -199,11 +248,63 @@ class ChannelMap:
         return Where(None, "unknown — set it on the phone", "unknown", False)
 
     def _espnplus(self, g: GameState) -> Where:
+        if self.espn_on_yttv:
+            w = self._espn_on_yttv(g)
+            if w:
+                return w
         if g.game_id in self.st_slots:
             return Where(f"youtubetv:ev:{self.st_slots[g.game_id]}", "ESPN+ · YouTube TV", "sure", True)
         if g.game_id in self.espn_ids:
             return Where(f"espn:{self.espn_ids[g.game_id]}", "ESPN+ · ESPN app", "likely", True)
         return Where("youtubetv:espnplus", "ESPN+ (event link not found yet)", "likely", False)
+
+    def espn_reach(self, g: GameState) -> EspnReach:
+        """The league-by-league rule for an ESPN event in YouTube TV. Pure: reads no codes and no flag."""
+        if {g.home.abbr, g.away.abbr} & LOCAL_TEAMS.get(g.league, set()):
+            return EspnReach(False, "local_blackout")
+        proof = ESPN_EVENT_LEAGUES.get(g.league)
+        if not proof:
+            return EspnReach(False, "league_not_confirmed")
+        raw = {b.lower().strip() for b in g.broadcasts}
+        espn_feeds = {b for b in raw if NETWORKS.get(b) == "espnplus"}
+        if espn_feeds and espn_feeds <= ESPN_UNCONFIRMED_FEEDS:
+            return EspnReach(False, "feed_unconfirmed")
+        return EspnReach(True, "no_event_row", proof)
+
+    def _espn_on_yttv(self, g: GameState) -> Where | None:
+        """[flag on] A matched row wins unless the game is a hard no. None hands back to the links we already had."""
+        reach = self.espn_reach(g)
+        code = self.espn_events.get(g.game_id)
+        if code and reach.reason not in ESPN_HARD_REASONS:
+            return Where(f"youtubetv:ev:{code}", ESPN_LABEL, "likely", True)   # "likely" until a TV night proves it
+        if g.game_id in self.st_slots or g.game_id in self.espn_ids:
+            return None
+        if reach.can_reach:
+            return Where("youtubetv:espnplus", f"{ESPN_LABEL} ({ESPN_REASON_TEXT[reach.reason]})", "likely", False)
+        return Where(None, ESPN_REFUSED_PREFIX + ESPN_REASON_TEXT[reach.reason], "likely", False)
+
+    def cant_reach_reason(self, g: GameState, sunday_ticket: bool = True) -> str | None:
+        """Why this game cannot reach the TV, as a countable key; None when it has a route to tune."""
+        w = self.where(g, sunday_ticket)
+        t = w.target or ""
+        if w.tunable:
+            return "espn_app_unproven" if t.startswith("espn:") else None
+        if t == "youtubetv:espnplus":
+            return self.espn_reach(g).reason if self.espn_on_yttv else "no_event_row"
+        if t.startswith("youtubetv:st"):
+            return "no_st_slot"
+        if t.startswith("youtubetv:"):
+            return "no_channel_code"
+        if t.startswith("prime:"):
+            return "no_event_link"
+        if w.label.startswith(ESPN_REFUSED_PREFIX):
+            text = w.label[len(ESPN_REFUSED_PREFIX):]
+            return next(k for k, v in ESPN_REASON_TEXT.items() if v == text)
+        if "blacked out" in w.label:
+            return "local_blackout"
+        if w.label.startswith("only on"):
+            return "app_not_set_up"
+        return "not_in_area" if "not on in your area" in w.label else "unknown"
 
     def apply_links(self, g: GameState, found: dict, my_teams: set[str]) -> None:
         """Event links found online (Prime GTIs, ESPN+ watch ids) for one game."""
@@ -343,6 +444,27 @@ def describe(target: str | None) -> str:
     if app == "espn":
         return "ESPN+ · ESPN app"
     return target
+
+
+ROUTE_CLASSES = ("local", "cable", "ticket", "event", "prime", "espn", "other", "none")
+
+
+def route_class(target: str | None) -> str:
+    """[WP-01] What kind of route a target is, so the plan and the queue can treat kinds alike:
+    local (a broadcast station through YouTube TV), cable (any other YouTube TV channel), ticket (a
+    Sunday Ticket slot, matched or not), event (a YouTube TV event link), prime (Prime Video: a game
+    link or a League Pass / Monumental channel), espn (the ESPN app), other (any other app), none (no target).
+    Why: the plan could not tell a local CBS route from a Sunday Ticket one (Nov 8)."""
+    if not target:
+        return "none"
+    app, _, rest = target.partition(":")
+    if app == "youtubetv":
+        if rest.startswith("st"):
+            return "ticket"
+        if rest.startswith(("ev:", "espnplus")):
+            return "event"
+        return "local" if rest in BROADCAST else "cable"
+    return {"prime": "prime", "espn": "espn"}.get(app, "other")
 
 
 def _is_sunday_afternoon(g: GameState) -> bool:

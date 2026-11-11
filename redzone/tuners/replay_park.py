@@ -1,5 +1,7 @@
 """[replay on the scrub, Nick Nov 7 1:02 PM ET] Park a HIDDEN YouTube TV stick just before a big play's snap.
 
+Why: Nick, Nov 7 1:02 PM ET: he could see the rewind, so the seek happens on the hidden stick, parked just before the big play's snap (docstring).
+
 Nick: 'that rewind worked rly good / got right to the spot of the big play / but i saw the rewind / it should be auto
 on the play right b4 the snap when it switches'. So the seek happens on the hidden stick and the TV flips onto it:
   1. k LEFTs so the knob lands at or before the park point. The frozen-overlay time cancels out (it puts the picture
@@ -10,7 +12,7 @@ on the play right b4 the snap when it switches'. So the seek happens on the hidd
   3. the picture plays toward the snap: wait until it shows (snap - park_lead_s), then MEDIA_PAUSE. The flip
      un-pauses it, so the TV lands park_lead_s before the snap.
 `back_s` is how far before NOW the replay starts (the decider's Missed.back_s: back_lead_s before the snap).
-Fails closed (ok False) on: no label probe, no read, a landing past the park point, a wait over park_wait_max_s, the
+Fails closed (ok False) on: no package (pkg None), no label probe, no read, a landing past the park point, a wait over park_wait_max_s, the
 stick no longer hidden. Never raises. Frames are read for numbers, then deleted (yttv_label / yttv_seek).
 """
 from __future__ import annotations
@@ -24,7 +26,7 @@ from typing import Callable
 
 log = logging.getLogger("redzone.replay_park")
 
-PARK_DEFAULTS = {"back_lead_s": 3.0, "park_lead_s": 1.5, "scrub_slack_s": 4.0, "park_wait_max_s": 40.0,
+PARK_DEFAULTS = {"back_lead_s": 3.0, "park_lead_s": 1.5, "scrub_slack_s": 4.0, "park_wait_max_s": 40.0, "pause_settle_s": 3.0, "pause_poll_s": 0.4,
                  "yttv_max_lefts": 8}
 
 
@@ -46,6 +48,7 @@ class ParkResult:
     lefts: int = 0
     behind_s: float | None = None     # label-read behind-live after the scrub
     waited_s: float = 0.0             # played toward the snap before the pause
+    to_snap_s: float | None = None    # at the pause: how far the picture is BEFORE the snap (PLAY -> snap after this)
     paused: bool = False              # the player reported paused after MEDIA_PAUSE
     moved: bool = False               # keys may have moved the stick (caller marks it behind, #391)
     reason: str = ""
@@ -79,6 +82,11 @@ async def _park(stick, back_s, probe, cfg, pkg, still_hidden, clock, sleep, t0, 
     if k > int(_cfg(cfg, "yttv_max_lefts")):
         res.reason = f"{back_s:.0f}s back needs {k} LEFTs (> yttv_max_lefts)"
         return
+    if not pkg:
+        # [Nick, Nov 8 89656de9] playback(None) can't pick the YouTube TV session among several (Prime, Alexa,
+        # vizzini) and reads 'none': never press keys on a park whose pause can't be confirmed
+        res.reason = "no YouTube TV package: the pause could not be read (identify() the stick first)"
+        return
     if probe is None or not probe.arm(stick):
         res.reason = "no label probe armed: a replay is never placed blind"
         return
@@ -111,11 +119,21 @@ async def _park(stick, back_s, probe, cfg, pkg, still_hidden, clock, sleep, t0, 
     if not still_hidden():
         res.reason = "stick became visible before the pause"
         return
+    # behind-live B is NOT the distance to the snap: live moved on during the scrub (overlay up, label read), so the
+    # snap is (back_s - back_lead_s) + the scrub's wall time behind live, and a 63 s replay needs B ~110 s
+    res.to_snap_s = round(t_snap - (clock() - float(behind)), 2)
     sent = await stick.key("KEYCODE_MEDIA_PAUSE")
     if not sent or not getattr(sent, "ok", False):
         res.reason = "PAUSE not sent"
         return
-    pb = await stick.playback(pkg)
+    # [Nick, Nov 8 fd1ba542] the first read right after PAUSE can be a transient 'none' (the post-tune family, #356)
+    # while the player is paused (state 2 at +0, +10, +20 s): re-read for pause_settle_s before calling it lost
+    end = clock() + float(_cfg(cfg, "pause_settle_s"))
+    while True:
+        pb = await stick.playback(pkg)
+        if pb.get("state") == "paused" or clock() >= end:
+            break
+        await sleep(float(_cfg(cfg, "pause_poll_s")))
     if pb.get("state") not in ("playing", "paused"):
         res.reason = f"player is {pb.get('state')} after PAUSE"
         return

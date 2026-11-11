@@ -203,15 +203,18 @@ Nothing on the decision path reads them.
 6. **Explainability**: every `core.Action` carries `ev`, `ev_stay` and `terms` (the ev's parts:
    rate, friction, stay, guard), its `reason`, and the guard name that changed it. `traced()`
    writes them to the trace. This feeds the phone's "why this game" and golden-night diffs.
-7. **Feature flags / kill switches**: one per subsystem under `flags.*` in config (`flags.py`
-   `Flag`). They can be switched from the phone and A/B tested in replays by overriding the key.
-   A flag that is off means the subsystem runs in its degraded mode, never an error. Defaults are
-   all `true` ("allowed to run"), and the subsystem's own setting still decides whether it is on.
+7. **Kill switches**: each subsystem is turned off by its own config key (`brain.enabled`,
+   `reasoner.enabled`, `reel.enabled`/`reel.play`, `replay.*`, `tuners.*`, `noggin.*`, `hardening.*`,
+   `two_stick.*`). They can be switched from the phone and A/B tested in replays by overriding the key.
+   A part that is off runs in its degraded mode, never an error. The `flags.*` block in config and
+   `redzone/contracts/flags.py` `enabled()` exist but **no production code reads them** (audit R3,
+   2026-11-08): flipping `flags.*` changes nothing, so do not rely on it.
 8. **Latency budget per tick** (`budget.py`, ms): feeds 50, models 150, sync 10, paths 20,
    reasoner 5, decision 100, command 250, about 585 ms total within a 3 s tick. `TickTimer`
    records any overrun, and an exception returns that part's degraded result. After three
-   overruns in a row, the supervisor turns that part's flag off and says so on the phone.
-9. **Degraded modes** (`flags.DEGRADED`): defined for every flag, plus `one_stick`,
+   overruns in a row, the supervisor is meant to turn that part off (its own key, not `flags.*`, which is
+   not wired) and say so on the phone.
+9. **Degraded modes** (`flags.DEGRADED`): defined for every part that has a name in `flags.Flag`, plus `one_stick`,
    `feed_down`, `away_from_home` and `tv_unreachable`. The end-to-end night test runs each one.
 
 ## 4. Owners
@@ -283,16 +286,16 @@ night test. `scripts/release_gate.py` checks them, and CI runs it on every PR, r
 result in the run summary. It **fails** the release PR (`integration/next` →
 `codex/resume-redzone`).
 
-A part that can't reach its gate ships **OFF** behind its feature flag (`flags.*`, so today's
-behavior stays), and the release PR says exactly how far short it is and why. A gate that can't
+A part that can't reach its gate ships **OFF** behind its own config key (e.g. `brain.enabled`, `reasoner.enabled`, `jump_mode.enabled`;
+`flags.*` is not wired), so today's behavior stays, and the release PR says exactly how far short it is and why. A gate that can't
 be measured yet is **PENDING**, and pending never counts as passing.
 
 | Gate | Target |
 |---|---|
 | Mid-play cuts | 0 (hard) |
 | Switches landing at a dead ball | ≥ 95 % of entries |
-| Entries mid-play | ≤ 5 % of entries, and never above today (`docs/gate_baseline.json`) |
-| Crunch-time plays seen live | ≥ 95 % where any feasible schedule allows it; the feasible ceiling is shown next to it. Conflicts follow the user's league order **NFL > CFB > NBA > the rest (NHL, MLB)**: the winning game must be 100 % live, and a lower-priority overlap that gets a catch-up replay is not a miss. |
+| Entries mid-play | 0 (hard, Rule #1), and never above today (`docs/gate_baseline.json`) |
+| Crunch-time plays seen live | ≥ 95 % where any feasible schedule allows it; the feasible ceiling is shown next to it. Conflicts follow the user's league order **NFL > CFB > NBA > NCAA basketball > NHL > MLB** (Nick, Nov 8: NFL = CFB only when both are in crunch; NFL first otherwise; women's college basketball is off): the winning game must be 100 % live, and a lower-priority overlap that gets a catch-up replay is not a miss. |
 | Your-team crunch live | 100 % |
 | Your-team big plays seen | 100 % |
 | Big plays seen (live + catch-up) | ≥ 95 % per league |

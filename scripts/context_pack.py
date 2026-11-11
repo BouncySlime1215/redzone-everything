@@ -9,6 +9,7 @@ origin/codex/resume-redzone when this checkout has it), the status board, every 
 lessons (titles) plus pending ones from the watchdog, open PRs, the latest scorecards and the
 Kaggle state. Stdlib only; every part degrades to a one-line note instead of failing. Never
 reads secrets: the GitHub call is unauthenticated (the repo is public).
+Why: Builds one context pack to brief a brand-new AI session (docstring, memory systems commit).
 """
 from __future__ import annotations
 

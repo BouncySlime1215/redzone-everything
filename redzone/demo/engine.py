@@ -7,6 +7,8 @@ logic, Engine.decide/snapshot/action, the phone UI). Only three things are swapp
   - the data: plays arrive from archived summaries feed_lag seconds after they happened
     (redzone.lab.backtest's Replay/_feed/_deliver), instead of from ESPN;
   - the controller: InertController. Dry run forced, no adb, no TV, no sticks, ever.
+
+Why: first added in f469a653 (2026-11-02) as "Standby planner: preload the decider's own next pick; preload hit rate on the replay"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

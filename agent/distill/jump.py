@@ -23,6 +23,7 @@ The label is Nick's judgment written as rules, applied with hindsight (``label``
 Rows whose label sits near a boundary (window within 15 s of the need, crunch or must_see with a
 long break, a big play right after the restart, the viewer's team) are the HARD set: hand-reviewed,
 held out by night like everything else, and up-weighted as a top-up when training.
+Why: Part of the Kaggle Mind distill pipeline (salvage commit onto integration/next).
 """
 from __future__ import annotations
 

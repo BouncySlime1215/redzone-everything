@@ -83,3 +83,71 @@ async def test_non_youtube_tv_adoption_is_unchanged(one, monkeypatch):
     c.sticks = [stick]
     assert await c._still_on_visible("prime:abc")
     assert c.on_target == "prime:abc" and c._adopt_once is False
+
+
+async def test_read_screen_learns_the_live_channel_after_a_restart(one):
+    """[overseer Nov 7 23:00] on_target None after a restart: a read-back (no tune) names the screen's channel."""
+    c, tuner = one
+    stick = ShowingStick("a:5555", subtitle="ESPN")
+    c.sticks = [stick]
+    assert await c.read_screen(["youtubetv:fox", "youtubetv:espn"]) == "youtubetv:espn"
+    assert c.on_target == "youtubetv:espn" and tuner.calls == []
+    assert await c.read_screen(["youtubetv:espn"]) is None    # already known: no second read
+    assert stick.reads == 1
+
+
+@pytest.mark.parametrize("subtitle,state", [("FOX", "playing"), ("", "playing"), ("ESPN", "paused")])
+async def test_read_screen_needs_one_ready_channel_match(one, subtitle, state):
+    c, tuner = one
+    c.sticks = [ShowingStick("a:5555", subtitle=subtitle, state=state)]
+    assert await c.read_screen(["youtubetv:espn"]) is None
+    assert c.on_target is None
+
+
+async def test_read_screen_never_after_a_replay(one):
+    c, tuner = one
+    c.sticks = [ShowingStick("a:5555", subtitle="ESPN")]
+    c.submit("youtubetv:espn", 30.0, lambda out: None)
+    await c._task
+    c.on_target = None
+    assert await c.read_screen(["youtubetv:espn"]) is None    # a rewound picture is never read back as live
+
+
+
+class PrimeShowing(ShowingStick):
+    def __init__(self, host, text):
+        super().__init__(host, subtitle="", pkg="prime.pkg")
+        self.text = text
+
+    async def ocr_text(self):
+        return self.text
+
+
+@pytest.mark.parametrize("text,want", [
+    ("MAGIC 98 WARRIORS 100 4TH 1:25", "prime:orlgs"),   # the score bug names one live Prime game
+    ("MAGIC 98 4TH", None),                              # one name only
+    ("LAKERS 90 BLAZERS 88", None),                      # another game
+])
+async def test_read_screen_learns_a_prime_game_by_its_score_bug(one, text, want):
+    """[overseer Nov 7 23:50] Prime names no game: its score bug's team names pick the one live Prime target."""
+    c, tuner = one
+    c.sticks = [PrimeShowing("a:5555", text)]
+    c.target_names = lambda t: {"prime:orlgs": ["Magic", "Warriors"], "prime:nyknj": ["Knicks", "Nets"]}[t]
+    assert await c.read_screen(["prime:orlgs", "prime:nyknj"]) == want
+    assert c.on_target == want and tuner.calls == []
+
+
+def test_held_offsets_survive_a_restart(cfg, tmp_path):
+    """[overseer Nov 7 23:50] the screen ran ~79 s behind; after a restart the app thought 17 s."""
+    import time as _t
+    a = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    a.buffer_log_path = tmp_path / "buffer.jsonl"
+    a._set_held("prime:x", 78.9)
+    b = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    b.buffer_log_path = tmp_path / "buffer.jsonl"
+    seen = []
+    b.on_behind = lambda t, v, old: seen.append((t, v))
+    assert b.restore_held() == {"prime:x": 78.9} and b.held["prime:x"] == 78.9 and seen == [("prime:x", 78.9)]
+    c = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    c.buffer_log_path = tmp_path / "buffer.jsonl"
+    assert c.restore_held(now=_t.time() + 601) == {}     # too old: nothing trusted

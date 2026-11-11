@@ -1,5 +1,7 @@
 # RC8 gate: the time-shift buffer ON per league (pre-registered before tonight's shadow data)
 
+> **Superseded by [docs/PLAN.md](../PLAN.md)**, the only plan. Kept as history and input.
+
 Owner: the integrator. Nick, Nov 5 9:10 AM ET: "I approve this plan and I want it all done and ready for tonight."
 The time-shift buffer is the main architecture: the show runs 60-90 s behind live (cap 90 s) and the brain edits.
 This file fixes the gate (part E) BEFORE any shadow night or sweep result is read, so no bar moves after the fact.

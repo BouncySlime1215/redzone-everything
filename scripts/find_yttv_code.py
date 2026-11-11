@@ -20,6 +20,7 @@ data/yttv_verified.json. Screenshots, probe output and steps go to data/lab/find
 miss can be read by hand.
 
 Never sends HOME or WAKEUP (either can flip the TV over HDMI-CEC); a sleeping stick is left alone.
+Why: Finds YouTube TV watch codes for channels we lack, on a spare stick (docstring, commit).
 """
 from __future__ import annotations
 

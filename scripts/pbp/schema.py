@@ -38,6 +38,7 @@ null; a converter never invents a value it does not have):
 No free text column: play descriptions are mapped to kind/sub_kind and numbers only (tokenizer-v2-sources.md).
 Locked/scorecard nights of our six product leagues are never written (EVAL_FIRST_NIGHT); other leagues have no
 locked nights, but every shard keeps `night`, so time splits stay whole-night.
+Why: Defines the one play table every source converter writes (docstring, Data A commit).
 """
 from __future__ import annotations
 

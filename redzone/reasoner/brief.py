@@ -1,8 +1,12 @@
 """The brief: one game's live situation as numbers (for the head) and as compact text (for the model).
 
+Why: unknown (needs owner)
+
 Built from what the app already has on every poll: the GameState, the brain's running features
 (its Tracker row) and reading, plus your context (your team, a bet, what's on screen). Stdlib +
 numpy; nothing here can raise on a strange feed (every field is optional, see redzone.models).
+
+Why: first added in f79f070a (2026-11-03) as "Live game reasoner: brief builder, hindsight labels from the archive, a fast lock-in head (cross-..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

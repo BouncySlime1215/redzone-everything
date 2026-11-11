@@ -1,8 +1,12 @@
 """Bounded YouTube TV library inspection using observed menu geometry.
 
+Why: unknown (needs owner)
+
 This is a navigation helper, not a live-game tuner. Relative recording ages and
 the thumbnail's 'Playing' badge never establish an event date or player identity.
 Captures and device authorization belong to the caller; import has no side effects.
+
+Why: first added in f98e81ba (2026-11-02) as "TV input flip via HOME (CEC Active Source) with stick-side verification; YouTube TV codes verifie..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -14,6 +18,7 @@ import time
 from urllib.parse import quote
 
 from redzone.discovery.providers import classify_screen, is_purchase_screen, normalize_text
+from redzone.machines.control import YTTV_SEARCH
 from redzone.screen_ocr import focus_caption
 from redzone.tuners.prime_search import CapturedScreen, has_teams, unique_focus, _words
 from redzone.tuners.profiles import (ProfileSelectionRequired, is_profile_screen,
@@ -36,10 +41,27 @@ class YTTVSearchProof:
     transport_ready: bool = False
     player_title: str = ""
     selected_card: str = ""
-    last_completed_stage: str = "none"
+    last_completed_stage: str = "none"   # machine tuners.yttv_search (stage_m)
     video_verified: bool = False
     elapsed_s: float = 0.0
     steps: list[dict] = field(default_factory=list)
+
+
+def _stage(self: "YTTVSearchProof") -> str:
+    m = self.__dict__.get("stage_m")
+    return m.state if m is not None else "none"
+
+
+def _set_stage(self: "YTTVSearchProof", value: str) -> None:
+    """last_completed_stage is the tuners.yttv_search machine (stage_m): stages only move forward."""
+    m = self.__dict__.get("stage_m")
+    if m is None:
+        self.__dict__["stage_m"] = YTTV_SEARCH.new(state=value)
+        return
+    m.to(value, why=self.__dict__.get("reason", "") or value)
+
+
+YTTVSearchProof.last_completed_stage = property(_stage, _set_stage)   # after @dataclass: __init__ still takes it
 
 
 @dataclass(frozen=True)
@@ -700,12 +722,15 @@ def step_toward(focus, target) -> str:
 async def hunt_channel(stick, observe, *, key: str, table, query: str = "", profile: str = "",
                        sleep=asyncio.sleep, clock=time.monotonic, wall=time.time, max_moves: int = 14,
                        budget_s: float = HUNT_BUDGET_S, lounge=None, collect_codes: bool = True,
-                       channel_page: bool = False) -> ChannelHunt:
+                       channel_page: bool = False, before_key=None) -> ChannelHunt:
     """Search YouTube TV for one channel, select its live tile, confirm it plays, collect code candidates.
 
     ``observe`` returns a fresh CapturedScreen (screencap + Vision OCR). ``lounge`` is an optional
     async host -> now-playing video id (discovery.lounge.now_playing). Candidates still need
     prove_code(). Never raises.
+
+    ``before_key`` (DEV-08) is called right before every key or search link that changes the screen; it
+    raises (CutWindowClosed) when the safe switching window has closed, which ends the hunt as "stopped".
 
     ``channel_page`` (ABC 11, Nov 7): the search opens the station's channel page, but OCR can't read
     the focus ring there. Then, per path in CHANNEL_PAGE_PATHS (DOWN, Select; else reopen the
@@ -731,13 +756,19 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
 
     async def read():
         nonlocal last_sequence
-        budget()
-        frame = await observe()
-        if not isinstance(frame, CapturedScreen) or frame.sequence <= last_sequence:
-            raise RuntimeError("screen capture is stale or out of order")
-        last_sequence = frame.sequence
-        if not frame.read_ok:
-            raise RuntimeError("screen text could not be read (screencap/OCR)")
+        for second_try in (False, True):
+            budget()
+            frame = await observe()
+            if not isinstance(frame, CapturedScreen) or frame.sequence <= last_sequence:
+                raise RuntimeError("screen capture is stale or out of order")
+            last_sequence = frame.sequence
+            if frame.read_ok:
+                break
+            # [P1-ROOTCAUSE-08] no key was sent since: one more read, and name the step that failed
+            failed = str(getattr(frame, "error", "") or "no text on screen")[:80]
+            record("read_failed", failed)
+            if second_try:
+                raise RuntimeError(f"screen text could not be read ({failed})")
         verdict = classify_screen(frame.text)
         if purchase_dialog(frame) or (verdict and verdict.stops):
             raise RuntimeError(f"account, payment or unavailable screen: {frame.text[:120]!r}")
@@ -746,6 +777,8 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
 
     async def press(code):
         budget()
+        if before_key is not None:
+            before_key()
         sent = await stick.key(code)
         record("key", code)
         if not getattr(sent, "ok", False):
@@ -754,6 +787,8 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
 
     async def open_search():
         nonlocal search_at
+        if before_key is not None:
+            before_key()
         search_at = clock()
         launched = await stick.view("https://tv.youtube.com/search?q=" + quote(query, safe=""), pkg, wait=True)
         record("open_search", f"{query!r} ok={launched.ok}")

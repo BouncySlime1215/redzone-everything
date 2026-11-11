@@ -1,5 +1,7 @@
 """Config: defaults + user overrides, validated, versioned, and undoable.
 
+Why: knobs change often on a live app: one store rejects bad values before saving and rollback() undoes a save (see lessons: unreadable config fell back to dry run).
+
 Guardrails:
 - Every edit is checked against LIMITS before it's saved; bad values are rejected with a reason.
 - Every save writes a timestamped copy to data/config_history/, so `rollback()` can undo it.
@@ -7,6 +9,7 @@ Guardrails:
 """
 from __future__ import annotations
 
+import contextlib
 import copy
 import logging
 import time
@@ -25,6 +28,7 @@ HISTORY = DATA / "config_history"
 # (min, max) for numeric settings, matched by dotted-path prefix; most specific wins.
 LIMITS: dict[str, tuple[float, float]] = {
     "server.port": (1024, 65535),
+    "legal.leave_wait_s": (1, 180),
     "noggin.priority.prefs.bets_weight": (0, 2),
     "noggin.priority.prefs.rivalry_points": (0, 15),
     "noggin.priority.prefs.nhl_pp_ot_boost": (0, 2),
@@ -287,6 +291,13 @@ def prune(cfg: dict, defaults: dict, path: str = "") -> tuple[dict, list[str]]:
     return kept, dropped
 
 
+def _nest(dotted: str, value) -> dict:
+    out = value
+    for part in reversed(dotted.split(".")):
+        out = {part: out}
+    return out
+
+
 class Config:
     def __init__(self, user_path: Path = USER, history_dir: Path = HISTORY):
         self.user_path = user_path
@@ -347,15 +358,45 @@ class Config:
         self._save(new_over, record=record)
         return self.data
 
+    # Values the app measures itself and saves with record=False: Undo must not revert them (P-12).
+    UNRECORDED = ("decider.switch_cost",)
+    HISTORY_KEEP = 200   # recorded versions kept on disk (P-16); older ones are pruned at each save
+
     def rollback(self) -> bool:
+        """Undo the last recorded change. Never wipes the saved settings on a thin history: with no
+        version there is nothing to undo (the file is left alone), and values the app measured itself
+        (UNRECORDED) survive. `self.rollback_note` says what happened, for the phone (P-12)."""
         versions = sorted(self.history_dir.glob("*.yaml")) if self.history_dir.exists() else []
+        if not versions:
+            self.rollback_note = "Nothing to undo: no earlier version is saved"
+            return False
+        keep = {k: v for k in self.UNRECORDED if (v := self._path(self.overrides, k)) is not None}
         if len(versions) < 2:
-            self._save({}, record=False)
-            return bool(versions)
+            # The only recorded version is the first edit ever (a save with older settings under it records
+            # them first, see _save): undoing it returns to defaults plus what the app measured.
+            prev: dict = {}
+        else:
+            prev = yaml.safe_load(versions[-2].read_text()) or {}
+            if not isinstance(prev, dict):
+                self.rollback_note = "Nothing to undo: the earlier version isn't readable"
+                return False
         versions[-1].unlink()
-        prev = yaml.safe_load(versions[-2].read_text()) or {}
+        for dotted, v in keep.items():
+            prev = _deep_merge(prev, _nest(dotted, v))
         self._save(prev, record=False)
+        self.rollback_note = "Undid the last change"
         return True
+
+    rollback_note = ""
+
+    @staticmethod
+    def _path(d: dict, dotted: str):
+        node = d
+        for part in dotted.split("."):
+            if not isinstance(node, dict) or part not in node:
+                return None
+            node = node[part]
+        return node
 
     def _save(self, over: dict, record: bool = True) -> None:
         over = without_retired(over)
@@ -366,6 +407,11 @@ class Config:
         tmp.replace(self.user_path)  # atomic: a crash mid-save can't corrupt the file
         if record:
             self.history_dir.mkdir(parents=True, exist_ok=True)
+            if self.overrides and not any(self.history_dir.glob("*.yaml")):
+                # Settings that predate the history (a fresh checkout, a pruned history) become its first
+                # version, so the first Undo goes back to them and not to defaults (P-12).
+                (self.history_dir / "v2-00000000000000000000.yaml").write_text(
+                    yaml.safe_dump(without_retired(self.overrides), sort_keys=False))
             # Keep revisions ordered across rapid saves, clock corrections and reloads.
             # The prefix sorts after legacy timestamp names, which remain undoable.
             revisions = [int(p.stem[3:]) for p in self.history_dir.glob("v2-*.yaml")
@@ -378,5 +424,9 @@ class Config:
                     break
                 except FileExistsError:
                     revision += 1
+            old = sorted(self.history_dir.glob("*.yaml"))
+            for p in old[:-self.HISTORY_KEEP]:   # one file per save, forever (P-16)
+                with contextlib.suppress(OSError):
+                    p.unlink()
         self.overrides = over
         self.data = _deep_merge(self.defaults, over)

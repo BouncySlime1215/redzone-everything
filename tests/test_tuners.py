@@ -312,16 +312,13 @@ def one_stick(cfg, tmp_path, monkeypatch):
     return c, st
 
 
-async def test_replay_of_the_game_on_screen_skips_the_retune(one_stick):
+async def test_replay_of_the_game_on_screen_on_one_stick_is_refused(one_stick):
+    """[S-11] No hidden stick: refused before any key (the viewer never sees a rewind), the game stays on."""
     c, st = one_stick
     assert (await c.execute("youtubetv:fox")).ok
     out = await c.execute("youtubetv:fox", replay_back_s=20)
-    assert out.ok and len(st.links()) == 1          # no second deep link: straight to rewinding
-    assert "KEYCODE_MEDIA_REWIND" in " ".join(st.cmds) and st.keys()[-1] == "KEYCODE_MEDIA_PLAY"
-    st.now = yt(3, 80, 9000)                        # rewound: the stream's clock went backwards
-    st.linked, st.after = False, [yt(6), yt(3, 9000, 9500)]
-    assert (await c.execute("youtubetv:fox")).ok   # back to live after a replay: that needs a real tune
-    assert len(st.links()) == 2
+    assert not out.ok and out.screen_unchanged and len(st.links()) == 1
+    assert "KEYCODE_MEDIA_REWIND" not in " ".join(st.cmds)
 
 
 async def test_a_link_android_didnt_deliver_fails_without_remembering_wrong_game():

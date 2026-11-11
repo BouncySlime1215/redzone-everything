@@ -5,6 +5,8 @@ polling.hot_s (3 s). A module over its budget is logged and counted in the error
 raises returns its degraded result for this tick. Three overruns in a row of the same part let the
 supervisor turn that part's flag off (flags.py) and say so on the phone. Async
 parts (reasoner, watchdog model, reel builds) are never on the tick.
+
+Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

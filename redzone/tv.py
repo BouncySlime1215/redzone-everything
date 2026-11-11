@@ -17,8 +17,16 @@ off (scripts/stick_cec.py). Two ways to send it; scripts/tv_setup.py proves whic
                  ID, never the first TV in the account. Its input READBACK is the strongest
                  evidence we have of what the viewer sees, so it also verifies local keys.
 
+SmartThings is ON again (Nick, 2026-11-10: "use smart things"; on Nov 9 it was the only flip that worked on his
+TV, 9 of 9 against 0 of 3 for the local key). It was dropped on 2026-11-08 because free access ends 2026-12-15
+and the $0 rule forbids a paid plan, so another flip path is needed by then. `two_stick.smartthings_cloud: false`
+puts the cloud in the state "disabled by policy": no request, no probe, no OAuth file read, no Health alert, and
+the planner (cloud_ready / ready()) stops counting it; the OAuth file is neither read nor deleted while it is off.
+
 Every call has a timeout. False means unconfirmed, not necessarily unchanged: an ambiguous
-delivery never triggers a second TV method (the first one may already have switched). A
+delivery (a timeout) never triggers a second TV method (the first one may already have switched);
+a definite non-delivery (refused connection, 401/403/429, breaker open, no token) falls through to
+the next method (DEV-02). A
 successful network write alone never confirms which input the viewer sees.
 
 Each attempt is appended to data/tv_input.jsonl with its command and verify latency.
@@ -35,6 +43,8 @@ SmartThings failure handling (`hardening.smartthings`, off until a live night pr
                is the half-open probe: the cloud comes back without a real flip paying for it.
                A GET that got a fast 5xx or never connected is retried once. A POST never is: the
                command may have been applied, and the readback decides.
+
+Why: recorded in docs/memory/lessons.md (hardening.smartthings breaker); first added in 56d8adbf (2026-11-02) as "Two-stick hot standby: tune hidden stick, flip input only at a safe moment (CEC, TV remote, Smart...".
 """
 from __future__ import annotations
 
@@ -44,6 +54,7 @@ import json
 import logging
 import os
 import re
+import socket
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -51,6 +62,8 @@ from typing import Awaitable, Callable
 
 import httpx
 
+from redzone import config as _config
+from redzone.machines.control import SMARTTHINGS
 from redzone.platform.breaker import Breaker
 
 log = logging.getLogger(__name__)
@@ -67,9 +80,16 @@ REFRESH_EARLY_S = 600.0      # renew the access token this long before it expire
 REFRESH_EVERY_S = 6 * 3600   # ...and at least this often, so the refresh token never ages out unused
 VERIFY_READS = 8             # SmartThings readback: this many reads...
 VERIFY_GAP_S = 0.3           # ...this far apart (the TV reports its new input in ~1 s)
+# DEV-03: the whole readback; a flip never waits longer than this for a cloud answer
+VERIFY_DEADLINE_S = float(_config.default("two_stick.tv_verify_deadline_s", 2.5))
 LOCAL_TIMEOUT_S = 6.0
+# DEV-16: a key waits this long for a warm()/other key on the shared socket
+LOCAL_LOCK_WAIT_S = float(_config.default("two_stick.tv_local_lock_wait_s", 3.0))
+# DEV-10: one keepalive's TV upkeep is cut after this
+MAINTAIN_TIMEOUT_S = float(_config.default("two_stick.tv_maintain_timeout_s", 20.0))
 FAIL_BACKOFF_AFTER = 2       # this many failures in a row on one method...
-FAIL_BACKOFF_S = 300.0       # ...and it isn't tried for this long (HOME takes over meanwhile)
+FAIL_BACKOFF_S = 45.0        # ...and it isn't tried for this long (HOME takes over meanwhile); maintain() probes
+                             # a backed-off local path, so a blip of the TV or Wi-Fi no longer costs 5 minutes (DEV-07)
 INPUT_LOG_MAX = 2 * 1024 ** 2
 ST_BREAK_AFTER = 2           # cloud failures in a row before the SmartThings breaker opens
 ST_BREAK_S = 30.0            # first open; doubles per re-open...
@@ -118,6 +138,21 @@ def _never_sent(e: Exception) -> bool:
     if isinstance(e, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
         return True
     return type(e).__name__ in ("WebSocketConnectionClosedException", "ConnectionClosed")
+
+
+def _local_never_sent(e: Exception) -> bool:
+    """A local key that definitely did not reach the TV (so another method is safe): the write was refused, or
+    the connection never opened. A timeout is NOT here: the key may have been delivered."""
+    if _never_sent(e):
+        return True
+    if isinstance(e, (TimeoutError, socket.timeout)) or "Timeout" in type(e).__name__:
+        return False
+    return isinstance(e, OSError) or type(e).__name__ in (
+        "ConnectionFailure", "WebSocketBadStatusException", "WebSocketAddressException")
+
+
+class _SocketBusy(asyncio.TimeoutError):
+    """Timed out WAITING for the local socket, so nothing of ours ran: a definite non-delivery."""
 
 
 @dataclass
@@ -283,6 +318,16 @@ class SmartThingsAuth:
             await self.refresh()
 
 
+class _CloudBreaker(Breaker):
+    """The SmartThings breaker: also opens for a 429's Retry-After (its own fields, not poked from outside).
+    TODO(platform): move open_for into redzone/platform/breaker.Breaker."""
+
+    def open_for(self, wait_s: float) -> None:
+        self.hangs = max(self.hangs, self.threshold - 1)
+        self.hang()                                       # open now...
+        self.until = max(self.until, self.clock() + wait_s)  # ...for at least as long as the server asked
+
+
 @dataclass
 class SamsungTV:
     host: str | None = None
@@ -302,20 +347,28 @@ class SamsungTV:
     corroborate: Callable[[str], Awaitable[bool | None]] | None = None
     # hardening.smartthings (the controller passes a live reader so the phone's toggle applies at once)
     hardening: Callable[[], bool] = lambda: False
-    st_fault: str = ""                   # "" | "auth" | "rate_limited" | "cloud_down"
+    st_fault: str = ""                   # "" | "auth" | "rate_limited" | "cloud_down" (machine tv.smartthings: st_m)
     st_fault_detail: str = ""
     st_breaker: Breaker | None = None
+    # Policy: from_devices() reads two_stick.smartthings_cloud (on again since 2026-11-10, Nick; false = dropped);
+    # a plain SamsungTV(...) keeps the cloud so the fake-cloud tests and tv_setup.py still work.
+    cloud_enabled: bool = True
     _tv: object = None
+    _definite: bool = False                         # the last local key / cloud call certainly was not delivered
+    _drop_pending: bool = False                     # close the local socket as soon as its worker thread ends
+    _maintain_task: object = None
     _fails: dict = field(default_factory=dict)      # method -> consecutive failures
     _skip_until: dict = field(default_factory=dict)  # method -> not before
-    _auth_failed: tuple | None = None                # (at, oauth file stamp) of the last auth failure
+    _auth_failed: tuple | None = None                # (at, oauth file stamp) of the last auth failure (st_m "auth")
+    _st_ok: bool = True                              # the last _st() call got an answer
+    _local_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False, compare=False)
 
     def __post_init__(self):
         if self.auth is None:
             self.auth = SmartThingsAuth(transport=self.transport)
         if self.st_breaker is None:
-            self.st_breaker = Breaker("smartthings", threshold=ST_BREAK_AFTER, backoff_s=ST_BREAK_S,
-                                      max_backoff_s=ST_BREAK_MAX_S, clock=lambda: self.clock())
+            self.st_breaker = _CloudBreaker("smartthings", threshold=ST_BREAK_AFTER, backoff_s=ST_BREAK_S,
+                                            max_backoff_s=ST_BREAK_MAX_S, clock=lambda: self.clock())
 
     @classmethod
     def from_devices(cls, path: Path | None = None) -> "SamsungTV":
@@ -328,7 +381,8 @@ class SamsungTV:
         return cls(host=tv.get("ip"), method=tv.get("input_method"),
                    st_device=tv.get("smartthings_device_id") or tv.get("st_device"),
                    local_trusted=bool(tv.get("local_input_verified")) and bool(tv.get("network_verified")),
-                   mac=tv.get("mac") or tv.get("wifi_mac"), log_path=Path(INPUT_LOG))
+                   mac=tv.get("mac") or tv.get("wifi_mac"), log_path=Path(INPUT_LOG),
+                   cloud_enabled=bool(_config.default("two_stick.smartthings_cloud", False)))
 
     # --- which paths can switch right now ------------------------------------------------
 
@@ -341,28 +395,43 @@ class SamsungTV:
         return bool(self.host and self.local_trusted and TOKEN_FILE.exists()) and not self._backed_off("local")
 
     @property
+    def cloud_disabled(self) -> bool:
+        """SmartThings is off by policy (N1). Checked FIRST everywhere so nothing probes, reads the OAuth
+        file or raises an alert while it is off."""
+        return not self.cloud_enabled
+
+    @property
     def cloud_ready(self) -> bool:
+        if self.cloud_disabled:
+            return False
         return (bool(self.st_device and self.auth and self.auth.configured) and not self._backed_off("smartthings")
                 and not self.cloud_blocked())
 
     # --- SmartThings failure handling (hardening.smartthings) ---------------------------------
 
     def _hardened(self) -> bool:
+        if self.cloud_disabled:
+            return False   # no breaker, no probe, no Health alert (platform/health.py asks this first)
         try:
             return bool(self.hardening())
         except Exception:
             return False
 
     def _auth_blocked(self) -> bool:
-        if self._auth_failed is None:
+        """Is the cloud still blocked by a refused sign-in? A pure check: the re-arm is _auth_rearm."""
+        got = self._auth_failed
+        if got is None:
             return False
-        at, stamp = self._auth_failed
-        if self.clock() - at >= AUTH_RETRY_S or (self.auth and self.auth.stamp() != stamp):
-            self._auth_failed = None        # tv_setup.py ran again (or an hour passed): try once more
+        at, stamp = got
+        return not (self.clock() - at >= AUTH_RETRY_S or (self.auth and self.auth.stamp() != stamp))
+
+    def _auth_rearm(self) -> None:
+        """tv_setup.py ran again (or an hour passed) since the sign-in was refused: try once more, with the new
+        sign-in read fresh (not the cached refused one). Called before a cloud call, never inside a check."""
+        if self.st_m.is_("auth") and not self._auth_blocked():
+            self.st_m.to("auth_retry", why="OAuth file changed or AUTH_RETRY_S passed")
             if self.auth is not None:
-                self.auth._d = None         # re-read the new sign-in, not the cached refused one
-            return False
-        return True
+                self.auth._d = None
 
     def cloud_blocked(self) -> str:
         """Why no SmartThings call should go out right now ("" = it may). Only with hardening.smartthings."""
@@ -380,38 +449,45 @@ class SamsungTV:
         if self.st_fault in ("cloud_down", "rate_limited") or self.st_breaker.state != "closed":
             log.info("SmartThings answering again")
         self.st_breaker.success()
-        self._auth_failed = None              # the sign-in worked: any auth fault is over too
-        self.st_fault = self.st_fault_detail = ""
+        self.st_fault_detail = ""
+        self.st_m.to("ok", why="SmartThings answered")   # the sign-in worked: any auth fault is over too
 
     def _cloud_down(self, detail: str) -> None:
         was = self.st_breaker.state
         self.st_breaker.hang()
-        self.st_fault, self.st_fault_detail = "cloud_down", detail
+        self.st_fault_detail = detail
+        self.st_m.to("cloud_down", why=detail)
         if was != "open" and self.st_breaker.state == "open":
             log.warning("SmartThings %s: HOME/CEC flips for %.0fs", detail, self.st_breaker.retry_in())
 
     def _rate_limited(self, wait_s: float) -> None:
         b = self.st_breaker
-        b.hangs = max(b.hangs, b.threshold - 1)
-        b.hang()                                       # open now...
-        b.until = max(b.until, self.clock() + wait_s)  # ...for at least as long as SmartThings asked
-        self.st_fault, self.st_fault_detail = "rate_limited", f"HTTP 429, retry after {wait_s:.0f}s"
+        _CloudBreaker.open_for(b, wait_s)   # open now, for at least as long as SmartThings asked
+        self.st_fault_detail = f"HTTP 429, retry after {wait_s:.0f}s"
+        self.st_m.to("rate_limited", why=self.st_fault_detail)
         log.warning("SmartThings rate limit: HOME/CEC flips for %.0fs", b.retry_in())
 
     def _auth_down(self, detail: str) -> None:
-        self._auth_failed = (self.clock(), self.auth.stamp() if self.auth else None)
         if self.st_fault != "auth":
             log.error("SmartThings sign-in refused (%s): HOME/CEC flips until tv_setup.py --smartthings", detail)
-        self.st_fault, self.st_fault_detail = "auth", detail
+        self._auth_failed = (self.clock(), self.auth.stamp() if self.auth else None)   # -> st_m "auth"
+        self.st_fault_detail = detail
         self.st_breaker.release()
 
     def cloud_view(self) -> dict:
+        if self.cloud_disabled:
+            return {"fault": "", "detail": "disabled by policy (SmartThings is dropped, local key + CEC)",
+                    "disabled": True, "hardening": False, "breaker": self.st_breaker.view(), "blocked": "",
+                    "machine": self.st_m.view(history=3)}
         return {"fault": self.st_fault, "detail": self.st_fault_detail, "hardening": self._hardened(),
-                "breaker": self.st_breaker.view(), "blocked": self.cloud_blocked()}
+                "breaker": self.st_breaker.view(), "blocked": self.cloud_blocked(),
+                "machine": self.st_m.view(history=3)}
 
     @property
     def has_readback(self) -> bool:
         """The TV itself can tell us its input (SmartThings)."""
+        if self.cloud_disabled:
+            return False
         return bool(self.st_device and self.auth and self.auth.configured)
 
     def ready(self) -> bool:
@@ -419,12 +495,12 @@ class SamsungTV:
         return self.local_ready or self.cloud_ready
 
     def paths(self) -> list[str]:
+        # Local first whenever it is proven and healthy (DEV-05): a stale devices.json input_method of
+        # "smartthings" must not make the dead cloud the primary path.
         out = []
-        if self.method == "smartthings" and self.cloud_ready:
-            out.append("smartthings")
         if self.local_ready:
             out.append("local")
-        if self.cloud_ready and "smartthings" not in out:
+        if self.cloud_ready:
             out.append("smartthings")
         return out
 
@@ -432,8 +508,14 @@ class SamsungTV:
         """For the phone's Health card and scripts/rz.py."""
         last = self.last_input
         return {"local": self.local_ready, "smartthings": self.cloud_ready, "readback": self.has_readback,
-                "method": self.method, "last_error": self.last_error, "cloud": self.cloud_view(),
+                "method": self.method, "cloud_disabled": self.cloud_disabled, "last_error": self.last_error, "cloud": self.cloud_view(),
                 "last": asdict(last) if last else None}
+
+    def reset_backoff(self, method: str | None = None) -> None:
+        """Forget a backoff (a wake / network recovery says the TV is reachable again). DEV-07."""
+        for m in ([method] if method else list(self._skip_until)):
+            self._skip_until.pop(m, None)
+            self._fails[m] = 0
 
     def _note(self, method: str, ok: bool) -> None:
         if ok:
@@ -444,8 +526,8 @@ class SamsungTV:
         self._fails[method] = n
         if n >= FAIL_BACKOFF_AFTER:
             self._skip_until[method] = self.clock() + FAIL_BACKOFF_S
-            log.warning("TV input by %s failed %d times in a row: HOME flips for %.0f min", method, n,
-                        FAIL_BACKOFF_S / 60)
+            log.warning("TV input by %s failed %d times in a row: HOME flips for %.0f s (probed meanwhile)", method, n,
+                        FAIL_BACKOFF_S)
 
     def _log(self, ev: InputEvidence) -> None:
         if self.log_path is None:
@@ -470,9 +552,35 @@ class SamsungTV:
                                    name="RedZone Everything", timeout=LOCAL_TIMEOUT_S)
         return self._tv
 
+    async def _run_local(self, fn, timeout: float, wait_s: float):
+        """Run `fn` (blocking samsungtvws calls) on a worker thread, one at a time (DEV-16): warm() and key()
+        share ONE socket, and wait_for cannot cancel a thread. The lock is released when the THREAD ends, not
+        when we stop waiting, and a socket drop requested meanwhile happens then too."""
+        try:
+            await asyncio.wait_for(self._local_lock.acquire(), wait_s)
+        except asyncio.TimeoutError:
+            raise _SocketBusy("the remote socket is in use") from None
+        task = asyncio.ensure_future(asyncio.to_thread(fn))
+
+        def done(t):
+            if not t.cancelled():
+                t.exception()                      # consume it: the awaiting side may be gone
+            self._local_lock.release()
+            if self._drop_pending:
+                self._drop_pending = False
+                self._drop_local()
+        task.add_done_callback(done)
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), timeout)
+        except asyncio.TimeoutError:
+            self._drop_pending = True              # the thread may still be on the socket: close it afterwards
+            raise
+
     async def key(self, key: str, times: int = 1) -> bool:
+        self._definite = False
         if not self.host:
             self.last_error = "no TV address saved (run scripts/tv_setup.py)"
+            self._definite = True
             return False
 
         def send():
@@ -482,18 +590,30 @@ class SamsungTV:
                 if i + 1 < times:
                     time.sleep(0.15)
         for attempt in range(2):
+            busy = False
             try:
-                await asyncio.wait_for(asyncio.to_thread(send), LOCAL_TIMEOUT_S * 2)
+                await self._run_local(send, LOCAL_TIMEOUT_S * 2, LOCAL_LOCK_WAIT_S)
                 return True
             except Exception as e:
-                self.last_error = f"local key failed: {e}"
-                self._drop_local()
+                # Timed out WAITING for the lock (nothing of ours ran) vs timed out RUNNING (may have been sent).
+                busy = isinstance(e, _SocketBusy)
+                self.last_error = ("TV remote socket busy (a keepalive or key is still using it)" if busy
+                                   else f"local key failed: {e or type(e).__name__}")
+                if not busy:
+                    self._drop_local_if_idle()
                 # A kept-open socket the TV closed meanwhile (it slept, Wi-Fi blipped) refuses the
                 # write: nothing was delivered, so one fresh connection is safe. A timeout is not.
                 if attempt == 0 and _never_sent(e):
                     continue
+                self._definite = busy or _local_never_sent(e)
                 return False
         return False
+
+    def _drop_local_if_idle(self) -> None:
+        if self._local_lock.locked():
+            self._drop_pending = True               # a worker thread still holds the socket: close it when it ends
+        else:
+            self._drop_local()
 
     def _drop_local(self) -> None:
         tv, self._tv = self._tv, None
@@ -503,17 +623,29 @@ class SamsungTV:
         except Exception:
             pass
 
-    async def warm(self) -> bool:
+    @property
+    def local_capable(self) -> bool:
+        """local_ready without the failure backoff: what maintain() may probe."""
+        return bool(self.host and self.local_trusted and TOKEN_FILE.exists())
+
+    async def warm(self, probe: bool = False) -> bool:
         """Keepalive: open (or keep open) the remote-control socket so a flip doesn't pay the
-        handshake. Never sends a key."""
-        if not self.local_ready:
+        handshake. Never sends a key. probe=True also tries a backed-off path (DEV-07) and clears
+        the backoff when the socket opens."""
+        if not (self.local_capable if probe else self.local_ready):
             return False
+        if self._local_lock.locked():
+            return True                             # a key (or another warm) is using the socket right now
         try:
-            await asyncio.wait_for(asyncio.to_thread(lambda: self._local().open()), LOCAL_TIMEOUT_S * 2)
+            await self._run_local(lambda: self._local().open(), LOCAL_TIMEOUT_S * 2, 0.1)
+            if probe:
+                if self._backed_off("local"):
+                    log.info("TV remote socket answers again: local keys are back")
+                self._note("local", True)
             return True
         except Exception as e:
             self.last_error = f"TV remote socket: {e}"
-            self._drop_local()
+            self._drop_local_if_idle()
             return False
 
     async def volume_duck(self, steps: int = 4, hold_s: float = 4.0) -> None:
@@ -525,14 +657,28 @@ class SamsungTV:
     # --- smartthings ---------------------------------------------------------------------
 
     async def _st(self, method: str, path: str, body: dict | None = None) -> dict | None:
+        self._definite = False
+        self._st_ok = False
+        if self.cloud_disabled:                      # policy N1: no request, no OAuth read
+            self.last_error = "SmartThings is disabled by policy (local key + CEC)"
+            self._definite = True
+            return None
+        r = await self._st_gated(method, path, body)
+        self._st_ok = r is not None
+        return r
+
+    async def _st_gated(self, method: str, path: str, body: dict | None = None) -> dict | None:
         hard = self._hardened()
         if hard:
+            self._auth_rearm()
             blocked = self.cloud_blocked()
             if blocked:
                 self.last_error = blocked
+                self._definite = True
                 return None
             if not self.st_breaker.allow():      # half-open: someone else is already probing
                 self.last_error = "SmartThings unreachable: probing"
+                self._definite = True
                 return None
         try:
             return await self._st_call(method, path, body, hard)
@@ -545,6 +691,7 @@ class SamsungTV:
         if not token:
             self.last_error = (self.auth.last_error if self.auth and self.auth.last_error
                                else "SmartThings not set up (run scripts/tv_setup.py --smartthings)")
+            self._definite = True
             if hard and self.auth is not None:
                 if self.auth.last_kind == "down":
                     self._cloud_down("sign-in server unreachable")
@@ -559,6 +706,7 @@ class SamsungTV:
                                         headers={"Authorization": f"Bearer {token}"})
             except httpx.HTTPError as e:
                 self.last_error = f"SmartThings unreachable: {e}"
+                self._definite = isinstance(e, (httpx.ConnectError, httpx.ConnectTimeout))   # never connected
                 if hard:
                     # Never connected: nothing was sent, so even a POST may go again once.
                     if not retried and isinstance(e, httpx.ConnectError):
@@ -573,6 +721,8 @@ class SamsungTV:
                 token = await self.auth.token(force=True)
                 if token:
                     continue
+            if 400 <= r.status_code < 500:
+                self._definite = True                 # refused before anything was applied (401/403/429...)
             if r.status_code == 401:
                 self.last_error = ("SmartThings sign-in expired: run scripts/tv_setup.py --smartthings"
                                    if not (self.auth and self.auth.oauth) else
@@ -632,15 +782,18 @@ class SamsungTV:
         return False
 
     async def st_input(self, source: str) -> bool:
+        self._definite = False
         if (not self.st_device or not self.st_capability) and not await self.st_discover():
+            self._definite = True            # nothing was sent
             return False
         if self.st_inputs and source not in self.st_inputs:
             self.last_error = f"TV doesn't list input {source}; it lists {self.st_inputs}"
+            self._definite = True
             return False
         r = await self._st("POST", f"/devices/{self.st_device}/commands", {"commands": [{
             "component": "main", "capability": self.st_capability, "command": "setInputSource",
             "arguments": [source]}]})
-        return r is not None
+        return r is not None   # on None, self._definite says whether the command certainly never went out
 
     async def input_status(self) -> str | None:
         """Read the selected TV's input. Missing or unreadable evidence stays unknown."""
@@ -653,9 +806,29 @@ class SamsungTV:
         return re.sub(r"\s+", "", value).upper() if isinstance(value, str) else None
 
     async def maintain(self) -> None:
-        """Keepalive: keep the SmartThings sign-in fresh and the local socket open. With hardening.smartthings,
-        a SmartThings breaker past its wait is probed here (one readback), not by a real flip."""
+        """Keepalive: keep the SmartThings sign-in fresh (only while the cloud is enabled) and the local
+        socket open. A backed-off local path is probed here, so it comes back without a flip paying for it
+        (DEV-07). With hardening.smartthings, a breaker past its wait is probed here too. Bounded by
+        MAINTAIN_TIMEOUT_S (DEV-10); the controller should use maintain_soon()."""
         try:
+            await asyncio.wait_for(self._maintain(), MAINTAIN_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            log.warning("TV keepalive took over %.0f s; cut", MAINTAIN_TIMEOUT_S)
+        except Exception:
+            log.exception("TV keepalive failed")
+
+    def maintain_soon(self) -> None:
+        """Start maintain() in the background and return at once (DEV-10): a TV in standby or off must not hold
+        the stick reconnects, CEC sync and watchdogs that follow in the keepalive. One at a time."""
+        t = self._maintain_task
+        if t is not None and not t.done():
+            return
+        self._maintain_task = asyncio.get_running_loop().create_task(self.maintain())
+
+    async def _maintain(self) -> None:
+        if not self.cloud_disabled:
+            if self._hardened():
+                self._auth_rearm()
             if self.auth and not (self._hardened() and self.cloud_blocked()):
                 # A refused refresh here doesn't block the cloud yet: the access token may have
                 # hours left. Health warns (tv_auth) so the sign-in can be redone before it runs out.
@@ -664,26 +837,32 @@ class SamsungTV:
                     self.st_breaker.state == "half-open"
                     or (self.st_fault == "auth" and not self.cloud_blocked())):
                 await self.input_status()   # the probe: closes the breaker / clears the fault if it answers
-            await self.warm()
-        except Exception:
-            log.exception("TV keepalive failed")
+        await self.warm(probe=True)
 
     async def _verify_input(self, evidence: InputEvidence, reads: int | None = None) -> bool:
         """The TV's own readback (SmartThings) first; else the sticks' CEC view, when the
         controller offers one. Never a sent command alone."""
         t0 = time.monotonic()
-        if self.st_device:
+        use_cloud = bool(self.st_device) and not self.cloud_disabled
+        if use_cloud:
             n = reads if reads is not None else (VERIFY_READS if self.has_readback else 3)
             for attempt in range(n):
-                evidence.observed = await self.input_status()
+                remaining = VERIFY_DEADLINE_S - (time.monotonic() - t0)
+                if remaining <= 0:
+                    break                         # DEV-03: the readback never holds a flip past its deadline
+                try:
+                    evidence.observed = await asyncio.wait_for(self.input_status(), remaining)
+                except asyncio.TimeoutError:
+                    evidence.observed = None
+                    break
                 if evidence.observed == evidence.requested:
                     evidence.verified = True
                     evidence.how = "smartthings readback"
                     evidence.detail = "selected TV reports the requested input"
                     evidence.verify_s = time.monotonic() - t0
                     return True
-                if self.cloud_blocked():
-                    break                         # the cloud went away mid-verify: don't spin on it
+                if self.cloud_blocked() or not self._st_ok:
+                    break                         # the cloud went away or the call failed: don't spin on it
                 if attempt < n - 1:
                     await asyncio.sleep(VERIFY_GAP_S if self.has_readback else 0.25)
         if self.corroborate is not None and evidence.accepted:
@@ -698,7 +877,7 @@ class SamsungTV:
                 evidence.detail = "the stick on that input says it's on screen (CEC)"
                 evidence.verify_s = time.monotonic() - t0
                 return True
-        evidence.detail = ("command sent; active input has no readback" if not self.st_device
+        evidence.detail = ("command sent; active input has no readback" if not use_cloud
                            else "requested input was not confirmed by the selected TV")
         evidence.verify_s = time.monotonic() - t0
         return False
@@ -711,7 +890,7 @@ class SamsungTV:
 
         A sent key is not confirmation. An ambiguous delivery never triggers another method,
         since the original command may already have changed the visible input. `methods` limits
-        the paths (the controller passes paths(); None keeps the original any-configured order).
+        the paths (the controller passes paths(); None = local first, then the cloud when it is enabled).
         """
         n = hdmi.upper().replace(" ", "")
         self.last_input = evidence = InputEvidence(n)
@@ -720,14 +899,22 @@ class SamsungTV:
             self.last_error = evidence.detail = "invalid HDMI input"
             return False
         order = methods if methods is not None else (
-            [m for m in ("local", "smartthings") if self.method in (None, m)])
+            [m for m in ("local", "smartthings") if m == "local" or not self.cloud_disabled])
         try:
             for m in order:
                 if m == "local" and self.host:
                     evidence.source = "local"
                     c0 = time.monotonic()
-                    evidence.accepted = True if await self.key(f"KEY_{n}") else None
+                    sent = await self.key(f"KEY_{n}")
+                    definite = not sent and self._definite
+                    evidence.accepted = True if sent else (False if definite else None)
                     evidence.cmd_s = time.monotonic() - c0
+                    if definite:
+                        # DEV-02: the key certainly never reached the TV (refused connection, closed socket,
+                        # socket busy), so the next method is safe.
+                        self._note("local", False)
+                        self.last_error = evidence.detail = self.last_error or "local key not delivered"
+                        continue
                     ok = await self._verify_input(evidence)
                     if not ok and evidence.accepted and self.local_trusted:
                         # No readback on this TV (or it lagged): a key setup watched switch this TV
@@ -745,12 +932,22 @@ class SamsungTV:
                     return ok   # delivered or ambiguous: never a second method on top
                 if m == "smartthings":
                     evidence.source = "smartthings"
+                    if self.cloud_disabled:
+                        evidence.detail = self.last_error = "SmartThings is disabled by policy (local key + CEC)"
+                        continue
                     if not self.st_device:
                         self.last_error = evidence.detail = "no SmartThings TV explicitly selected"
-                        return False
+                        continue
                     c0 = time.monotonic()
-                    evidence.accepted = True if await self.st_input(n) else None
+                    sent = await self.st_input(n)
+                    definite = not sent and self._definite
+                    evidence.accepted = True if sent else (False if definite else None)
                     evidence.cmd_s = time.monotonic() - c0
+                    if definite:
+                        # 401/403/429, breaker open, no token, refused connection: nothing was applied.
+                        self._note("smartthings", False)
+                        evidence.detail = self.last_error
+                        continue
                     if await self._verify_input(evidence):
                         self.method = "smartthings"
                         self._note("smartthings", True)
@@ -764,3 +961,43 @@ class SamsungTV:
         finally:
             evidence.total_s = time.monotonic() - t0
             self._log(evidence)
+
+
+# --- tv.smartthings: st_fault and _auth_failed are views of one machine (SamsungTV.st_m) -------------------
+
+_FAULT_STATE = {"": "ok", "auth": "auth", "rate_limited": "rate_limited", "cloud_down": "cloud_down"}
+
+
+def _st_machine(self: SamsungTV):
+    m = self.__dict__.get("st_m")
+    if m is None:
+        m = self.__dict__["st_m"] = SMARTTHINGS.new(clock=lambda: self.clock())
+    return m
+
+
+def _get_st_fault(self: SamsungTV) -> str:
+    s = _st_machine(self).state
+    return "" if s == "ok" else "auth" if s.startswith("auth") else s
+
+
+def _set_st_fault(self: SamsungTV, value: str) -> None:
+    _st_machine(self).to(_FAULT_STATE[value or ""], why=self.__dict__.get("st_fault_detail", "") or value or "ok")
+
+
+def _get_auth_failed(self: SamsungTV) -> tuple | None:
+    return self.__dict__.get("_auth_at") if _st_machine(self).is_("auth") else None
+
+
+def _set_auth_failed(self: SamsungTV, value: tuple | None) -> None:
+    m = _st_machine(self)
+    if value is None:
+        if m.is_("auth"):
+            m.to("auth_retry", why="auth fault cleared")
+        return
+    self.__dict__["_auth_at"] = tuple(value)
+    m.to("auth", why="sign-in refused")
+
+
+SamsungTV.st_m = property(_st_machine)
+SamsungTV.st_fault = property(_get_st_fault, _set_st_fault)
+SamsungTV._auth_failed = property(_get_auth_failed, _set_auth_failed)

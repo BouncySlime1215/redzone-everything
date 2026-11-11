@@ -20,6 +20,8 @@ flip it automatically. Offline, the same grading reads a night's recordings/<day
 
     python scripts/fastcast_check.py                    # today
     python scripts/fastcast_check.py --day 2026-11-03
+
+Why: first added in 1d349d18 (2026-11-03) as "FastCast live check: shadow FastCast next to polling, grade lead/coverage/agreement"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

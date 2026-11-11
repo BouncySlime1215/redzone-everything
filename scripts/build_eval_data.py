@@ -8,6 +8,7 @@ that copied it). Writes a deterministic tarball + .sha256 and rewrites eval-data
 Then publish it as a release (docs/eval-data.md: push to the eval-data branch, whose workflow creates
 the release) and commit the new eval-data.lock.json. Never overwrite an existing tag's asset: old PRs
 pinned it.
+Why: Builds the pinned eval snapshot so every thread and CI grades the same nights (docstring).
 """
 import argparse
 import gzip

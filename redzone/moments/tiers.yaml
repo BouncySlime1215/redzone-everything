@@ -1,0 +1,26 @@
+# One tier list per league. Tier 1 = must show, 2 = setup, 3 = highlight.
+# Source: docs/agents/planner/2026-11-09-product-per-league.md section 3 (tier definitions) and Nick's football
+# must-show rule. `must_show` lists kinds that are must-show for the product even when the rate table files them
+# lower (football: Nick wants every TD and every major play, so 10+ yard gain, 3rd-down conversion, FG, 4th-down
+# try and a 5+ point win-probability swing are must-show too). Rates are measured per planner tier, never per must_show.
+football: &football
+  tier1: [td, turnover]
+  tier2: [rz_trip, fg, 4th_try]
+  tier3: [gain10, big3rd, wp5]
+  must_show: [td, turnover, gain10, fg, big3rd, 4th_try, wp5]
+hoops: &hoops
+  tier1: [clutch_fg]
+  tier2: [run8, lead_change, wp10]
+  tier3: [dunk, three, wp5, clutch_tov]
+  must_show: [clutch_fg]
+hockey:
+  tier1: [goal, penalty_shot]
+  tier2: [pp_start, late_1goal, ot_start]
+  tier3: [sog, fight]
+  must_show: [goal, penalty_shot]
+baseball:
+  tier1: [hr, run_scored]
+  tier2: [big_pa, wp5]
+  tier3: [risp_pa]
+  must_show: [hr, run_scored]
+leagues: {nfl: football, cfb: football, nba: hoops, wnba: hoops, cbb: hoops, nhl: hockey, mlb: baseball}

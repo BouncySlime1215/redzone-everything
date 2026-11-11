@@ -8,6 +8,8 @@ Supervisor, Planner, Reeler...) reads the virtual clock without a single change 
 The event loop (VirtualLoop) never sleeps: when nothing is ready it jumps the clock straight to
 the next timer. Work handed to a thread (asyncio.to_thread: OCR, image decoding) is treated as
 instantaneous: while a thread is out the clock is frozen and the loop waits for it in real time.
+
+Why: first added in 71e46ec6 (2026-11-03) as "WIP: end-to-end replayed night test (fake sticks/TV, virtual clock, fault hook); not runnable yet"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

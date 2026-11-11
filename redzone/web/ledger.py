@@ -17,6 +17,8 @@ into it. Format (every field optional; missing = PENDING):
      "nfm": {"params": null, "tokens_target": 1e9,
              "milestones": [{"name": "event tokenizer", "status": "done|running|next|blocked",
                              "at": "...", "note": "..."}]}}
+
+Why: first added in 8a50cd94 (2026-11-04) as "City map: tag lane 5 modules (North Star lines + EXPERIENCE owner); ledger reader moves to redzon..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

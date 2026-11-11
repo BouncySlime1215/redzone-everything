@@ -1,13 +1,14 @@
-"""Tuners for the other streaming apps: Peacock, Fubo, Paramount+, HBO Max, Netflix, NFL,
+"""Tuners for the other streaming apps: Fubo, Paramount+, HBO Max, Netflix, NFL,
 NBA, Apple TV and DAZN.  (YouTube TV, Prime Video and ESPN live in tuners.py.)
+
+Why: each additional streaming app is one more tuner of deep link plus presses, using the same playing-yet ground truth as tuners.py (docstring).
 
 Each tuner = one deep link + the button presses that app needs, then the same ground truth
 as the built-in tuners: the stick's own playback report (dumpsys media_session).
 
 What each app takes on a Fire TV stick (sources and confidence: providers report; check
 yours with  .venv/bin/python scripts/providers_check.py):
-  Peacock    com.peacock.peacockfiretv    -n .../com.peacock.peacocktv.AmazonMainActivity
-             https://www.peacocktv.com/deeplink?deeplinkData={"pvid":<id>,"type":"SLE","action":"PLAY"}
+  (Peacock is not tunable: Nick's rule is never to use it. There is no tuner for it.)
   Fubo       com.fubo.firetv.screen       https://link.fubo.tv/al1%3Fv%3D1%26a%3Dplay%26t%3Dchannel%26channel_id%3D<id>
   Paramount+ com.cbs.ott                  pplus://www.paramountplus.com/live-tv/stream/<slug>/<id>, OK at 8 s and 16 s
   HBO Max    com.hbo.hbonow / com.wbd.stream   https://play.hbomax.com/sport/<id>, OK at 10 s (Watch Live)
@@ -38,6 +39,7 @@ import re
 import time
 from urllib.parse import quote, urlsplit
 
+from redzone import config as _config
 from redzone.discovery.providers import BY_KEY, Verdict, classify_screen, is_purchase_screen, normalize_text
 from redzone.tuners.adb import Stick
 from redzone.tuners.profiles import preference, select_profile
@@ -45,10 +47,14 @@ from redzone.tuners.tuners import PROMPTS, Tuner, TuneResult, NewStream, require
 
 log = logging.getLogger(__name__)
 
+# `am start -W` waits for the activity to draw: a cold start on the 2018 stick can top 15 s (Stick.view uses 30).
+# A shorter timeout reads a slow start as a hang and trips the stick breaker (DEV-11).
+LAUNCH_TIMEOUT_S = float(_config.default("tuners.launch_timeout_s", 30))
+DIAGNOSE_TIMEOUT_S = float(_config.default("tuners.diagnose_timeout_s", 4))  # a failed tune's screen read (DEV-17): a bonus, never worth ~28 s of a busy stick
+
 # What a provider ref may contain (ids, slugs, an https URL).  Anything else is refused.
 _SAFE_REF = re.compile(r"[A-Za-z0-9._~:/?&=%+-]{1,300}")
 REF_ORIGINS = {
-    "peacock": {("https", "www.peacocktv.com"), ("https", "peacocktv.com")},
     "paramount": {("pplus", "www.paramountplus.com"), ("https", "www.paramountplus.com")},
     "max": {("https", "play.hbomax.com"), ("https", "play.max.com")},
     "nflplus": {("nflctv", "livestream"), ("nflctv", "nflredzone")},
@@ -149,7 +155,7 @@ class AppTuner(Tuner):
             if attempt > 1:
                 before = await stick.playback(pkg)
             require_cut(may_cut, steps, mutating=True)
-            r = await stick.shell(self.command(ref, pkg, use_comp), timeout=15)
+            r = await stick.shell(self.command(ref, pkg, use_comp), timeout=LAUNCH_TIMEOUT_S)
             launched = r.ok and "error" not in r.out.lower()[:400]
             steps.append(f"deep link #{attempt}: {'ok' if launched else r.out.strip()[:80]}")
             if not launched:
@@ -162,7 +168,7 @@ class AppTuner(Tuner):
                 # The app was in the background (the stick just left after a HOME flip): resend the
                 # link once as a fresh task (NEW_TASK|CLEAR_TOP) so it actually opens it.
                 require_cut(may_cut, steps, mutating=True)
-                r = await stick.shell(_fresh(self.command(ref, pkg, use_comp)), timeout=15)
+                r = await stick.shell(_fresh(self.command(ref, pkg, use_comp)), timeout=LAUNCH_TIMEOUT_S)
                 steps.append("app was in the background: resent the link as a new task")
                 if not r.ok or "error" in r.out.lower()[:400]:   # the warning repeats even when it works
                     return TuneResult(False, target, self._clock() - t0, steps, "the app did not accept the game link")
@@ -228,21 +234,6 @@ class AppTuner(Tuner):
             if prompt in text:
                 return list(keys), prompt
         return [], ""
-
-
-class PeacockTuner(AppTuner):
-    """Peacock.  Its Fire TV build only takes links through AmazonMainActivity (a plain
-    VIEW intent goes nowhere there); type SLE + action PLAY starts the live event itself."""
-    app = role = "peacock"
-    name = "Peacock"
-    components = {"com.peacock.peacockfiretv": "com.peacock.peacocktv.AmazonMainActivity"}
-    press_after = (12.0,)
-
-    def url(self, ref: str) -> str:
-        if ref.startswith("https://"):
-            return ref
-        data = json.dumps({"pvid": ref, "type": "SLE", "action": "PLAY"}, separators=(",", ":"))
-        return "https://www.peacocktv.com/deeplink?deeplinkData=" + quote(data, safe="")
 
 
 class FuboTuner(AppTuner):
@@ -379,9 +370,15 @@ class DiagnosingTuner:
             else await self.inner.tune(stick, ref, target)
         if res.ok:
             return res
+        if may_cut is not None:
+            try:
+                if not may_cut():
+                    return res   # the cut window closed: don't hold the stick for a screen read
+            except Exception:
+                return res
         try:
-            text = await stick.screen_text()
-        except Exception:  # diagnosis is a bonus; never turn a failure into a crash
+            text = await asyncio.wait_for(stick.screen_text(), DIAGNOSE_TIMEOUT_S)
+        except Exception:  # diagnosis is a bonus (a timeout too); never turn a failure into a crash
             return res
         v = classify_screen(text)
         if v is not None and v.stops:
@@ -394,12 +391,12 @@ class DiagnosingTuner:
 
 
 EXTRA_TUNERS: dict[str, AppTuner] = {t.app: t for t in (
-    PeacockTuner(), FuboTuner(), ParamountTuner(), MaxTuner(), NetflixTuner(), NflTuner(),
+    FuboTuner(), ParamountTuner(), MaxTuner(), NetflixTuner(), NflTuner(),
     NbaTuner(), AppleTvTuner(), DaznTuner())}
 
 
 def register(tuners: dict, *, replace: bool = False, diagnose_builtin: bool = True) -> list[str]:
-    """Add the extra app tuners to TUNERS (keys = target prefixes, e.g. "peacock:<pvid>").
+    """Add the extra app tuners to TUNERS (keys = target prefixes, e.g. "fubo:<channel id>").
 
     Existing entries are kept unless replace=True.  diagnose_builtin wraps the built-in
     youtubetv/prime/espn tuners so their failures also say "signed out" / "not subscribed"

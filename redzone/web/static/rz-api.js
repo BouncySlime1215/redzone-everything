@@ -94,7 +94,9 @@ export function startStream(h) {
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
     loadOnce();
-    if (!es || es.readyState === 2) open();
+    // A phone that slept can hold a dead socket that still says OPEN (pings are comments the page never sees),
+    // so the stream is rebuilt every time the page comes back, not only when it reports CLOSED.
+    open();
   });
   window.addEventListener("online", () => { backoff = 1000; open(); });
 }

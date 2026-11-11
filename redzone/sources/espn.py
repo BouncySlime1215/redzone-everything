@@ -1,5 +1,7 @@
 """ESPN's free site API: the backbone for all four leagues.
 
+Why: a free public feed covers every league the app needs and its fields can be pinned against saved responses in tests/fixtures (docstring).
+
     scoreboard: site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard
     summary:    .../summary?event={id}   (play-by-play with wallclock, win probability)
 
@@ -440,12 +442,20 @@ def stoppage_for(league: League, p: dict) -> Stoppage:
     return Stoppage.NONE
 
 
-def _play_clock(league: League, p: dict) -> dict:
+NHL_PLAYOFF_OT_S = PERIOD_S[League.NHL]   # a playoff OT is a full 20:00 period, played until someone scores (no shootout)
+
+
+def _nhl_playoffs(data: dict) -> bool:
+    """ESPN's summary marks the season type: 3 = postseason (2 = regular season)."""
+    return _int(_get(data, "header", "season", "type")) == 3
+
+
+def _play_clock(league: League, p: dict, playoff: bool = False) -> dict:
     """[cut timing] Clock (seconds LEFT in the period), period and raw type of one entry."""
     per = _int(_get(p, "period", "number"))
     clock = _clock_s(_get(p, "clock", "displayValue"))
     if league == League.NHL and clock is not None:
-        length = OT_S[league] if (per or 0) >= 4 else PERIOD_S[league]
+        length = (NHL_PLAYOFF_OT_S if playoff else OT_S[league]) if (per or 0) >= 4 else PERIOD_S[league]
         clock = max(0.0, length - clock)  # ESPN NHL play clocks count up
     return {"clock": clock if league != League.MLB else None, "period": per,
             "type_text": _get(p, "type", "text") or ""}
@@ -503,15 +513,19 @@ def parse_summary(league: League, data: dict, upto: int | None = None,
     g.home.score = _int(p.get("homeScore"))
     g.away.score = _int(p.get("awayScore"))
     if upto is not None:
-        # Records in a backtest should be what they were going in, not final.
-        pass
+        # [grader v47, F14] The summary's records are as of capture, so for a finished game they already hold
+        # this game's result (a leak into Scorer._stakes). We can't tell which captures include it, so a
+        # backtest knows no record: stakes read neutral rather than hindsight.
+        for t in (g.home, g.away):
+            t.wins = t.losses = t.ties = None
+    playoff = _nhl_playoffs(data)   # [grader v47, F7] playoff OT is 20:00, not 5:00, and has no shootout
     clock = _clock_s(_get(p, "clock", "displayValue"))
     if league == League.NHL and clock is not None:
-        length = OT_S[league] if (g.period or 0) >= 4 else PERIOD_S[league]
+        length = (NHL_PLAYOFF_OT_S if playoff else OT_S[league]) if (g.period or 0) >= 4 else PERIOD_S[league]
         clock = max(0.0, length - clock)  # ESPN NHL play clocks count up
     g.clock_s = clock if league != League.MLB else None
     g.stoppage = stoppage_for(league, p)
-    if league == League.NHL and (g.period or 0) >= 5:
+    if league == League.NHL and (g.period or 0) >= 5 and not playoff:
         g.period_type = "SO"
     elif league.base in (League.NHL, League.NBA, League.NFL) and (g.period or 0) > REGULATION[league]:
         g.period_type = "OT"
@@ -519,9 +533,9 @@ def parse_summary(league: League, data: dict, upto: int | None = None,
     seen = _ts(p.get("wallclock"))
     g.last_play = Play(str(p.get("id") or len(cut)), p.get("text") or _get(p, "type", "text") or "",
                        _kind(league, p), bool(p.get("scoringPlay")), seen, seen, "espn", score=_play_score(p),
-                       **_play_clock(league, p))
+                       **_play_clock(league, p, playoff))
     g.recent_plays = [Play(str(x.get("id")), x.get("text") or "", _kind(league, x), bool(x.get("scoringPlay")),
-                           _ts(x.get("wallclock")), score=_play_score(x), **_play_clock(league, x))
+                           _ts(x.get("wallclock")), score=_play_score(x), **_play_clock(league, x, playoff))
                       for x in cut[-8:]]
 
     if league.base == League.NFL:

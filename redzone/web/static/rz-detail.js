@@ -8,7 +8,7 @@ import { icon, logo, leagueImg, avatar, empty, skel, stateBadge, chip } from "./
 import { situation, wpBar, sparkline, linescore } from "./rz-viz.js?v=40";
 import { board, gameCard } from "./rz-cards.js?v=40";
 import { openSheet, sheetById, closeSheet, confirmSheet, toast, updateSheets } from "./rz-sheet.js?v=40";
-import { api, act } from "./rz-api.js?v=43";
+import { api, act } from "./rz-api.js?v=44";
 import { pop } from "./rz-dom.js?v=40";
 
 /* ====================================================================== game detail */

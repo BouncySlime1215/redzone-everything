@@ -6,6 +6,8 @@ real life (timing.behind_live_s.by_league, capped at max_s): what the show would
 It never touches a stick or the screen. Every change of its decision is a row in data/buffer_shadow.jsonl
 next to what the live decider has on screen, so lane 3 can grade buffered vs live on the same night
 (mid-play entries, big plays shown from the start, dead air, switches/h) before RC8 turns it on.
+
+Why: recorded in docs/memory/decisions.md 2026-11-05 (buffer is the main architecture, item A); first added in 5353b0ba (2026-11-05) as "Buffer SHADOW editor (stay/leave + adaptive-buffer terms logged), nba_cdn primary at 1 s, TNF sco...".
 """
 from __future__ import annotations
 
@@ -44,8 +46,18 @@ class BufferedDelays:
         d = self.live.get(target)
         # a stream the live controller already holds behind (timing.behind_live_s.enabled per league) has that
         # hold in mu: only the rest of B is added
-        b = float(self.behind_of(target) or 0.0) - float(getattr(d, "behind", 0.0) or 0.0)
-        return dataclasses.replace(d, mu=d.mu + b) if b > 0 else d
+        big_b = float(self.behind_of(target) or 0.0)
+        held = float(getattr(d, "behind", 0.0) or 0.0)
+        b = big_b - held
+        if b > 0:
+            return dataclasses.replace(d, mu=d.mu + b, behind=0.0)
+        if big_b <= 0:
+            return d
+        # The editor's fresh tune comes up B behind, so it may count only the part of the live hold past B as
+        # "behind": the planner strips behind from mu (a fresh tune), and stripping a standby's 90 s preload
+        # hold planned the editor's picture at the live edge, 90 s off (an entry 6 s after a made free throw,
+        # live on cutgrade).
+        return dataclasses.replace(d, behind=held - big_b)
 
     @property
     def book(self) -> dict:
@@ -129,7 +141,9 @@ class BufferShadow:
                         cost = float(ec(target) if ec is not None else self.editor._deadline_cost(target))
                     except Exception:
                         cost = 0.0
-                    mu, sd = float(ld.mu), float(ld.current_sigma(now))
+                    # the row's mu is the delay WITHOUT B (arena_at = picture_at - behind_s - mu - rewind_s): a stream the
+                    # live controller already holds behind has that hold inside ld.mu, so use what the editor planned on
+                    mu, sd = float(self.delays.get(target).mu) - b, float(ld.current_sigma(now))
                     pic = now + cost
                     row.update({"to": d.target, "picture_at": round(pic, 2), "mu": round(mu, 2), "sd": round(sd, 2),
                                 "arena_at": round(pic - b - mu - float(getattr(d, "rewind_s", 0.0) or 0.0), 2)})

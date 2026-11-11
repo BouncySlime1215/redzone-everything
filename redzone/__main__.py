@@ -1,6 +1,8 @@
 """Start RedZone Everything:  .venv/bin/python -m redzone
 
 Prints the phone address and a QR code, then runs until stopped.
+
+Why: first added in 9faa350e (2026-11-02) as "RedZone Everything: core engine, scorer, decider, replays, backtest lab, server"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -37,10 +39,29 @@ def print_qr(url: str) -> None:
         pass
 
 
+def _log_transitions() -> None:
+    """Every state-machine move goes to data/transitions.jsonl with the running commit (redzone/fsm.py), so
+    `why is it in this state?` survives a restart. Read it with GET /api/machines/history."""
+    from pathlib import Path
+
+    from redzone import fsm
+    from redzone.config import DATA
+    try:
+        sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+                             timeout=3, cwd=Path(__file__).resolve().parents[1]).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        sha = ""
+    try:
+        fsm.log_transitions(DATA / "transitions.jsonl", commit=sha)
+    except OSError:
+        logging.getLogger(__name__).warning("transition log not started", exc_info=True)
+
+
 async def main(cfg: Config | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
     cfg = cfg if cfg is not None else Config()
+    _log_transitions()
     engine = Engine(cfg)
     port = int(os.environ.get("PORT") or cfg.get("server.port", 8777))
     url = phone_url(port)

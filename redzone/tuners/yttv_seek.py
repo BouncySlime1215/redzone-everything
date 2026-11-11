@@ -1,5 +1,7 @@
 """[YTTV scrub buffer, item 1] Put a YouTube TV stick a set time behind live by scrubbing the player overlay.
 
+Why: Nick's Nov 6 10:15 PM order item 1: put a hidden YouTube TV stick behind live by overlay scrubbing (decisions 2026-11-07, flag off).
+
 Measured (overseer, Nov 6 9:40 PM; docs/sync/2026-11-06-yttv-scrub-buffer-spec.md on codex/resume-redzone):
   * DPAD_CENTER opens the overlay with the progress bar focused; each DPAD_LEFT moves the knob 15 s back; DPAD_CENTER
     commits. N=4 lands about 60 s behind; 7 of 7 repeats held (ESPNU, ACC Network, TNT, both sticks), one 20 min.
@@ -32,6 +34,14 @@ enter_buffer(stick, seconds, ...) therefore:
 lands at live +-0.5 s, but only from ANOTHER channel: #391 behind_on), and the result says why. The hidden check runs before every key batch: a stick that
 became visible is never pressed again, and it is not re-linked either (that would change the screen).
 
+Speed flags (build plan WP-03, both off; a read is the slowest part of the time the picture stands still):
+  * yttv_seek.skip_open_read drops the first read of step 2, only when a RIGHT probe at the live edge comes next: a
+    RIGHT moves nothing there and the read after it still checks focus. Until that read has shown the overlay, no LEFT
+    and no commit is pressed. The knob read of step 3 stays: it is the one that catches a lost press before the commit.
+  * yttv_seek.overlay_band_from captures the screen from that fraction down (Stick.screencap_band: no PNG encode on
+    the stick). Only y <= OVERLAY_BAND_MAX is honoured, so every MM:SS candidate stays in view of the one-label rule.
+BufferResult.reads holds one {"what", "s"} per screen read: open, probe, knob, topup, label.
+
 Rule #1 is unchanged: this only ever moves a HIDDEN stick, and a flip still waits for a dead ball. Flag
 yttv_seek.enabled (off). YouTube TV video stays DRM-black in screencaps; only the overlay UI is read.
 """
@@ -44,6 +54,7 @@ import re
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
+from functools import partial
 from typing import Any, Awaitable, Callable
 
 log = logging.getLogger("redzone.yttv_seek")
@@ -51,13 +62,17 @@ log = logging.getLogger("redzone.yttv_seek")
 YTTV_PKG_HINT = "youtube.tv"
 SCRUB_DEFAULTS = {"enabled": False, "step_s": 15.0, "max_back_s": 150.0, "step_tol_s": 6.0,
                   "key_gap_s": 0.35, "open_tries": 4, "probe_key": "RIGHT", "topup_max": 1, "topup_tol_s": 2.0, "boundary_retries": 1, "reopen_wait_s": 1.5, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 1.3,
-                  "program_start_guard": True}
+                  "program_start_guard": True, "skip_open_read": False, "overlay_band_from": None}
 
 # The player row under the bar (#356 ROW_BUTTON labels seen so far). Focus on any of these = NOT the bar.
 ROW_BUTTONS = ("hd", "cc", "networks", "multiview", "episodes", "more to watch", "stats", "key plays", "scores",
                "live chat", "info")
 _MMSS = re.compile(r"^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})$")
 _WIN = re.compile(r"(\d{1,2}:\d{2})\s*([AaPp][Mm])\s*[-–—~]\s*(\d{1,2}:\d{2})\s*([AaPp][Mm])")
+
+# parse_overlay takes MM:SS labels from y > 0.3 and needs exactly one. A band starting lower could hide one of two
+# candidates and make the other look like the knob's, so a later start is ignored (full frame).
+OVERLAY_BAND_MAX = 0.30
 
 Observation = dict          # {"text", "x", "y", "w", "h"} normalized top-left, as screen_ocr gives
 Reader = Callable[[Any], Awaitable["OverlayRead | None"]]
@@ -66,6 +81,27 @@ Reader = Callable[[Any], Awaitable["OverlayRead | None"]]
 def _cfg(cfg, key: str):
     v = cfg.get(f"yttv_seek.{key}") if cfg is not None and hasattr(cfg, "get") else None
     return SCRUB_DEFAULTS[key] if v is None else v
+
+
+def overlay_band(cfg) -> float | None:
+    """The configured band start as a screen fraction, or None for a full frame (unset, invalid, or past the limit)."""
+    v = _cfg(cfg, "overlay_band_from")
+    if v is None or isinstance(v, bool):
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if 0.0 < f <= OVERLAY_BAND_MAX else None
+
+
+async def band_png(stick, band_from: float | None) -> bytes:
+    """The overlay band as a full-size PNG, or b'' when no band is asked for, the stick has no band capture, or it came
+    back empty: the caller then takes a full frame. A timeout is not caught here: it stays a failed read."""
+    grab = getattr(stick, "screencap_band", None)
+    if band_from is None or grab is None:
+        return b""
+    return await grab(band_from) or b""
 
 
 def mmss(text: str) -> float | None:
@@ -126,7 +162,7 @@ def parse_overlay(obs: list[Observation], focus: list[Observation] | None = None
     return r
 
 
-async def ocr_overlay(stick, timeout_s: float = 8.0) -> OverlayRead | None:
+async def ocr_overlay(stick, timeout_s: float = 8.0, band_from: float | None = None) -> OverlayRead | None:
     """Default reader: one screencap, read by the Mac's local Vision OCR, the PNG deleted at once (Nick's rule:
     frames read, then deleted). None when it can't be read (off macOS, screencap failed, timeout)."""
     from redzone.screen_ocr import recognize
@@ -134,7 +170,11 @@ async def ocr_overlay(stick, timeout_s: float = 8.0) -> OverlayRead | None:
     path = os.path.join(d, "s.png")
     try:
         try:
-            if not await stick.screenshot(path):
+            png = await band_png(stick, band_from)
+            if png:
+                with open(path, "wb") as f:
+                    f.write(png)
+            elif not await stick.screenshot(path):
                 return None
         except asyncio.TimeoutError:
             return None
@@ -170,6 +210,7 @@ class BufferResult:
     took_s: float = 0.0
     retries: int = 0                    # program-boundary retries from the live edge (boundary_retries)
     room_s: float | None = None         # the label where the bar was focused: how far back the bar can go (FOX, Nov 7)
+    reads: list[dict] = field(default_factory=list)   # one {"what", "s"} per screen read, across boundary retries
 
     @property
     def behind_s(self) -> float | None:
@@ -198,7 +239,9 @@ async def enter_buffer(stick, seconds: float, *, cfg=None, pkg: str | None = Non
     clock = clock or time.monotonic
     t0 = clock()
     res = BufferResult(ok=False, asked_s=round(float(seconds), 2))
-    read_overlay = read_overlay or ocr_overlay
+    if read_overlay is None:
+        band = overlay_band(cfg)
+        read_overlay = ocr_overlay if band is None else partial(ocr_overlay, band_from=band)
     still_hidden = still_hidden or (lambda: True)
     try:
         await _enter(stick, float(seconds), cfg, pkg, still_hidden, read_overlay, read_behind, relink,
@@ -253,8 +296,21 @@ async def _keys(stick, code: str, n: int, gap: float) -> bool:
     return True
 
 
+def _timed(read, res: BufferResult):
+    """`read` that also adds its duration to res.reads. perf_counter, not the injected clock: timing must not shift the
+    time-in-overlay plan."""
+    async def timed(stick, what: str):
+        t0 = time.perf_counter()
+        try:
+            return await read(stick)
+        finally:
+            res.reads.append({"what": what, "s": round(time.perf_counter() - t0, 3)})
+    return timed
+
+
 async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behind, relink, behind_before, res,
                  clock=time.monotonic, fixed_n=None):
+    read = _timed(read_overlay, res)
     step = float(_cfg(cfg, "step_s"))
     gap = float(_cfg(cfg, "key_gap_s"))
     n = int(round(min(max(0.0, seconds), float(_cfg(cfg, "max_back_s"))) / step))
@@ -292,23 +348,28 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     left_probe = True
     at_live = behind_before < step / 2
     blind_closes = 0      # CENTERs sent after a LEFT whose result we could not read: each may have committed a step
+    right_probe = at_live and str(_cfg(cfg, "probe_key")).upper() == "RIGHT"
+    skip_open = right_probe and bool(_cfg(cfg, "skip_open_read"))
     for attempt in range(int(_cfg(cfg, "open_tries"))):
-        opened = await read_overlay(stick)
+        skip_read = skip_open and attempt == 0   # only the first try: a retry already found something off
+        opened = None if skip_read else await read(stick, "open")
         if opened is not None and opened.row_focused:
             return await _fail(res, "focus guard: a row button has focus", relink, still_hidden, pressed=True)
         if not still_hidden():
             return await _fail(res, "stick became visible before the scrub", relink, still_hidden, pressed=True)
-        if opened is not None and opened.overlay:
+        if skip_read:
+            res.steps.append("open read skipped: the RIGHT probe's read checks focus")
+        if skip_read or (opened is not None and opened.overlay):
             # [lost press, Nick's canary Nov 7: 3 presses, landed one 15 s step short, ok:true] A LEFT probe's own
             # step can't be checked (no label before it). At the live edge a RIGHT probe lands on the bar without
             # moving the knob (it can't go past live), so the label it shows is the start point and EVERY LEFT is
             # checked. No label after it: the LEFT probe, as before.
-            if at_live and str(_cfg(cfg, "probe_key")).upper() == "RIGHT":
+            if right_probe:
                 if not await _keys(stick, "KEYCODE_DPAD_RIGHT", 1, 0.0):
                     return await _fail(res, "RIGHT not sent", relink, still_hidden, pressed=True)
                 await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
                 r0 = clock()
-                before = await read_overlay(stick)
+                before = await read(stick, "probe")
                 read_cost = clock() - r0
                 if before is not None and before.bar_focused:
                     probe_moved, left_probe = 0, False
@@ -316,12 +377,25 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
                     break
                 if before is not None and before.row_focused:
                     return await _fail(res, "focus guard: a row button has focus", relink, still_hidden, pressed=True)
+                if skip_read:
+                    # This read stands in for the open read: nothing below it is pressed on an overlay nobody saw.
+                    if not still_hidden():
+                        return await _fail(res, "stick became visible before the scrub", relink, still_hidden,
+                                           pressed=True)
+                    if before is None:   # focus was never seen: no LEFT, no closing CENTER (#356)
+                        return await _fail(res, "focus guard: no read after the RIGHT probe", relink, still_hidden,
+                                           pressed=True)
+                    if not before.overlay:   # as an open read that finds no overlay: reopen and read first
+                        before = None
+                        await _keys(stick, "KEYCODE_DPAD_CENTER", 1, 0.0)
+                        await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
+                        continue
             if not await _keys(stick, "KEYCODE_DPAD_LEFT", 1, 0.0):
                 return await _fail(res, "LEFT not sent", relink, still_hidden, pressed=True)
             res.presses = 1
             await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
             r0 = clock()
-            before = await read_overlay(stick)
+            before = await read(stick, "probe")
             read_cost = clock() - r0
             if before is not None and before.bar_focused:
                 probe_moved, left_probe = (0 if at_live else 1), True
@@ -366,7 +440,7 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     res.presses = rest + int(left_probe)
     res.steps.append(f"LEFT x{rest} after the {'LEFT' if left_probe else 'RIGHT'} probe")
     await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
-    after = await read_overlay(stick)
+    after = await read(stick, "knob")
     want = rest * step
     tol = float(_cfg(cfg, "step_tol_s"))
     if after is None or not after.bar_focused or after.scrub_s is None:
@@ -388,7 +462,7 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
         res.presses += 1
         res.steps.append(f"lost press: knob moved {moved:.0f}s of {want:.0f}s, one more LEFT")
         await asyncio.sleep(float(_cfg(cfg, "overlay_wait_s")))
-        after = await read_overlay(stick)
+        after = await read(stick, "topup")
         if after is None or not after.bar_focused or after.scrub_s is None:
             return await _fail(res, "scrub label lost after the top-up", relink, still_hidden, pressed=True)
         moved = before.scrub_s - after.scrub_s
@@ -422,7 +496,7 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     res.behind_live_s = behind_before + moved + probe_moved * step + frozen
     if read_behind is not None:
         try:
-            got = await read_behind(stick)
+            got = await _timed(read_behind, res)(stick, "label")
         except Exception as e:
             log.warning("label read after the scrub failed: %r", e)
             got = None

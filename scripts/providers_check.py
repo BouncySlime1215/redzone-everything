@@ -7,6 +7,7 @@
 
 Read-only unless you pass --tune.  What it learns (installed apps, signed out / not
 subscribed) is saved to data/providers.json, which the app uses too.
+Why: Checks every streaming app on the sticks, and optionally tunes one for real (docstring).
 """
 from __future__ import annotations
 

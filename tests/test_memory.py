@@ -150,3 +150,33 @@ def test_context_pack_has_every_section_offline(tmp_path, monkeypatch):
         json.dumps({"action": "prune_disk", "signature": "disk full", "result": "freed 900 MB"}) + "\nnot json\n")
     assert "prune_disk: disk full" in context_pack.lessons()
     assert "_missing_" in context_pack.build(offline=True)   # an empty tree degrades, never crashes
+
+
+def _handoff(tmp_path: Path, lines: int) -> Path:
+    (tmp_path / "docs").mkdir(exist_ok=True)
+    (tmp_path / "docs/handoff.md").write_text("x\n" * lines)
+    return tmp_path
+
+
+def test_handoff_within_the_target_is_silent(tmp_path):
+    assert check_memory.handoff_size(_handoff(tmp_path, check_memory.HANDOFF_TARGET)) == ([], [])
+
+
+def test_handoff_over_the_target_is_a_note_not_a_failure(tmp_path):
+    problems, notes = check_memory.handoff_size(_handoff(tmp_path, check_memory.HANDOFF_TARGET + 1))
+    assert problems == [] and "target" in notes[0]
+
+
+def test_handoff_over_the_ratchet_fails(tmp_path):
+    problems, _ = check_memory.handoff_size(_handoff(tmp_path, check_memory.HANDOFF_RATCHET + 1))
+    assert "docs/handoff.md" in problems[0]
+
+
+def test_the_ratchet_only_allows_todays_handoff_or_shorter():
+    problems, _ = check_memory.handoff_size(ROOT)
+    assert problems == []
+
+
+def test_new_lesson_fields_do_not_disturb_the_parser():
+    text = LESSON.replace("- **Fix:** quit Tailscale.", "- **Fix:** quit Tailscale.\n- **Repro:** ping x -> no route\n- **Bisected-to:** abc y")
+    assert memory.parse_lessons(text)[0].fix == "quit Tailscale."

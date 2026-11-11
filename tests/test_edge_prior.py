@@ -61,6 +61,16 @@ def test_unmeasured_channel_gets_the_prior_with_the_4s_floor():
     assert d.sigma == pytest.approx(4.0)
 
 
+def test_runtime_setting_turns_it_on(tmp_path):
+    """What Nick does on the Mac: delay.edge_prior.enabled true through the settings API (validated, undoable)."""
+    cfg = Config(tmp_path / "config.yaml")
+    cfg.update({"delay": {"edge_prior": {"enabled": True}}})
+    b = DelayBook({"youtubetv": 45.0}, 15.0, clock=FakeClock(T0))
+    b.edge_prior_cfg = lambda key: cfg.get(f"delay.edge_prior.{key}")
+    d = b.get("youtubetv:cbssn")
+    assert d.mu == 34.9 and d.current_sigma(T0) <= 8.0
+
+
 def test_prior_counts_as_calibrated_all_night():
     """Nick's live problem, Nov 7 12:40: CBSSN at sigma 15 > decider.uncalibrated_sigma_s 8 kept the leave gate shut
     ('delay not calibrated yet'). On the prior every YouTube TV channel is calibrated, and stays so for hours."""

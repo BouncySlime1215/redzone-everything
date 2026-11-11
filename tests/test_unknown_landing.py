@@ -14,6 +14,6 @@ def test_a_known_dead_ball_still_enters():
     assert plan_entry(nfl_tracker(), 40.0, 3.0, 1050.0, 5.0, can_rewind=True, unknown_ok=False).ok
 
 
-def test_ships_off():
+def test_ships_on_for_every_base_league():   # [D-01] never enter on a landing the data cannot call
     from redzone import config
-    assert config.default("decider.entry.unknown_wait_leagues") == []
+    assert config.default("decider.entry.unknown_wait_leagues") == ["nfl", "nba", "nhl", "mlb"]

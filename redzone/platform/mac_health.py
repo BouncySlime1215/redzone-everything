@@ -28,6 +28,8 @@ Alerts (code: when -> level):
                    switch row (ok, failed or dry run) for no_switch_s -> high
 Each alert fires once when its condition has held long enough, again at once if it gets worse (high ->
 urgent), again every repeat_s while it still holds, and says "cleared" (toast only) when it ends.
+
+Why: first added in 9d250c65 (2026-11-07) as "Mac health alerts + night ops report section (flags off)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

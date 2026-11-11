@@ -1,0 +1,357 @@
+#!/usr/bin/env python3
+"""Build GameValue shards: public seasons on Kaggle CPU, or dev archive nights as a small local check.
+
+    python scripts/kaggle_value_shards.py --source public --leagues nfl --out /kaggle/working/value_shards
+    nice -n 15 python scripts/kaggle_value_shards.py --source archive --split fit --archive data/archive --out <dir>
+
+Why: labels for the brain need more games than an 8 GB Mac should touch, so this runs on free Kaggle CPU and survives
+the 12 h session limit: one shard per league and season, finished shards are never rebuilt, and a rerun with the
+previous output attached as an input carries them over (build plan WP-25). Nick launches it; nothing here trains.
+
+Public: only licence-cleared sources (value_shards.public_status). Nothing is downloaded here (github.com's robots rule
+stopped that route). NFL (1999-2024), NBA, CBB (men's college basketball, two halves), CFB and WNBA are built from the files
+agent/kaggle/fetch_sports_nfl.py / _nba.py / _ncaam.py / _cfb.py / _wnba.py wrote, attached as a notebook input
+(--input, default /kaggle/input). Missing files stop the run. NBA, CBB, CFB and WNBA also need --personal-nba (alias
+--personal-hoopr), off by default. A season whose files carry no wall clock (NFL before ~2011, early WNBA) or lack a column the
+adapter needs (CFB) builds an empty shard whose sidecar says why (no_wall_games, missing_columns): nothing is invented.
+MLB is not built: Retrosheet and Statcast have no wall clock (value_shards._NO_WALLCLOCK says what it would need).
+    python scripts/kaggle_value_shards.py --source public --leagues cbb --personal-hoopr --out /kaggle/working/value_shards Nights on
+or after the scorecard window are dropped before any feature is built. Archive: DevOnly gives the dev game ids, so a
+locked or fresh game's summary is never opened. The leak check runs at the end and sets the exit code.
+"""
+from __future__ import annotations
+
+import argparse
+import glob
+import json
+import os
+import shutil
+import sys
+import time
+from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import pandas as pd  # noqa: E402
+
+from redzone.noggin import factory as F  # noqa: E402
+from redzone.noggin import value_shards as V  # noqa: E402
+from scripts.coverage_audit import DevOnly, LockedNightError  # noqa: E402
+
+SAFE_ARCHIVE_SPLITS = ("fit", "train", "valid")   # never test or all: locked nights are not readable from here
+NBA_COLS = ["id", "sequence_number", "type_text", "text", "period_number", "clock_display_value", "wallclock", "scoring_play",
+            "score_value", "home_score", "away_score", "game_id", "season", "season_type", "shooting_play",
+            "home_team_abbrev", "away_team_abbrev"]
+
+
+def _shard_from_games(league, shard, out, games, info):
+    """games yields (game id, summary, night, season, playoff, game key). Builds, cross-checks and writes one shard."""
+    parts, checked, failed, examples = [], 0, 0, []
+    for gid, summary, night, season, playoff, key in games:
+        rows = V.build_rows(league, gid, summary, night=night, season=season, source=info["source"],
+                            license_line=info["license"], plan=info["plan"], playoff=playoff, game_key=key)
+        if rows.empty:
+            info["thin_games"] = info.get("thin_games", 0) + 1
+            continue
+        n, bad = V.prefix_check(league, gid, summary, rows, playoff=playoff)
+        checked += n
+        failed += len(bad)
+        examples.extend(bad[:1])
+        parts.append(rows)
+    df = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+    return V.write_shard(out, league, shard, df, {**info, "prefix_checked": checked, "prefix_failed": failed,
+                                                  "prefix_examples": examples[:5]})
+
+
+def _nfl_games(path, season, max_games, stats):
+    from scripts.holdset_public import NFL_EXTRA, nfl_summary
+    import pyarrow.parquet as pq
+    have = set(pq.read_schema(path).names)
+    if "time_of_day" not in have:
+        stats["missing_columns"] = "time_of_day"
+        return
+    cols = list(dict.fromkeys(F.NFL_COLS + NFL_EXTRA + ["home_team", "away_team"]))
+    df = pd.read_parquet(path, columns=[c for c in cols if c in have])
+    df = df[df.qtr.notna()].sort_values(["game_id", "play_id"], kind="stable")
+    yield from _public_games(df, "nfl", season, max_games, stats, nfl_summary,
+                             lambda g: int(g.season_type.iloc[0] == "POST"),
+                             lambda g: (str(g.away_team.iloc[0]), str(g.home_team.iloc[0])) if "home_team" in g else ("", ""))
+
+
+def _cfb_games(path, season, max_games, stats):
+    """ESPN college football from the staged canonical file (holdset_public.CFB_MAP). A file without the wall clock, the drive id
+    or the other required columns yields nothing and says which in stats['missing_columns']."""
+    from scripts.holdset_public import cfb_frame, cfb_read, cfb_summary, cfb_team
+    df, missing = cfb_read(path)
+    if missing:
+        stats["missing_columns"] = ",".join(missing)
+        return
+    games = int(df.game_id.nunique())
+    df = cfb_frame(df)
+    if not len(df):
+        stats["no_wall_games"] = games         # the columns exist but no play has a period and a wall-clock stamp
+        return
+    yield from _public_games(df, "cfb", season, max_games, stats, cfb_summary,
+                             lambda g: int(_num_or(g.season_type.iloc[0]) == 3),
+                             lambda g: (cfb_team(g, "away_team_abbrev"), cfb_team(g, "home_team_abbrev")))
+
+
+def _num_or(x, default=0.0):
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return default
+    return default if v != v else v
+
+
+def _hoops_games(path, season, max_games, stats, league="nba"):
+    from scripts.holdset_public import hoops_summary
+    import pyarrow.parquet as pq
+    have = set(pq.read_schema(path).names)
+    if "wallclock" not in have:
+        stats["missing_columns"] = "wallclock"
+        return
+    df = pd.read_parquet(path, columns=[c for c in NBA_COLS if c in have])
+    games = int(df.game_id.nunique())
+    df = df[df.type_text.fillna("").ne("Substitution") & df.period_number.notna() & df.wallclock.notna()].copy()
+    if not len(df):
+        stats["no_wall_games"] = games
+        return
+    df["sq"] = pd.to_numeric(df.sequence_number, errors="coerce")
+    df = df.sort_values(["game_id", "sq"], kind="stable")
+    yield from _public_games(df, league, season, max_games, stats, hoops_summary,
+                             lambda g: int(g.season_type.iloc[0] == 3) if "season_type" in g else 0,
+                             lambda g: (str(g.away_team_abbrev.iloc[0]), str(g.home_team_abbrev.iloc[0]))
+                             if "home_team_abbrev" in g else ("", ""))
+
+
+def _public_games(df, league, season, max_games, stats, make, playoff, teams):
+    """Games oldest id first. The eval cut is applied from the first timed play, before any feature exists."""
+    cut = F.EVAL_FIRST_NIGHT[league]
+    n = 0
+    for gid, g in df.groupby("game_id", sort=True):
+        summary = make(g)
+        plays = V.flat_plays(league, summary)
+        if not plays:
+            stats["no_wall_games"] = stats.get("no_wall_games", 0) + 1
+            continue
+        night = F.night_of(plays[0][0])
+        if night >= cut:
+            stats["dropped_eval_games"] = stats.get("dropped_eval_games", 0) + 1
+            continue
+        away, home = teams(g)
+        yield str(gid), summary, night, season, playoff(g), f"{league}:{night}:{away}@{home}" if home else f"{league}:{night}:{gid}"
+        n += 1
+        if max_games and n >= max_games:
+            return
+
+
+HOOPR_FETCH = {"nba": "agent/kaggle/fetch_sports_nba.py", "cbb": "agent/kaggle/fetch_sports_ncaam.py"}
+ATTACHED_FETCH = {"nfl": "agent/kaggle/fetch_sports_nfl.py", **HOOPR_FETCH, "cfb": "agent/kaggle/fetch_sports_cfb.py",
+                  "wnba": "agent/kaggle/fetch_sports_wnba.py"}   # leagues built only from an attached fetch output
+
+
+def hoopr_input_files(inputs, league="nba") -> list[Path]:
+    """The shard parquet files the league's fetch script wrote, wherever the attached notebook output put them."""
+    name = f"sports_{V.public_source(league, True)[0]}"
+    return sorted(Path(p) for p in glob.glob(f"{inputs}/**/{name}/shards/*.parquet", recursive=True))
+
+
+def _read_season(f, season, league):
+    """One fetched file's rows of one season. CFB files have ~500 columns under file-dependent spellings: only the columns the
+    adapter reads are kept, under the canonical names (holdset_public.CFB_MAP)."""
+    filt = [("season", "==", season)]
+    if league != "cfb":
+        return pd.read_parquet(f, filters=filt)
+    import pyarrow.parquet as pq
+    from scripts.holdset_public import cfb_columns
+    names = pq.read_schema(f).names
+    got, _ = cfb_columns(names)       # a file lacking a required column is staged with what it has; the season then names what is missing
+    keep = list(dict.fromkeys(list(got.values()) + ["season", "tag"]))
+    return pd.read_parquet(f, columns=keep, filters=filt).rename(columns={v: k for k, v in got.items()})
+
+
+def stage_hoopr_raw(files, raw: Path, seasons, league="nba") -> dict:
+    """Write <raw>/<league>/pbp_<season>.parquet from the fetched files (one season per file, all of its rows) and return
+    {season: rows}. Seasons the files do not hold are left out. Refuses a file whose rows lack the personal-use tag.
+    Also stages NFL (fetch_sports_nfl.py output): the fetch tags every row, whatever the source licence."""
+    import pyarrow.parquet as pq
+    from scripts import value_leak_check as LC
+    where: dict[int, list[Path]] = {}
+    for f in files:
+        have = set(pq.read_schema(f).names)
+        if "season" not in have or "tag" not in have:
+            raise ValueError(f"{f} has no season/tag column: not a {ATTACHED_FETCH[league]} output")
+        t = pq.read_table(f, columns=["season", "tag"])
+        if set(t.column("tag").unique().to_pylist()) != {LC.PERSONAL_TAG}:
+            raise ValueError(f"{f} rows are not all tagged {LC.PERSONAL_TAG!r}")
+        for y in t.column("season").unique().to_pylist():
+            where.setdefault(int(y), []).append(f)
+    (raw / league).mkdir(parents=True, exist_ok=True)
+    got = {}
+    for y in sorted(set(seasons) & set(where)):
+        t = pd.concat([_read_season(f, y, league) for f in where[y]], ignore_index=True)
+        t.to_parquet(raw / league / f"pbp_{y}.parquet", index=False)
+        got[y] = len(t)
+    return got
+
+
+def public_season(args):
+    """One league-season, start to finish. Returns a report dict; a network failure is left unfinished for the next run.
+    NFL, NBA and CBB are never fetched: their raw season files were staged from the attached fetch output before the jobs
+    started. A season without a staged file is reported "no file"; no URL is ever requested from here."""
+    league, season, out, raw, personal, max_games, deadline = args
+    out, raw = Path(out), Path(raw)
+    shard = str(season)
+    if V.shard_done(out, league, shard):
+        return {"league": league, "season": season, "status": "already built"}
+    if time.time() > deadline:
+        return {"league": league, "season": season, "status": "session deadline"}
+    source, licence, plan, _, _ = V.public_source(league, personal)
+    dest = raw / league / f"pbp_{season}.parquet"
+    have = dest.exists()
+    if not have:
+        meta = V.write_shard(out, league, shard, pd.DataFrame(), {"source": source, "license": licence, "plan": plan,
+                                                                  "note": "no file for this season", "prefix_checked": 0})
+        return {"league": league, "season": season, "rows": meta["rows"], "status": "no file"}
+    info = {"source": source, "license": licence, "plan": plan, "season": season}
+    games = (_nfl_games(dest, season, max_games, info) if league == "nfl" else _cfb_games(dest, season, max_games, info)
+             if league == "cfb" else _hoops_games(dest, season, max_games, info, league))
+    meta = _shard_from_games(league, shard, out, games, info)
+    rep = {"league": league, "season": season, "rows": meta["rows"], "games": meta["games"], "status": "built"}
+    if not meta["games"]:      # say why: this is how a season without the needed columns or wall clock shows up in the run report
+        rep["why_empty"] = {k: meta[k] for k in ("missing_columns", "no_wall_games", "thin_games", "dropped_eval_games") if meta.get(k)} or "no games in the file"
+    return rep
+
+
+def archive_league(league, split, archive, out, max_games):
+    """Dev nights of one league. DevOnly lists the ids; only those files are opened."""
+    try:
+        dev = DevOnly(archive, league)
+    except LockedNightError as e:
+        return {"league": league, "status": f"skipped: {e}"}
+    wanted = set({"fit": dev.split.train + dev.split.valid, "train": dev.split.train, "valid": dev.split.valid}[split])
+    ids = {g: n for g, n in dev.game_ids().items() if n in wanted}
+    shard = f"archive_{split}"
+    if V.shard_done(out, league, shard):
+        return {"league": league, "status": "already built"}
+    info = {"source": "archive", "license": f"{V.PERSONAL_USE}; RedZone eval archive, dev nights", "plan": "B", "split": split}
+
+    def games():
+        for n, (gid, night) in enumerate(sorted(ids.items(), key=lambda x: (x[1], x[0]))):
+            if max_games and n >= max_games:
+                return
+            f = archive / league / f"summary_{gid}.json"
+            if not f.is_file():
+                continue
+            d = json.loads(f.read_text())
+            comp = ((d.get("header") or {}).get("competitions") or [{}])[0]
+            side = {c.get("homeAway"): (c.get("team") or {}).get("abbreviation") for c in comp.get("competitors") or []}
+            key = f"{league}:{night}:{side.get('away')}@{side.get('home')}" if side.get("home") else f"{league}:{night}:{gid}"
+            year = ((d.get("header") or {}).get("season") or {}).get("year") or int(night[:4])
+            yield gid, d, night, int(year), int(((d.get("header") or {}).get("season") or {}).get("type") == 3), key
+    meta = _shard_from_games(league, shard, out, games(), info)
+    return {"league": league, "rows": meta["rows"], "games": meta["games"], "nights": len(meta["nights"]), "status": "built"}
+
+
+def carry_over(inputs: str, out: Path) -> int:
+    """Copy finished shards from a previous session's attached output (sidecar present and complete)."""
+    n = 0
+    for side in glob.glob(f"{inputs}/**/value_shards/*/*.json", recursive=True):
+        src = Path(side)
+        if not json.loads(src.read_text()).get("complete") or not src.with_suffix(".parquet").exists():
+            continue
+        to = out / src.parent.name
+        if not (to / src.name).exists():
+            to.mkdir(parents=True, exist_ok=True)
+            shutil.copy(src.with_suffix(".parquet"), to / (src.stem + ".parquet"))
+            shutil.copy(src, to / src.name)
+            n += 1
+    return n
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--source", choices=("public", "archive"), required=True)
+    ap.add_argument("--leagues", default="nfl")
+    ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--raw", type=Path, default=Path(os.environ.get("RZ_RAW", "/kaggle/working/raw")))
+    ap.add_argument("--archive", type=Path, default=None)
+    ap.add_argument("--split", choices=SAFE_ARCHIVE_SPLITS, default="fit")
+    ap.add_argument("--personal-nba", "--personal-hoopr", dest="personal_nba", action="store_true",
+                    help="include hoopR NBA and CBB for personal, non-commercial use (off by default)")
+    ap.add_argument("--seasons", default=None, help="e.g. 2021-2024; default: every cleared season, newest first")
+    ap.add_argument("--max-games", type=int, default=None, help="smoke tests only")
+    ap.add_argument("--jobs", type=int, default=os.cpu_count() or 2)
+    ap.add_argument("--session-h", type=float, default=11.5, help="stop starting seasons 15 min before this")
+    ap.add_argument("--input", default=os.environ.get("RZ_KAGGLE_INPUT", "/kaggle/input"), help="previous output to resume from")
+    a = ap.parse_args(argv)
+    a.out.mkdir(parents=True, exist_ok=True)
+    report = []
+    if a.source == "archive":
+        if a.archive is None:
+            ap.error("--source archive needs --archive")
+        for lg in a.leagues.split(","):
+            r = archive_league(lg, a.split, a.archive, a.out, a.max_games)
+            report.append(r)
+            print(json.dumps(r), flush=True)
+    else:
+        print("carried over", carry_over(a.input, a.out), "finished shards", flush=True)
+        deadline = time.time() + a.session_h * 3600 - 900
+        jobs = []
+        for lg in a.leagues.split(","):
+            status, why = V.public_status(lg, a.personal_nba)
+            if status != "ok":
+                r = {"league": lg, "status": f"{status}: {why}"}
+                report.append(r)
+                print(json.dumps(r), flush=True)
+                continue
+            seasons = F.seasons(a.seasons) if a.seasons else V.public_source(lg, a.personal_nba)[4]
+            if lg in ATTACHED_FETCH:
+                files = hoopr_input_files(a.input, lg)
+                try:
+                    staged = stage_hoopr_raw(files, a.raw, seasons, lg) if files else {}
+                except ValueError as e:
+                    print(f"STOPPED: {lg.upper()} input refused: {e}", flush=True)
+                    return 2
+                if not staged:
+                    print(f"STOPPED: {lg.upper()} needs the output of {ATTACHED_FETCH[lg]} attached as a notebook input; found no "
+                          f"{a.input}/**/sports_{V.public_source(lg, True)[0]}/shards/*.parquet for seasons "
+                          f"{min(seasons)}-{max(seasons)}. Attach it (the fetch notebook, e.g. redzone-fetch-nba-ncaam, or the NFL one) and rerun. "
+                          f"Not downloading {lg.upper()} from github.com.", flush=True)
+                    return 2
+            jobs += [(lg, y, str(a.out), str(a.raw), a.personal_nba, a.max_games, deadline) for y in sorted(seasons, reverse=True)]
+        if a.jobs <= 1:
+            report += [_log(_safe_season(j)) for j in jobs]
+        else:
+            with ProcessPoolExecutor(a.jobs) as ex:
+                report += [_log(r) for r in ex.map(_safe_season, jobs)]
+    man = V.finalize(a.out)
+    from scripts import value_leak_check as LC
+    argv2 = [str(a.out)] + (["--archive", str(a.archive)] if a.archive else []) + (["--allow-personal-nba"] if a.personal_nba else [])
+    if a.source == "public" and {p.name for p in a.out.iterdir() if p.is_dir()} <= set(ATTACHED_FETCH):
+        argv2 += ["--raw", str(a.raw)]   # every public league keeps its staged raw files for the audit
+    rc = LC.main(argv2)
+    (a.out / "run_report.json").write_text(json.dumps({"report": report, "leak_check_exit": rc}, indent=1))
+    print("ROWS PER LEAGUE:", json.dumps({k: {"rows": v["rows"], "games": v["games"], "nights": v["nights"]}
+                                          for k, v in man["leagues"].items()}, indent=1))
+    return rc
+
+
+def _log(r: dict) -> dict:
+    print(json.dumps(r), flush=True)
+    return r
+
+
+def _safe_season(job):
+    try:
+        return public_season(job)
+    except Exception as e:  # noqa: BLE001 - one bad season never stops the run; no sidecar, so the next run retries it
+        return {"league": job[0], "season": job[1], "status": f"error, will retry: {type(e).__name__}: {e}"[:300]}
+
+
+if __name__ == "__main__":
+    sys.exit(main())

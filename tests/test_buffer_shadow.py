@@ -109,8 +109,26 @@ def test_already_held_stream_is_not_counted_twice():
     assert abs(b.get("youtubetv:espn").mu - (live.get("youtubetv:espn").mu + 30.0)) < 1e-9
 
 
+def test_editor_fresh_tune_stays_b_behind_while_live_holds_the_standby():
+    # The planner's fresh tune is mu - behind. The live controller preloads a standby 90.1 s behind live; the
+    # editor's fresh tune must still come up B behind, never at the live edge (an entry 90 s off, mid-play).
+    fresh = DelayBook({"youtubetv": 45.0}, 15.0).get("youtubetv:abc").mu
+    for hold in (0.0, 30.0, 90.0, 90.1, 120.0):
+        live = DelayBook({"youtubetv": 45.0}, 15.0)
+        live.set_behind("youtubetv:abc", hold)
+        d = BufferedDelays(live, lambda t: 90.0).get("youtubetv:abc")
+        assert abs((d.mu - d.behind) - (fresh + 90.0)) < 1e-9, hold
+        assert abs(d.mu - (fresh + max(hold, 90.0))) < 1e-9, hold   # the picture itself: never counted twice
+        assert live.get("youtubetv:abc").behind == hold              # the live book is untouched
+    off = DelayBook({"youtubetv": 45.0}, 15.0)
+    off.set_behind("youtubetv:abc", 60.0)
+    d = BufferedDelays(off, lambda t: 0.0).get("youtubetv:abc")      # no buffer for this league: the live view
+    assert d.mu == off.get("youtubetv:abc").mu and d.behind == 60.0
+
+
 def test_stay_leave_rows_carry_context_and_adaptive_terms(engine, tmp_path, monkeypatch):  # noqa: F811
     _live(engine)
+    engine.decider.cfg.update({"decider": {"entry": {"allow_live_fallback": True}}}, record=False)   # [D-01] _live has no play-by-play
     monkeypatch.setattr(engine.control, "submit", lambda *a, **k: None)
     engine.buffer_shadow.log_path = tmp_path / "s.jsonl"
     for _ in range(3):
@@ -130,9 +148,9 @@ def test_stay_leave_rows_carry_context_and_adaptive_terms(engine, tmp_path, monk
         assert r["floor_s"] <= r["behind_adaptive_s"] <= r["cap_s"] == 90
 
 
-def test_editor_times_its_first_pick_live_decider_untouched(engine):  # noqa: F811
+def test_editor_and_live_decider_both_time_their_first_pick(engine):  # noqa: F811
     assert engine.buffer_shadow.editor.cfg.get("decider.entry.start_timed") is True
-    assert engine.decider.cfg.get("decider.entry.start_timed") is False
+    assert engine.decider.cfg.get("decider.entry.start_timed") is True   # [D-02] on everywhere since Nov 8
 
 
 def test_a_switch_away_is_logged_as_a_leave_of_the_old_game(tmp_path):

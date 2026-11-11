@@ -6,6 +6,7 @@
     .venv/bin/python scripts/train_brain.py nba nhl    # just these
 
 Writes redzone/scoring/brain_models/<league>.npz (small, committed) and metrics.json.
+Why: Trains the brain's per-league models and prints the held-out scorecard (learned brain commit).
 """
 import argparse
 import json

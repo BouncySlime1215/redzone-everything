@@ -4,6 +4,8 @@ Owner: INTEGRATION. The core's view types (MomentView, BreakView, SyncView, Reel
 canonical and defined ONLY in core.py; the models produce the richer contract types in this
 package, and these pure functions are the one place they are translated. The Decider calls them
 while building CoreState from the tick's WorldState.
+
+Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

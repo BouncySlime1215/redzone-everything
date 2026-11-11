@@ -8,6 +8,8 @@ for hot or user-team games; results carry a TTL and are ignored once stale. The 
 never waits on it (a missing view = no opinion).
 
 Units: epoch s, seconds, probabilities 0..1, value bonus in score points (0..20, clamped by the core).
+
+Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

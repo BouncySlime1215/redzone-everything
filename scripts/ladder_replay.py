@@ -13,6 +13,7 @@ probability --fail-p (a separate RNG, the same draws in both arms, so the arms d
 
 usage: python scripts/ladder_replay.py <eval_sports args...> --hidden-stick wait --hs-entry scrub_measured
        --fallback keep|ladder --fail-p 0.1
+Why: Report only: what the fallback ladder changes when a buffer entry fails (docstring, ladder commit).
 """
 from __future__ import annotations
 

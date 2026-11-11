@@ -19,6 +19,8 @@ behind-live. Anything else is "live" or "kept" on the phone, whatever the plan w
 Interface for the join watchdog (item 1): after an entry the watchdog verifies the position; if it is off target by
 more than its margin and its one re-seek didn't fix it, it calls `Controller.ladder_descend(target, "buffered",
 why)` (or `FallbackLadder.climb(..., start=next_rung("buffered"))` with its own rung callables). Owner: lane 3.
+
+Why: first added in cacb7e59 (2026-11-07) as "Fallback ladder per stick: buffered -> live -> other stick -> hold (flag off)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -50,6 +52,7 @@ class Step:
     behind_s: float | None = None
     measured: bool = False
     host: str | None = None   # the stick that carried it, when not the climbing stick (other_stick)
+    failure: str = ""         # the typed reason (gamequeue.Failure value), set with queue.enabled; "" otherwise
 
 
 @dataclass
@@ -199,7 +202,7 @@ class FallbackLadder:
             if st.ok and rung == "buffered" and not measured:
                 why = "position not measured"   # never call a stream buffered on an estimate
             self._add(c, rung, ok, why, st.behind_s if ok else None, measured and ok,
-                      took=round(time.monotonic() - a0, 1), host=st.host)
+                      took=round(time.monotonic() - a0, 1), host=st.host, failure=st.failure)
             self.note(st.host or host, rung, ok)
             if ok:
                 c.rung, c.ok = rung, True
@@ -235,7 +238,7 @@ class FallbackLadder:
         return c
 
     def _add(self, c: Climb, rung: str, ok: bool, why: str, behind_s, measured: bool, skipped: bool = False,
-             took: float | None = None, host: str | None = None) -> None:
+             took: float | None = None, host: str | None = None, failure: str = "") -> None:
         row = {"rung": rung, "ok": ok, "why": (why or "")[:100]}
         if behind_s is not None:
             row["behind_s"] = round(float(behind_s), 1)
@@ -245,6 +248,8 @@ class FallbackLadder:
             row["skipped"] = True
         if took is not None:
             row["took_s"] = took
+        if failure:
+            row["failure"] = failure
         if host and host != c.host:
             row["stick"] = self.label(host)
         c.attempts.append(row)

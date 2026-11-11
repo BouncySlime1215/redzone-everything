@@ -746,3 +746,121 @@ async def test_adb_rule_does_not_reconnect_when_tailscale_steals_routes(world, f
     w.clock.t += 500
     await w.s.rule_adb(w.clock())
     assert fake_adb == []
+
+
+# --- platform safety (P-03, P-09, P-11, P-02, P-16) -----------------------------------------------
+
+async def test_p03_heartbeat_age_is_in_the_status_even_when_the_supervisor_is_off(world):
+    w = world
+    assert w.s.status()["heartbeat_age_s"] is None            # never stepped: unknown, not a hang
+    w.e.cfg.update({"supervisor": {"enabled": False}}, record=False)
+    await w.s.step()
+    w.clock.t += 7
+    st = w.s.status()
+    assert st["heartbeat_age_s"] == 7.0 and st["switch_in_flight"] is False
+    w.e._pending_decision = object()
+    assert w.s.status()["switch_in_flight"] is True
+
+
+async def test_p09_the_app_does_not_drop_a_transport_under_a_switch_in_flight(world, fake_adb):
+    w = world
+    w.stick.state, w.stick.packages = "offline", {}
+    w.e._pending_decision = object()
+    await w.s.rule_adb(w.clock())
+    w.clock.t += 121
+    await w.s.rule_adb(w.clock())
+    assert ("disconnect", w.stick.host) not in fake_adb and "drop_session" not in w.stick.calls
+    w.e._pending_decision = None
+    await w.s.rule_adb(w.clock())
+    assert ("disconnect", w.stick.host) in fake_adb
+
+
+async def test_p11_paused_with_a_live_game_alerts_after_ten_minutes_once(world):
+    w = world
+    pushed = []
+
+    async def send_push(title, body, priority="default", tags="tv"):
+        pushed.append(title)
+        return True
+    w.s.send_push = send_push
+    w.dec.user.paused = True
+    await w.s.rule_paused_alert(w.clock())
+    w.clock.t += 599
+    await w.s.rule_paused_alert(w.clock())
+    assert pushed == [] and not w.toasts
+    w.clock.t += 2
+    await w.s.rule_paused_alert(w.clock())
+    assert pushed == ["RedZone: paused"] and "paused 10 min" in w.toasts[-1]
+    w.clock.t += 60
+    await w.s.rule_paused_alert(w.clock())
+    assert pushed == ["RedZone: paused"]                      # once, not every 10 s
+    w.dec.user.paused = False
+    await w.s.rule_paused_alert(w.clock())
+    assert w.s._paused_alerted == 0.0                         # resumed: re-armed
+
+
+async def test_p11_paused_with_no_live_game_is_quiet(world):
+    w = world
+    w.game.phase = Phase.POST
+    w.dec.user.paused = True
+    await w.s.rule_paused_alert(w.clock())
+    w.clock.t += 3000
+    await w.s.rule_paused_alert(w.clock())
+    assert not w.toasts
+
+
+async def test_p02_a_stale_or_missing_watchdog_heartbeat_with_a_live_game_pushes_once(world):
+    import os
+    w = world
+    pushed = []
+
+    async def send_push(title, body, priority="default", tags="tv"):
+        pushed.append(body)
+        return True
+    w.s.send_push = send_push
+    await w.s.rule_watchdog_beat(w.clock())                   # no heartbeat file at all
+    w.clock.t += 61
+    await w.s.rule_watchdog_beat(w.clock())
+    assert len(pushed) == 1 and "never run" in pushed[0]
+    w.clock.t += 120
+    await w.s.rule_watchdog_beat(w.clock())
+    assert len(pushed) == 1                                   # not again within the repeat window
+    beat = w.root / "agent.heartbeat"
+    beat.write_text("x")
+    os.utime(beat, (w.clock(), w.clock()))                    # fresh: the alert re-arms
+    w.clock.t += 30
+    await w.s.rule_watchdog_beat(w.clock())
+    assert w.s._wd_alerted == 0.0 and w.s.watchdog_beat_age() == 30.0
+    w.clock.t += 400                                          # went quiet again
+    await w.s.rule_watchdog_beat(w.clock())
+    w.clock.t += 61
+    await w.s.rule_watchdog_beat(w.clock())
+    assert len(pushed) == 2 and "not checked in" in pushed[1]
+
+
+async def test_p02_no_live_game_no_watchdog_alert(world):
+    w = world
+    w.game.phase = Phase.POST
+    w.clock.t += 5000
+    await w.s.rule_watchdog_beat(w.clock())
+    w.clock.t += 100
+    await w.s.rule_watchdog_beat(w.clock())
+    assert not w.toasts
+
+
+def test_p16_trim_jsonl_keeps_rows_another_process_appended_meanwhile(tmp_path, monkeypatch):
+    """Repro: trim_jsonl read, then replace()d the file; a row the watchdog or deploy.py appended in between was lost."""
+    p = tmp_path / "agent.jsonl"
+    p.write_text("".join(json.dumps({"n": i}) + "\n" for i in range(10)))
+    real = type(p).write_bytes
+
+    def write_then_append(self, data):
+        n = real(self, data)
+        if self.name.endswith(".tmp"):
+            with p.open("ab") as f:
+                f.write(b'{"n": 99}\n')                        # lands after the read, before the replace
+        return n
+    monkeypatch.setattr(type(p), "write_bytes", write_then_append)
+    sup.trim_jsonl(p, 3)
+    rows = [json.loads(x)["n"] for x in p.read_text().splitlines()]
+    assert rows == [7, 8, 9, 99]

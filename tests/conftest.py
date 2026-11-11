@@ -21,6 +21,14 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(autouse=True)
+def _fsm_strict(monkeypatch):
+    """Every undeclared state-machine move fails the test (production only logs it): the tables in
+    redzone/machines/ are checked by the whole suite."""
+    from redzone import fsm
+    monkeypatch.setattr(fsm, "STRICT", True)
+
+
+@pytest.fixture(autouse=True)
 def _flip_steady_off(monkeypatch):
     """[SYNC 1] The ~1 s steady-PLAYING wait before a flip would slow every switch test by a second
     and shift their read counts; tests/test_sync_flip.py turns it back on and tests it directly."""

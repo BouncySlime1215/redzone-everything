@@ -1,5 +1,7 @@
 # Compressed plan: master plan v2, Phases 0-2 by Sun Nov 8
 
+> **Superseded by [docs/PLAN.md](../PLAN.md)**, the only plan. Kept as history and input.
+
 **Source:** Nick, 7:30 PM ET Nov 4. Colab Pro+ is bought (~$50/mo, ~500 compute units (CU), A100/L4, background
 runs). "GO HARD, get this done within the next few days." This plan compresses
 [master plan v2](https://github.com/BouncySlime1215/redzone-everything/blob/codex/resume-redzone/docs/plans/2026-11-04-noggin-master-plan-v2.md)

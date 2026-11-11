@@ -24,6 +24,8 @@ Guardrails:
 - Every network call has a timeout and never raises; one broken piece never stops the others.
 
 On the real devices (read-only):   .venv/bin/python -m redzone.autonomy check
+
+Why: first added in 634e0a01 (2026-11-02) as "Recover RedZone engine with explicit screen evidence and safe switch transactions"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -50,6 +52,8 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from redzone.channels import describe
+from redzone.fsm import MachineMap
+from redzone.machines.platform import AUTONOMY_HEALER, AUTONOMY_JOB, AUTONOMY_STICK, AUTONOMY_TV
 from redzone.models import League, Phase
 from redzone.network import arp_table, find_by_mac, norm_mac  # noqa: F401  (re-exported)
 from redzone.tuners.adb import YTTV_PACKAGES, Stick, adb_available
@@ -69,6 +73,7 @@ HEAL_TIMEOUT_S = 120.0                    # one device-healing pass can't take l
 SETUP_TIMEOUT_S = 180.0                   # one first-run discovery can't take longer than this
 SETUP_EVERY_S = 300.0                     # first run: look again every 5 min until a stick is saved
 TV_SETUP_EVERY_S = 1800.0                 # ...and for the TV every 30 min until one is saved
+ST_DEADLINE_S = 20 * 60                  # the scan should be done this long before kickoff (T-20)
 ST_BATCH = 4                              # Sunday Ticket channels per controller hold (~30-40 s)
 ARCHIVE_DAYS = 3                          # yesterday + 2 earlier days (catches up after a missed night)
 MIN_FREE_BYTES = 2 * 1024 ** 3            # the archive never fills the disk
@@ -250,7 +255,7 @@ class Job:
 
 @dataclass
 class _JobState:
-    running: bool = False
+    m: Any = None                    # autonomy.job: idle / waiting / running / retrying (the one truth)
     last_run: float | None = None
     ok: bool | None = None
     message: str = "hasn't run yet"
@@ -261,6 +266,14 @@ class _JobState:
     waiting: str = ""                # last reason it couldn't run (logged once per slot)
     next_run: float | None = None    # jobs that run elsewhere tell us this via note()
 
+    def __post_init__(self):
+        if self.m is None:
+            self.m = AUTONOMY_JOB.new()
+
+    @property
+    def running(self) -> bool:
+        return self.m.is_("running")
+
 
 class Scheduler:
     """Runs jobs at their times: one at a time per job (and per group), each inside its time box,
@@ -269,7 +282,7 @@ class Scheduler:
 
     def __init__(self, jobs: list[Job], log_path: Path, clock: Callable[[], float] = time.time):
         self.jobs = {j.name: j for j in jobs}
-        self.state = {j.name: _JobState() for j in jobs}
+        self.state = {j.name: _JobState(AUTONOMY_JOB.new(key=j.name, clock=clock)) for j in jobs}
         self.log_path = log_path
         self.clock = clock
         self.tasks: set[asyncio.Task] = set()
@@ -288,7 +301,15 @@ class Scheduler:
                 st.last_run, st.ok = rec.get("t"), rec.get("ok")
             st.message = rec.get("message", st.message)
             if rec.get("slot"):
-                st.done_slot = max(st.done_slot or 0.0, float(rec["slot"]))
+                slot = float(rec["slot"])
+                if rec.get("outcome") in ("failed", "timeout", "crashed"):
+                    # a failed try ends the slot only once its tries are used up
+                    if st.slot != slot:
+                        st.slot, st.tries = slot, 0
+                    st.tries += 1
+                    if st.tries < self.jobs[rec["job"]].attempts:
+                        continue
+                st.done_slot = max(st.done_slot or 0.0, slot)
 
     async def tick(self) -> list[asyncio.Task]:
         """Start whatever is due and safe. Returns the tasks it started (tests await them)."""
@@ -304,10 +325,10 @@ class Scheduler:
             if st.slot != slot:
                 st.slot, st.tries, st.waiting = slot, 0, ""
             why = self._group_busy(job) or await self._check(job)
+            if st.running:   # a "run now" started it while the safety check was awaited
+                continue
             if why:
                 self._wait(job, st, why, now)
-                continue
-            if st.running:   # a "run now" started it while the safety check was awaited
                 continue
             started.append(self._launch(job, slot))
         return started
@@ -319,6 +340,7 @@ class Scheduler:
         if st.tries == 0:
             st.message = f"Didn't run {when_text(st.slot)}: {st.waiting or 'no safe moment'}"
             self._log(job, "missed", None, st.message, st.slot)
+        st.m.to("idle", "window closed" + (" without a run" if st.tries == 0 else " (tries used up)"))
         st.done_slot, st.slot = st.slot, None
 
     async def _check(self, job: Job) -> str | None:
@@ -340,12 +362,19 @@ class Scheduler:
     def _wait(self, job: Job, st: _JobState, why: str, now: float) -> None:
         st.not_before = now + job.retry_s
         st.message = f"Waiting: {why}"
+        st.m.to("waiting", why, now)
         if st.waiting != why:  # each new reason is logged once, not on every re-check
             st.waiting = why
             self._log(job, "waiting", None, why, st.slot)
 
+    def _start(self, st: _JobState, why: str) -> None:
+        """The one place a job becomes running. Synchronous with the caller's last check (no await
+        between them), so two starters can't both get through."""
+        st.m.to("running", why)
+
     def _launch(self, job: Job, slot: float | None) -> asyncio.Task:
-        self.state[job.name].running = True   # set before the task starts: single-flight from here on
+        self._start(self.state[job.name], f"scheduled slot {when_text(slot) if slot else ''}".strip())
+        # ^ before the task starts: single-flight from here on
         task = asyncio.create_task(self._run(job, slot))
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
@@ -353,7 +382,8 @@ class Scheduler:
 
     async def _run(self, job: Job, slot: float | None) -> JobResult:
         st = self.state[job.name]
-        st.running = True
+        if not st.running:   # called directly (tests); _launch / run_now already moved it
+            self._start(st, "run directly")
         if slot is not None:
             st.tries += 1
         t0, m0 = self.clock(), time.monotonic()
@@ -365,14 +395,21 @@ class Scheduler:
         except Exception as e:  # a job's bug never takes the app down
             log.exception("autonomy job %s crashed", job.name)
             res, outcome = JobResult(False, f"Crashed ({type(e).__name__}: {e})"[:200]), "crashed"
-        finally:
-            st.running = False
+        except BaseException:
+            st.m.to("idle", "run cancelled")
+            raise
         st.last_run, st.ok, st.message = t0, res.ok, res.message
         if slot is not None:
             if res.ok is not False or st.tries >= job.attempts:
                 st.done_slot = slot
+                st.m.to("idle", f"slot done: {outcome}")
             else:
                 st.not_before = self.clock() + job.retry_s
+                st.m.to("retrying", f"try {st.tries} of {job.attempts} {outcome}")
+        else:   # "run now": back to what the window was doing
+            pending = st.slot is not None and st.slot != st.done_slot
+            st.m.to("retrying" if pending and st.tries else "waiting" if pending and st.waiting else "idle",
+                    f"run now {outcome}")
         self._log(job, outcome, res.ok, res.message, slot, took=time.monotonic() - m0)
         return res
 
@@ -390,7 +427,7 @@ class Scheduler:
         why = why or self._group_busy(job)
         if why or self.state[name].running:   # re-checked: the safety check awaited
             return JobResult(None, f"Not now: {why or 'it just started'}")
-        self.state[name].running = True
+        self._start(self.state[name], "run now")
         return await self._run(job, None)
 
     def note(self, name: str, ok: bool | None, message: str, next_run: float | None = None) -> None:
@@ -407,7 +444,7 @@ class Scheduler:
     def status(self) -> list[dict]:
         now = self.clock()
         return [{"job": j.name, "label": j.label, "last_run": s.last_run, "ok": s.ok, "message": s.message,
-                 "next_run": self._next(j, s, now), "running": s.running}
+                 "next_run": self._next(j, s, now), "running": s.running, "state": s.m.state}
                 for j, s in ((j, self.state[j.name]) for j in self.jobs.values())]
 
     def _next(self, job: Job, st: _JobState, now: float) -> float | None:
@@ -640,19 +677,53 @@ class DeviceHealer:
 
     def __init__(self, hooks: Any, path: Path, net: Net, clock: Callable[[], float] = time.time):
         self.hooks, self.path, self.net, self.clock = hooks, path, net, clock
-        self.offline_since: dict[str, float] = {}
+        self.sticks = MachineMap(AUTONOMY_STICK, clock=clock)   # present | missing (offline_since = since)
         self.sticks_scan, self.tv_scan = Backoff(), Backoff()
-        self.tv_lost_since: float | None = None
+        # autonomy.tv_presence: power, lost-since and on-LAN are one state, so they can't disagree.
+        self.tv = AUTONOMY_TV.new(clock=clock)
+        self._tv_on_lan = False                   # only meaningful while not_answering (see tv_on_lan)
         self.tv_checked = -math.inf
         self.tv_saved = False
-        self.tv_power: str | None = None          # "on" | "standby" | None (didn't answer)
         self.strangers: dict[str, float] = {}     # host -> until: not ours, don't connect (or prompt) again
         self.learned: dict[str, float] = {}       # host -> last time we tried to learn its identity
         self.notes: list[str] = []
         self.last_check: float | None = None
-        self.tv_on_lan = False                    # the TV's MAC is on the network, but its control port is shut
-        self._busy = False
-        self._dirty = False
+        self.pass_ = AUTONOMY_HEALER.new(clock=clock)   # single-flight check()
+        self._dirty = False                       # devices.json edits not written yet (within one pass)
+
+    # --- presence state (redzone/machines/platform.py) ---------------------------------------
+
+    @property
+    def offline_since(self) -> dict[str, float]:
+        """host -> missing since (a read-only view of the stick machines)."""
+        return {h: m.since for h, m in self.sticks.items() if m.is_("missing")}
+
+    @property
+    def tv_power(self) -> str | None:
+        """"on" | "standby" | None (didn't answer, or not checked)."""
+        return self.tv.state if self.tv.is_("on", "standby") else None
+
+    @property
+    def tv_lost_since(self) -> float | None:
+        return self.tv.since if self.tv.is_("not_answering") else None
+
+    @property
+    def tv_on_lan(self) -> bool:
+        """The TV's MAC is on the network at the saved address, but its control port is shut."""
+        return self.tv.is_("not_answering") and self._tv_on_lan
+
+    @property
+    def _busy(self) -> bool:
+        return self.pass_.is_("checking")
+
+    def _tv_answered(self, power: str | None, why: str) -> None:
+        self.tv.to("standby" if power == "standby" else "on", why)
+        self._tv_on_lan = False
+
+    def _tv_silent(self, why: str) -> None:
+        if not self.tv.is_("not_answering"):
+            self._tv_on_lan = False
+        self.tv.to("not_answering", why)
 
     @property
     def controller(self) -> Any:
@@ -662,14 +733,14 @@ class DeviceHealer:
         """One pass (every ~15 s). Cheap unless something is missing. Returns notes about changes."""
         if self._busy:
             return []
-        self._busy = True
+        self.pass_.to("checking", "device check")
         try:
             return await asyncio.wait_for(self._check(), HEAL_TIMEOUT_S)
         except asyncio.TimeoutError:
             log.warning("device check took over %.0fs; trying again next pass", HEAL_TIMEOUT_S)
             return []
         finally:
-            self._busy = False
+            self.pass_.to("idle", "check done")
 
     @property
     def network(self) -> Any:
@@ -696,8 +767,11 @@ class DeviceHealer:
         if st is not None and st.away:
             # Not a fault: nothing here can answer. Don't scan someone else's network, and start the
             # "missing for 2 minutes" clocks fresh when we're back.
-            self.offline_since.clear()
-            self.tv_lost_since, self.tv_power, self.tv_on_lan = None, None, False
+            for h, m in self.sticks.items():
+                m.to("present", "away from home: clock starts fresh")
+            self.sticks.prune()
+            self.tv.to("unknown", "away from home: clock starts fresh")
+            self._tv_on_lan = False
             self.last_check = self.clock()
             return []
         notes = await self._learn(d)
@@ -759,9 +833,14 @@ class DeviceHealer:
     def _lost(self, s: Stick, now: float) -> bool:
         """Missing for 2+ minutes. "Waiting for approval" isn't missing: that address is right."""
         if s.state in ("connected", "unauthorized"):
-            self.offline_since.pop(s.host, None)
+            m = self.sticks.get(s.host)
+            if m is not None:
+                m.to("present", s.state, now)
+                self.sticks.prune()
             return False
-        return now - self.offline_since.setdefault(s.host, now) >= LOST_AFTER_S
+        m = self.sticks[s.host]
+        m.to("missing", s.state, now)
+        return now - m.since >= LOST_AFTER_S
 
     async def _follow_sticks(self, d: dict) -> list[str]:
         """Sticks missing 2+ minutes: scan for adb (port 5555) and follow each to its new address."""
@@ -859,7 +938,10 @@ class DeviceHealer:
         e.update({k: v for k, v in seen.items() if v})
         e["host"] = new.host
         self._dirty = True
-        self.offline_since.pop(old.host, None)
+        m = self.sticks.get(old.host)
+        if m is not None:
+            m.to("present", f"followed to {new.host}")
+            self.sticks.prune()
         return f"{_name(e)} moved from {_ip(old.host)} to {_ip(new.host)} — following it"
 
     # --- the TV ---------------------------------------------------------------------
@@ -875,11 +957,10 @@ class DeviceHealer:
         self.tv_checked = now
         info = await self.net.samsung(tv["ip"]) if self.tv_saved else None
         if info and same_tv(tv, info):
-            self.tv_power, self.tv_lost_since, self.tv_on_lan = info.get("power") or "on", None, False
+            self._tv_answered(info.get("power"), "status page answered")
             self._learn_tv(d, tv, info)
             return []
-        self.tv_power = None
-        self.tv_lost_since = self.tv_lost_since or now
+        self._tv_silent("status page didn't answer" if self.tv_saved else "no saved address")
         lost = now - self.tv_lost_since >= LOST_AFTER_S
         moved = await self._tv_by_mac(d, tv, macs, sweep=lost and self.tv_scan.ready(now), now=now)
         if moved is not None:
@@ -903,7 +984,8 @@ class DeviceHealer:
                 break
         if sweep and not ip and not tv.get("ip"):
             self.tv_scan.failed(now)   # with a saved address, the port-8001 scan below backs off for both
-        self.tv_on_lan = bool(ip) and ip == tv.get("ip")
+        if self.tv.is_("not_answering"):
+            self._tv_on_lan = bool(ip) and ip == tv.get("ip")
         if not ip or ip == tv.get("ip"):
             return None
         old, tv["ip"] = tv.get("ip"), ip
@@ -911,7 +993,7 @@ class DeviceHealer:
         self._dirty = True
         info = await self.net.samsung(ip)
         if info and same_tv(tv, info):
-            self.tv_power, self.tv_lost_since = info.get("power") or "on", None
+            self._tv_answered(info.get("power"), f"answered at its new address {ip}")
             self._learn_tv(d, tv, info)
         self._save(d)
         self.tv_saved = True
@@ -932,7 +1014,7 @@ class DeviceHealer:
         self._save(d)
         _point_tv(self.controller, tv["ip"])
         self.tv_scan.found(now)
-        self.tv_power, self.tv_lost_since = hits[0].get("power") or "on", None
+        self._tv_answered(hits[0].get("power"), f"found by scan at {tv['ip']}")
         return [f"The TV moved from {old} to {tv['ip']} — following it"]
 
     def _learn_tv(self, d: dict, tv: dict, info: dict) -> None:
@@ -1530,12 +1612,26 @@ class Autonomy:
     def for_engine(cls, engine: Any, **kw: Any) -> "Autonomy":
         return cls(EngineHooks(engine), **kw)
 
+    def _st_early(self) -> bool:
+        """Why (code default OFF, read as autonomy.st_scan_early; no new key in default_config.yaml):
+        today's scan starts at 12:45 / 15:55, which is already past T-20 for a 1:00 / 4:25 kickoff."""
+        return bool(self._opt("st_scan_early", False))
+
+    def _st_job(self, mins: float) -> Job:
+        """The Sunday Ticket scan job. Early mode starts at T-75 (11:45 / 15:10), keeps a 55-minute window
+        so a scan stopped by a big moment can resume inside it, and allows 4 tries."""
+        if self._st_early():
+            return Job("st_scan", "Sunday Ticket scan", self._st_scan, (At(11, 45, (SUN,)), At(15, 10, (SUN,))),
+                       window_s=55 * mins, timeout_s=15 * mins, retry_s=2 * mins, guard=self._st_guard,
+                       group="sticks", attempts=4)
+        return Job("st_scan", "Sunday Ticket scan", self._st_scan, (At(12, 45, (SUN,)), At(15, 55, (SUN,))),
+                   window_s=35 * mins, timeout_s=15 * mins, retry_s=2 * mins, guard=self._st_guard,
+                   group="sticks", attempts=2)
+
     def _jobs(self) -> list[Job]:
         hour, mins = 3600.0, 60.0
         return [
-            Job("st_scan", "Sunday Ticket scan", self._st_scan, (At(12, 45, (SUN,)), At(15, 55, (SUN,))),
-                window_s=35 * mins, timeout_s=15 * mins, retry_s=2 * mins, guard=self._st_guard, group="sticks",
-                attempts=2),
+            self._st_job(mins),
             Job("selftest", "Nightly app check", self._selftest, (At(4, 0),), window_s=2 * hour,
                 timeout_s=15 * mins, retry_s=15 * mins, guard=self._quiet_guard, group="sticks"),
             Job("yttv_codes", "YouTube TV channel check", self._yttv_codes, (At(4, 20),), window_s=2 * hour,
@@ -1823,20 +1919,51 @@ class Autonomy:
     async def _st_guard(self) -> str | None:
         return self._st_needed() or await self._st_safe()
 
+    def _st_progress(self, games: list) -> tuple[str, list[str]]:
+        """(window key, codes already read in this kickoff window). Early mode only. The key is the ET date plus
+        the hour of the earliest unmatched kickoff, so a 4 PM scan never inherits the 1 PM scan's list.
+        Progress older than 3 hours is dropped."""
+        now = self.clock()
+        starts = [g.start_time for g in games if g.start_time] or [now]
+        key = datetime.fromtimestamp(min(starts), ET).strftime("%Y-%m-%d-%H")
+        mem = self.memory.get("st_scan")
+        if not isinstance(mem, dict) or mem.get("key") != key or now - float(mem.get("at") or 0) > 3 * 3600:
+            mem = {"key": key, "done": [], "at": now}
+        self.memory["st_scan"] = mem
+        return key, [c for c in mem.get("done", []) if isinstance(c, str)]
+
+    def _st_deadline(self, games: list) -> float | None:
+        """T-20 of the earliest game that hasn't started: the scan should be finished by then."""
+        starts = [g.start_time for g in games if g.start_time and g.phase != Phase.LIVE]
+        return min(starts) - ST_DEADLINE_S if starts else None
+
     async def _st_scan(self) -> JobResult:
         """Read which game each Sunday Ticket channel shows, a few channels per controller hold.
         Between batches it re-checks: done early once every game is matched, and it stops if it
-        stops being safe (a game went live on a one-stick setup, or a big moment started)."""
+        stops being safe (a game went live on a one-stick setup, or a big moment started).
+        Early mode (autonomy.st_scan_early) also remembers which channels it already read, so a retry
+        after a stop carries on instead of starting over, and says whether it finished by T-20."""
         c, ch = self.hooks.controller, self.hooks.channels
         games = [g for g in self.hooks.games() if g.league == League.NFL and g.phase != Phase.POST]
         codes, found, stopped = self._st_candidates(), {}, ""
+        early = self._st_early()
+        done: list[str] = self._st_progress(self._st_games(self.clock()))[1] if early else []
+        todo = [x for x in codes if x not in done]
+        deadline = self._st_deadline(self._st_games(self.clock())) if early else None
         prev = None if self._two_stick() else c.on_target
-        for i in range(0, len(codes), ST_BATCH):
+        for i in range(0, len(todo), ST_BATCH):
             if i and not self._st_games(self.clock()):
                 break
             if i and (stopped := await self._st_safe() or ""):
                 break
-            found.update(await c.scan_sunday_ticket(codes[i:i + ST_BATCH], games, self._st_found))
+            batch = todo[i:i + ST_BATCH]
+            found.update(await c.scan_sunday_ticket(batch, games, self._st_found))
+            if early:   # saved per batch: a timeout or a crash keeps what was read
+                done.extend(batch)
+                self.memory["st_scan"]["done"] = done
+                self.memory["st_scan"]["found"] = sorted(set(self.memory["st_scan"].get("found", [])) | set(found))
+                self.memory["st_scan"]["at"] = self.clock()
+                self._save_state()
         if prev and not self._two_stick() and not stopped:
             c.submit(prev)   # one stick: put back what the app had on before the scan
         if found:
@@ -1844,6 +1971,22 @@ class Autonomy:
         msg = f"Matched {_plural(len(found), 'game')} to Sunday Ticket channels"
         if stopped:
             msg += f" — stopped early: {stopped}"
+        if early:
+            left = [x for x in codes if x not in done]
+            earlier = len(self.memory["st_scan"].get("found", []))   # matched before a stop, kept across the resume
+            if earlier > len(found):
+                found = dict.fromkeys(self.memory["st_scan"]["found"])
+                msg = f"Matched {_plural(len(found), 'game')} to Sunday Ticket channels" + (
+                    msg[msg.index(" — stopped"):] if stopped else "")
+            if not left:   # a finished pass starts fresh next time
+                self.memory["st_scan"]["done"], self.memory["st_scan"]["found"] = [], []
+                self._save_state()
+            if left and stopped:
+                msg += f" ({len(left)} channels left, it picks up from there)"
+            elif not left and deadline is not None:
+                msg += " (all channels read" + ("" if self.clock() <= deadline else ", after T-20") + ")"
+            if left and stopped:
+                return JobResult(False, msg)   # False = the scheduler retries inside the window
         return JobResult(True if found else (None if stopped else False),
                          msg if found or stopped else "Couldn't read any game titles off the Sunday Ticket channels")
 
@@ -1956,6 +2099,11 @@ class Autonomy:
         health = self.memory["health"]
         if not isinstance(health.get(app), dict):
             health[app] = {}
+        if self._opt("app_version_alerts", False):   # code default OFF
+            old = (health[app].get(self._stick_key(stick)) or {}).get("version")
+            if old and chk.version and old != chk.version:
+                self.hooks.toast(f"{APP_NAMES.get(app, app)} on the {_stick_name(stick)} stick updated "
+                                 f"{old} -> {chk.version}; it gets a play test when that's safe", "warn")
         health[app][self._stick_key(stick)] = {"ok": chk.ok, "message": chk.message, "level": plan,
                                                "at": self.clock(), "version": chk.version}
 

@@ -9,6 +9,8 @@ read exactly the same thing. When the delay's doubt is too wide to say where the
 (sigma > max_sigma_s, the SAFE-02 threshold) it returns nothing: no clairvoyance on a guess.
 
 Cost: a scan of the timeline's last 200 events and its dead windows (<0.1 ms per game).
+
+Why: first added in 55a69759 (2026-11-04) as "Clairvoyance: lookahead view + GAME-04 in the candidate, crunch_now=wait"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

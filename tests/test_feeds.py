@@ -135,7 +135,7 @@ async def test_engine_never_enters_a_game_whose_feed_went_dark(cfg, tmp_path):
     e.merger.update("espn_summary", g)
     e._poll_every["1"] = 3.0
     url = e._feed_urls(g)[0]
-    e.fetcher._cache[url] = type("C", (), {"body": {}, "etag": None, "fetched_at": e.merger.games["1"].updated_at - 9})()
+    e.fetcher._cache[url] = type("C", (), {"body": {}, "etag": None, "age": 0.0, "fetched_at": e.merger.games["1"].updated_at - 9})()
     assert e.feeds.stale("1")                     # 9 s old at a 3 s cadence
     await e.close()
 

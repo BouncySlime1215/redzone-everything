@@ -1,4 +1,7 @@
-"""Fit, calibrate and grade Noggin Timing v1 from the data factory's table (Kaggle CPU / Actions only)."""
+"""Fit, calibrate and grade Noggin Timing v1 from the data factory's table (Kaggle CPU / Actions only).
+
+Why: first added in 95874796 (2026-11-04) as "Noggin Phase 1: data factory (NBA, 1.09M windows) + Timing v1 hazard with conformal bounds (OFF)"; no separate decision is recorded for this module.
+"""
 from __future__ import annotations
 
 import math

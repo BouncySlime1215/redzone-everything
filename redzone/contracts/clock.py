@@ -8,6 +8,8 @@ through this, never with its own `+ delay`. All values are epoch seconds.
   screen  when that event is (or was) on a given channel's picture: feed + delay(target)
 
 The clock is frozen per tick: WorldState carries one Clock so every module sees the same `now`.
+
+Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

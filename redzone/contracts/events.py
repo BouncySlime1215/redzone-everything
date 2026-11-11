@@ -14,6 +14,8 @@ event). Owner: lane 4 (contracts), with lane 1 (the tokenizer reads TOKENS_V1 fr
 The primitive comes from the play's kind (sources.espn._kind) by keyword rules shared across sports; a
 play that scored is a SCORE whatever its kind. A kind no rule covers is Primitive.UNMAPPED, which is the
 EXP-003 measure. Nothing here decides a cut: it describes events, it doesn't grade or choose.
+
+Why: first added in 0bc4b5d8 (2026-11-05) as "EXP-003: one event language (redzone/contracts/events.py), vocab v1 ids defined once"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

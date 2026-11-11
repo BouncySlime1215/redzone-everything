@@ -13,6 +13,8 @@ Guardrails:
 - Every adb call has a timeout (Stick.shell enforces it) and nothing here raises: a broken stick
   yields an empty Evidence, never an exception.
 - Works the same on a hidden stick (two-stick mode): nothing here assumes the screen is visible.
+
+Why: first added in 634e0a01 (2026-11-02) as "Recover RedZone engine with explicit screen evidence and safe switch transactions"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

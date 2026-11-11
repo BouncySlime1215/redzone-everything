@@ -2,6 +2,8 @@
 
 SPEC holds each league's clock shape and thresholds; the win-probability models are the analytic
 ones used wherever a feed has no win probability of its own.
+
+Why: first added in b451dece (2026-11-03) as "Learned brain: per-league break / key-moment / game-flow models (LightGBM, numpy runtime), wired..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

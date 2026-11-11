@@ -15,6 +15,7 @@ Sources, all public, $0, no accounts:
         --since 2026-11-06T01:00:00Z --out out/race/grades.json
 
 Clocks: the cloud box and the Mac must both be NTP-synced; the residual (~0.1 s) is far below the leads measured.
+Why: TNF feed race: which source sees a score first, shadow only (tracker item 4, Nov 5).
 """
 from __future__ import annotations
 

@@ -12,6 +12,7 @@ The Teacher sees ONLY row["brief"]: what the live app knows at that play. No hin
 prompt (big_next, next_text, t_big, target ... are dropped), so the answer is causal and may be used as context.
 Order: your-team, crunch and late plays first, then the rest; leagues round-robin, so a budget stop stays balanced.
 Only split == "train" rows are read; valid, test and locked nights never reach the queue.
+Why: Data Division E: causal commentary requests for the 32B Teacher, TRAIN nights only (EXP-1402, docstring).
 """
 from __future__ import annotations
 

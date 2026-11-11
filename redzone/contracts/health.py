@@ -4,6 +4,8 @@ Owner: LOCAL AI for the watchdog model (agent/watchdog.py, agent/policy.py); PLA
 in-process supervisor (redzone/supervisor.py), governor and network awareness. Both report in
 these shapes. Called by: DecisionCore reads HealthReport (safe mode, two-stick, away from home);
 Trace and the nightly report read faults/fixes. Cadence: supervisor ~10 s, watchdog ~60 s.
+
+Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

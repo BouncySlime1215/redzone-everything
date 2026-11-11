@@ -1,5 +1,7 @@
 """[EXP-610] A basketball clock-stopped dead ball, judged from play-by-play (wall time, period, game clock, type).
 
+Why: [EXP-610] NBA flips on the scrub path need a clock-stopped dead ball, by lane 3's pre-registered clock truth (decisions 2026-11-07, grader freeze v46).
+
 The rule is lane 3's pre-registered clock truth (scripts/clock_truth_grade.py, /mnt/project-files/lane3/exp741):
 an arena moment `a` is dead when it is within 10 s after a whistle event (foul, timeout, violation, free throw, end
 of period), when the events around it straddle a period change, or when the game clock ran < 0.3 x wall time between

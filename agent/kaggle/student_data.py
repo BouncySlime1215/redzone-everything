@@ -11,6 +11,7 @@ game-reasoner: the reasoner moments (tier a: every archived moment, gold rules a
 watchdog: the watchdog's own make_data output (labels from agent/policy rules). The teacher's new
   wordings go to out.zip as wordings_teacher.json; the watchdog's make_data labels and leak-checks
   them, and the next student run trains on them.
+Why: Builds each student adapter's training set from the pack and teacher answers (docstring).
 """
 from __future__ import annotations
 

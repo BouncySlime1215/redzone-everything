@@ -19,6 +19,8 @@ switches. Each has an allowance; "used" is how much of it the bad events ate.
   dead_air          switches whose old-picture-gone -> new-picture-up took
                     longer than dead_air_s, as a share of live cuts            allowed: dead_air_pct %
   safe_mode         minutes in safe mode                                       allowed: safe_mode_min a night
+
+Why: first added in ce7a571b (2026-11-03) as "Trace every switch and send a nightly report with an error budget"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

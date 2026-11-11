@@ -1,7 +1,14 @@
 """JSON shapes for the phone: game cards, game detail, team directory, rosters.
 
+Screen-time clock (flag `views.screen_clock`, code default OFF, not in default_config.yaml): the TV runs
+60-90 s behind the feed, so the feed's clock is a spoiler. `ClockTape` remembers each game's clock and
+`screen_item` shows the clock as of `now - delay`. Why: Nick watches on the screen, not the feed; an unknown
+delay shows no clock (never the live one) so the phone cannot give a play away.
+
 Pictures (logos, headshots, stadium photos) are ESPN CDN URLs; the phone loads them
 through /img/ on the Mac, which caches them on disk.
+
+Why: first added in 67a883b7 (2026-11-02) as "Pictures backend: headshots, leaders, venues, spotlight, team directory, rosters, image cache; se..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -39,6 +46,83 @@ def clock_text(g: GameState) -> str:
         return ""
     s = max(0, int(g.clock_s))
     return f"{s // 60}:{s % 60:02d}"
+
+
+# --- screen-time clock (flag views.screen_clock, OFF) ------------------------------------
+
+SCREEN_CLOCK_FLAG = "views.screen_clock"
+TAPE_WINDOW = 300.0   # longer than any screen delay the app models (60-90 s, buffered tunes a few minutes)
+
+
+def screen_clock_on(cfg) -> bool:
+    """The flag, read with a code default of OFF (the key is not in default_config.yaml)."""
+    return bool(cfg.get(SCREEN_CLOCK_FLAG, False))
+
+
+def known_delay_s(delays, target: str | None) -> float | None:
+    """Seconds the screen runs behind the feed for the stick this game is on, or None when unknown:
+    not on a stick, or only the config default (never measured). Reads without creating a book entry."""
+    if not target or delays is None:
+        return None
+    d = delays.book.get(target)
+    if d is None or getattr(d, "source", "default") == "default":
+        return None
+    return max(0.0, float(d.mu))
+
+
+class ClockTape:
+    """Per game, the feed's (period, clock) over the last TAPE_WINDOW seconds, so the clock as of a
+    moment in the past can be read back. Unchanged readings are not stored; the first one keeps its time."""
+
+    def __init__(self, keep_s: float = TAPE_WINDOW, gap_s: float = 30.0):
+        self.keep_s = float(keep_s)
+        self.gap_s = float(gap_s)   # no record for this long (nobody had the phone open): the feed in between is unknown
+        self.rows: dict[str, list[tuple[float, int | None, int | None]]] = {}
+        self.last: dict[str, float] = {}   # when each game was last recorded, changed or not
+
+    def record(self, gid: str, g: GameState, now: float | None = None) -> None:
+        now = time.time() if now is None else now
+        clock = None if g.clock_s is None else max(0, int(g.clock_s))
+        rows = self.rows.setdefault(gid, [])
+        if now - self.last.get(gid, now) > self.gap_s:
+            rows.clear()   # a row before the gap can't stand for the clock during it
+        self.last[gid] = now
+        if not rows or rows[-1][1:] != (g.period, clock):
+            rows.append((now, g.period, clock))
+        cut = now - self.keep_s
+        while len(rows) > 1 and rows[1][0] <= cut:   # keep one row at or before the cut as the anchor
+            rows.pop(0)
+
+    def at(self, gid: str, when: float) -> tuple[int | None, int | None] | None:
+        """(period, clock_s) the feed showed at `when`, or None when the tape does not reach back that far."""
+        rows = self.rows.get(gid) or []
+        if not rows or rows[0][0] > when:
+            return None
+        best = rows[0]
+        for r in rows:
+            if r[0] > when:
+                break
+            best = r
+        return best[1], best[2]
+
+
+def screen_item(item: dict, gid: str, *, enabled: bool, tape: ClockTape, delay_s: float | None,
+                now: float | None = None) -> dict:
+    """The game card as the screen would show it. Flag off, or a game that is not live: `item` unchanged
+    (same object). Flag on: `clock`/`period` are the feed's as of now - delay_s; an unknown delay, or a tape
+    too young to reach back, gives clock "" (never the live clock). `screen_clock` says which: "ok" or "unknown"."""
+    if not enabled or item.get("phase") != Phase.LIVE.value:
+        return item
+    now = time.time() if now is None else now
+    out = dict(item)
+    got = tape.at(gid, now - delay_s) if delay_s is not None else None
+    if got is None:
+        out.update(clock="", screen_clock="unknown", screen_delay_s=None)
+        return out
+    period, clock_s = got
+    out.update(period=period, clock="" if clock_s is None else f"{clock_s // 60}:{clock_s % 60:02d}",
+               screen_clock="ok", screen_delay_s=round(delay_s, 1))
+    return out
 
 
 def situation(g: GameState) -> dict:

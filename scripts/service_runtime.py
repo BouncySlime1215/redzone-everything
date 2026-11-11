@@ -1,4 +1,5 @@
-"""launchd entry point. Default service stays dry-run across settings/rollback."""
+"""launchd entry point. Default service stays dry-run across settings/rollback.
+Why: launchd entry point; the default service stays dry-run (docstring)."""
 from __future__ import annotations
 
 import argparse

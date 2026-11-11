@@ -37,3 +37,9 @@ def test_college_football_on_broadcast_goes_to_local_channel(tmp_path):
     cm = _ch(tmp_path)
     assert cm.where(_g("g4", "ABC", lg=League.CFB)).target == "youtubetv:abc"     # never Sunday Ticket
     assert cm.where(_g("g5", "CW", lg=League.CFB)).target == "youtubetv:cw"
+
+
+def test_espn_unlimited_short_spelling_maps_like_the_long_one():
+    """The feed writes "ESPN Unlmtd" on 182 MLB and 3 CFB games; without this they were counted as no broadcaster."""
+    from redzone.channels import NETWORKS
+    assert NETWORKS["espn unlmtd"] == NETWORKS["espn unlimited"]

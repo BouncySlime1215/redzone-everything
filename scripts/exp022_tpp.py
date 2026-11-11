@@ -20,6 +20,7 @@ Units: the model sees each break as "the event after a break stoppage" and its d
 event); the trees see each break as a factory dead window and its length_s. Both come from the same games and nights,
 read by their own extractors, so the counts differ a little; both counts are reported. Data: nflverse NFL and NBA.com
 cdn NBA (shufinskiy/nba_data) only, no ESPN-derived source.
+Why: EXP-022 grader: world model time head as a timing point process vs Timing v1 (docstring).
 """
 from __future__ import annotations
 

@@ -26,7 +26,14 @@ HELDOUT = {
     "nba": "LOCKED test nights 20261029-20261101 (24 games): scripts/eval_sports.py nba --split test",
     "nhl": "LOCKED test nights 20261029-20261101 (29 games): scripts/eval_sports.py nhl --split test",
     "demo": "20261101 mixed demo day (inside the locked window)",
+    # [grader v47] no locked scorecard yet for these; the gate shows a PENDING row per league, never nothing
+    "cfb": "PENDING: no locked scorecard (CFB plays NFL rules; scripts/ci_scorecard.py --leagues cfb)",
+    "cbb": "PENDING: no locked scorecard (scripts/ci_scorecard.py --leagues cbb)",
+    "mlb": "PENDING: no locked scorecard (scripts/ci_scorecard.py --leagues mlb)",
 }
+# Nick's leagues, in his order (WCBB is off, Nick Nov 4 / Nov 8). A league with no scorecard gets a PENDING
+# row so the report says "not measured" instead of saying nothing; a gate that has no row cannot fail.
+GATED_LEAGUES = ("nfl", "cfb", "nba", "cbb", "nhl", "mlb")
 PASS, FAIL, PENDING = "PASS", "FAIL", "PENDING"
 
 
@@ -119,12 +126,28 @@ def rate_gate(rows: list[tuple[int, int]], bar: float) -> tuple[str, str]:
     return PENDING, detail + "; needs " + ", ".join(x for x in short if x)
 
 
+def _ratio(s) -> tuple[int, int] | None:
+    """'3/12 (25%)' -> (3, 12); None when the card carries no such count."""
+    try:
+        a, b = str(s).split(" ")[0].split("/")
+        return int(a), int(b)
+    except (ValueError, IndexError):
+        return None
+
+
+def _counts(m: dict, per: list[dict], done: str, total: str, key: str) -> tuple[int, int] | None:
+    """(done, total) the card MEASURED: per-night counts first, else its 'a/b' string; None when it emits none."""
+    if per and any(total in x for x in per):
+        return sum(int(x.get(done) or 0) for x in per), sum(int(x.get(total) or 0) for x in per)
+    return _ratio(m.get(key))
+
+
 def zero_bound(n: int) -> str:
     """Rule of three: 0 events in n trials bounds the rate at <= 3/n with 95 % confidence."""
     return f"<= {300.0 / n:.2f}% (rule of three, {n} trials)" if n else "no trials"
 
 
-def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str, str]]:
+def gates(cards: dict, baseline: dict | None = None, slice_info: dict | None = None) -> list[tuple[str, str, str, str]]:
     """(gate, scope, status, detail) rows."""
     rows: list[tuple[str, str, str, str]] = []
     base = (baseline or {}).get("cards", {})
@@ -139,6 +162,11 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
             continue
         if m.get("eval_data") != HELDOUT["eval_data"]:
             add("pinned data", name, False, f"eval_data={m.get('eval_data')!r}")
+        if not name.startswith("demo"):
+            # [grader v47, F4] the gate is judged ONLY on the locked split; a card from `--split all` or
+            # a train split (or one that doesn't say) can't pass it. ci_scorecard stamps `split` on each card.
+            sp = m.get("split", (slice_info or {}).get("split"))
+            add("graded on the locked split", name, sp == HELDOUT["split"], f"split={sp!r}, need {HELDOUT['split']!r}")
         cuts = m.get("mid_play_cuts")
         n, mid = _entries(m)
         add("mid-play cuts = 0", name, cuts == 0,
@@ -153,9 +181,28 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
             # that could disagree; it prints the mid-play share for the report.
             if n:
                 rows.append(("entries mid-play <= 5%", name, st, f"{100.0 * mid / n:.1f}% ({mid}/{n}), judged with the row above"))
+            # [grader v47, R1/F3] Rule #1: 0 mid-play entries is HARD on this path too. The 95% row above
+            # is the softer statistic (it would let 5% through); this one is the rule.
+            add("entries mid-play = 0", name, mid == 0,
+                f"{mid}" + (f" in {n} entries; true rate {zero_bound(n)}" if mid == 0 and n else ""))
             bn, bmid = _entries(_m(base.get(name, {})))
             if bmid is not None and n:
                 add("entries mid-play never above today", name, mid <= bmid, f"{mid} vs today {bmid}")
+            if not name.startswith("demo"):
+                # [grader v47, R9] Nick's pass bar: 0 commercial seconds. Entries that land mid-commercial and
+                # the share of watched time spent in a break were measured but never gated.
+                if any("entries_mid_break" in x for x in per):
+                    mb = sum(int(x.get("entries_mid_break") or 0) for x in per)
+                    add("entries mid-commercial = 0", name, mb == 0, f"{mb} of {n} entries landed with > 10 s of break left")
+                else:
+                    add("entries mid-commercial = 0", name, False, "card has no entries_mid_break count", pending=True)
+                dd = [(float(x.get("dead_s") or 0), float(x.get("watched_s") or 0)) for x in per if x.get("watched_s")]
+                if dd:
+                    pt, lo, _hi = night_ci(dd)
+                    add("dead air (commercials on screen) = 0", name, lo <= 0.0 and pt <= 0.0,
+                        f"{pt:.1f}% of watched time (95% CI lower bound {lo:.1f})", pending=(pt > 0.0 and lo <= 0.0))
+                else:
+                    add("dead air (commercials on screen) = 0", name, False, "card has no dead_s / watched_s", pending=True)
         elif n:
             dead = 100.0 * (n - mid) / n
             add("entries at a dead ball >= 95%", name, dead >= 95.0, f"{dead:.1f}% ({n - mid}/{n}); no per-night counts: point estimate")
@@ -173,7 +220,8 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
             add("big plays seen >= 95% (NFL)", name, (_pct(m.get("nfl_big_plays")) or 0) >= 95, str(m.get("nfl_big_plays", {}).get("seen")))
             add("big plays seen >= 95% (NHL)", name, (_pct(m.get("nhl_goals")) or 0) >= 95, str(m.get("nhl_goals", {}).get("seen")))
             cr = _pct(m.get("crunch_live"))
-            add("crunch live >= 95% or feasible ceiling", name, cr is not None and cr >= 95, f"{cr:.1f}% (ceiling: pending)" if cr is not None else "n/a", pending=cr is not None and cr < 95)
+            add("crunch live >= 95% or feasible ceiling", name, cr is not None and cr >= 95,   # [grader v47] measured under 95 FAILS
+                f"{cr:.1f}%" if cr is not None else "n/a", pending=cr is None)
             continue
         if per and any(x.get("big") for x in per):
             st, det = rate_gate([(int(x.get("big_seen") or 0), int(x.get("big") or 0)) for x in per], 95.0)
@@ -195,16 +243,36 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
             add("your-team big plays seen = 100%", name, m["your_team_big_seen_pct"] >= 100.0, f"{m['your_team_big_seen_pct']}%")
         if m.get("your_team_crunch_live_pct") is not None:
             v = m["your_team_crunch_live_pct"]
-            # The scorecards print 0/0 as 0.0: with no your-team crunch plays in the slice there is nothing
-            # to grade. TODO(scorecards): emit the play counts so a real 0% can't hide here.
-            add("your-team crunch live = 100%", name, v >= 100.0,
-                f"{v}%" if v else "no your-team crunch plays in this slice (0/0)", pending=v == 0.0)
+            # [grader v47, F5/R9] The scorecards print 0/0 as 0.0, so a real 0% hid as "no plays". Read the
+            # counts (per-night my_crunch / my_crunch_live, or the 'a/b' string): n == 0 is PENDING, a measured
+            # 0% is a FAIL. A card with no count at all and a 0.0 can't be told apart: PENDING, and says why.
+            c = _counts(m, per, "my_crunch_live", "my_crunch", "your_team_crunch_live")
+            if c is not None and c[1] > 0:
+                add("your-team crunch live = 100%", name, c[0] >= c[1], f"{c[0]}/{c[1]} ({100.0 * c[0] / c[1]:.1f}%)")
+            elif c is not None:
+                add("your-team crunch live = 100%", name, False, "no your-team crunch plays in this slice (0/0)", pending=True)
+            else:
+                add("your-team crunch live = 100%", name, v >= 100.0,
+                    f"{v}%" if v else "0.0 with no play count on the card: cannot tell 0% from 0/0", pending=v == 0.0)
         cr = m.get("crunch_live_pct")
         if cr is not None:
-            # Under the user's league order (NFL > CFB > NBA > rest) a lower-priority overlap that gets a
-            # replay is not a miss; until that ceiling is computed, a value under 95% is PENDING, not PASS.
-            add("crunch live >= 95% or feasible ceiling", name, cr >= 95.0,
-                f"{cr}% (ceiling: pending)" if cr < 95 else f"{cr}%", pending=cr < 95.0)
+            # [grader v47, F5/R9] Under the league order (NFL > CFB > NBA > rest) a lower-priority overlap that
+            # gets a replay is not a miss, but that ceiling is not built: until a card carries a computed
+            # `crunch_live_ceiling_pct`, a MEASURED value under the bar FAILS. PENDING only when n == 0.
+            n_cr = m.get("crunch_plays")
+            if n_cr is None and per and any("crunch" in x for x in per):
+                n_cr = sum(int(x.get("crunch") or 0) for x in per)
+            bar = min(95.0, float(m["crunch_live_ceiling_pct"])) if m.get("crunch_live_ceiling_pct") is not None else 95.0
+            if n_cr == 0 or (n_cr is None and not cr):
+                add("crunch live >= 95% or feasible ceiling", name, False, "no crunch plays measured (n = 0)", pending=True)
+            else:
+                add("crunch live >= 95% or feasible ceiling", name, cr >= bar,
+                    f"{cr}%" + (f" of {n_cr} plays" if n_cr else "") + ("" if cr >= bar else f"; under {bar:g}, no feasible ceiling explains it"))
+    # [grader v47, R2] every one of Nick's leagues gets a row: PENDING (not absent) when it has no scorecard
+    for lg in GATED_LEAGUES:
+        if lg not in cards:
+            add("league scorecard present", lg, False, HELDOUT.get(lg, "no scorecard"), pending=True)
+            add("entries mid-play = 0", lg, False, "not measured: Rule #1 has no card to grade", pending=True)
     for gate, why in (("reels >= 95% in dead time, 0 live big plays missed on a reel", "ESPN clip reels are not simulated; rewind replays are graded by the catch-up rows and the cut grade"),
                       ("reasoner >= 95% agreement, unsafe leaves <= 0.5%, 100% valid JSON", "no gold labels yet"),
                       ("watchdog >= 95% correct, every kind >= 90%, 0 unsafe", "no held-out error set yet"),
@@ -243,9 +311,19 @@ def league_promotion(live: dict, cand: dict, league: str) -> tuple[str, str]:
             return PENDING, f"{split}: candidate card has no entries_mid_play"
         if mid != 0:
             return FAIL, f"{split}: candidate joins mid-play {mid} times in {league} (never-join-mid-play is absolute)"
+        # [grader v47, R10] Leaves too: no PR may raise mid-play leaves, and Nick's pass bar is 0 (every sport).
+        cuts = cm.get("mid_play_cuts")
+        if cuts is None:
+            return PENDING, f"{split}: candidate card has no mid_play_cuts (leaves unmeasured)"
+        if cuts != 0:
+            return FAIL, f"{split}: candidate leaves mid-play {cuts} times in {league} (pass bar: 0)"
         for k in PROMOTE_HIGHER + PROMOTE_LOWER:
             a, b = _pct(lm.get(k)), _pct(cm.get(k))
-            if a is None or b is None:
+            if a is None and b is None:
+                continue
+            if b is None:   # [grader v47, R10] a line live has and the candidate dropped is not "no change"
+                return PENDING, f"{split}: candidate card is missing {k} (judged on fewer lines)"
+            if a is None:
                 continue
             d = (b - a) if k in PROMOTE_HIGHER else (a - b)
             if d < -1e-9:
@@ -275,9 +353,10 @@ def main() -> int:
     ap.add_argument("--baseline", type=Path, default=Path(__file__).resolve().parent.parent / "docs/gate_baseline.json")
     ap.add_argument("--md", type=Path, default=None)
     a = ap.parse_args()
-    cards = json.loads(a.scorecards.read_text()).get("cards", {})
+    doc = json.loads(a.scorecards.read_text())
+    cards = doc.get("cards", {})
     base = json.loads(a.baseline.read_text()) if a.baseline and a.baseline.exists() else None
-    rows = gates(cards, base)
+    rows = gates(cards, base, doc.get("slice"))
     md = markdown(rows)
     print(md)
     if a.md:

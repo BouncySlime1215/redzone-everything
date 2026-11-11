@@ -14,6 +14,8 @@ What the decider may do with it (and what it never can):
   * The model's text never moves the TV. With `reasoner.decide_with: model` the model's lock_in
     replaces the head's (same cap, same rules); the default is the head, which is the one the
     scorecards measured.
+
+Why: first added in f79f070a (2026-11-03) as "Live game reasoner: brief builder, hindsight labels from the archive, a fast lock-in head (cross-..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

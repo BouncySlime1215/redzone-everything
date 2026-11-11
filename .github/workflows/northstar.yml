@@ -1,5 +1,6 @@
 # North Star (nightly + on every merge): one table of where integration/next stands against "perfect" (scripts/northstar.py),
-# with night-level cluster-bootstrap CIs, on dev-test AND locked nights, plus 8 seeds of the e2e fault night.
+# with night-level cluster-bootstrap CIs, on dev-test nights, plus 8 seeds of the e2e fault night.
+# Locked nights left this job in G-08 (W2-LOCKED-03): it committed locked rows nightly into a file every agent reads.
 # Commits docs/northstar.md, docs/northstar-history.jsonl and docs/roadmap.md back to integration/next
 # (docs only, so the push triggers nothing) and always uploads them as an artifact. Free tier only.
 name: North Star
@@ -49,14 +50,14 @@ jobs:
       - name: controls drill (phone presses in 4 replayed nights, taps lost and duplicated on purpose)
         # Shipped defaults (no --pretune). Exit 1 = a dropped/broken press: the North Star line says so.
         run: python scripts/controls_drill.py --seeds 4 --hours 3 --flaky --json controls.json || true
-      - name: North Star (dev + locked, 8 e2e fault nights)
+      - name: North Star (dev only, 8 e2e fault nights)
         # Live nights: the Mac's per-night summaries, published to docs/live-nights/ (scripts/publish_live_nights.py).
         # The runner has no data/live_nights, so without this the section is PENDING forever.
         run: |
           LIVE=""
           # [oracle, Nick Nov 5 ~5 PM] --oracle every night so pct_of_oracle stops reading n/a
           if python scripts/northstar.py --help | grep -q -- --live-dir; then LIVE="--live-dir docs/live-nights"; fi
-          python scripts/northstar.py --night-seeds 8 --controls-json controls.json --json northstar-raw.json --oracle $LIVE
+          python scripts/northstar.py --split dev --night-seeds 8 --controls-json controls.json --json northstar-raw.json --oracle $LIVE
           cat docs/northstar.md >> "$GITHUB_STEP_SUMMARY"
       - name: night health report (report.nightly; writes nothing while the flag is off)
         run: python scripts/night_report.py

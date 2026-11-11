@@ -18,6 +18,8 @@ A file that isn't there yet is simply "none" in the report: the sections fill in
 In the supervisor's nightly report (data/reports/YYYY-MM-DD.md + phone push) behind
 supervisor.night_ops.enabled (default OFF). By hand, read-only, any time:
     python -m redzone.platform.night_ops [YYYY-MM-DD] [--json]
+
+Why: first added in 9d250c65 (2026-11-07) as "Mac health alerts + night ops report section (flags off)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -43,6 +45,18 @@ def options(over: Any = None) -> dict:
     return out
 
 
+def _ts(r: Any) -> float | None:
+    try:
+        return float(r.get("ts") or 0)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def _attempts(v: Any) -> int:
+    n = _num(v)
+    return int(n) if n is not None and n >= 1 else 1
+
+
 def _rows(path: Path, t0: float, t1: float) -> list[dict]:
     out: list[dict] = []
     try:
@@ -52,7 +66,8 @@ def _rows(path: Path, t0: float, t1: float) -> list[dict]:
                     r = json.loads(line)
                 except ValueError:
                     continue
-                if isinstance(r, dict) and t0 <= float(r.get("ts") or 0) < t1:
+                ts = _ts(r)
+                if ts is not None and t0 <= ts < t1:   # a row with no readable time is not in any night
                     out.append(r)
     except OSError:
         pass
@@ -127,7 +142,7 @@ def summarize(root: Path, t0: float, t1: float, margin: float = NIGHT_OPS_DEFAUL
                   "abs_drift_max": round(max(d), 2) if d else None,
                   "reentries": actions["reenter"], "to_live": actions["live"]},
         "watchdog": {"joins": len(wd), "buffered": wd_state["buffered"], "live": wd_state["live"],
-                     "unknown": wd_state["unknown"], "reseeks": sum(1 for r in wd if int(r.get("attempts") or 1) > 1),
+                     "unknown": wd_state["unknown"], "reseeks": sum(1 for r in wd if _attempts(r.get("attempts")) > 1),
                      "fallbacks": dict(wd_fall.most_common())},
         "errors": {"faults": dict(faults.most_common()), "fixes_failed": dict(broken.most_common())},
         "mac": dict(Counter(str(r.get("code")) for r in mac).most_common()),

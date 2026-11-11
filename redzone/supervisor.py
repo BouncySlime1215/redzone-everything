@@ -1,5 +1,7 @@
 """Supervisor: the live system watches itself, so nobody has to.
 
+Why: real nights fail in repeated known ways, so every ~10 s it checks them and fixes what it can, rate-limited, with nobody watching (commit 2026-11-03).
+
 Every ~10 s it checks a short list of things that have gone wrong on real nights and fixes the
 ones it can, on its own. Each rule waits until a problem has lasted long enough to be real, every
 fix is rate-limited (a minimum gap and a cap per hour), and every observation and fix is written
@@ -56,13 +58,18 @@ import shutil
 import statistics
 import time
 from collections import Counter, OrderedDict, defaultdict, deque
+from collections.abc import MutableMapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
+from redzone import cheap_labels
 from redzone import observability as obs
+from redzone.fsm import MachineMap
+from redzone.machines.platform import (SUPERVISOR_APP, SUPERVISOR_CONDITION, SUPERVISOR_LOOP, SUPERVISOR_SAFE_EPISODE,
+                                       SUPERVISOR_SCREEN, SUPERVISOR_TARGET)
 from redzone.platform.health import PUSH as PUSH_FAULTS
 from redzone import trace
 
@@ -73,6 +80,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 NIGHT_STARTS_H = 6          # a "night" runs 6:00 AM ET to 6:00 AM ET the next day, named by its first date
 REPORT_AFTER_S = 300.0      # ...and its report is written 5 minutes after it ends
+REPORT_RETRY_S = 2 * REPORT_AFTER_S   # a report that crashed is tried again this much later...
+REPORT_TRIES = 4            # ...up to this many times
 CUT_JUDGE_AFTER_S = 90.0    # a cut is graded this long after it happened (the feed has caught up by then)
 CUT_LOOKBACK_S = 900.0      # switch rows this recent are looked at (a switch's row lands when it finishes)
 NTFY_TOPIC_RX = re.compile(r"^[-_A-Za-z0-9]{1,64}$")
@@ -111,6 +120,9 @@ DEFAULTS = {
     "max_jsonl_bytes": 10 * 1024 ** 2, "keep_jsonl_lines": 20000,
     "max_imgcache_bytes": 200 * 1024 ** 2, "keep_imgcache_bytes": 150 * 1024 ** 2,
     "max_wal_bytes": 64 * 1024 ** 2,
+    "paused_alert_s": 600.0,       # auto-switching paused this long with a live game -> toast + push (P-11)
+    "watchdog_beat_s": 300.0,      # the watchdog's heartbeat file older than this with a live game -> push (P-02)
+    "watchdog_alert_repeat_s": 1800.0,
     "ntfy_topic": "",              # set to push the nightly summary to the ntfy app (ntfy.sh/<topic>)
     "ntfy_server": "https://ntfy.sh",
     "budget": {},                  # error budget objectives (redzone/observability.BUDGET_DEFAULTS)
@@ -132,7 +144,7 @@ LIMITS.update(_AGENT_LIMITS)
 NOT_THE_TARGET = ("no safe moment", "safe exit window closed", "switch cancelled", "tv input is unknown",
                   "tv control was disabled", "no channel", "standby stream is no longer confirmed", "dry run",
                   "replay seek failed", "replay resume failed", "two-stick mode off", "crashed:",
-                  "stick not responding")
+                  "stick not responding", "buffer entry failed")   # a scrub miss (tune banner), not the channel
 
 # Failure detail -> a short cause name for the nightly report. First match wins.
 CAUSES = (
@@ -278,6 +290,35 @@ class Fix:
     at: float = 0.0
 
 
+class _UntilView(MutableMapping):
+    """The old `{key: muted until}` dict over the supervisor.target / supervisor.app machines, so callers
+    and tests that read or set `muted_targets[...]` keep working. Only night-muted keys are listed."""
+
+    def __init__(self, machines: MachineMap, until: dict, mute: Callable[[str, float, str], None],
+                 unmute: Callable[[str, str], None]):
+        self._m, self._until, self._mute, self._unmute = machines, until, mute, unmute
+
+    def __getitem__(self, key: str) -> float:
+        m = self._m.get(key)
+        if m is None or not m.is_("muted_night"):
+            raise KeyError(key)
+        return self._until.get(key, 0.0)
+
+    def __setitem__(self, key: str, until: float) -> None:
+        self._mute(key, float(until), "muted (set directly)")
+
+    def __delitem__(self, key: str) -> None:
+        if key not in self:
+            raise KeyError(key)
+        self._unmute(key, "unmuted (deleted directly)")
+
+    def __iter__(self):
+        return iter(self._m.in_state("muted_night"))
+
+    def __len__(self) -> int:
+        return len(self._m.in_state("muted_night"))
+
+
 class Supervisor:
     def __init__(self, engine: Any, root: Path | None = None, clock: Callable[[], float] = time.time,
                  sleep: Callable[[float], Any] = asyncio.sleep, luma: Callable[[bytes], Any] | None = png_luma_bytes,
@@ -293,25 +334,39 @@ class Supervisor:
         self.luma = luma
         self.push = push
         self.limiter = Limiter(clock)
-        self.since: dict[str, float] = {}               # condition -> first seen at
+        # Watched conditions (supervisor.condition, one per key): `since` is the old dict view of it.
+        self.conditions = MachineMap(SUPERVISOR_CONDITION, clock=clock)
         self.fixes: deque[Fix] = deque(maxlen=200)
         self.counts: Counter = Counter()                # rule -> fixes tonight (status)
-        self.muted_targets: dict[str, float] = {}        # target -> muted until
-        self.muted_apps: dict[str, float] = {}           # app -> muted until
-        self.failures: deque[tuple[float, str, str]] = deque(maxlen=500)   # (ts, target, cause)
+        # Per target / per app availability (supervisor.target / supervisor.app). Memory only on purpose:
+        # a restart forgets night mutes (the decider's own short cool-downs still apply), and the
+        # nightly report already records every mute. `muted_targets` / `muted_apps` are dict views.
+        self.targets = MachineMap(SUPERVISOR_TARGET, clock=clock)
+        self.apps = MachineMap(SUPERVISOR_APP, clock=clock)
+        self._target_until: dict[str, float] = {}        # target -> end of its back-off / night mute
+        self._app_until: dict[str, float] = {}           # app -> end of its night mute
+        self._forgiven: dict[str, float] = {}            # target -> failures up to here don't count for back-off
+        self.failures: deque[tuple[float, str, str]] = deque(maxlen=500)   # (ts, target, cause): an event log
         self._sw_seen = clock()                          # switches before start were judged last run
-        self._screen_obs: tuple[str, str, float] | None = None   # (kind, target, first seen)
+        self.screen = SUPERVISOR_SCREEN.new(clock=clock)  # the two-look confirm of rule_screen
+        self._screen_kind_target: tuple[str, str] | None = None   # (kind, target) the suspect look saw
+        self._screen_first = 0.0                          # when the look being restored was first seen
         self._routed: dict[str, str] = {}                # game -> alternate target we routed it to
         self._judged: set[tuple[str, str]] = set()
         self._last_logs = 0.0
         self._limited: set[str] = set()                  # fixes whose rate limit we already logged
         self._observed: dict[str, str] = {}              # condition -> last logged observation
         self._report_checked: date | None = None
+        self._report_failed = 0                          # crashes building this night's report
+        self._report_retry_at = 0.0
         self._cut_floor = clock()                        # switches before start were graded last run
         self._cuts_judged: OrderedDict[str, None] = OrderedDict()
-        self._safe_on: bool | None = None                # last safe-mode state recorded as an episode
+        self.safe_episode = SUPERVISOR_SAFE_EPISODE.new(clock=clock)   # safe mode as recorded episodes
         self.last_step = 0.0
-        self.running = False
+        self.last_beat = 0.0                             # the loop's heartbeat: /api/health health.supervisor.heartbeat_age_s (P-03)
+        self._paused_alerted = 0.0                       # when the "paused with a live game" alert last went out
+        self._wd_alerted = 0.0                           # ... and the "watchdog isn't running" one
+        self.loop = SUPERVISOR_LOOP.new(clock=clock)    # is run() alive, and is it acting?
         # Runtime invariants + the contract's HealthReport (redzone/platform/health.py): sees, never fixes.
         from redzone.platform.health import PlatformHealth
         self.health = PlatformHealth(engine, fixes=self.contract_fixes, data_dir=self.root)
@@ -330,13 +385,82 @@ class Supervisor:
             v = None
         return DEFAULTS.get(key) if v is None else v
 
+    # --- explicit state (redzone/machines/platform.py) ----------------------------------------
+
+    @property
+    def running(self) -> bool:
+        """The background loop is alive (supervisor.loop is not 'stopped')."""
+        return not self.loop.is_("stopped")
+
+    @property
+    def since(self) -> dict[str, float]:
+        """condition -> when it started holding (a read-only view of supervisor.condition)."""
+        return {k: m.since for k, m in self.conditions.items() if m.is_("held")}
+
+    def _rearm(self, key: str, why: str, now: float | None = None) -> None:
+        """Start a condition's clock over (after a fix ran, or the reason to wait went away)."""
+        m = self.conditions.get(key)
+        if m is not None:
+            m.to("clear", why, now)
+        self.conditions.prune()
+
+    @property
+    def muted_targets(self) -> _UntilView:
+        return _UntilView(self.targets, self._target_until, self._mute_target, self._free_target)
+
+    @property
+    def muted_apps(self) -> _UntilView:
+        return _UntilView(self.apps, self._app_until, self._mute_app, self._free_app)
+
+    def _mute_target(self, target: str, until: float, why: str) -> None:
+        self.targets[target].to("muted_night", why)
+        self._target_until[target] = until
+
+    def _free_target(self, target: str, why: str) -> None:
+        m = self.targets.get(target)
+        if m is not None:
+            m.to("available", why)
+        self._target_until.pop(target, None)
+        self.targets.prune()
+
+    def _mute_app(self, app: str, until: float, why: str) -> None:
+        self.apps[app].to("muted_night", why)
+        self._app_until[app] = until
+
+    def _free_app(self, app: str, why: str) -> None:
+        m = self.apps.get(app)
+        if m is not None:
+            m.to("available", why)
+        self._app_until.pop(app, None)
+        self.apps.prune()
+
+    def _until(self, target: str) -> float:
+        """When a muted target may be tried again (its own mute or its app's, whichever ends later)."""
+        t = self._target_until.get(target, 0.0) if self.targets.state(target) == "muted_night" else 0.0
+        a = self.app(target)
+        return max(t, self._app_until.get(a, 0.0) if self.apps.state(a) == "muted_night" else 0.0)
+
+    def _expire(self, now: float) -> None:
+        """Back-offs and night mutes whose time is up go back to available."""
+        for t, m in self.targets.items():
+            if not m.is_("available") and self._target_until.get(t, 0.0) <= now:
+                self._free_target(t, "back-off over" if m.is_("backed_off") else "night over")
+        for a in self.apps.in_state("muted_night"):
+            if self._app_until.get(a, 0.0) <= now:
+                self._free_app(a, "night over")
+
     def _held(self, key: str, cond: bool, now: float) -> float:
         """How long `cond` has been true without a break (0 when false; resets on false)."""
         if not cond:
-            self.since.pop(key, None)
+            m = self.conditions.get(key)
+            if m is not None:
+                m.to("clear", "condition cleared", now)
+                self.conditions.prune()
             self._observed.pop(key, None)
             return 0.0
-        return now - self.since.setdefault(key, now)
+        m = self.conditions[key]
+        m.to("held", "condition true", now)
+        return now - m.since
 
     def _record(self, rec: dict) -> None:
         rec = {"ts": round(self.clock(), 3), **rec}
@@ -401,7 +525,7 @@ class Supervisor:
         if not target:
             return False
         now = self.clock() if now is None else now
-        return self.muted_targets.get(target, 0) > now or self.muted_apps.get(self.app(target), 0) > now
+        return self._until(target) > now
 
     def _toast(self, text: str, level: str = "info") -> None:
         try:
@@ -412,26 +536,39 @@ class Supervisor:
     # --- loop ------------------------------------------------------------------------------
 
     async def run(self) -> None:
-        self.running = True
-        while True:
-            try:
-                await self.step()
-            except Exception:
-                log.exception("supervisor step failed")
-            await self.sleep(float(self.opt("every_s")))
+        self.loop.to("running", "loop started")
+        try:
+            while True:
+                try:
+                    await self.step()
+                except Exception:
+                    log.exception("supervisor step failed")
+                await self.sleep(float(self.opt("every_s")))
+        finally:   # cancelled at shutdown (or crashed): say so instead of claiming to run forever
+            self.loop.to("stopped", "loop ended")
 
     RULES = ("rule_stuck_switch", "rule_screen", "rule_failures", "rule_safe_mode", "rule_idle", "rule_feeds",
              "rule_adb", "rule_delay_doubt", "rule_finished_hold", "rule_logs", "track_moments", "track_episodes",
-             "grade_cuts", "maybe_report", "rule_invariants", "rule_mac_health")
+             "grade_cuts", "maybe_report", "rule_invariants", "rule_mac_health", "rule_paused_alert",
+             "rule_watchdog_beat")
+
+    def _gate(self, state: str, why: str) -> None:
+        if not self.loop.is_("stopped"):   # step() called on its own (tests, one-shot) has no loop to show
+            self.loop.to(state, why)
 
     async def step(self) -> None:
+        self.last_beat = self.clock()   # before any gate: the loop is alive even when the supervisor is off or yielded
         if not self.opt("enabled"):
+            self._gate("disabled", "supervisor.enabled is off")
             return
         rec = getattr(self.e, "recorded", None)
         if rec is not None and getattr(rec, "active", False):
+            self._gate("yielded", "a recorded session drives the screen")
             return   # a recorded session drives the screen itself
+        self._gate("running", "acting on its rules")
         self.last_step = self.clock()
         for name in self.RULES:
+            self.last_beat = self.clock()   # one slow rule must block the loop for the whole stale limit to look hung
             try:
                 await getattr(self, name)(self.clock())
             except Exception:
@@ -470,6 +607,7 @@ class Supervisor:
         limit = float(e.cfg.get("control.max_switch_s", 150)) + float(self.opt("stuck_grace_s"))
         p = getattr(e, "_pending_decision", None)
         if p is not None:
+            self._held("ctl_task", False, now)   # a command with a switch behind it isn't the orphan the clock below times
             age = (e.pending_age(now) if hasattr(e, "pending_age")
                    else now - float(getattr(e, "_pending_since", now) or now))
             if age < limit:
@@ -494,7 +632,7 @@ class Supervisor:
         if self._held("ctl_task", running, now) >= limit:
             await self.fix("stuck_switch", "controller", "cancel stuck controller command",
                            lambda: (ctl.cancel_pending(), True)[1])
-            self.since.pop("ctl_task", None)
+            self._rearm("ctl_task", "cancelled the stuck command", now)
 
     async def _screen_kind(self, stick: Any, target: str) -> tuple[str | None, str]:
         """("home" | "app_page" | "foreign" | "ok" | None, foreground)."""
@@ -551,33 +689,49 @@ class Supervisor:
             return "controller watchdog just acted"
         return None
 
+    @property
+    def _screen_obs(self) -> tuple[str, str, float] | None:
+        """(kind, target, first seen) while the screen check is suspect or restoring; else None."""
+        if self.screen.is_("clear") or self._screen_kind_target is None:
+            return None
+        kind, target = self._screen_kind_target
+        return kind, target, self.screen.since if self.screen.is_("suspect") else self._screen_first
+
+    def _screen_clear(self, why: str, now: float | None = None) -> None:
+        self.screen.to("clear", why, now)
+        self._screen_kind_target = None
+
     async def rule_screen(self, now: float) -> None:
         from redzone.models import Phase
         e, ctl, dec = self.e, self.e.control, self.e.decider
-        if self._screen_blocked():
-            self._screen_obs = None
+        blocked = self._screen_blocked()
+        if blocked:
+            self._screen_clear(f"blocked: {blocked}", now)
             return
         stick, target = ctl.main, ctl.on_target
         g = self._games().get(getattr(dec, "current", None) or "")
         if stick is None or not target or g is None or g.phase != Phase.LIVE:
-            self._screen_obs = None
+            self._screen_clear("no live game on screen to check", now)
             return
         kind, fg = await self._screen_kind(stick, target)
         if kind not in ("home", "app_page"):
             if kind == "foreign":
                 self.observe("screen_not_game", f"another app in front: {fg}")
-            self._screen_obs = None
+            self._screen_clear(f"screen reads {kind or 'unknown'}", now)
             return
         obs = self._screen_obs
         if obs is None or obs[1] != target:
-            self._screen_obs = (kind, target, now)
+            if obs is not None:
+                self._screen_clear(f"target changed to {target}", now)
+            self.screen.to("suspect", f"{kind} on screen instead of {target}", now)
+            self._screen_kind_target = (kind, target)
             self.observe("screen_not_game", f"{kind} on screen instead of {target}", foreground=fg)
             return
         if now - obs[2] < float(self.opt("screen_confirm_s")):
             return
         # The reads above awaited: re-check nothing started meanwhile before touching the stick.
         if self._screen_blocked() or ctl.main is not stick or ctl.on_target != target:
-            self._screen_obs = None
+            self._screen_clear("something started while the screen was read", now)
             return
         use = target
         if self.muted(target):   # decide() already routed the game elsewhere: restore THAT source
@@ -588,12 +742,16 @@ class Supervisor:
         async def restore():
             how = await ctl.restore_visible(use, relink=relink, why=f"{kind} on screen instead of the game")
             return (bool(how), how or "still not playing")
+        self._screen_first = obs[2]
+        self.screen.to("restoring", f"confirmed twice: restoring {use}", now)
         ok = await self.fix("screen_not_game", use, f"restore {use} ({'deep link' if relink else 'resume'}; {kind})",
                             restore)
         if ok is False:
             self.note_failure(use, "screen restore failed", now)
         if ok is not None:
-            self._screen_obs = None
+            self._screen_clear("restored" if ok else "restore failed", now)
+        else:   # rate-limited: still wrong, keep the first look so the next allowed check acts at once
+            self.screen.to("suspect", "restore rate-limited; still wrong", now=obs[2])
 
     def note_failure(self, target: str, cause: str, now: float | None = None) -> None:
         now = self.clock() if now is None else now
@@ -628,48 +786,70 @@ class Supervisor:
 
     async def rule_failures(self, now: float) -> None:
         self._ingest_switches()
+        self._expire(now)
         win = float(self.opt("fail_window_s"))
         recent = [(t, tg, c) for t, tg, c in self.failures if now - t < win]
         by_target = Counter(tg for _, tg, _ in recent)
+        # Back-off counts only failures after the last idle_with_live unstick forgave them (else the
+        # unstick and this rule take turns every tick); night mutes count the whole window.
+        backoff_n = Counter(tg for t, tg, _ in recent if t > self._forgiven.get(tg, -1e18))
         source_fails = Counter(tg for _, tg, c in recent if c in SOURCE_CAUSES)
         cool = getattr(self.e, "_fail_cool", None)
         until = night_end(now)
         for target, n in by_target.items():
-            if self.muted_targets.get(target, 0) > now:
+            if self.targets.state(target) == "muted_night" and self._target_until.get(target, 0) > now:
                 continue
             if source_fails[target] >= int(self.opt("mute_after")):
                 def mute(target=target, n=n):
-                    self.muted_targets[target] = until
+                    self._mute_target(target, until, f"{source_fails[target]} source failures in {win / 60:.0f} min")
                     if cool is not None:
                         cool[target] = until
                     self._toast(f"{target} failed {n} times — skipping it for the rest of the night")
                     return True, f"{n} failures in {win / 60:.0f} min"
                 await self.fix("repeat_failures", target, "mute target for the night", mute)
-            elif n >= int(self.opt("backoff_after")) and cool is not None and cool.get(target, 0) < now + 60:
+            elif backoff_n[target] >= int(self.opt("backoff_after")) and cool is not None \
+                    and cool.get(target, 0) < now + 60:
                 def back_off(target=target):
-                    cool[target] = max(cool.get(target, 0), now + float(self.opt("backoff_s")))
+                    end = max(cool.get(target, 0), now + float(self.opt("backoff_s")))
+                    cool[target] = end
+                    self.targets[target].to("backed_off", f"{backoff_n[target]} failures in {win / 60:.0f} min", now)
+                    self._target_until[target] = end
                     return True, f"no retry for {float(self.opt('backoff_s')) / 60:.0f} min"
                 await self.fix("repeat_failures", f"backoff:{target}", "back off target", back_off)
         by_app: dict[str, set] = defaultdict(set)
-        for t, until_t in self.muted_targets.items():
-            if until_t > now:
+        for t in self.targets.in_state("muted_night"):
+            if self._target_until.get(t, 0) > now:
                 by_app[self.app(t)].add(t)
         app_fails = Counter(self.app(tg) for _, tg, c in recent if c in SOURCE_CAUSES)
         for app in set(by_app) | set(app_fails):
-            if self.muted_apps.get(app, 0) > now:
+            if self.apps.state(app) == "muted_night" and self._app_until.get(app, 0) > now:
                 continue
             if len(by_app.get(app, ())) >= int(self.opt("app_mute_targets")) or \
                     app_fails[app] >= int(self.opt("app_mute_failures")):
                 def mute_app(app=app):
-                    self.muted_apps[app] = until
-                    if cool is not None:
-                        for w in (getattr(self.e, "where", {}) or {}).values():
-                            t = getattr(w, "target", None)
-                            if t and self.app(t) == app:
-                                cool[t] = until
+                    self._mute_app(app, until, f"{app_fails[app]} source failures, "
+                                               f"{len(by_app.get(app, ()))} muted targets")
+                    self._enforce_mutes(now)
                     self._toast(f"{app} keeps failing — using other apps for the rest of the night")
                     return True, f"{app_fails[app]} failures, {len(by_app.get(app, ()))} muted targets"
                 await self.fix("repeat_failures", f"app:{app}", "mute app for the night", mute_app)
+        self._enforce_mutes(now)
+
+    def _enforce_mutes(self, now: float) -> None:
+        """The muted state is the authority: every target of a muted app (including one that only showed
+        up after the app was muted) and every muted target keeps an engine cool-down until its mute
+        ends, even after the engine overwrote it with a short failure cool-down that then expired."""
+        cool = getattr(self.e, "_fail_cool", None)
+        if cool is None:
+            return
+        targets = {getattr(w, "target", None) for w in (getattr(self.e, "where", {}) or {}).values()}
+        targets |= set(self.targets.in_state("muted_night"))
+        for t in targets:
+            if not t:
+                continue
+            end = self._until(t)
+            if end > now and cool.get(t, 0) < end:
+                cool[t] = end
 
     async def rule_safe_mode(self, now: float) -> None:
         dec = self.e.decider
@@ -685,7 +865,7 @@ class Supervisor:
 
         def leave():
             if culprit and not self.muted(culprit):
-                self.muted_targets[culprit] = night_end(now)
+                self._mute_target(culprit, night_end(now), "behind a safe mode that kept coming back")
                 cool = getattr(self.e, "_fail_cool", None)
                 if cool is not None:
                     cool[culprit] = night_end(now)
@@ -694,7 +874,7 @@ class Supervisor:
             return True, f"after {held:.0f}s" + (f"; muted {culprit}" if culprit else "")
         if await self.fix("safe_mode", "decider", "leave safe mode", leave):
             self.limiter.note("safe_mode:night")
-            self.since.pop("safe_mode", None)
+            self._rearm("safe_mode", "left safe mode", now)
 
     def _watchable(self, now: float) -> list[str]:
         e = self.e
@@ -741,6 +921,9 @@ class Supervisor:
             if cool is not None:
                 for t in [t for t in cool if not self.muted(t, now)]:
                     cool.pop(t, None)
+                    self._forgiven[t] = now   # these failures were forgiven: don't back off on them again
+                    if self.targets.state(t) == "backed_off":
+                        self._free_target(t, "back-off cleared: live games but nothing on")
                     cleared += 1
             failed = getattr(e.control, "_failed", None)
             if isinstance(failed, dict):
@@ -800,6 +983,8 @@ class Supervisor:
                 continue
             if held < float(self.opt("adb_offline_s")):
                 continue
+            if getattr(self.e, "_pending_decision", None) is not None:
+                continue   # one adb owner: never drop a transport under a switch in flight (P-09); next step
 
             async def reconnect(s=s):
                 s.drop_session()
@@ -845,7 +1030,7 @@ class Supervisor:
                     return True, (f"{old[0]:.0f}±{old[1]:.0f}s -> {nd.mu:.0f}±{nd.sigma:.0f}s "
                                   f"(re-anchored: edge + behind {nd.behind:.0f}s, {nd.source})")
                 if await self.fix("delay_doubt", target, "re-anchor measured delay", reanchor):
-                    self.since.pop(f"delay_doubt:{target}", None)
+                    self._rearm(f"delay_doubt:{target}", "delay rebuilt", now)
                 continue
 
             def reset(target=target, old=(d.mu, sig)):
@@ -860,7 +1045,7 @@ class Supervisor:
                     how = "safe defaults"
                 return True, f"{old[0]:.0f}±{old[1]:.0f}s -> {nd.mu:.0f}±{nd.sigma:.0f}s ({how})"
             if await self.fix("delay_doubt", target, "reset delay estimate", reset):
-                self.since.pop(f"delay_doubt:{target}", None)
+                self._rearm(f"delay_doubt:{target}", "delay rebuilt", now)
 
     async def rule_finished_hold(self, now: float) -> None:
         from redzone.models import Phase
@@ -978,11 +1163,15 @@ class Supervisor:
     async def track_episodes(self, now: float) -> None:
         """Safe mode on/off as episodes, so the report (and the error budget) can count its minutes."""
         on = bool(getattr(getattr(self.e, "decider", None), "safe_mode", False))
-        if on == self._safe_on or (self._safe_on is None and not on):
-            self._safe_on = on
-            return
-        self._safe_on = on
-        self._record({"kind": "episode", "rule": "safe_mode", "state": "on" if on else "off"})
+        first = self.safe_episode.is_("unknown")
+        changed = self.safe_episode.to("on" if on else "off", "decider safe mode " + ("on" if on else "off"), now)
+        if changed and not (first and not on):
+            self._record({"kind": "episode", "rule": "safe_mode", "state": "on" if on else "off"})
+
+    @property
+    def _safe_on(self) -> bool | None:
+        """Last safe-mode state recorded as an episode (None = not looked yet)."""
+        return None if self.safe_episode.is_("unknown") else self.safe_episode.is_("on")
 
     async def grade_cuts(self, now: float) -> None:
         """Each live cut, once the feed has caught up: was a play on screen in the game we left, and in
@@ -1000,6 +1189,11 @@ class Supervisor:
                 continue
             self._cuts_judged[t["id"]] = None
             g = grade_cut(t, timelines)
+            labels = getattr(self.e, "cheap_labels", None)
+            if cheap_labels.is_on(getattr(self.e, "cfg", None)):   # [cheap labels] off: no new rows, no new fields
+                if g is not None:
+                    g.update(cheap_labels.cut_fields(labels, t))
+                cheap_labels.write_outcome(self.root / "switch_outcomes.jsonl", t, r, g)
             if g is not None:
                 append_jsonl(self.cuts_path, g)
                 if g.get("leave") == "play":
@@ -1014,15 +1208,26 @@ class Supervisor:
             return
         if now < night_window(prev)[1] + REPORT_AFTER_S:
             return
+        if now < self._report_retry_at:
+            return
         self._report_checked = prev
         self.collect_live_night(prev)
         path = self.reports / f"{prev.isoformat()}.md"
         if path.exists():
             return
-        rep = night_report(prev, getattr(self.e, "store", None), self.root, now=now,
-                           budget_cfg=self.opt("budget"), ops_cfg=self.opt("night_ops"))
-        write_report(path, rep["text"])
-        write_metrics(path.with_suffix(".json"), rep["metrics"])
+        try:
+            rep = night_report(prev, getattr(self.e, "store", None), self.root, now=now,
+                               budget_cfg=self.opt("budget"), ops_cfg=self.opt("night_ops"))
+            write_metrics(path.with_suffix(".json"), rep["metrics"])   # sidecar first: the .md is the "done" marker
+            write_report(path, rep["text"])
+        except Exception:
+            # A crash must not cost the night its report: look again later, a few times, then give up.
+            self._report_failed += 1
+            if self._report_failed < REPORT_TRIES:
+                self._report_checked = None
+                self._report_retry_at = now + REPORT_RETRY_S
+            raise
+        self._report_failed, self._report_retry_at = 0, 0.0
         self._record({"kind": "report", "rule": "report", "key": prev.isoformat(), "path": str(path)})
         spent = rep["budget"]["spent"]
         await self.send_push(f"RedZone night of {prev.isoformat()}", rep["phone"],
@@ -1143,6 +1348,58 @@ class Supervisor:
                 except Exception:
                     log.exception("couldn't push Mac alert %s", a.code)
 
+    async def rule_paused_alert(self, now: float) -> None:
+        """Auto-switching paused while a game is live for paused_alert_s: say so (P-11). One forgotten tap on
+        Saturday used to leave Sunday on one channel with nothing but the phone banner saying so. Skipped when
+        the Mac-health alerts are on (they carry the same alert, mac_health.paused)."""
+        if self.mac_health is not None:
+            return
+        u = getattr(getattr(self.e, "decider", None), "user", None)
+        live = self._live()
+        held = self._held("paused_live", bool(getattr(u, "paused", False)) and bool(live), now)
+        if held < float(self.opt("paused_alert_s")):
+            self._paused_alerted = 0.0
+            return
+        if self._paused_alerted and now - self._paused_alerted < float(self.opt("watchdog_alert_repeat_s")):
+            return
+        self._paused_alerted = now
+        text = (f"Auto-switching has been paused {held / 60:.0f} min with {len(live)} live game"
+                f"{'s' if len(live) != 1 else ''}. Tap Resume to put it back on autopilot.")
+        self._record({"kind": "paused_alert", "rule": "paused", "minutes": round(held / 60, 1), "live": len(live)})
+        self._toast(text, "warn")
+        try:
+            await self.send_push("RedZone: paused", text, priority="high", tags="warning,tv")
+        except Exception:
+            log.exception("couldn't push the paused alert")
+
+    def watchdog_beat_age(self, now: float | None = None) -> float | None:
+        """Seconds since the watchdog last touched data/agent.heartbeat; None when it never has."""
+        try:
+            return round((self.clock() if now is None else now) - (self.root / "agent.heartbeat").stat().st_mtime, 1)
+        except OSError:
+            return None
+
+    async def rule_watchdog_beat(self, now: float) -> None:
+        """The watchdog is a separate launchd job nothing watched: it ran no check from Nov 3 to Nov 8 (P-02).
+        With a live game, a heartbeat file older than watchdog_beat_s (or none) is a push."""
+        age = self.watchdog_beat_age(now)
+        stale = age is None or age > float(self.opt("watchdog_beat_s"))
+        held = self._held("watchdog_down", stale and bool(self._live()), now)
+        if held < 60.0:
+            self._wd_alerted = 0.0
+            return
+        if self._wd_alerted and now - self._wd_alerted < float(self.opt("watchdog_alert_repeat_s")):
+            return
+        self._wd_alerted = now
+        text = ("The watchdog has never run (no heartbeat). Install it: python -m agent.install"
+                if age is None else f"The watchdog has not checked in for {age / 60:.0f} min: it is not running")
+        self._record({"kind": "watchdog_down", "rule": "watchdog", "age_s": age})
+        self._toast(text, "warn")
+        try:
+            await self.send_push("RedZone: watchdog down", text, priority="high", tags="warning,computer")
+        except Exception:
+            log.exception("couldn't push the watchdog alert")
+
     def contract_fixes(self) -> list:
         """Tonight's fixes in the contract's shape (contracts/health.py Fix)."""
         from redzone.contracts.health import Fix as HFix
@@ -1156,12 +1413,19 @@ class Supervisor:
     def status(self) -> dict:
         now = self.clock()
         return {"running": self.running, "last_step": self.last_step or None,
+                "heartbeat_age_s": round(now - self.last_beat, 1) if self.last_beat else None,
+                "switch_in_flight": getattr(self.e, "_pending_decision", None) is not None,
+                "watchdog_beat_age_s": self.watchdog_beat_age(now),
                 "fixes_tonight": dict(self.counts),
                 "recent": [{"rule": f.rule, "action": f.action, "ok": f.ok, "detail": f.detail}
                            for f in list(self.fixes)[-5:]],
                 "muted_targets": sorted(t for t, u in self.muted_targets.items() if u > now),
                 "muted_apps": sorted(a for a, u in self.muted_apps.items() if u > now),
+                "backed_off": sorted(t for t in self.targets.in_state("backed_off")
+                                     if self._target_until.get(t, 0) > now),
                 "watching": sorted(k for k in self.since),
+                "machines": {"loop": self.loop.view(now, history=0), "screen": self.screen.view(now, history=0),
+                             "targets": self.targets.view(now), "apps": self.apps.view(now)},
                 "faults": [{"code": f.code, "severity": f.severity.value, "component": f.component,
                             "detail": f.detail} for f in self.last_faults],
                 "mac_health": self.mac_health.active() if self.mac_health is not None else None}
@@ -1199,12 +1463,24 @@ def rotate_log(path: Path, keep_bytes: int) -> tuple[bool, str]:
 
 
 def trim_jsonl(path: Path, keep_lines: int) -> tuple[bool, str]:
-    lines = path.read_bytes().splitlines(keepends=True)
+    """Keep the last `keep_lines`. Other processes append to some of these files (the watchdog, deploy.py): rows
+    written while the rewrite was being prepared are carried over instead of lost (P-16)."""
+    raw = path.read_bytes()
+    lines = raw.splitlines(keepends=True)
     kept = lines[-keep_lines:]
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_bytes(b"".join(kept))
+    try:
+        with path.open("rb") as f:   # whatever was appended since the read above
+            f.seek(len(raw))
+            late = f.read()
+    except OSError:
+        late = b""
+    if late:
+        with tmp.open("ab") as f:
+            f.write(late)
     tmp.replace(path)
-    return True, f"{len(lines)} -> {len(kept)} lines"
+    return True, f"{len(lines)} -> {len(kept)} lines" + (f" (+{len(late)} bytes written meanwhile)" if late else "")
 
 
 def prune_dir(d: Path, keep_bytes: int) -> tuple[bool, str]:
@@ -1368,7 +1644,7 @@ def night_report(night: date, store: Any, root: Path, now: float | None = None,
     for r in failed:
         cause_targets[failure_cause(_detail(r).get("detail"))][r.get("target") or "?"] += 1
     took = [float(_detail(r).get("took") or 0) for r in ok if _detail(r).get("took")]
-    kinds = Counter(r.get("kind") or "?" for r in rows)
+    kinds = Counter(r.get("kind") or "?" for r in live_rows)   # real choices only: dry-run replays are not Nick
 
     moments = read_jsonl(root / "supervisor_moments.jsonl", t0, t1)
     seen = [m for m in moments if m.get("seen")]
@@ -1563,8 +1839,8 @@ def main(argv: list[str] | None = None) -> int:
     from redzone.store import Store
     rep = night_report(night, Store(), DATA, budget_cfg=budget_cfg)
     path = DATA / "reports" / f"{night.isoformat()}.md"
-    write_report(path, rep["text"])
     write_metrics(path.with_suffix(".json"), rep["metrics"])
+    write_report(path, rep["text"])
     print(rep["text"])
     print(f"\nSaved {path}")
     if "--push" in args:

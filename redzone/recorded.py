@@ -2,6 +2,8 @@
 
 This session never emits a successful live tune or treats yesterday's events as
 current. A player title is menu/media evidence, not verification of video frames.
+
+Why: first added in f98e81ba (2026-11-02) as "TV input flip via HOME (CEC Active Source) with stick-side verification; YouTube TV codes verifie..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -12,6 +14,7 @@ import re
 import tempfile
 import time
 
+from redzone.machines.platform import RECORDED_SESSION
 from redzone.screen_ocr import OCRResult, prepare, recognize
 from redzone.tuners.adb import ADB
 from redzone.tuners.prime_search import CapturedScreen, SearchProof, run_prime_search
@@ -39,7 +42,8 @@ class RecordedPlayback:
         self.engine = engine
         self.runner, self.capture, self.ocr = runner, capture, ocr
         self.prepare_ocr = prepare_ocr
-        self.active = False
+        # recorded.session: idle -> preparing -> navigating -> finished | failed -> (Stop) idle.
+        self.session = RECORDED_SESSION.new()
         self.request: dict = {}
         self.proof = SearchProof()
         self.task: asyncio.Task | None = None
@@ -52,9 +56,22 @@ class RecordedPlayback:
             engine.decider.user.paused = True
             self._guard_path.unlink(missing_ok=True)
 
+    @property
+    def active(self) -> bool:
+        """A recorded session holds the screen (anything but idle): live work and device jobs stay off."""
+        return not self.session.is_("idle")
+
+    @active.setter
+    def active(self, on: bool) -> None:   # kept for callers/tests that flip the old flag directly
+        if on and self.session.is_("idle"):
+            self.session.to("preparing", "set active directly")
+        elif not on and not self.session.is_("idle"):
+            self.session.to("idle", "set inactive directly")
+
     def snapshot(self) -> dict:
         p = self.proof
         return {"active": self.active, "navigating": bool(self.task and not self.task.done()),
+                "session": self.session.view(history=0),
                 "device_control_allowed": getattr(self.engine.cfg, "allow_live", True) is not False,
                 "mode": "recorded", "request": dict(self.request), "status": p.status,
                 "reason": p.reason, "stage": p.last_completed_stage, "elapsed_s": p.elapsed_s,
@@ -110,7 +127,7 @@ class RecordedPlayback:
                     raise ValueError
             except (ValueError, TypeError):
                 return False, "Supply distinct displayed team names, a simple query, and an exact recording date in this year"
-            self.active = True  # blocks new engine/device jobs before any await
+            self.session.to("preparing", f"recorded {requested.isoformat()} on {stick.host}")  # blocks new engine/device jobs before any await
             self.request = {"provider": "prime", "host": stick.host, "date": requested.isoformat(),
                             "home": home, "away": away, "query": query}
             self.proof = SearchProof(requested_date=requested.isoformat(), reason="preparing recorded session")
@@ -130,11 +147,14 @@ class RecordedPlayback:
                 self.proof.reason = f"Recorded device control could not start: {exc}"
                 # No navigation has started. Keep isolation until Stop, including
                 # when a runtime policy disallows enabling hardware control.
+                self.session.to("failed", self.proof.reason)
                 e.broadcast()
                 return False, self.proof.reason
             except BaseException:
                 self.proof.reason = "recorded preparation interrupted; automatic switching remains paused"
+                self.session.to("failed", self.proof.reason)
                 raise
+            self.session.to("navigating", "navigation task started")
             self.task = asyncio.create_task(self._run(stick, requested, was_dry))
             e.broadcast()
             return True, "Recorded navigation started on the selected stick; automatic switching is paused"
@@ -149,6 +169,7 @@ class RecordedPlayback:
             return isolated() and not e.cfg.get("mode.dry_run", True) and stick in e.control.usable
 
         started = time.monotonic()
+        ended = "failed"   # until the runner returns on its own
         try:
             async with e.control._lock:
                 if not isolated():
@@ -206,6 +227,7 @@ class RecordedPlayback:
                     await asyncio.wait_for(self.runner(stick, observe, requested=requested,
                         query=self.request["query"], home=self.request["home"], away=self.request["away"],
                         allow_play=True, may_run=may_run, proof=self.proof), timeout=180)
+                    ended = "finished"
         except asyncio.CancelledError:
             self.proof.status, self.proof.reason = "stopped", "recorded navigation canceled; playback may remain on the device"
             raise
@@ -215,6 +237,8 @@ class RecordedPlayback:
             self.proof.status, self.proof.reason = "stopped", f"recorded navigation stopped: {type(exc).__name__}"
         finally:
             self.proof.elapsed_s = round(time.monotonic() - started, 3)
+            if self.session.is_("navigating"):   # Stop may already have ended the session
+                self.session.to(ended, self.proof.reason or self.proof.status or ended)
             self._forget_live()
             e.broadcast()
 
@@ -234,7 +258,7 @@ class RecordedPlayback:
                 # against a recording that is still playing on the physical stick.
                 self.engine.cfg.update({"mode": {"dry_run": True}})
                 self._guard_path.unlink(missing_ok=True)
-            self.active = False
+            self.session.to("idle", "stopped by request")
             self.engine.discovery.resume_device_work()
             self.engine.broadcast()
             return True, "Recorded session stopped; automatic switching is paused and device control is off. Playback may remain on the stick."

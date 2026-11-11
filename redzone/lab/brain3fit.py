@@ -2,10 +2,12 @@
 
 Per league, every head of ``redzone.scoring.brain3`` trains on the public table's TRAIN nights,
 early-stops on VALID nights, gets isotonic calibration fit on VALID nights, and is graded on TEST
-nights (``redzone.lab.brain3data.night_split``). The head-to-head with today's rules and today's
+nights (``redzone.lab.brain3data.night_splits``, the time split of ``redzone.lab.splits``). The head-to-head with today's rules and today's
 brain (v2) runs through the live code path on our own ESPN archive (``live_eval3``), which neither
 brain trained on (NHL's stoppage-length and entry heads are the exception: the public NHL feed has no
 wall clock, so those two train on the archive's train nights and are graded on its other nights).
+
+Why: first added in afd3508e (2026-11-03) as "Brain v3 (WIP): one compact model per league, numpy runtime, calibrated stoppage odds/type/length..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -78,10 +80,6 @@ def train_league(league: str, root: Path | None = None, out_dir: Path | None = N
         nonlocal slot
         d = data[data[label].notna()]
         tr, va, te = d[d.split == "train"], d[d.split == "valid"], d[d.split == "test"]
-        if src == "espn":  # NHL lengths: our archive (15 nights): 60/40 by night, the 40 graded
-            sp = d.night.map(lambda n: D.night_split(n, valid=0.2, test=0.2))
-            tr, te = d[sp == "train"], d[sp != "train"]
-            va = te
         tr = _sample(tr, MAX_ROWS, rng)
         params = dict(PARAMS)
         if kind == "binary":
@@ -139,7 +137,7 @@ def train_league(league: str, root: Path | None = None, out_dir: Path | None = N
     fit("hot", "regression", pub, "hotness")
     # which types are commercial-length (median >= 90 s), for long_p
     if league == "nhl":   # lengths from the archive's train nights only (see fit(src="espn"))
-        ldata = ldata[ldata.night.map(lambda n: D.night_split(n, valid=0.2, test=0.2)) == "train"].assign(split="train")
+        ldata = ldata[ldata.split == "train"]
     type_len = _type_lengths(ldata)
     type_q = {t: [_type_lengths(ldata, 0.1).get(t, v), v, _type_lengths(ldata, 0.9).get(t, v)]
               for t, v in type_len.items()}
@@ -180,9 +178,9 @@ def _long_types(lengths: dict[str, float]) -> list[str]:
     return sorted(t for t, v in lengths.items() if v >= 90) or ["tv_timeout", "period_end"]
 
 
-def _nhl_heldout(night: str) -> bool:
-    """The archive nights NHL's length / entry heads did NOT train on (see fit(src="espn"))."""
-    return D.night_split(night, valid=0.2, test=0.2) != "train"
+def _nhl_heldout(nights) -> dict[str, bool]:
+    """night -> True when NHL's length / entry heads did NOT train on it (a valid or locked test night)."""
+    return {n: s != "train" for n, s in D.night_splits("nhl", nights).items()}
 
 
 def B3_MODEL_DIR() -> Path:
@@ -336,7 +334,7 @@ def live_eval3(league: str, root: Path | None = None, archive: Path | None = Non
     out["big60"] = {"v2_brain_key": rep(a.big60, a.v2_key), "v3": rep(a.big60, a.v3_b60)}
     sel = a[a.len_s.notna()]
     if league == "nhl":
-        sel = sel[sel.night.map(_nhl_heldout)]
+        sel = sel[sel.night.map(_nhl_heldout(sel.night.unique()))]
     if len(sel):
         rl = sel[sel.rules_len.notna()]
         out["length"] = {"n": int(len(sel)), "v3_mae_p50": round(float((sel.v3_len50 - sel.len_s).abs().mean()), 1),
@@ -347,7 +345,7 @@ def live_eval3(league: str, root: Path | None = None, archive: Path | None = Non
                          "above_p90": round(float((sel.len_s > sel.v3_len90).mean()), 3)}
     se = a[a.entry_s.notna()]
     if league == "nhl":
-        se = se[se.night.map(_nhl_heldout)]
+        se = se[se.night.map(_nhl_heldout(se.night.unique()))]
     if len(se):
         out["entry"] = {"n": int(len(se)), "v3_mae_p50": round(float((se.v3_e50 - se.entry_s).abs().mean()), 1),
                         "const_median_mae": round(float((se.entry_s.median() - se.entry_s).abs().mean()), 1),

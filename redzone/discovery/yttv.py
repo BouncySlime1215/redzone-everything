@@ -1,6 +1,8 @@
 """YouTube TV channel codes with zero pasting: a researched default table, self-verification on a
 Fire TV stick, and an in-app search fallback.
 
+Why: YouTube TV channels open by 11-char codes that change now and then, so zero pasting needs a table plus self-verification on a stick (docstring).
+
 A YouTube TV channel is opened with https://tv.youtube.com/watch/<11-char code>. Codes are the same
 for every account, but they change now and then and East/West feeds differ, so:
   1. yttv_channels.json ships every code we could find in public posts (with source + date), and
@@ -24,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import collections
 import contextlib
 import json
 import logging
@@ -34,6 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Awaitable, Callable
 
+from redzone.channels import _team_words
 from redzone.discovery import stickio
 
 log = logging.getLogger(__name__)
@@ -545,6 +549,113 @@ def apply_verified(cm, state: VerifyState | None = None, table: Table | None = N
     if changes and save:
         cm.save()
     return changes
+
+
+# ============================================================================ ESPN events (WP-22)
+# discovery.espn_on_yttv. Why: ESPN Unlimited events sit in YouTube TV guide rows, so a row must map to one game
+# or to nothing. The real rows have never been read: everything below runs on fakes until a TV night.
+
+ESPN_ROW_UNKNOWNS = (
+    "Does Nick's plan show the ESPN Unlimited rows at all, and what are the rows called?",
+    "Does each event have an 11-char watch code that opens it directly?",
+    "Is a code stable from pre-game through the end, and does it get reused for later events?",
+    "What do row titles look like (team names, ranks, 'at' or 'vs')? Do they match ESPN's names?",
+    "Are NHL out-of-market, CFB and CBB there? Any ACC Network Extra or SEC Network+?",
+    "Do NFL, NBA or MLB events appear? Is MLB.TV absent?",
+    "Is a Hurricanes game blacked out, and is a national-exclusive one too? What does the slate read?",
+    "Do NHL games list home and away as separate rows?",
+    "Does it seek? Does the DVR and the live edge behave like other YouTube TV channels?",
+    "How long is the join, and does the media session name the event so a tune can be confirmed?",
+)
+ESPN_ROW_WORDS = ("espn",)     # a row must say this in its row or network name (real names: first TV night)
+_ROW_NOT_LIVE = frozenset({"replay", "encore", "rerun", "reair", "classic", "classics", "highlights", "pregame",
+                           "postgame", "preview", "recap", "countdown"})
+_ROW_WOMENS = frozenset({"women", "womens", "wbb", "w"})
+_ROW_GENERIC = frozenset({"state", "university", "college", "saint", "st", "north", "south", "east", "west",
+                          "central", "eastern", "western", "northern", "southern", "tech", "the", "vs", "at", "no"})
+
+
+@dataclass(frozen=True)
+class EventRow:
+    """One tile from an ESPN guide row."""
+    title: str
+    code: str
+    row: str = ""
+    network: str = ""
+
+
+@dataclass
+class RowMatch:
+    matched: dict[str, str] = field(default_factory=dict)             # game_id -> code
+    alternates: dict[str, list[str]] = field(default_factory=dict)    # game_id -> other feeds' codes
+    refused: list[tuple[str, str]] = field(default_factory=list)      # (title, why)
+
+
+def _row_refusal(r: EventRow) -> str | None:
+    words = set(re.findall(r"[a-z0-9]+", f"{r.title} {r.row} {r.network}".lower()))
+    title = re.findall(r"[a-z0-9]+", r.title.lower())
+    if "peacock" in words:          # never Peacock, in any field
+        return "peacock"
+    if not any(w in f"{r.row} {r.network}".lower() for w in ESPN_ROW_WORDS):
+        return "not_espn_row"
+    if not re.fullmatch(r"[A-Za-z0-9_-]{11}", r.code or ""):
+        return "bad_code"
+    if set(title) & _ROW_NOT_LIVE or "re air" in " ".join(title):
+        return "not_live"
+    if set(title) & _ROW_WOMENS:    # women's college basketball is off, and the same schools play the men's game
+        return "womens"
+    return None
+
+
+def _row_games(title: str, games, distinct) -> list:
+    words = set(re.findall(r"[a-z0-9]+", title.lower()))
+    return [g for g in games if distinct(g.home) & words and distinct(g.away) & words]
+
+
+def match_espn_rows(rows, games) -> RowMatch:
+    """Map guide rows to tonight's games. A row that is not clearly one live men's game maps to nothing.
+    Stricter than channels.match_title: only words unique to one team tonight count, so 'Penn State at Michigan
+    State' cannot land on Ohio State - Michigan State. Two rows for one game keep the first (either feed is the game)."""
+    games = list(games)
+    uses = collections.Counter(w for g in games for t in (g.home, g.away) for w in _team_words(t))
+
+    def distinct(t) -> set[str]:
+        return {w for w in _team_words(t) if uses[w] == 1 and w not in _ROW_GENERIC}
+
+    out = RowMatch()
+    for r in rows:
+        why = _row_refusal(r)
+        hits = [] if why else _row_games(r.title, games, distinct)
+        if why or len(hits) != 1:
+            out.refused.append((r.title, why or ("ambiguous" if hits else "no_game")))
+        elif hits[0].game_id in out.matched:
+            out.alternates.setdefault(hits[0].game_id, []).append(r.code)
+        else:
+            out.matched[hits[0].game_id] = r.code
+    return out
+
+
+def apply_espn_rows(cm, rows, games) -> RowMatch:
+    """Store matched rows on the ChannelMap. Flag off: touches nothing. A code now on a new game leaves its old one."""
+    if not cm.espn_on_yttv:
+        return RowMatch()
+    found = match_espn_rows(rows, games)
+    if found.matched:
+        taken = set(found.matched.values())
+        cm.espn_events = {g: c for g, c in cm.espn_events.items() if c not in taken or g in found.matched}
+        cm.espn_events.update(found.matched)
+        cm.save()
+    return found
+
+
+def espn_reach_counts(cm, games) -> dict[str, dict[str, int]]:
+    """league -> can't-reach reason -> games. Games with a route to tune are left out."""
+    out: dict[str, collections.Counter] = {}
+    for g in games:
+        why = cm.cant_reach_reason(g)
+        if why:
+            out.setdefault(g.league.value, collections.Counter())[why] += 1
+    return {k: dict(v) for k, v in out.items()}
 
 
 # ============================================================================ Apple TV check

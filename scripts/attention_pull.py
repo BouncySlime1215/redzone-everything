@@ -14,6 +14,7 @@ so they are labels and evaluation targets for Watch Value / the reward model. Th
 same-moment input to the brain (test writers' leakage rule; EXP-1700 notes).
 
 License tag on every row: "personal-use, not for commercial release" (plan B rules).
+Why: Data Division G: per-minute counts of what people watch and talk about (docstring, Data G commit).
 """
 from __future__ import annotations
 

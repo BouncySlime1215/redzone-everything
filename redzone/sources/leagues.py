@@ -7,6 +7,8 @@ MLB  statsapi.mlb.com   leverage index, runners, outs (fed in when the season is
 Each enrich_* takes the merged ESPN game and a league payload and returns a GameState
 copy with what the league feed knows, ready to go through the Merger like any source.
 Field names verified against tests/fixtures (Nov 2026).
+
+Why: first added in 9faa350e (2026-11-02) as "RedZone Everything: core engine, scorer, decider, replays, backtest lab, server"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -161,7 +163,7 @@ def enrich_nhl(g: GameState, score_game: dict, pbp: dict | None = None,
             kind = last.get("typeDescKey") or ""
             reason = _get(last, "details", "reason") or ""
             if kind == "stoppage":
-                out.stoppage = Stoppage.TIMEOUT if reason == "tv-timeout" else Stoppage.WHISTLE
+                out.stoppage = nhl_stoppage_reason(reason)
             elif kind == "goal":
                 out.stoppage = Stoppage.SCORE_BREAK
             elif kind == "period-end":
@@ -177,6 +179,20 @@ def enrich_nhl(g: GameState, score_game: dict, pbp: dict | None = None,
         out.situation.power_play, out.situation.strength, out.situation.empty_net = pp, strength, empty
     out.updated_at = time.time()
     return out
+
+
+def nhl_stoppage_reason(reason: str) -> Stoppage:
+    """[grader v47, F9] A league-feed stoppage by its reason. A video review or a coach's challenge runs
+    minutes (a real break to visit), an injury likewise; only the rest are whistles. api-web owns the NHL
+    stoppage (merge._owned_stoppage), so this is what the decider sees."""
+    r = (reason or "").lower()
+    if r == "tv-timeout":
+        return Stoppage.TIMEOUT
+    if "video-review" in r or r.startswith("chlg") or "challenge" in r:
+        return Stoppage.REVIEW
+    if "injury" in r:
+        return Stoppage.INJURY
+    return Stoppage.WHISTLE
 
 
 # --- NBA ----------------------------------------------------------------------
@@ -217,6 +233,10 @@ def enrich_nba(g: GameState, gm: dict, pbp: dict | None = None,
         out.stoppage = Stoppage.HALFTIME
     elif text.startswith("end"):
         out.stoppage = Stoppage.END_PERIOD
+    elif out.stoppage == Stoppage.HALFTIME and (out.period or 0) > 2:
+        # [AUDIT-OLD] `out` starts as a copy of the merged game, so this halftime is an old one: the board says
+        # the second half is on. Left alone it sailed past the guard below on every poll until the final.
+        out.stoppage = Stoppage.UNKNOWN
     if seen is not None and isinstance(pbp, dict):
         # [NBA primary] the live play-by-play: real event times, its stoppage, its clock.
         acts = _get(pbp, "game", "actions") or []
@@ -282,7 +302,9 @@ def nba_stoppage(a: dict | None) -> Stoppage:
         return Stoppage.TIMEOUT
     if t == "period" and sub == "end":
         return Stoppage.HALFTIME if _int(a.get("period")) == 2 else Stoppage.END_PERIOD
-    if t in ("foul", "violation", "substitution", "instantreplay") or _nba_kind(a) == "team_rebound":
+    if t == "instantreplay":        # [grader v47, F9] a replay review runs minutes: a break, not a whistle
+        return Stoppage.REVIEW
+    if t in ("foul", "violation", "substitution") or _nba_kind(a) == "team_rebound":
         return Stoppage.WHISTLE
     if t == "freethrow":
         m = re.search(r"(\d) of (\d)", sub)
@@ -343,10 +365,21 @@ def enrich_mlb(g: GameState, live: dict) -> GameState:
             out.stoppage = Stoppage.PITCHING_CHANGE
         elif "mound visit" in ev or "timeout" in ev:
             out.stoppage = Stoppage.WHISTLE
-    if _get(cur, "about", "hasReview"):
+    # [grader v47, F17] `hasReview` stays true for the rest of the plate appearance, so only a review that is
+    # OPEN now counts: the newest event is the review itself and it is not resolved.
+    if _get(cur, "about", "hasReview") and events and _open_review(events[-1]):
         out.stoppage = Stoppage.REVIEW
     out.updated_at = time.time()
     return out
+
+
+def _open_review(event: dict) -> bool:
+    """Is this playEvent a review/challenge still in progress? (reviewDetails.inProgress when sent, else the event name.)"""
+    rd = event.get("reviewDetails")
+    if isinstance(rd, dict) and rd.get("inProgress") is not None:
+        return bool(rd["inProgress"])
+    name = (_get(event, "details", "event") or "").lower()
+    return "review" in name or "challenge" in name
 
 
 def mlb_leverage(wp_json: list | None) -> float | None:

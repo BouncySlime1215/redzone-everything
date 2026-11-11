@@ -14,6 +14,7 @@ The rows use the column names factory.build_basketball and noggin_tokens read fo
 espn._kind / espn.stoppage_for read them the same way (timeouts, challenges, free-throw "n of m", team rebounds, end
 period / end game). Each action keeps NBA.com's timeActual as its wallclock. Blocks and steals are separate actions in
 the cdn log but folded into other plays by ESPN, so they are dropped; substitutions keep the "in" half only.
+Why: Turns NBA.com's own action log into hoopR-schema rows, plan A for NBA (docstring, plan A commit).
 """
 from __future__ import annotations
 

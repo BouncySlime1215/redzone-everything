@@ -12,6 +12,7 @@ The factory yields `(gid, night, plays, home, away)` per game (noggin_tokens.gam
 
 game_id = the factory's gid and seq = the factory's play order, so v2 rows line up with the v1 shards' index
 1:1 (one row per play dict, nothing dropped or added). Fields the play dicts lack stay null; nothing is invented.
+Why: Adapts ESPN-format plays to the shared play table the factory already holds (Data A commit).
 """
 from __future__ import annotations
 

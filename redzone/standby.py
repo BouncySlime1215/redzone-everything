@@ -29,6 +29,8 @@ to tune, is worth holding over a YouTube TV game a few points better).
 Hysteresis (Planner): a re-tune leaves the hidden stick useless for 5-10s, so it keeps what it has
 for at least two_stick.hold_s and then only moves for a higher class or a clearly better game
 (two_stick.min_gain points). (a) and (b) can't wait: they take over at once.
+
+Why: first added in 634e0a01 (2026-11-02) as "Recover RedZone engine with explicit screen evidence and safe switch transactions"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -97,7 +99,7 @@ def break_soon(g: GameState | None, s=None) -> bool:
 def likely_replay(queue, now: float, max_age: float):
     """The queued replay the decider will most likely play next: the most valuable, discounted
     for age the way the decider does. A wrong guess only means a normal tune when it comes."""
-    pool = [m for m in queue if not m.replayed and now - m.t <= max_age]
+    pool = [m for m in queue if not m.replayed and now - m.t <= max_age and getattr(m, "retry_at", 0.0) <= now]
     return max(pool, key=lambda m: m.value * (1.0 - 0.5 * min(1.0, (now - m.t) / max_age)), default=None)
 
 

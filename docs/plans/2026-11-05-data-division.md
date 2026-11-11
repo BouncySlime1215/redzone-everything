@@ -1,5 +1,7 @@
 # Data Division: org chart, id blocks, first sources and pacing
 
+> **Superseded by [docs/PLAN.md](../PLAN.md)**, the only plan. Kept as history and input.
+
 **Source:** Nick, 12:05 AM ET Nov 5: "THE BRAIN IS THE MAIN FOCUS → REORG."
 - A new **Data Division** is always on. It has one data planner per type, and each planner runs a crew of worker
   agents.

@@ -1,5 +1,7 @@
 """Noggin Reflex PICK v1: which game should be on screen, learned by imitating the hindsight oracle.
 
+Why: which game should be on screen, learned by imitating the hindsight oracle with only what the app knows at real time t (commit 2026-11-04).
+
 The oracle (redzone/lab/oracle.py) knows every play of the night. PICK only knows what the app knows at
 real time t:
 

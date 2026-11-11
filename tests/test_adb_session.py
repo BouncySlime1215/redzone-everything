@@ -67,7 +67,9 @@ async def test_commands_cant_leak_into_each_other(fake):
     broken = await st.shell("echo it's")          # unbalanced quote: only this command fails
     fine = await st.shell("echo still here")
     await st.close()
-    assert "/tmp" not in after.out and "[]" in after.out
+    # The `cd` must not carry over. Compare the directory line itself: the repo may live under /tmp
+    # (a scratch worktree), so "/tmp" can appear in a path that is not the leaked one.
+    assert after.out.splitlines()[0] not in ("/tmp", "/private/tmp") and "[]" in after.out
     assert not broken.ok and fine.out == "still here\n"
     assert fake.sessions() == 1
 

@@ -18,6 +18,7 @@ lines dropped), plus a "Pitching Change" entry when a pitcher (fielding position
 "End Inning" entry at each half-inning change. Retrosheet has no wall clocks, so "wallclock" is absent and the
 tokenizer writes UNK_DT: no time label is ever invented. Night = the game date. Nothing on or after
 factory.EVAL_FIRST_NIGHT["mlb"] is written.
+Why: Turns Retrosheet MLB event files into the plays the tokenizer reads (Wave 1 commit, memory).
 """
 from __future__ import annotations
 

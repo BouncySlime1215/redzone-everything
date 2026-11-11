@@ -26,6 +26,8 @@ From a terminal on the Mac:
     .venv/bin/python -m redzone.network --find MAC   which address has this MAC right now?
     .venv/bin/python -m redzone.network --fix        add the missing home route (asks for your password)
     .venv/bin/python -m redzone.network --save-tv-mac 8c:79:f5:8e:e2:5f    follow the TV by its MAC
+
+Why: first added in 7f7250bd (2026-11-03) as "Network awareness: away from home, Tailscale route overlap, find devices by MAC"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

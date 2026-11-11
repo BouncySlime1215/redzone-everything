@@ -15,6 +15,8 @@ and a LIVE game is stale when
 So an ESPN outage is flagged at the first failed poll (<= one poll interval) and at most 5 s after
 the data was due. Stale games are never entered (Candidate.stale / Engine._entry_valid), which only
 holds a switch; it never forces one.
+
+Why: first added in 97c81d1c (2026-11-03) as "Feeds: flag a dark score feed within one poll / 5 s, recover within 10 s"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

@@ -23,7 +23,7 @@ class Cfg(dict):
 def test_the_order_is_the_north_star_order_and_the_config_default():
     assert tuple(x.value for x in LEAGUE_ORDER) == OLD == league_order()
     shipped = yaml.safe_load((ROOT / "redzone" / "default_config.yaml").read_text())["core"]["league_priority"]
-    assert tuple(shipped) == OLD
+    assert tuple(shipped) == tuple(x for x in OLD if x != "wcbb")   # [N2, decisions 2026-11-08] wcbb is off; the rest keep the order
     assert set(LEAGUE_ORDER) == set(League)
 
 

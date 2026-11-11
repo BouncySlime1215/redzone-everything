@@ -1,5 +1,7 @@
 # Two 24/7 brain engines: the context and hype data engine, and the test factory
 
+> **Superseded by [docs/PLAN.md](../PLAN.md)**, the only plan. Kept as history and input.
+
 **Source:** Nick, 11:10 PM ET Nov 4: "the brain is the biggest issue." Two engines run around the clock.
 - **Lane ① owns the data engine.** It runs on Kaggle or Colab CPU only, never on the Mac.
 - **The integrator owns the test factory.**

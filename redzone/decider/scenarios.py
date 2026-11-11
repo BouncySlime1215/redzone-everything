@@ -1,6 +1,8 @@
 """Scenario-tree lookup on the Mac (idea #19, Mac half; docs/playbooks.md GAME-*). Flag
 `playbooks.game.enabled` (OFF).
 
+Why: idea #19, Mac half: a table of 'when these game states match, do this' branches for the slate (decisions 2026-11-04 11:15 AM, ships OFF, dev mixed).
+
 The slate is discretized into one STATE per live game (what its screen shows right now), and a TABLE
 of branches says what to do when the states match: "A (on screen) in a TV timeout while B is in the
 red zone -> B now, back to A at its restart". The cloud will build the full table from the oracle

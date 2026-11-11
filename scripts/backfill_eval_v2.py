@@ -17,6 +17,7 @@ What it adds (data/archive/<league>/, the same files scripts/download_recent.py 
 
 The locked set stays the newest nights of the current season. Runs on a free GitHub runner
 (eval-data-v2.yml), never on the Mac, and never in a cloud session (ESPN is blocked there).
+Why: Backfills eval-data-v2 to at least 8 locked nights per league (docstring, grader v21 commits).
 """
 from __future__ import annotations
 

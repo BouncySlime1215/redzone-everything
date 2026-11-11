@@ -14,10 +14,19 @@ The error is about half the capture gap. A bug that updates a beat after the bas
 sample late, the safe side (too low a delay is what cuts plays mid-play). Samples are rejected
 when two scores land within 10 s in the feed (which one changed the bug?), when the frame before
 didn't show the play's previous score, or when the result is outside 5..120 s.
+
+[honest frame times, Nov 8] A frame's time is the midpoint of its capture request and done, with its own doubt
+(duration/sqrt(12), a slow stick says so itself). [clock fit] The running game clock over a window of frames gives
+one sample with a slope check, instead of single reads. [bug gone] Frames say why they showed no bug: a DRM-blank
+frame is blindness (YouTube TV), a black frame on Prime is real (a break or a fade), a clean read with no bug is
+evidence of a commercial or replay. Numbers only, as everywhere here: the PNG is dropped.
+
+Why: first added in 11670ff3 (2026-11-02) as "ScoreBugWatcher: read the broadcast score bug in Prime screenshots, time score changes against th..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
 import logging
+import math
 import re
 import struct
 from dataclasses import dataclass, field
@@ -34,6 +43,7 @@ AMBIGUOUS_S = 10.0        # two feed scores this close: can't tell which one the
 MAX_GAP_S = 9.0           # frames further apart than this time a change too loosely (HDMI1 stick: ~7 s per frame)
 UNIFORM_BYTES_PER_PX = 0.03   # a PNG this compressible is black / near-uniform (DRM-blanked video)
 PRIME = "prime"
+GONE_FRAMES = 3           # [bug gone] this many frames in a row with no bug ...
 
 _SCORES = re.compile(r"^\d{1,3}(?:\s*[|•·-]?\s*\d{1,3})?$")
 _NUM = re.compile(r"\d{1,3}")
@@ -149,10 +159,26 @@ def parse_bug(observations, home, away, lower_from: float = LOWER_FROM) -> Bug |
                f"{dn.group(1)}&{dn.group(2)}" if dn else "")
 
 
+def frame_time(t_req: float, t_done: float, offset_s: float = 0.0, base_sd_s: float = 0.1) -> tuple[float, float]:
+    """[honest frame times] (time, sd) of a frame captured between t_req and t_done: the midpoint and its doubt, a
+    uniform over the capture (offset_s: the stick's calibrated capture offset against a visible clock, 0 until measured)."""
+    dur = max(0.0, t_done - t_req)
+    return t_req + dur / 2.0 + offset_s, math.hypot(dur / math.sqrt(12.0), base_sd_s)
+
+
+def frame_kind(png: bytes, app: str) -> str:
+    """[bug gone] picture | black | drm_blank. A uniform frame from an app the capture can read (Prime) is a real
+    black screen, a break or a fade; from any other app it is the capture being blanked, and says nothing."""
+    if not is_uniform(png):
+        return "picture"
+    return "black" if app == PRIME else "drm_blank"
+
+
 @dataclass
 class Frame:
     wall: float          # when the screenshot started (the frame is from about then)
     score: tuple[int, int] | None
+    sd: float = 0.0      # [honest frame times] the frame time's doubt (0: not bracketed)
 
 
 @dataclass
@@ -200,7 +226,20 @@ class ScoreBugWatcher:
     # against the feed's play clocks: (target, frame wall, delay s). Both feed the filter (sync.py).
     on_tune: Callable[[str, float], None] = lambda t, w: None
     on_clock: Callable[[str, float, float], None] = lambda t, w, d: None
+    # [clock fit] (target, frame wall, delay s, sd): one fitted window (None: on_clock gets it, without its sd)
+    on_clock_fit: Callable[[str, float, float, float], None] | None = None
+    # [clock stop] (target, stop wall, delay s, sd): where the bug's clock stopped against the feed's play there. Shadow
+    on_stop: Callable[[str, float, float, float], None] | None = None
+    honest_frames: bool = False                   # delay.scorebug_midpoint: observe(t_done=) brackets each frame
+    capture_offset_s: float = 0.0                 # per-stick capture offset, once calibrated
+    clock_fit: bool = False                       # delay.scorebug_clock_fit: window fit over single reads
     clock_every_s: float = 10.0                   # at most one clock sample per target this often
+    fit_window_s: float = 30.0                    # [clock fit] how far back a fit looks
+    fit_fallback_s: float = 60.0                  # a fit this recent: the single-read clock samples are not needed
+    gone_min_s: float = 6.0                       # [bug gone] GONE_FRAMES frames over at least this long: a break or replay
+    replay_clock_back_s: float = 5.0              # the bug's clock jumped back this far within a period: a replay
+    replay_hold_s: float = 20.0                   # ... which counts this long
+    stop_match_s: float = 1.5                     # [clock stop] a feed play within this much game clock of the stop
     last: dict = field(default_factory=dict)      # stick key -> (tune, [Frame...])
     _clock_prev: dict = field(default_factory=dict)   # stick key -> (wall, clock s, period) of the last read
     _clock_at: dict = field(default_factory=dict)     # target -> wall of the last clock sample
@@ -212,17 +251,34 @@ class ScoreBugWatcher:
     frames: int = 0
     read: int = 0
     last_bug: dict = field(default_factory=dict)  # target -> Bug (latest read)
+    _window: dict = field(default_factory=dict)   # [clock fit] stick key -> (period, [(wall, clock s)...])
+    _fit_at: dict = field(default_factory=dict)   # [clock fit] target -> wall of the last fit used
+    fits: int = 0                                 # [clock fit] windows accepted
+    fit_rejected: int = 0                         # ... and refused (slope, scatter, too few inliers)
+    _absent: dict = field(default_factory=dict)   # [bug gone] target -> [first wall, frames, black frames]
+    _seen_kinds: dict = field(default_factory=dict)   # [bug gone] target -> {kind: frames}
+    _replay_at: dict = field(default_factory=dict)    # [bug gone] target -> wall the clock last jumped back
+    stops: dict = field(default_factory=dict)         # [clock stop] target -> latest stop (see end_of_play)
+    _run: dict = field(default_factory=dict)          # [clock stop] stick key -> (wall of the last change, clock, period)
 
     def reset(self, key: str | None = None) -> None:
         """A switch, flip or preload: frames before it don't pair with frames after it."""
         if key is None:
             self.last.clear()
+            self._window.clear()
+            self._run.clear()
         else:
             self.last.pop(key, None)
+            self._window.pop(key, None)
+            self._run.pop(key, None)
 
     def observe(self, key: str, target: str, tune: object, wall: float, bug: Bug | None,
-                timeline) -> Sample | None:
+                timeline, t_done: float | None = None, kind: str | None = None) -> Sample | None:
+        """wall: when the capture was requested; t_done: when it came back (honest_frames); kind: read_frame's why."""
         self.frames += 1
+        sd = 0.0
+        if self.honest_frames and t_done is not None:
+            wall, sd = frame_time(wall, t_done, self.capture_offset_s)
         if not target or not str(target).startswith(PRIME + ":"):
             self.reset(key)
             return None
@@ -231,10 +287,15 @@ class ScoreBugWatcher:
             held = (tune, target, [])
             self.last[key] = held
             self._clock_prev.pop(key, None)
+            self._window.pop(key, None)
+            self._run.pop(key, None)
+            # a new tune is a new stream: a change or clock read queued against the old picture would time the new one
+            self.pending = [p for p in self.pending if p[1] != target]
             try:
                 self.on_tune(target, wall)
             except Exception:
                 log.exception("sync hand-off failed for %s", target)
+        self._note_frame(target, wall, bug, kind)
         if bug is not None:
             self._clock(key, target, wall, bug, timeline)
         self._retry(target, wall, timeline)
@@ -242,7 +303,7 @@ class ScoreBugWatcher:
         if bug is not None:
             self.read += 1
             self.last_bug[target] = bug
-        frames.append(Frame(wall, bug.score if bug else None))
+        frames.append(Frame(wall, bug.score if bug else None, sd))
         del frames[:-4]
         # A change: [.., old, new, new] with both new frames read, and the old one right before.
         if len(frames) < 3:
@@ -262,13 +323,17 @@ class ScoreBugWatcher:
         if e is None:
             if why == "no feed play made that score":
                 # [auto sync] the feed may simply not have it yet: try again as frames come in
-                self.pending.append(("score", target, wall, a.score, b.score, onset, gap))
+                self.pending.append(("score", target, wall, a.score, b.score, onset, gap, self._gap_sd(gap, a, b)))
                 del self.pending[:-20]
                 return None
             self.rejected += 1
             log.info("score bug %s -> %s on %s not timed: %s", a.score, b.score, target, why)
             return None
-        return self._accept(target, e, onset, gap, a.score, b.score)
+        return self._accept(target, e, onset, gap, a.score, b.score, self._gap_sd(gap, a, b))
+
+    def _gap_sd(self, gap: float, a: Frame, b: Frame) -> float | None:
+        """[honest frame times] The onset's doubt: uniform over the gap, plus the frames' own (None: not bracketed)."""
+        return math.hypot(gap / math.sqrt(12.0), max(a.sd, b.sd)) if a.sd or b.sd else None
 
     def _retry(self, target: str, wall: float, timeline) -> None:
         """[auto sync] Pending score changes and clock reads for this target, now the feed may have them."""
@@ -284,7 +349,7 @@ class ScoreBugWatcher:
                     log.info("score bug %s -> %s on %s not timed: the feed never had it", p[3], p[4], target)
                 continue
             if p[0] == "score":
-                _, _, _, prev, new, onset, gap = p
+                _, _, _, prev, new, onset, gap, err = p
                 e, why = match_change(getattr(timeline, "scores", ()) if timeline else (), prev, new, onset)
                 if e is None and why == "no feed play made that score":
                     keep.append(p)
@@ -292,7 +357,9 @@ class ScoreBugWatcher:
                     self.rejected += 1
                     log.info("score bug %s -> %s on %s not timed: %s", prev, new, target, why)
                 else:
-                    self._accept(target, e, onset, gap, prev, new)
+                    self._accept(target, e, onset, gap, prev, new, err)
+            elif p[0] in ("fit", "stop"):
+                self._retry_timed(p, keep, timeline)
             else:
                 _, _, _, frame_wall, c, per = p
                 plays = sorted((w, cl) for w, pp, cl in (getattr(timeline, "clocks", ()) or ())
@@ -308,7 +375,7 @@ class ScoreBugWatcher:
                         log.exception("sync hand-off failed for %s", target)
         self.pending = keep
 
-    def _accept(self, target: str, e, onset: float, gap: float, prev, new) -> Sample | None:
+    def _accept(self, target: str, e, onset: float, gap: float, prev, new, err: float | None = None) -> Sample | None:
         a_score, b_score = prev, new
         sample = onset - e.seen
         if not MIN_SAMPLE_S <= sample <= MAX_SAMPLE_S:
@@ -316,7 +383,7 @@ class ScoreBugWatcher:
             log.info("score bug %s -> %s on %s: %.1fs behind is out of range; ignored", a_score, b_score,
                      target, sample)
             return None
-        s = Sample(target, sample, e.seen, onset, gap / 2.0, b_score, e.label)
+        s = Sample(target, sample, e.seen, onset, gap / 2.0 if err is None else err, b_score, e.label)
         self.samples.append(s)
         del self.samples[:-50]
         log.info("delay %.1fs (±%.1f) on %s from the score bug %s -> %s (%s)", sample, s.error_s, target,
@@ -331,8 +398,13 @@ class ScoreBugWatcher:
         per = period_number(bug.period, getattr(timeline, "clocks", ()) if timeline else ())
         prev = self._clock_prev.get(key)
         self._clock_prev[key] = (wall, c, per)
+        self._track_stop(key, target, wall, c, per)
+        if self.clock_fit and c is not None and per is not None:
+            self._fit(key, target, wall, c, per)
         if c is None or per is None or prev is None or prev[1] is None or prev[2] != per:
             return
+        if self.clock_fit and wall - self._fit_at.get(target, float("-inf")) < self.fit_fallback_s:
+            return                                     # a fit covers this stretch: no single reads on top of it
         ran, took = prev[1] - c, wall - prev[0]
         if ran <= 0 or abs(ran - took) > 2.5:          # stopped, or the frames aren't one running clock
             return
@@ -353,26 +425,146 @@ class ScoreBugWatcher:
         except Exception:
             log.exception("sync hand-off failed for %s", target)
 
+    # ------------------------------------------------------------------ [clock fit]
+    def _fit(self, key: str, target: str, wall: float, c: float, per: int) -> None:
+        from redzone.decider.sync import fit_clock_window
+        win = self._window.get(key)
+        if win is None or win[0] != per:
+            win = self._window[key] = (per, [])
+        pts = win[1]
+        if pts and pts[-1][1] == c and wall - pts[-1][0] >= 1.5:
+            pts.clear()                                # the clock stopped: the running stretch starts over
+        pts.append((wall, c))
+        pts[:] = [p for p in pts if wall - p[0] <= self.fit_window_s]
+        if wall - self._fit_at.get(target, float("-inf")) < self.clock_every_s or len(pts) < 5:
+            return
+        fit = fit_clock_window(pts)
+        if fit is None:
+            if pts[-1][0] - pts[0][0] >= self.fit_window_s - 2.0:
+                self.fit_rejected += 1
+                pts.pop(0)
+            return
+        pts.clear()                                    # each fit stands on its own frames
+        self._fit_at[target] = wall
+        self.pending.append(("fit", target, wall, fit, per))
+        del self.pending[:-20]
+
+    def _retry_timed(self, p: tuple, keep: list, timeline) -> None:
+        """[clock fit / clock stop] A fitted window or a clock stop, now the feed may have its plays."""
+        from redzone.decider.sync import fit_delay
+        clocks = getattr(timeline, "clocks", ()) or ()
+        if p[0] == "fit":
+            _, target, _, fit, per = p
+            plays = sorted((w, cl) for w, pp, cl in clocks if pp == per and cl is not None)
+            d = fit_delay(fit, plays)
+            if d is None and (not plays or plays[-1][1] >= fit.clock_lo):
+                keep.append(p)                         # the feed hasn't passed this stretch yet
+            elif d is not None and MIN_SAMPLE_S <= d <= MAX_SAMPLE_S:
+                self.fits += 1
+                self._clock_at[target] = fit.wall_ref
+                try:
+                    if self.on_clock_fit is not None:
+                        self.on_clock_fit(target, fit.wall_ref, d, fit.sd)
+                    else:
+                        self.on_clock(target, fit.wall_ref, d)
+                except Exception:
+                    log.exception("sync hand-off failed for %s", target)
+            return
+        _, target, _, stop_wall, c, per, sd = p
+        near = [w for w, pp, cl in clocks if pp == per and cl is not None and abs(cl - c) <= self.stop_match_s]
+        if not near:
+            if not any(pp == per and cl is not None and cl < c for _, pp, cl in clocks):
+                keep.append(p)
+            return
+        d = stop_wall - max(near)
+        self.stops[target] = {**self.stops.get(target, {}), "feed_delay_s": round(d, 2)}
+        if self.on_stop is not None and MIN_SAMPLE_S <= d <= MAX_SAMPLE_S:
+            try:
+                self.on_stop(target, stop_wall, d, sd)
+            except Exception:
+                log.exception("clock stop hand-off failed for %s", target)
+
+    # ------------------------------------------------------------------ [clock stop] end of play on Prime
+    def _track_stop(self, key: str, target: str, wall: float, c: float | None, per: int | None) -> None:
+        """The clock on the bug stopped: the on-screen end of the play. In the clock sports (basketball, hockey) a dead
+        ball stops the clock; football's runs between plays, so there it only marks clock-stopping plays."""
+        run = self._run.get(key)
+        if c is None or per is None:
+            return
+        if run is None or run[2] != per:
+            self._run[key] = (wall, c, per, False)
+            return
+        changed_at, last, _, stopped = run
+        if c > last + self.replay_clock_back_s:
+            self._replay_at[target] = wall             # the clock jumped back: a replay is on screen
+        if c != last:
+            self._run[key] = (wall, c, per, False)
+            return
+        if stopped or wall - changed_at < 1.5:
+            return
+        self._run[key] = (changed_at, c, per, True)
+        sd = (wall - changed_at) / math.sqrt(12.0)
+        self.stops[target] = {"wall": round(changed_at, 2), "sd": round(sd, 2), "clock": c, "period": per}
+        if self.on_stop is not None:                   # shadow: never crowds out pending score samples when off
+            self.pending.append(("stop", target, wall, changed_at, c, per, sd))
+            del self.pending[:-20]
+
+    def end_of_play(self, target: str) -> dict | None:
+        """The latest on-screen clock stop for this target, {wall, sd, clock, period, feed_delay_s?}, or None."""
+        return self.stops.get(target)
+
+    # ------------------------------------------------------------------ [bug gone]
+    def _note_frame(self, target: str, wall: float, bug: Bug | None, kind: str | None) -> None:
+        if kind is None and bug is None:
+            return                                     # the caller didn't say why: no evidence either way
+        kind = "picture" if bug is not None else kind
+        kinds = self._seen_kinds.setdefault(target, {})
+        kinds[kind] = kinds.get(kind, 0) + 1
+        if bug is not None:
+            self._absent.pop(target, None)
+        elif kind in ("black", "no_bug"):
+            a = self._absent.setdefault(target, [wall, 0, 0])
+            a[1] += 1
+            a[2] += kind == "black"
+
+    def evidence(self, target: str, now: float) -> dict:
+        """[bug gone] What the picture on this Prime target says: bug_absent_s and frames with no bug (a read with
+        nothing, or real black), break = gone long enough to be a commercial or replay, replay = the clock jumped back
+        lately. A DRM-blank frame and an OCR failure are blindness and count for nothing. Shadow evidence: nothing acts on it."""
+        a = self._absent.get(target)
+        absent_s = max(0.0, now - a[0]) if a else 0.0
+        frames = a[1] if a else 0
+        return {"bug_absent_s": round(absent_s, 1), "absent_frames": frames, "black_frames": a[2] if a else 0,
+                "break": frames >= GONE_FRAMES and absent_s >= self.gone_min_s,
+                "replay": now - self._replay_at.get(target, float("-inf")) <= self.replay_hold_s}
+
     def status(self) -> dict:
         last = self.samples[-1] if self.samples else None
         return {"samples": len(self.samples), "rejected": self.rejected, "frames": self.frames,
-                "read": self.read,
+                "read": self.read, "fits": self.fits, "fit_rejected": self.fit_rejected,
                 "last": None if last is None else {"target": last.target, "delay_s": round(last.sample, 1),
                                                    "at": last.onset, "score": list(last.score)}}
 
 
-def read_png(png: bytes, home, away, ocr, timeout: float = 8.0) -> Bug | None:
-    """OCR one screenshot (blocking: run via asyncio.to_thread) and parse its score bug.
-    Black/uniform frames are skipped without OCR. `ocr(path, timeout=)` -> OCRResult."""
+def read_frame(png: bytes, home, away, ocr, app: str, timeout: float = 8.0) -> tuple[Bug | None, str]:
+    """[bug gone] OCR one screenshot (blocking: run via asyncio.to_thread) and say why it has no bug:
+    (bug, picture | no_bug | black | drm_blank | ocr_failed). Uniform frames skip OCR. `ocr(path, timeout=)` -> OCRResult."""
+    kind = frame_kind(png, app)
+    if kind != "picture":
+        return None, kind
     import os
     import tempfile
-    if is_uniform(png):
-        return None
     with tempfile.TemporaryDirectory(prefix="rz-bug-") as d:
         path = os.path.join(d, "screen.png")
         with open(path, "wb") as f:
             f.write(png)
         result = ocr(path, timeout=timeout)
     if not getattr(result, "read_ok", False):
-        return None
-    return parse_bug(result.observations, home, away)
+        return None, "ocr_failed"
+    bug = parse_bug(result.observations, home, away)
+    return bug, "picture" if bug is not None else "no_bug"
+
+
+def read_png(png: bytes, home, away, ocr, timeout: float = 8.0) -> Bug | None:
+    """OCR one screenshot and parse its score bug (read_frame without the why)."""
+    return read_frame(png, home, away, ocr, PRIME, timeout)[0]

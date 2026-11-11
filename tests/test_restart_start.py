@@ -32,7 +32,8 @@ class FakeController:
 
 @pytest.fixture
 async def eng(cfg, tmp_path):
-    cfg.update({"mode": {"dry_run": False}})
+    # These tests are about the retry/backoff of a start pick, not its timing (D-01/D-02 make a start wait for a landing).
+    cfg.update({"mode": {"dry_run": False}, "decider": {"entry": {"start_timed": False, "allow_live_fallback": True}}})
     e = Engine(cfg, Store(tmp_path / "t.db"))
     g = nfl("g1", q=4, clock=200.0, hs=20, as_=17)
     e.merger.update("espn_scoreboard", g)

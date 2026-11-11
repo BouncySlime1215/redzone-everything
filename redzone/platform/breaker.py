@@ -13,6 +13,8 @@ States:
 Only hangs (a call that ran to its timeout) count. Any other answer, even a fast, clear failure
 ("device offline", a launch the app refused), costs nothing, is handled where it happens, and counts
 as `success()` here: the thing responds again.
+
+Why: first added in 31b5b0eb (2026-11-03) as "Platform: fault drill, per-stick circuit breaker, wall-clock jumps can't age a switch"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

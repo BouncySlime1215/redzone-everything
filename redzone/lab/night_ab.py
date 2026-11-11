@@ -1,6 +1,8 @@
 """Whole-night A/B for display experiments (lane 5): one number per night on each side, a bootstrap
 interval on mean(on) - mean(off), and a PASS / FAIL / PENDING status against a pre-registered direction.
 The night is the unit (research 05 §2.2): never split a night, never pool plays across nights.
+
+Why: first added in 1b312e87 (2026-11-05) as "Graders: EXP-039 'Also close' manual-switch share (redzone/lab/also_close.py, night_ab.py, script..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

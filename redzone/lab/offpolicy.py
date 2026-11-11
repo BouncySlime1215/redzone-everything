@@ -18,6 +18,8 @@ correction is 0 and DR is the direct method; so the estimate can only be as good
 
     est = estimate(rows, pi_new, q)              # point, 95 % night-bootstrap CI, per-night values
     est.dr, est.lo, est.hi, est.ips, est.dm
+
+Why: first added in 1126ab44 (2026-11-05) as "EXP-005: doubly robust off-policy estimator over #186's logged option sets (grading only)"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

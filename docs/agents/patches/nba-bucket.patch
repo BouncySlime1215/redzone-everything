@@ -1,0 +1,40 @@
+--- a/redzone/decider/decider.py
++++ b/redzone/decider/decider.py
+@@ -1299,10 +1299,24 @@
+         # restart: an unmeasured lag reads 10 s, which landed NHL entries after the faceoff (EXP-303).
+         tl.dead.lag_floor = float(self._lc("decider.entry.lag_floor_s", x, 0.0) or 0.0)
+         try:
+-            return self._entry_plan(gid, cands, now, cost, urgent, possession)
++            return self._after_bucket(gid, cands, now, cost, self._entry_plan(gid, cands, now, cost, urgent, possession))
+         finally:
+             tl.dead.lag_floor = 0.0
+ 
++    def _after_bucket(self, gid: str, cands: dict[str, Candidate], now: float, cost: float | None,
++                      plan: EntryPlan | None) -> EntryPlan | None:
++        """[NBA-BUCKET] Nick's rule, basketball.join_after_bucket: a live-edge join right after a made basket takes over a
++        rewind or a wait (never a landing already on a dead ball, never when the plan had no data to judge)."""
++        from redzone.decider import gate
++        if plan is None or (plan.ok and not plan.rewind_s) or not gate.bucket_on(self.cfg):
++            return plan
++        x, tl = cands.get(gid) or self._known.get(gid), self.timelines.get(gid)
++        if x is None or tl is None or not x.target:
++            return plan
++        c = cost if cost is not None else (self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target))
++        return gate.bucket_plan(self.cfg, tl, x.scored, self.delays.get(x.target), now, c,
++                                float(self.cfg.get("decider.entry.fastest_s", ENTRY_FASTEST_S))) or plan
++
+     def _entry_plan(self, gid: str, cands: dict[str, Candidate], now: float, cost: float | None,
+                     urgent: bool, possession: bool) -> EntryPlan | None:
+         c = self.cfg
+@@ -3197,7 +3211,10 @@
+             join = self._join_args(x, urgent=False)
+             land = tl.dead.landing(x0, x1, walk=join.get("walk"))
+             if land.state != "dead":
+-                return False
++                from redzone.decider import gate
++                return gate.bucket_plan(self.cfg, tl, x.scored, d, now,
++                                        cost + float(self.cfg.get("jump_mode.land_dead_s", 2.0)),
++                                        float(self.cfg.get("decider.entry.fastest_s", ENTRY_FASTEST_S))) is not None
+             if land.kind != "walk" and join.get("after_play_s"):
+                 # [landing bars] football: hold for the replay while this same dead window still has room after it
+                 return cuts.settle_wait(tl.dead, now + cost - mu, m, join["after_play_s"], land) <= 0

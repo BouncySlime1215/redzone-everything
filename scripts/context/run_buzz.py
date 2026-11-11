@@ -16,6 +16,7 @@ backfill: for games with kickoff in [from, to): daily REST views [from-35d, to),
 Facts -> <out>/facts/<league>_<season>.parquet (redzone/context/tokens.py columns), merged + deduped.
 Signals (team counts, numbers only) and coverage -> <out>/{signals,coverage}/; no raw file is ever stored.
 Schedule CSV columns: game_id, league, home, away, start_utc (ISO, UTC) [, season].
+Why: Runs the buzz pullers and writes the context fact shards (docstring, Data B commit).
 """
 from __future__ import annotations
 

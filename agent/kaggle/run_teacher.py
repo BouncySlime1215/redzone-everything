@@ -7,6 +7,7 @@ Runs in its own process so the GPU memory vLLM holds is freed for the student ph
 Tries the biggest teacher first and falls back: Qwen3-32B-AWQ (vLLM, both T4s), then 14B-AWQ,
 then 14B in 4-bit through transformers (slow, but dependable). A smoke test picks the first that
 works. Writes teacher_out.jsonl (appended and flushed after every batch) and teacher_report.json.
+Why: Phase 1 of the Kaggle Mind pipeline: the big teacher answers the pack, resumable (docstring).
 """
 from __future__ import annotations
 

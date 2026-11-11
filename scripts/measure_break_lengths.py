@@ -10,6 +10,7 @@ the same definition as breaks.LEN. Network = the game's national broadcast if it
 nights are for grading it; the test (locked) nights are never read.
 License: derived numbers from ESPN game summaries (personal-use under data plan B, not for
 commercial release); the wallclock facts are ours to aggregate, no raw rows are published.
+Why: Measures break lengths by league, network and kind from the pinned archive (docstring, Data F commit).
 """
 from __future__ import annotations
 

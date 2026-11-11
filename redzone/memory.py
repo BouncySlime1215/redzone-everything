@@ -8,6 +8,8 @@ The watchdog uses it two ways:
   after a fix    `Memory.record(...)` appends a *pending* lesson to data/memory/pending_lessons.jsonl
                  (local, at most one per error per day). Lessons reach `lessons.md` only through a PR;
                  `scripts/context_pack.py` lists the pending ones so the next session can write it.
+
+Why: first added in dcf32544 (2026-11-03) as "Memory systems: CLAUDE.md, docs/memory/, context pack, CI check, watchdog memory hook"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

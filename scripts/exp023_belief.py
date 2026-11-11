@@ -13,6 +13,7 @@ from sportsgrade.grade against the TRUE screen delay, as scripts/eval_sports.py 
 
 Split: `fit` (train + valid) only. `--split test` is refused: locked nights are never read here.
 Read-only on data/: it writes only --out.
+Why: EXP-023 grader: belief tracker vs DelayBook on dev nights only (docstring, pre-reg commit).
 """
 from __future__ import annotations
 

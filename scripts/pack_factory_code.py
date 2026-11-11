@@ -2,6 +2,7 @@
 """Pack the code the Kaggle factory notebook needs into rz_factory_code.tar.gz (no data, no secrets).
 
     python scripts/pack_factory_code.py OUT_DIR      # -> OUT_DIR/rz_factory_code.tar.gz + kaggle_noggin_factory.ipynb
+Why: Packs factory code for the Kaggle notebook, with no data and no secrets (docstring).
 """
 from __future__ import annotations
 
@@ -23,7 +24,7 @@ def _ok(p: Path) -> bool:
 
 def notebook(src: Path) -> dict:
     """'# %%' cells -> a Jupyter notebook ('# %% [markdown]' cells become markdown)."""
-    cells, cur, md = [], [], False
+    cells, cur, md, started = [], [], False, False
 
     def flush():
         if cur and any(x.strip() for x in cur):
@@ -37,8 +38,9 @@ def notebook(src: Path) -> dict:
 
     for line in src.read_text().split("\n"):
         if line.startswith("# %%"):
-            flush()
-            cur, md = [], "[markdown]" in line
+            if started:   # what comes before the first cell is the module docstring, not a notebook cell
+                flush()
+            cur, md, started = [], "[markdown]" in line, True
         else:
             cur.append(line)
     flush()

@@ -502,7 +502,11 @@ class Reeler:
         if not self.enabled():
             return None
         # Prepare the best candidates (a few more than a reel needs, so one failure doesn't empty it).
-        want = sorted((c for c in self.clips.values() if c.id not in self.shown and not seen(c)),
+        # Only clips plan_reel can still pick: an aged-out clip (ingest keeps one 10 more minutes) would take a
+        # preparation slot, and a download, from a fresh one.
+        max_age, now = float(self._c("max_age_s", 1800)), self._clock()
+        want = sorted((c for c in self.clips.values()
+                       if c.id not in self.shown and not seen(c) and 0 <= now - c.published <= max_age),
                       key=lambda c: (c.mine, c.points), reverse=True)[: int(self._c("min_clips", 5)) * 2 + 2]
         par = int(self._c("parallel", 2))
         for c in want:

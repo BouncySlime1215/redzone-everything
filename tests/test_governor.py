@@ -56,7 +56,8 @@ def test_sample_never_raises_when_commands_are_missing(tmp_path):
     (Sample(load_per_core=1.5), "eco"),
     (Sample(mem_pressure=2), "eco"),
     (Sample(mem_pressure=4), "critical"),
-    (Sample(swap_used_mb=3000), "eco"),
+    (Sample(swap_used_mb=3000, swap_total_mb=7168, mem_pressure=1), "normal"),   # a swap size alone says nothing
+    (Sample(swap_used_mb=6900, swap_total_mb=7168), "critical"),                  # nearly full: critical
     (Sample(thermal_level=1), "eco"),
     (Sample(thermal_level=3), "critical"),
     (Sample(cpu_speed_limit=50), "critical"),
@@ -89,7 +90,7 @@ def test_level_goes_up_at_once_and_down_only_after_calm():
     assert g.update(Sample(on_battery=True, battery_pct=50)) == "eco"
     assert not g.allow("reel") and not g.allow("lab") and not g.allow("archive")
     assert g.allow("llm") and g.allow("ocr") and g.allow("anything_else")
-    assert g.scale("ocr") == 2.0 and g.scale("idle_poll") == 2.0 and g.scale("unknown") == 1.0
+    assert g.scale("ocr") == 1.0 and g.scale("idle_poll") == 2.0   # eco never slows OCR and g.scale("unknown") == 1.0
     assert g.update(Sample(mem_pressure=4)) == "critical"
     assert not g.allow("llm") and not g.allow("ocr")
     t[0] = 10
@@ -358,3 +359,58 @@ def test_heavy_jobs_wait_for_the_governor(tmp_path):
     e.governor.update(Sample(disk_free_mb=50000))
     assert asyncio.run(auto._archive_guard()) is None
     assert asyncio.run(auto._lab_guard()) is None
+
+
+# ---- P-07 / P-08 / P-10 ------------------------------------------------------------------------
+
+def test_p07_steady_swap_is_normal_growth_under_pressure_is_eco_and_ocr_stays_full_rate():
+    """Repro: the Mac read swap 5.9 of 7 GB at pressure 1, which the old 1500 MB line called eco all day, and eco
+    doubled the score-bug interval. Cause: an absolute swap size used as a signal + SCALE['ocr']['eco'] = 2."""
+    t = [0.0]
+    g = Governor({"calm_s": 0}, clock=lambda: t[0], probe=lambda: Sample())
+    for i in range(6):                                  # ten minutes of a flat 6 GB swap, pressure 1
+        t[0] = i * 100.0
+        assert g.update(Sample(swap_used_mb=6000, swap_total_mb=7168, mem_pressure=1)) == "normal"
+    t[0] = 600.0
+    assert g.update(Sample(swap_used_mb=6400, swap_total_mb=7168, mem_pressure=1)) == "normal"   # +400, not tight
+    t[0] = 700.0
+    assert g.update(Sample(swap_used_mb=6450, swap_total_mb=7168, mem_pressure=2)) == "eco"      # +450 and tight
+    assert "swap grew" in g.why()
+    assert g.scale("ocr") == 1.0 and g.allow("ocr")
+    assert not g.allow("reel")
+
+
+def test_p07_only_critical_stops_ocr():
+    g = Governor({"calm_s": 0})
+    g.update(Sample(mem_pressure=4))
+    assert g.level == "critical" and not g.allow("ocr")
+
+
+def test_p08_the_watchdog_pattern_matches_the_command_line_the_plist_launches():
+    plist = ("  500 204800 /Users/n/redzone/.venv-agent/bin/python -u -c import os, runpy, sys; "
+             "sys.argv = ['agent.watchdog', '--no-model']; runpy.run_module('agent.watchdog', run_name='__main__')\n")
+    assert gv.parse_ps(plist) == {"watchdog": 200.0}
+    assert gv.parse_ps_pids(plist) == {"watchdog": [500]}
+
+
+def test_p08_footprint_is_parsed_and_the_larger_of_rss_and_footprint_is_the_app_size():
+    out = "python3.12 [101]: 64-bit    Footprint: 1.2 GB (16384 bytes per page)\n"
+    assert gv.parse_footprint(out) == pytest.approx(1228.8)
+    assert gv.parse_footprint("Footprint: 357 MB (16384 bytes per page)") == 357.0
+    assert gv.parse_footprint("no such process") is None
+    g = Governor()
+    g.update(Sample(procs={"service": 400.0}, footprint={"service": 1300.0}))
+    assert g.service_mb() == 1300.0
+    g.update(Sample(procs={"service": 400.0}))
+    assert g.service_mb() == 400.0
+
+
+def test_p10_keep_awake_truth_table():
+    from types import SimpleNamespace as G
+    now = 1000.0
+    assert gv.keep_awake_wanted([G(phase="live", start_time=None)], now)
+    assert gv.keep_awake_wanted([G(phase="pre", start_time=now + 600)], now)         # 10 min out
+    assert not gv.keep_awake_wanted([G(phase="pre", start_time=now + 7200)], now)    # two hours out
+    assert not gv.keep_awake_wanted([G(phase="final", start_time=now - 9000)], now)
+    assert gv.keep_awake_wanted([G(phase="pre", start_time=now + 7200)], now, planned=True)
+    assert not gv.keep_awake_wanted([], now)

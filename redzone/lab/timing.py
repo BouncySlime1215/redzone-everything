@@ -19,6 +19,8 @@ asleep, away, restarted) are left out, since their lag measures our absence, not
 The profile (FEED_LAG_PROFILE) is what the backtest draws per-play arrival from with
 feed_lag_model="measured": quantiles per league, so scorecards can be graded under the feed lag
 the live app really sees instead of the fixed 8 s the scorecard assumes.
+
+Why: first added in 7f548a9c (2026-11-04) as "Switch timing: measure feed lag, grade scorecards under it, fix the gate's 45 s lag cap"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

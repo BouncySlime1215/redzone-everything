@@ -6,6 +6,7 @@ error has many wordings; whole wordings are held out for the test set, so the sc
 carrying the judgment over to NEW error text, not memorizing it.
 
     .venv-agent/bin/python agent/train/make_data.py   ->  agent/train/data/{train,valid,test}.jsonl
+Why: Builds fine-tuning data for the watchdog model: app status to action (docstring).
 """
 from __future__ import annotations
 
@@ -104,7 +105,7 @@ def sample(rng: random.Random, kind: str, wording: str) -> dict:
         o.live_games = 1
     if kind == "stick_link" and rng.random() < 0.6:
         o.sticks_offline = [rng.choice(["100.110.165.181:5555", "100.110.165.150:5555"])]
-        o.offline_min = rng.uniform(0, 6)
+        o.offline_min = rng.uniform(5, 9)
     n = rng.choice([1, 1, 2, 3, 6, 8, 12, 25])
     o.errors = {wording: n}
     # Known harmless noise alongside, as on a real night.
@@ -134,8 +135,9 @@ def rule_sample(rng: random.Random) -> dict:
         o.api_ok, o.api_fail_streak = False, rng.choice([2, 3, 5])
     elif pick == 1:
         o.live_games, o.log_age_s = max(1, o.live_games), rng.uniform(250, 900)
+        o.heartbeat_age_s = rng.uniform(0, 20)   # a quiet log with a ticking app is not a hang (P-03): label stays 'none'
     elif pick == 2:
-        o.sticks_offline, o.offline_min = ["100.110.165.181:5555"], rng.uniform(0, 40)
+        o.sticks_offline, o.offline_min = ["100.110.165.181:5555"], rng.uniform(5, 40)   # past the app's own reconnect (P-09)
     elif pick == 3:
         o.errors = {"ERROR redzone.engine: score bug read failed": rng.randint(1, 120),
                     "ERROR redzone.engine: nhl enrich": rng.randint(1, 80)}

@@ -1,5 +1,11 @@
 ## What and why
 
+## Repro (command and output before the fix)
+<!-- A fix PR must fill this in: the exact command and what it printed. Not a fix: delete the section. -->
+
+## Root cause (file:line, one line)
+<!-- Not a fix: delete the section. No regression test? Add a line: No-test: <reason> -->
+
 ## North Star
 <!-- Which line of docs/northstar.md does this move (scripts/northstar.py METRICS key), and by how much?
      Expected delta here; the CI comment's "North Star (dev-test nights)" table shows the measured one.

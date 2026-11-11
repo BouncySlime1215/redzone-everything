@@ -8,6 +8,7 @@
 Yesterday's games aren't on TV any more, so each game gets a stand-in live YouTube TV channel
 (same game -> same channel all session). Every switch the demo makes goes through the real
 Controller: hidden-stick tune, HDMI flip, playback confirm. Prints how long each one took.
+Why: TV practice driver: replay demo picks games, real sticks do the switching (docstring).
 """
 from __future__ import annotations
 

@@ -9,6 +9,8 @@ The file's meta holds the league's two cut points, picked on held-out nights:
   watch     odds at least this: worth keeping an eye on
   must_see  odds at least this: lock in
 A league without a model (or a broken file) gives None and nothing downstream changes.
+
+Why: first added in f79f070a (2026-11-03) as "Live game reasoner: brief builder, hindsight labels from the archive, a fast lock-in head (cross-..."; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 

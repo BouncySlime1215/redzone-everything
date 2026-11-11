@@ -15,6 +15,8 @@ Steps (each prints what it found, and on failure the exact cause and the TV menu
   7. with a TV path proven: HDMI-CEC off on both sticks, so the stick that loses the input never
      pauses (scripts/stick_cec.py; HOME stays the last-resort flip and turns CEC on for itself).
 Whatever path works is saved in data/devices.json and becomes the default flip on the next start.
+
+Why: first added in 4f1a0400 (2026-11-03) as "Instant switching: the TV changes the input first, HOME is the last resort"; no separate decision is recorded for this module.
 """
 from __future__ import annotations
 
@@ -556,7 +558,7 @@ async def run(home: Home, *, path: Path = DEVICES, ip: str | None = None, ask: b
                 tv["local_input_verified"] = local_ok
                 tv["local_input_test"] = {"at": time.time(), "results": res}
                 if local_ok:
-                    tv["input_method"] = tv.get("input_method") or "local"
+                    tv["input_method"] = "local"   # proven now: wins over an old "smartthings" (DEV-05)
                     rep.ok.append("local")
                     rep.say(OK, "The TV's own input keys work: this is now the default flip"
                             + (f" (median {sorted(lat)[len(lat)//2]:.2f}s key -> stick on screen)" if lat else ""))

@@ -14,6 +14,7 @@ It changes no setting. If the TV was never paired it shows "Allow" once; the pai
 data/tv_token.txt as tv_setup.py does, and this script never prints or logs it.
 
 DISRUPTIVE: it switches the TV's input. Only with Nick at the TV and no game he is watching.
+Why: Times the TV's local input keys against SmartThings on Nick's TV (docstring, phone controls commit).
 """
 from __future__ import annotations
 

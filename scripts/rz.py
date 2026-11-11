@@ -12,6 +12,7 @@
     RZ_ADB_SESSION=0 .venv/bin/python scripts/rz.py bench   # same, the old way (one adb process per command)
     .venv/bin/python scripts/rz.py flipcheck 3 espn   # two sticks: time real input flips, and check the
                                                       # stick you leave keeps playing (instant "go back")
+Why: Hands-on stick tools for testing: Phase 2 and the Screen Lab (docstring, stick control commit).
 """
 from __future__ import annotations
 

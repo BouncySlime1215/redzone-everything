@@ -8,6 +8,7 @@ credit Cricsheet. Cricket data has no home/away: home = info.teams[0], away = in
 venue fact). period = innings number (super overs continue the numbering); side = possession = batting side;
 home/away_score = running runs per side summed over all their innings (penalty runs not counted); outs = wickets
 down in this innings before the ball ("retired hurt"/"retired not out" do not count). No clock, no wall time.
+Why: Converts Cricsheet ball-by-ball JSON into the shared play table (docstring, Data A commit).
 """
 from __future__ import annotations
 

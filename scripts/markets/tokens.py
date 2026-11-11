@@ -8,6 +8,7 @@ Market data is a model INPUT only (importance, closeness, volatility). It is nev
 never a betting hook. Every output carries the tag `personal-use, not for commercial release` (plan B).
 
     python scripts/markets/tokens.py --in out/markets --out out/markets_tokens   # writes tokens + counts.json
+Why: Turns market ticks into the vocab v2 market-block tokens (docstring, Data Division D commit).
 """
 from __future__ import annotations
 

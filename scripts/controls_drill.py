@@ -6,6 +6,7 @@ Every press goes through engine.action like a tap (redzone/lab/night/presses.py)
 press-to-TV seconds for "Watch this now" (p50/p95, % within 3 s), locks the TV left before their
 release, pauses that still switched, skips that never left, and dropped presses. Exit 1 when any
 press was dropped or broken. Fake sticks and TV only; nothing real is touched.
+Why: Replays a night with scripted phone presses to grade the phone controls (docstring, controls commits).
 """
 from __future__ import annotations
 
