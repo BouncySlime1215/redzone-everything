@@ -183,14 +183,16 @@ class ParkRun:
         self.state, self.why, self.final = "off", "", ""          # final: a stop that only a hand clears (flag off, then on)
         self.gids: list[str] = []
         self.seen: dict[str, int] = {}
-        self.end, self.retry_at, self.shows = 0, 0.0, 0
+        self.end, self.retry_at, self.shows, self.told, self.starting = 0, 0.0, 0, 0, False
 
     # ---- what others ask ---------------------------------------------------------------------------------------------
     def on(self) -> bool:
         return bool(self.e.cfg.get("park.enabled", False))
 
     def owns(self) -> bool:
-        return self.show is not None and not self.show.stop and self.on()
+        """True while a show holds the sticks, and while one is being started (the stream on screen is being placed:
+        no other decider may switch under the read)."""
+        return self.on() and (self.starting or (self.show is not None and not self.show.stop))
 
     def view(self) -> dict:
         """For Engine.snapshot(): the show's state as the Show tab's contract (words and numbers only)."""
@@ -263,11 +265,25 @@ class ParkRun:
         self.rig.sync()
         self.offer(t)
         await show.tick(t)
+        if show.jumps_done != self.told:
+            self.tell_screen()
         if show.stop:
             self.final = show.stop
             await self.stand_down(f"stopped: {show.stop}")
         elif t >= self.end or not self.still_live():
             await self.stand_down("the session ended")
+
+    def tell_screen(self) -> None:
+        """A jump landed: the decider learns which game is on screen now (`Decider.adopt`: no tune, no switch), so the
+        phone's "now" and every other reader of the screen's game follow the show."""
+        show, dec = self.show, self.e.decider
+        self.told = show.jumps_done
+        gid, adopt = self.gids[show.S.sg], getattr(dec, "adopt", None)
+        try:
+            if adopt is not None and getattr(dec, "current", None) != gid:
+                adopt(gid)
+        except Exception:
+            log.exception("park show: telling the decider the screen's game")
 
     def my_teams(self) -> list:
         """Nick's teams, as the engine reads them from `teams` (every league's, as short names)."""
@@ -337,7 +353,11 @@ class ParkRun:
         on = ctl.active
         if rig.game[on] != 0:                                    # the stream on screen has no place yet: read it, or tune it afresh
             self._set("starting", "placing the stream on screen")
-            out = await ctl.park_start()
+            self.starting = True
+            try:
+                out = await ctl.park_start()
+            finally:
+                self.starting = False
             rig.sync()
             if not out.ok or rig.game[on] != 0:
                 self.retry_at = self._now() + float(cfg.get("park.start_retry_s", 30) or 30)
@@ -357,7 +377,7 @@ class ParkRun:
                          prefs=my_prefs(names, self.my_teams(), P.my_pref),
                          params=P, model=self.model, eyes=self.watcher)
         self.show.begin(0, on, a)
-        self.rig, self.clock, self.gids, self.seen = rig, clock, [gid for gid, _, _ in games], {}
+        self.rig, self.clock, self.gids, self.seen, self.told = rig, clock, [gid for gid, _, _ in games], {}, 0
         self.shows += 1
         self.board.start(self.show, "live", minutes)
         self._set("running", f"{len(games)} games")

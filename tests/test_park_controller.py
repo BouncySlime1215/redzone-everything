@@ -352,13 +352,27 @@ async def test_the_engines_loop_starts_a_show_stands_down_for_the_user_and_a_sto
     run_ = ParkRun(eng, now=w.clk.now, sleep=w.clk.sleep)
     assert not run_.owns()
     assert await w.tv.sound_guard.check("session start") == "ok"
+    held, real_start = [], w.c.park_start
+
+    async def start():
+        held.append(run_.owns())                                               # while the stream on screen is being placed,
+        return await real_start()                                              # no other decider may switch under the read
+    w.c.park_start = start
     await run_.step()                                                          # places the stream on screen, then starts
+    assert held == [True]
     assert run_.state == "running" and run_.owns() and run_.gids == ids, run_.why
     assert run_.rig.game[0] == 0 and run_.rig.read[0] and run_.show.on == 0
     for _ in range(3):
         await run_.step()
         await run_.clock.sleep(1.0)
     assert (tmp_path / "show" / "state.json").exists() and run_.view()["show"]["mode"] == "live"
+    told = []
+    eng.decider.current, eng.decider.adopt = ids[0], told.append
+    run_.show.S.sg, run_.show.jumps_done = 1, 1                                # as after a jump onto the second game
+    await run_.step()
+    assert told == [ids[1]] and run_.told == 1                                 # the decider learns the screen's game, once
+    run_.show.S.sg, run_.show.jumps_done = 0, 0
+    run_.told = 0
     eng.decider.owner_m.state = "user"                                         # your tap, pause or lock: the show lets go
     await run_.step()
     assert run_.state == "waiting" and "user" in run_.why and not run_.owns() and run_.show is None
