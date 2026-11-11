@@ -5634,7 +5634,8 @@ class ParkHands:
     yttv_label.LabelRead (or None) for the overlay on screen; the default is the repo's own reader."""
 
     def __init__(self, ctl: "Controller", *, now: Callable[[], float] = time.time, sleep=asyncio.sleep,
-                 label_reader: Callable[[Stick], Any] | None = None):
+                 label_reader: Callable[[Stick], Any] | None = None, bug_reader: Callable[..., Any] | None = None,
+                 play_clock_reader: Callable[..., Any] | None = None):
         from redzone.decider.tune_offset import TuneOffsets
         self.ctl, self.now, self.sleep = ctl, now, sleep
         self.label_reader = label_reader or self._repo_label
@@ -5646,6 +5647,17 @@ class ParkHands:
         self.last: ParkStep | None = None
         self._probe = None
         self._overlay: dict[str, Any] = {}                    # stick host -> the overlay read of its last label frame (never shown)
+        # [park.prime] Prime Video in PARK (redzone/noggin/park_prime.py). Read only with park.prime.enabled on.
+        self.apps: dict[str, str] = {}                        # stick host -> the app its PARK stream is in (youtubetv default)
+        self.prime_behind_s: float | None = None              # where a fresh Prime stream is held to (s behind its frame clock;
+        #                                                       ControllerRig sets it from the show); None: the show delay
+        self.bug_ctx: dict[str, tuple] = {}                   # Prime target -> (home, away, plays(period) -> [(wall, clock s)])
+        self.bug_reader = bug_reader or self._repo_bug        # (stick, home, away) -> scorebug.Bug | None (numbers only)
+        self.k_track = None                                   # sync_edge.EdgeTracker for the Prime K samples, made on first use
+        self.prime_reads: list[dict] = []                     # every Prime bug read and hold, numbers only (acceptance, primegrade)
+        self.depth_s: dict[str, float] = {}                   # [PARK-NFL-LAG] target -> s deeper its tune is parked (a late feed)
+        self.football: set[str] = set()                       # [PARK-NFL-LAG] Prime targets that are football games
+        self.play_clock_reader = play_clock_reader or self._repo_play_clock   # (stick, home, away) -> play clock or None
 
     # --- settings -------------------------------------------------------------------------------------------
     def _num(self, key: str) -> float:
@@ -5673,7 +5685,16 @@ class ParkHands:
         return self.ctl._stick_label(stick.host)
 
     def _pkg(self, stick: Stick) -> str | None:
-        return (stick.packages or {}).get("youtubetv")
+        app = self.apps.get(stick.host, "youtubetv")
+        tuner = TUNERS.get(app)
+        return (stick.packages or {}).get(getattr(tuner, "role", app) if tuner is not None else app)
+
+    def prime_on(self) -> bool:
+        from redzone.noggin import park_prime
+        return park_prime.prime_on(self.ctl.cfg.get)
+
+    def _is_prime(self, target: str) -> bool:
+        return target.split(":", 1)[0] == "prime" and self.prime_on()
 
     def _to(self, stick: Stick, state: str, why: str) -> None:
         self.m[self.label(stick)].to(state, why=why)
@@ -5775,6 +5796,9 @@ class ParkHands:
         when the media session then names the game. Then the read gesture (place). `fresh` = nothing is kept: the
         stream is reloaded (the PARK controller asks this for a stream held so long that it is far behind live)."""
         t0, st = self.now(), ParkStep("tune", "failed", stick=self.label(stick), target=target)
+        if self._is_prime(target):
+            return await self._tune_prime(stick, target, fresh, st, t0)
+        self.apps.pop(stick.host, None)
         if fresh:
             self._drop(stick, "a fresh tune asked")
             st.way = "fresh: "
@@ -5877,6 +5901,245 @@ class ParkHands:
             st.why = "place not read: plan it with the unread padding"
         return self._done(st, t0)
 
+    # --- 1b. [park.prime] TUNE a Prime Video game: the event link, its place from the epoch, the hold -----------------
+    async def _tune_prime(self, stick: Stick, target: str, fresh: bool, st: ParkStep, t0: float) -> ParkStep:
+        """A Prime game (target "prime:<gti>", park.prime.enabled on). Kept when PARK tuned it (or the controller's
+        own tune record says the stick plays it) and its media session gives an EPOCH position: its place is then read
+        with no gesture. Otherwise tuned fresh by the existing Prime tuner (event link, detail-page press-through with
+        its purchase guard; TUNERS["prime"]), placed by the epoch (read) or nominally (unread), then held: paused in
+        `buffered_jump.hold_chunk_s` chunks through `prime_pause.enter_buffer_pause` until it sits where a YouTube TV
+        tune and its read sit. Each paused frame gets one score-bug read for this game's K (numbers only)."""
+        from redzone.noggin import park_prime
+        self.apps[stick.host] = "prime"
+        place = self.places.get(stick.host)
+        if not fresh:
+            r = await self._read(stick)
+            ep = park_prime.epoch_s(r.position_s) if r is not None else None
+            mine = place is not None and place.target == target
+            tuned = (getattr(stick, "tuned", None) or {}).get("target") == target
+            if r is not None and r.state in ("playing", "paused") and (mine or tuned) and ep is not None:
+                if mine and place.paused and r.state == "paused":
+                    st.outcome, st.way, st.numbers = "ok", "kept: already parked on it", self._place_numbers(place, r)
+                    return self._done(st, t0)
+                if r.state == "playing":
+                    pos = r.pos_now_s if r.pos_now_s is not None else r.position_s
+                    self.places[stick.host] = ParkPlace(target, 0.0, True, place.tuned_at if mine else self.now(),
+                                                        r.wall, pos, kept=not mine)
+                    self._to(stick, "playing", "kept: Prime, its place read from the epoch")
+                    st.outcome, st.way = "ok", "kept: Prime plays it, place read from the epoch"
+                    st.numbers = self._place_numbers(self.places[stick.host], r)
+                    return self._done(st, t0)
+        self._drop(stick, "a new Prime tune")
+        tuner = TUNERS.get("prime")
+        ref = target.split(":", 1)[1] if ":" in target else ""
+        if tuner is None or not ref.startswith("amzn1."):
+            st.outcome, st.why = "refused", "a Prime game needs its event link (a GTI)"
+            return self._done(st, t0)
+        if self.stopped or self.ctl._sound_blocked():
+            st.outcome, st.why = "refused", "sound stop"
+            return self._done(st, t0)
+        stick.tuned = None
+        self._to(stick, "tuning", f"tune {target}")
+        t_tune = self.now()
+        try:
+            res = await asyncio.wait_for(tuner.tune(stick, ref, target), self.step_s("tune_timeout_s"))
+            ok, why = bool(res.ok), str(getattr(res, "error", "") or "")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            ok, why = False, type(exc).__name__
+        self.ctl.session_guard.note_tune(stick.host)
+        self.ctl.tuned_at[stick.host] = time.time()
+        self.counts["tunes"] += 1
+        st.way = "event link" + ("" if ok else " failed")
+        st.numbers["tune_s"] = round(self.now() - t_tune, 2)
+        if not ok:
+            st.why = why or "the Prime tuner did not confirm playback"
+            self._drop(stick, "Prime tune failed")
+            return self._done(st, t0)
+        first = await self._wait(stick, "playing", self.step_s("first_report_s"), since=t_tune)
+        if first is None:
+            st.why = f"no playing report within {self.step_s('first_report_s'):.0f} s of the Prime tune"
+            self._drop(stick, "no playing report after the Prime tune")
+            return self._done(st, t0)
+        pos = first.pos_now_s if first.pos_now_s is not None else first.position_s
+        ep = park_prime.epoch_s(pos)
+        if ep is not None:
+            place = ParkPlace(target, 0.0, True, t_tune, first.wall, ep)       # content time = the frame's own stamp
+        else:
+            place = ParkPlace(target, first.wall - self._live_lag() - pos, False, t_tune, first.wall, pos)
+        self.places[stick.host] = place
+        self.offsets.new_tune(target, t_tune)
+        self._to(stick, "playing", "Prime tuned" + (", place read from the epoch" if place.read else ", no epoch"))
+        held = await self._prime_hold(stick, place)
+        st.numbers.update(read=place.read, epoch=ep is not None, hold_s=held.get("hold_s"), held_ok=held.get("ok"),
+                          bug_reads=held.get("bug_reads", 0), k_samples=held.get("k_samples", 0))
+        if not held.get("ok"):
+            st.why = f"the hold did not end playing ({held.get('why', '')})"
+            self._drop(stick, "Prime hold failed")
+            return self._done(st, t0)
+        stick.remember(target, await stick.playback(self._pkg(stick)))
+        st.outcome = "ok"
+        st.way += ", epoch read" if place.read else ", no epoch (unread padding)"
+        if not place.read:
+            st.why = "place not read: plan it with the unread padding"
+        st.numbers.update(self._place_numbers(place, first))
+        return self._done(st, t0)
+
+    def prime_hold_target(self) -> float:
+        """Seconds behind its frame clock a fresh Prime stream is held to (set by ControllerRig from the show)."""
+        if self.prime_behind_s is not None:
+            return float(self.prime_behind_s)
+        d = self.ctl.cfg.get("park.show.show_delay", None)
+        return float(d if isinstance(d, (int, float)) else config.default("park.show.show_delay")) + self._live_lag()
+
+    async def _prime_hold(self, stick: Stick, place: ParkPlace) -> dict:
+        """Hold a fresh Prime stream behind its live edge by pausing it (prime_pause.enter_buffer_pause, the repo's
+        pause-hold: PAUSE, hold, PLAY, the gain checked on Prime's own clock), in chunks of buffered_jump.hold_chunk_s.
+        The clock read is the media session's epoch when there is one, else the overlay timecode (its own OCR)."""
+        from redzone.noggin import park_prime
+        from redzone.tuners import prime_pause
+        out = {"ok": True, "hold_s": 0.0, "bug_reads": 0, "k_samples": 0}
+        r = await self._read(stick)
+        if r is None or r.state != "playing":
+            return {**out, "ok": False, "why": "not playing before the hold"}
+        pos = r.pos_now_s if r.pos_now_s is not None else r.position_s
+        behind = (r.wall - place.content(pos)) if place.read else self._live_lag()
+        total = max(0.0, self.prime_hold_target() + self.depth_s.get(place.target, 0.0) - behind)
+        chunk = float(self.ctl.cfg.get("buffered_jump.hold_chunk_s", 25) or 25)
+        pkg = self._pkg(stick)
+        done = 0.0
+        for c in park_prime.chunks(total, chunk):
+            if self.stopped or self.ctl._sound_blocked():
+                return {**out, "ok": False, "why": "sound stop"}
+            seen: dict = {}
+
+            async def clock_read(st_, _seen=seen):
+                got = await self._read(st_)
+                if got is not None and got.state == "paused" and "bug" not in _seen:
+                    _seen["bug"] = await self._prime_bug(st_, place.target, got)
+                ep_ = park_prime.epoch_s(got.pos_now_s if got is not None and got.pos_now_s is not None
+                                          else (got.position_s if got is not None else None))
+                if ep_ is not None:
+                    return ep_
+                return await prime_pause.ocr_timecode(st_)
+
+            res = await prime_pause.enter_buffer_pause(stick, c, cfg=self.ctl.cfg, pkg=pkg, read_timecode=clock_read,
+                                                       clock=time.monotonic)    # its hold sleeps on the real clock
+            got = seen.get("bug") or {}
+            out["bug_reads"] += int(got.get("read", False))
+            out["k_samples"] += int(got.get("k") is not None)
+            self.prime_reads.append({"what": "hold", "asked_s": round(c, 2), "ok": bool(res.ok),
+                                     "gained_s": res.gained_s, "measured": bool(getattr(res, "measured", False)),
+                                     "why": res.reason})
+            if not res.ok:
+                return {**out, "ok": False, "why": res.reason, "hold_s": round(done, 2)}
+            done += float(res.gained_s or c)
+        r = await self._read(stick)
+        if r is None or r.state != "playing":
+            return {**out, "ok": False, "why": "not playing after the hold", "hold_s": round(done, 2)}
+        place.paused, place.ref_wall, place.ref_pos = False, r.wall, (r.pos_now_s if r.pos_now_s is not None else r.position_s)
+        out["hold_s"] = round(done, 2)
+        return out
+
+    async def _repo_bug(self, stick: Stick, home, away):
+        """The repo's score-bug reader on what the stick shows (screen/scorebug: lower-third band, else a full frame;
+        Apple Vision OCR; the frame is never kept). Prime only: its picture is not blanked in a capture."""
+        from redzone.screen import scorebug
+        from redzone.screen_ocr import recognize
+        png = await stick.screencap_band(scorebug.LOWER_FROM, timeout=15) if self.ctl.cfg.get("delay.scorebug_band") else b""
+        if not png:
+            png = await stick.screencap(timeout=15)
+        if not png:
+            return None
+        return await asyncio.to_thread(scorebug.read_png, png, home, away, recognize)
+
+    async def _prime_bug(self, stick: Stick, target: str, paused) -> dict:
+        """One bug read of a PAUSED Prime frame: its clock and period, and with the frame's epoch and the feed's plays
+        one K sample for this game (park_prime.k_sample into sync_edge.EdgeTracker). Numbers only."""
+        from redzone.noggin import park_prime
+        from redzone.noggin.k_table import K_SD_MIN
+        from redzone.screen.scorebug import clock_seconds, period_number
+        ctx = self.bug_ctx.get(target)
+        row = {"what": "bug", "target_app": "prime", "read": False, "clock_s": None, "period": None, "k": None,
+               "epoch": None}
+        if ctx is None:
+            return row
+        home, away, plays = ctx
+        try:
+            bug = await asyncio.wait_for(self.bug_reader(stick, home, away), self.step_s("label_timeout_s"))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            bug = None
+        ep = park_prime.epoch_s(paused.position_s if paused is not None else None)
+        row["epoch"] = ep is not None
+        if bug is not None:
+            c, per = clock_seconds(bug.clock), period_number(bug.period)
+            row.update(read=True, clock_s=c, period=per)
+            if c is not None and per is not None and ep is not None:
+                if self.k_track is None:
+                    from redzone.sync_edge import EdgeTracker
+                    self.k_track = EdgeTracker()
+                try:
+                    pl = list(plays(per) or [])
+                except Exception:
+                    pl = []
+                row["k"] = park_prime.k_sample(self.k_track, target, c, ep, pl, K_SD_MIN,   # one read: K's own floor
+                                               get=self.ctl.cfg.get)
+        self.prime_reads.append(row)
+        return row
+
+    async def _bug_gate(self, stick: Stick, target: str) -> dict | None:
+        """[PARK-NFL-LAG, park.prime.bug_gate] A parked Prime FOOTBALL frame: read its play clock (below 40 = counting down
+        from a dead ball). None when the gate does not apply (off, not Prime, not football, no teams known)."""
+        from redzone.noggin import park_prime
+        if not (self.ctl.cfg.get("park.prime.bug_gate", False) is True and self.apps.get(stick.host) == "prime"
+                and target in self.football and target in self.bug_ctx):
+            return None
+        home, away, _ = self.bug_ctx[target]
+        try:
+            pc = await asyncio.wait_for(self.play_clock_reader(stick, home, away), self.step_s("label_timeout_s"))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            pc = None
+        over = park_prime.play_over(pc)
+        self.prime_reads.append({"what": "play_clock", "play_clock": pc, "play_over": over})
+        return {"play_clock": pc, "play_over": over}
+
+    async def _repo_play_clock(self, stick: Stick, home, away):
+        """The play clock on the frame the stick shows: the repo's OCR and bug parser, then park_prime.play_clock (numbers
+        only; the frame is deleted with its temporary folder)."""
+        import os
+        import tempfile
+
+        from redzone.noggin import park_prime
+        from redzone.screen import scorebug
+        from redzone.screen_ocr import recognize
+        png = await stick.screencap(timeout=15)
+        if not png or scorebug.frame_kind(png, "prime") != "picture":
+            return None
+
+        def read() -> int | None:
+            with tempfile.TemporaryDirectory(prefix="rz-pc-") as d:
+                path = os.path.join(d, "screen.png")
+                with open(path, "wb") as f:
+                    f.write(png)
+                res = recognize(path, timeout=8.0)
+            if not getattr(res, "read_ok", False):
+                return None
+            bug = scorebug.parse_bug(res.observations, home, away)
+            return park_prime.play_clock(res.observations, bug)
+        return await asyncio.to_thread(read)
+
+    def prime_k(self, target: str):
+        """This Prime game's K from its own bug reads once it passes sync.edge's bars: (K, sd, reads), or None."""
+        from redzone.noggin import park_prime
+        if self.k_track is None:
+            return None
+        return park_prime.game_k(self.k_track, target, self.ctl.cfg.get)
+
     # --- 2. PLACE: the read gesture ---------------------------------------------------------------------------
     def _prog_start(self, lab) -> tuple[float | None, bool]:
         """The programme's start: the reader's own, else inferred on the 5-minute grid from capture time minus the
@@ -5921,6 +6184,9 @@ class ParkHands:
         def same() -> bool:
             return (self.ctl.hidden is stick) == hidden
 
+        deep = self.depth_s.get(place.target, 0.0)
+        if deep > 0 and n > 0:
+            n += int(math.ceil(deep / step))                  # [PARK-NFL-LAG] a late feed's game: more LEFT presses, deeper
         self._to(stick, "reading", "the read gesture")
         self._overlay.pop(stick.host, None)
         if not same() or not await self._key(stick, "KEYCODE_DPAD_CENTER"):
@@ -6052,17 +6318,35 @@ class ParkHands:
         if not ok:
             st.why = why
             return self._done(st, t0)
+        gate = await self._bug_gate(stick, target)
+        if gate is not None:
+            st.numbers.update(gate)
+            if gate.get("play_over") is False:                # the frozen frame shows a play running: not a place to park
+                await self._key(stick, "KEYCODE_MEDIA_PLAY_PAUSE")
+                place.paused, place.frozen_pos = False, None
+                self._to(stick, "resuming", "the bug's play clock says the play runs")
+                r = await self._wait(stick, "playing", self.step_s("replay_wait_s"))
+                if r is not None:
+                    place.ref_wall, place.ref_pos = r.wall, r.pos_now_s
+                    self._to(stick, "playing", "resumed: the parked frame was mid-play")
+                else:
+                    self._drop(stick, "did not play again after the bug gate")
+                st.why = "the bug's play clock says the play runs on the parked frame"
+                return self._done(st, t0)
         frozen = place.content(place.frozen_pos)
         st.outcome = "ok"
         st.numbers = {"read": place.read, "padding": "read" if place.read else "unread",
                       "frozen_pos_s": round(place.frozen_pos, 2), "key_late_s": round(t_key + lead - at, 2) if at else None,
                       "behind_youtube_s": round((place.paused_at or t_key + lead) - frozen, 2), "pause_lead_s": lead}
+        if gate is not None:
+            st.numbers.update(gate)
         return self._done(st, t0)
 
     async def _confirm(self, stick: Stick, place: ParkPlace, pz, key_at: float) -> tuple[bool, str]:
         """BACK clears the pause banner; then read back that it is still paused with YouTube TV in front."""
         await self._sleep_until(key_at + self.step_s("back_after_s"))
-        await self._key(stick, "KEYCODE_BACK")
+        if self.apps.get(stick.host) != "prime":
+            await self._key(stick, "KEYCODE_BACK")             # [park.prime] never on Prime: BACK may leave its player (unknown)
         await self.sleep(self.step_s("confirm_s"))
         r, fg = await self._read(stick), await stick.foreground()
         front = bool(self._pkg(stick)) and str(self._pkg(stick)) in (fg or "")

@@ -43,6 +43,9 @@ class TimingParams:
     k_sd_min: float = K_SD_MIN      # K is never trusted tighter than this (5-11 reads in two clumps 0.9 s apart)
     stamp_sd_nba: float = 0.33      # ESPN NBA play stamps vs the game clock
     stamp_sd_college: float = 0.5   # college stat crews: looser
+    stamp_sd_football: float = 0.40  # [PARK-NFL] football play stamp vs the snap on the picture (Eyes, Prime TNF replay JAX @ BAL,
+    #                                 Nov 11: sd 0.40 s, n=41, worst +1.39 s): padding about 3 s. One replay: the live sd is
+    #                                 UNKNOWN until Thursday
     key_sd: float = 0.13            # a key's landing
     eyes_sd: float = 0.3            # an edge Eyes saw itself (content time, no K and no feed stamp in it)
     prior_delay: float = 33.0       # no K: feed stamp to a stick's live edge on the wall clock
@@ -56,7 +59,10 @@ class TimingParams:
         return self.prior_delay - self.live_lag
 
     def stamp_sd(self, league: str) -> float:
-        return self.stamp_sd_nba if str(league).lower() == "nba" else self.stamp_sd_college
+        lg = str(league).lower()
+        if lg in ("nfl", "cfb"):
+            return self.stamp_sd_football
+        return self.stamp_sd_nba if lg == "nba" else self.stamp_sd_college
 
     @classmethod
     def from_config(cls, get: Callable[..., object]) -> "TimingParams":

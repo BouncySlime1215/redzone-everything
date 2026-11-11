@@ -31,10 +31,11 @@ import time
 
 from redzone.models import Phase
 from redzone.noggin.k_table import read_k_table
+from redzone.noggin import park_prime
 from redzone.noggin.park_core import PARK_PARAMS
 from redzone.noggin.park_facts import FactsParams
 from redzone.noggin.park_show import FactsFeed, LiveNight, Show, ShowParams, ShowTiming, engine_setting
-from redzone.noggin.park_timing import GameTiming, TimingParams, k_for
+from redzone.noggin.park_timing import GameK, GameTiming, TimingParams, k_for
 from redzone.showboard import Board
 
 log = logging.getLogger(__name__)
@@ -73,6 +74,7 @@ class ControllerRig:
         self.names = tuple(ctl._stick_label(s.host) for s in ctl.sticks[:2])
         self.ports = tuple(str(ctl.hdmi.get(s.host) or "") for s in ctl.sticks[:2])
         self.game, self.paused, self.lag, self.frozen, self.read = [None, None], [False, False], [0.0, 0.0], [0.0, 0.0], [False, False]
+        self.depth: dict = {}                                    # [PARK-NFL-LAG] game -> s deeper (the show sets it)
         self.note: dict = {}
         self._over: dict = {}      # stream -> a place the show put in place of an unbelievable read (replace)
         self.counts = {"steps": 0, "failed": 0, "refused": 0}
@@ -122,6 +124,11 @@ class ControllerRig:
             self.note[k] = {"way": "", "why": "only the hidden stick is tuned"}
             return False, 0.0
         # the show asks for a tune of a game this stream already holds only when it has fallen too far behind: reload it
+        self.extra = getattr(self, "extra", {})
+        self.extra[k] = 0.0
+        if self.depth.get(game):
+            self.hands.depth_s[self.targets[game]] = float(self.depth[game])     # [PARK-NFL-LAG] park it deeper
+            self.extra[k] = float(self.depth[game])
         out = await self.ctl.park_tune(self.targets[game], fresh=self.game[k] == game)
         self._over.pop(k, None)
         self._done(k, out)
@@ -188,6 +195,35 @@ class ControllerRig:
             await self.ctl.park_finish()
         except Exception:
             log.exception("park: finish")
+
+
+def football_slider(cfg) -> float | None:
+    """[football slider] park.football_slider (0-100; 50 = value decides, as before), or None when it is 50."""
+    v = cfg.get("park.football_slider", 50)
+    if not isinstance(v, (int, float)) or isinstance(v, bool) or float(v) == 50.0:
+        return None
+    return min(100.0, max(0.0, float(v)))
+
+
+def feed_lags(cfg, leagues: list, base: float) -> list:
+    """[PARK-NFL-LAG] Each game's feed lag to start from: with park.feed_lag.enabled, a listed league's quantile
+    (park.feed_lag.prior_q) from redzone/lab/feed_lag_profile.json; every other game (and every game with it off): `base`."""
+    out = [float(base)] * len(leagues)
+    if cfg.get("park.feed_lag.enabled", False) is not True:
+        return out
+    import json
+    from pathlib import Path
+    listed = {str(x).lower() for x in (cfg.get("park.feed_lag.leagues", None) or [])}
+    try:
+        prof = json.loads((Path(__file__).parent / "lab" / "feed_lag_profile.json").read_text())
+        qs, q = prof["quantiles"], int(cfg.get("park.feed_lag.prior_q", 90) or 90)
+    except (OSError, ValueError, KeyError):
+        return out
+    for k, lg in enumerate(leagues):
+        row = (prof.get("leagues") or {}).get(str(lg).lower())
+        if str(lg).lower() in listed and row and q in qs:
+            out[k] = max(float(base), float(row["q"][qs.index(q)]))
+    return out
 
 
 def my_prefs(names: list, teams: list, weight: float) -> list:
@@ -291,6 +327,10 @@ class ParkRun:
             return
         self.rig.sync()
         self.offer(t)
+        if park_prime.prime_on(self.e.cfg.get):
+            self._prime_k()
+        if self.e.cfg.get("park.feed_lag.enabled", False) is True:
+            self._feed_lag()
         await show.tick(t)
         if t % 300 == 0:
             self.keep_plays()                                    # (every 5 minutes, and at every stand-down)
@@ -344,7 +384,7 @@ class ParkRun:
         out = []
         for gid, g in e.merger.games.items():
             target = dec.target_of(gid) or ""
-            if g.phase == Phase.LIVE and g.league.value in leagues and target.startswith("youtubetv:") and gid in e.summaries:
+            if g.phase == Phase.LIVE and g.league.value in leagues and park_prime.takes(target, e.cfg.get) and gid in e.summaries:
                 out.append((gid, g, target))
         on = e.control.on_target
         first = [x for x in out if x[2] == on]
@@ -371,7 +411,8 @@ class ParkRun:
                for gid, g, target in games]
         tm = ShowTiming(tgs, delay=P.show_delay, read=steps > 0, eyes=self.watcher is not None, params=tp)
         shifts = [tm.feed_delay(k) + tm.delay for k in range(len(games))]
-        leads = [sh - P.feed_lag - P.poll - 0.5 for sh in shifts]
+        lags = feed_lags(cfg, [g.league.value for _, g, _ in games], P.feed_lag)     # [PARK-NFL-LAG] off: P.feed_lag for every game
+        leads = [sh - lags[k] - P.poll - 0.5 for k, sh in enumerate(shifts)]
         eng = engine_setting(tm.pad0(), int(max(leads)), late_cap=P.late_cap - tm.delay - P.jump_slack, tune_s=P.tune0_code + (P.read if steps else 0.0),
                              min_live=P.min_look, land_wait=P.land_wait, flip=P.jump_real, pause_reach=P.pause_reach)
         minutes = float(cfg.get("park.session_min", 240) or 240)
@@ -401,11 +442,26 @@ class ParkRun:
         names = [g.matchup for _, g, _ in games]
         folder = cfg.get("show.state_dir", "") or "data/show"
         self.board = Board(folder, now=self._now)
-        self.show = Show(night, eng, tm, rig, feed, names=names, chans=[t.split(":", 1)[1] for t in targets],
+        prime = park_prime.prime_on(cfg.get)                     # [park.prime] off: every line below is as before
+        yttv_s = P.tune0_code + (P.read if steps else 0.0)
+        keep = None
+        if prime:
+            self._prime_setup(ctl, rig, P, games)
+            kf = next((k for k, (_, g, t) in enumerate(games)
+                       if park_prime.app_of(t) == park_prime.PRIME and g.league.base.value == "nfl"), None)
+            if cfg.get("park.prime.pin_football", False) is True and kf is not None and rig.game[on] == kf:
+                keep = on                                        # [pinned anchor] the Prime football stream is never re-tuned
+        self.show = Show(night, eng, tm, rig, feed, names=names,
+                         chans=[("prime" if park_prime.app_of(t) == park_prime.PRIME else t.split(":", 1)[1]) for t in targets],
                          leagues=[g.league.value for _, g, _ in games], board=self.board, say=lambda line: log.info("park show: %s", line),
-                         tune0={k: P.tune0_code + (P.read if steps else 0.0) for k in range(len(games))},
+                         tune0={k: (park_prime.tune_cost(targets[k], cfg, yttv_s=yttv_s, show_delay=P.show_delay,
+                                                         tune_lag=rig.tune_lag) if prime else yttv_s) for k in range(len(games))},
                          prefs=my_prefs(names, self.my_teams(), P.my_pref),
-                         params=P, model=self.model, eyes=self.watcher)
+                         params=P, model=self.model, eyes=self.watcher,
+                         no_back={k for k, t in enumerate(targets) if not park_prime.rewinds(t, cfg.get)} if prime else None,
+                         depth=({k: max(0.0, lags[k] - P.feed_lag) for k in range(len(games)) if lags[k] > P.feed_lag}
+                                if cfg.get("park.feed_lag.enabled", False) is True else None),
+                         football_slider=football_slider(cfg), keep=keep, keep_live=keep is not None)
         self.show.begin(0, on, a)
         self.rig, self.clock, self.gids, self.seen, self.told = rig, clock, [gid for gid, _, _ in games], {}, 0
         self.shows += 1
@@ -430,6 +486,52 @@ class ParkRun:
         except OSError:
             log.exception("park show: play lists not written")
         return n
+
+    # ---- [park.prime] Prime Video games -------------------------------------------------------------------------------
+    def _prime_setup(self, ctl, rig, P, games) -> None:
+        """Tell the hands where a fresh Prime stream is held to (where a YouTube TV tune and its read leave one) and,
+        per Prime game, its teams and the feed's running-clock plays for its score-bug K."""
+        hands = ctl.park_hands()
+        hands.prime_behind_s = rig.tune_lag + rig.live_lag + P.show_delay
+        timelines = getattr(self.e.decider, "timelines", {}) or {}
+        for gid, g, target in games:
+            if park_prime.app_of(target) != park_prime.PRIME:
+                continue
+
+            def plays(per, _gid=gid):
+                tl = timelines.get(_gid)
+                return sorted((w, cl) for w, p, cl in (getattr(tl, "clocks", ()) or ()) if p == per and cl is not None)
+            hands.bug_ctx[target] = (g.home, g.away, plays)
+            if g.league.base.value == "nfl":
+                hands.football.add(target)                     # [PARK-NFL-LAG] the play clock gate applies (park.prime.bug_gate)
+
+    def _prime_k(self) -> None:
+        """A Prime game with no K yet takes the one its own stick's bug reads have earned (park_prime.game_k)."""
+        show, hands = self.show, self.e.control.park_hands()
+        if show is None or hands is None:
+            return
+        for g, target in enumerate(self.rig.targets):
+            if park_prime.app_of(target) == park_prime.PRIME and not show.tm.g[g].known:
+                got = hands.prime_k(target)
+                if got is not None:
+                    show.set_k(g, GameK(got[0], got[1], got[2], "bug"))
+
+    def _feed_lag(self) -> None:
+        """[PARK-NFL-LAG] A late-feed game's measured lag replaces its prior: its feed edge (leads) and its depth follow."""
+        show, cfg = self.show, self.e.cfg
+        leagues = {str(x).lower() for x in (cfg.get("park.feed_lag.leagues", None) or [])}
+        min_n = int(cfg.get("park.feed_lag.min_samples", 5) or 5)
+        for g in range(show.N):
+            if str(show.leagues[g]).lower() not in leagues:
+                continue
+            lag = show.feed.lag_s(g, min_n)
+            if lag is None:
+                continue
+            old = show.P.feed_lag + show.depth.get(g, 0.0)
+            if abs(lag - old) >= float(cfg.get("park.feed_lag.move_s", 5) or 5):
+                show.feed.leads[g] += old - lag
+                show.depth[g] = max(0.0, lag - show.P.feed_lag)
+                log.info("park show: %s feed lag measured %.0f s (was %.0f s): parked %.0f s deeper", show.names[g], lag, old, show.depth[g])
 
     async def stand_down(self, why: str) -> None:
         """End the show: the sticks are finished first (never leave one paused), then the state says why."""

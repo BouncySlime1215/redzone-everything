@@ -225,6 +225,13 @@
    ],
    "writers": []
   },
+  "data/accept.jsonl": {
+   "readers": [],
+   "users": [
+    "scripts/park_prime_accept.py"
+   ],
+   "writers": []
+  },
   "data/agent.jsonl": {
    "readers": [],
    "users": [],
@@ -272,7 +279,8 @@
    ],
    "users": [
     "scripts/coverage_audit.py",
-    "scripts/park_hands_live.py"
+    "scripts/park_hands_live.py",
+    "scripts/park_prime_accept.py"
    ],
    "writers": [
     "redzone/channels.py"
@@ -874,7 +882,8 @@
   "feed_lag_profile.json": {
    "readers": [
     "redzone/buffer_shadow.py",
-    "redzone/noggin/value_shards.py"
+    "redzone/noggin/value_shards.py",
+    "redzone/park_run.py"
    ],
    "users": [
     "redzone/lab/timing.py"
@@ -4131,6 +4140,7 @@
     "scripts/hold_left_probe.py",
     "scripts/multiview_probe.py",
     "scripts/park_hands_live.py",
+    "scripts/park_prime_accept.py",
     "scripts/plan_tonight.py",
     "scripts/queue_replay.py",
     "scripts/queue_trace.py",
@@ -4241,6 +4251,7 @@
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/tune.py",
+    "redzone/noggin/park_prime.py",
     "redzone/platform/sound_guard.py",
     "redzone/standby.py",
     "redzone/supervisor.py",
@@ -4270,6 +4281,7 @@
     "scripts/holdset_public.py",
     "scripts/night_report.py",
     "scripts/park_hands_live.py",
+    "scripts/park_prime_accept.py",
     "scripts/park_replay.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
@@ -5000,7 +5012,8 @@
     "redzone/decider/decider.py",
     "redzone/engine.py",
     "redzone/lab/backtest.py",
-    "redzone/lab/evaldata.py"
+    "redzone/lab/evaldata.py",
+    "redzone/noggin/park_prime.py"
    ],
    "owner": "INTEGRATION",
    "role": "SwitchPaths contract: every way to put a target on screen, each with a measured cost.",
@@ -5190,6 +5203,19 @@
     "redzone/noggin/gamequeue.py:Params",
     "redzone/noggin/gamequeue.py:Route",
     "redzone/noggin/gamequeue.py:on_failure",
+    "redzone/noggin/park_prime.py:chunks",
+    "redzone/noggin/park_prime.py:epoch_s",
+    "redzone/noggin/park_prime.py:game_k",
+    "redzone/noggin/park_prime.py:k_sample",
+    "redzone/noggin/park_prime.py:play_clock",
+    "redzone/noggin/park_prime.py:play_over",
+    "redzone/noggin/park_prime.py:prime_on",
+    "redzone/screen/scorebug.py:clock_seconds",
+    "redzone/screen/scorebug.py:frame_kind",
+    "redzone/screen/scorebug.py:parse_bug",
+    "redzone/screen/scorebug.py:period_number",
+    "redzone/screen_ocr.py:recognize",
+    "redzone/sync_edge.py:EdgeTracker",
     "redzone/tuners/adb.py:Stick",
     "redzone/tuners/adb.py:adb_available",
     "redzone/tuners/adb.py:playback_ready",
@@ -5202,6 +5228,8 @@
     "redzone/tuners/join_watchdog.py:wcfg",
     "redzone/tuners/prime_multiview.py:load_keys",
     "redzone/tuners/prime_multiview.py:needs_rebuild",
+    "redzone/tuners/prime_pause.py:enter_buffer_pause",
+    "redzone/tuners/prime_pause.py:ocr_timecode",
     "redzone/tuners/replay_park.py:lefts_for",
     "redzone/tuners/replay_park.py:park",
     "redzone/tuners/session_guard.py:SessionGuard",
@@ -5242,10 +5270,16 @@
     "redzone/fsm.py",
     "redzone/machines/control.py",
     "redzone/noggin/gamequeue.py",
+    "redzone/noggin/k_table.py",
+    "redzone/noggin/park_prime.py",
+    "redzone/screen/scorebug.py",
+    "redzone/screen_ocr.py",
+    "redzone/sync_edge.py",
     "redzone/tuners/adb.py",
     "redzone/tuners/join.py",
     "redzone/tuners/join_watchdog.py",
     "redzone/tuners/prime_multiview.py",
+    "redzone/tuners/prime_pause.py",
     "redzone/tuners/replay_park.py",
     "redzone/tuners/session_guard.py",
     "redzone/tuners/tuners.py",
@@ -5281,6 +5315,7 @@
     "scripts/fault_drill.py",
     "scripts/hold_left_probe.py",
     "scripts/park_hands_live.py",
+    "scripts/park_prime_accept.py",
     "scripts/rz.py",
     "scripts/tv_practice.py"
    ],
@@ -5972,6 +6007,7 @@
    "outputs": [
     "redzone/decider/screen.py",
     "redzone/engine.py",
+    "redzone/noggin/park_prime.py",
     "redzone/screen/scorebug.py",
     "redzone/sync_probe.py",
     "scripts/timing_replay.py"
@@ -8201,6 +8237,7 @@
     "drives": []
    },
    "outputs": [
+    "scripts/park_prime_accept.py",
     "scripts/sync_grade.py"
    ],
    "owner": "unowned",
@@ -9633,6 +9670,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/control.py",
     "redzone/decider/tune_offset.py",
     "redzone/noggin/park_timing.py",
     "redzone/park_run.py"
@@ -9766,8 +9804,10 @@
    "calls": [
     "redzone/grading.py:dead_at",
     "redzone/grading.py:held_stop",
+    "redzone/grading.py:idx",
     "redzone/grading.py:is_action",
     "redzone/grading.py:play_clock",
+    "redzone/grading.py:plen",
     "redzone/grading.py:raw_type",
     "redzone/models.py:GameState",
     "redzone/models.py:League",
@@ -9851,8 +9891,48 @@
     "untagged"
    ]
   },
+  "redzone/noggin/park_prime.py": {
+   "calls": [
+    "redzone/config.py:default",
+    "redzone/contracts/switching.py:ConfigSwitchPaths",
+    "redzone/decider/sync.py:clock_sample"
+   ],
+   "contracts": [
+    "ConfigSwitchPaths"
+   ],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/config.py",
+    "redzone/contracts/switching.py",
+    "redzone/decider/sync.py",
+    "redzone/screen/scorebug.py",
+    "redzone/sync_edge.py",
+    "uses:ConfigSwitchPaths"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/control.py",
+    "redzone/park_run.py",
+    "scripts/park_prime_accept.py",
+    "scripts/park_replay.py"
+   ],
+   "owner": "unowned",
+   "role": "PARK on Prime Video: which games the show may take from Prime, what a Prime tune costs, that Prime has no back route, and each Prime game's K from the hidden...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/noggin/park_show.py": {
    "calls": [
+    "redzone/grading.py:is_action",
     "redzone/grading.py:raw_type",
     "redzone/models.py:League",
     "redzone/noggin/park_core.py:Arr",
@@ -9861,6 +9941,7 @@
     "redzone/noggin/park_core.py:Stats",
     "redzone/noggin/park_core.py:run",
     "redzone/noggin/park_facts.py:GameFacts",
+    "redzone/noggin/park_facts.py:is_football",
     "redzone/noggin/park_facts.py:merge_eyes",
     "redzone/noggin/park_facts.py:pad_arr",
     "redzone/noggin/park_facts.py:refusal",
@@ -9924,7 +10005,8 @@
    "outputs": [
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_show.py",
-    "redzone/park_run.py"
+    "redzone/park_run.py",
+    "scripts/park_replay.py"
    ],
    "owner": "unowned",
    "role": "PARK timing: where a game's feed time sits on a stick's picture, how sure that is, and each game's padding.",
@@ -10421,12 +10503,18 @@
    "calls": [
     "redzone/noggin/k_table.py:read_k_table",
     "redzone/noggin/park_facts.py:FactsParams",
+    "redzone/noggin/park_prime.py:app_of",
+    "redzone/noggin/park_prime.py:prime_on",
+    "redzone/noggin/park_prime.py:rewinds",
+    "redzone/noggin/park_prime.py:takes",
+    "redzone/noggin/park_prime.py:tune_cost",
     "redzone/noggin/park_show.py:FactsFeed",
     "redzone/noggin/park_show.py:LiveNight",
     "redzone/noggin/park_show.py:Show",
     "redzone/noggin/park_show.py:ShowParams",
     "redzone/noggin/park_show.py:ShowTiming",
     "redzone/noggin/park_show.py:engine_setting",
+    "redzone/noggin/park_timing.py:GameK",
     "redzone/noggin/park_timing.py:GameTiming",
     "redzone/noggin/park_timing.py:TimingParams",
     "redzone/noggin/park_timing.py:k_for",
@@ -10434,7 +10522,9 @@
    ],
    "contracts": [],
    "data": {
-    "reads": [],
+    "reads": [
+     "feed_lag_profile.json"
+    ],
     "uses": [],
     "writes": []
    },
@@ -10443,6 +10533,7 @@
     "redzone/noggin/k_table.py",
     "redzone/noggin/park_core.py",
     "redzone/noggin/park_facts.py",
+    "redzone/noggin/park_prime.py",
     "redzone/noggin/park_show.py",
     "redzone/noggin/park_timing.py",
     "redzone/showboard.py"
@@ -10835,7 +10926,8 @@
    },
    "outputs": [
     "redzone/tv.py",
-    "scripts/park_hands_live.py"
+    "scripts/park_hands_live.py",
+    "scripts/park_prime_accept.py"
    ],
    "owner": "PLATFORM",
    "role": "Sound guard: the TV stays muted at volume 0, proven by reading it back (sound_guard.*, all off by default).",
@@ -11595,8 +11687,11 @@
    },
    "outputs": [
     "redzone/cheap_labels.py",
+    "redzone/control.py",
     "redzone/engine.py",
-    "redzone/screen/tap_bug.py"
+    "redzone/noggin/park_prime.py",
+    "redzone/screen/tap_bug.py",
+    "scripts/park_prime_accept.py"
    ],
    "owner": "SYNC",
    "role": "Stream delay measured from the broadcast's own score bug (no taps, no keys pressed).",
@@ -11650,6 +11745,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/control.py",
     "redzone/engine.py",
     "redzone/lab/night/house.py",
     "redzone/lab/night/run.py",
@@ -11789,6 +11885,7 @@
     "scripts/noggin_tokens.py",
     "scripts/park_ceiling.py",
     "scripts/park_facts_check.py",
+    "scripts/park_replay.py",
     "scripts/plan_tonight.py",
     "scripts/queue_replay.py",
     "scripts/queue_trace.py",
@@ -12273,9 +12370,12 @@
     "drives": []
    },
    "outputs": [
+    "redzone/control.py",
     "redzone/engine.py",
+    "redzone/noggin/park_prime.py",
     "redzone/sync_probe.py",
-    "redzone/tuners/yttv_timing.py"
+    "redzone/tuners/yttv_timing.py",
+    "scripts/park_prime_accept.py"
    ],
    "owner": "unowned",
    "role": "[SYNC program A, EXP-800/801] Where each stick is against its stream's live edge, read every second.",
@@ -12443,6 +12543,7 @@
     "scripts/find_yttv_code.py",
     "scripts/join_try.py",
     "scripts/multiview_probe.py",
+    "scripts/park_prime_accept.py",
     "scripts/prime_flip_probe.py",
     "scripts/prime_multiview_probe.py",
     "scripts/prime_pause_try.py",
@@ -12687,6 +12788,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/control.py",
     "redzone/tuners/join.py",
     "scripts/prime_pause_try.py"
    ],
@@ -13250,7 +13352,8 @@
     "redzone/decider/tune_offset.py",
     "redzone/sync_probe.py",
     "redzone/tuners/yttv_label.py",
-    "redzone/tuners/yttv_seek.py"
+    "redzone/tuners/yttv_seek.py",
+    "scripts/park_prime_accept.py"
    ],
    "owner": "SWITCHING",
    "role": "[POSITION-FIX] Which content second a YouTube TV stick shows: the Nov 10 timing findings as small, flagged helpers.",
@@ -17101,11 +17204,62 @@
     "untagged"
    ]
   },
+  "scripts/park_prime_accept.py": {
+   "calls": [
+    "redzone/channels.py:ChannelMap",
+    "redzone/config.py:Config",
+    "redzone/config.py:_deep_merge",
+    "redzone/control.py:Controller",
+    "redzone/lab/primegrade.py:epoch_share",
+    "redzone/lab/primegrade.py:pauses",
+    "redzone/noggin/park_prime.py:epoch_s",
+    "redzone/platform/sound_guard.py:MARKER",
+    "redzone/platform/sound_guard.py:SoundGuard",
+    "redzone/screen/scorebug.py:clock_seconds",
+    "redzone/sync_edge.py:parse_uptime",
+    "redzone/tuners/adb.py:parse_playback"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [
+     "data/accept.jsonl",
+     "data/channels.json"
+    ],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/config.py",
+    "redzone/control.py",
+    "redzone/lab/primegrade.py",
+    "redzone/noggin/park_prime.py",
+    "redzone/platform/sound_guard.py",
+    "redzone/screen/scorebug.py",
+    "redzone/sync_edge.py",
+    "redzone/tuners/adb.py",
+    "redzone/tuners/yttv_timing.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "PRIME-PARK acceptance on the real sticks and TV (10 minutes at most, TV muted): PARK's Prime steps through the APP's controller, on any Prime Video title, li...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/park_replay.py": {
    "calls": [
     "redzone/config.py:default",
     "redzone/grading.py:SwitchLog",
     "redzone/grading.py:dead_at",
+    "redzone/grading.py:is_action",
+    "redzone/grading.py:plen",
+    "redzone/grading.py:raw_type",
     "redzone/lab/backtest.py:Replay",
     "redzone/lab/cutgrade.py:after_bucket",
     "redzone/lab/cutgrade.py:grade",
@@ -17118,6 +17272,7 @@
     "redzone/noggin/park_facts.py:FactsParams",
     "redzone/noggin/park_facts.py:stamps_of",
     "redzone/noggin/park_plan.py:Plan",
+    "redzone/noggin/park_prime.py:tune_cost",
     "redzone/noggin/park_show.py:FactsFeed",
     "redzone/noggin/park_show.py:LiveNight",
     "redzone/noggin/park_show.py:Show",
@@ -17125,7 +17280,11 @@
     "redzone/noggin/park_show.py:ShowTiming",
     "redzone/noggin/park_show.py:engine_setting",
     "redzone/noggin/park_show.py:peak",
-    "redzone/noggin/park_show.py:warrant_counts"
+    "redzone/noggin/park_show.py:warrant_counts",
+    "redzone/noggin/park_timing.py:GameK",
+    "redzone/noggin/park_timing.py:GameTiming",
+    "redzone/sources/espn.py:_get",
+    "redzone/sources/espn.py:_ts"
    ],
    "contracts": [],
    "data": {
@@ -17143,7 +17302,10 @@
     "redzone/noggin/park_core.py",
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_plan.py",
-    "redzone/noggin/park_show.py"
+    "redzone/noggin/park_prime.py",
+    "redzone/noggin/park_show.py",
+    "redzone/noggin/park_timing.py",
+    "redzone/sources/espn.py"
    ],
    "kind": "entry",
    "machines": {
@@ -19411,13 +19573,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2303,
-  "data_files": 207,
+  "calls": 2351,
+  "data_files": 208,
   "machines": 53,
-  "modules": 482,
+  "modules": 484,
   "orphans": 34,
-  "unowned": 280,
-  "untagged": 410
+  "unowned": 282,
+  "untagged": 412
  },
  "version": 2
 }

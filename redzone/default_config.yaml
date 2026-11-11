@@ -1367,7 +1367,9 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
     flip_methods: [smartthings]   # the TV's own input change; never HOME on a stick
     input_rereads: 2       # an input the sound readback did not return is read again this many times...
     input_reread_s: 0.7    # ...this far apart
-  leagues: [nba, cbb]      # [PARK-CONTROLLER, unit 8] the leagues whose live games the PARK show takes (its facts are basketball's)
+  leagues: [nba, cbb]      # [PARK-CONTROLLER, unit 8] the leagues whose live games the PARK show takes. [PARK-NFL] nfl / cfb may be
+                           # added: football facts are the grader's NFL dead time, never past the play clock unexplained
+                           # (park.play_clock_s 40 + park.snap_slack_s 5), padding about 8 s (park.timing.stamp_sd_football 2.0)
   session_min: 240         # one show plans on a grid this many minutes long; the engine starts the next one when it ends
   possession_cap_s: 30     # after a review's RULING the stoppage is over: silence after it (and the plays it re-logs) is dead only
                            # this long from the last row; the rest is UNKNOWN, never a place to cut. 24 s shot clock + 6 s
@@ -1378,6 +1380,37 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
                            # of the row before it instead of dragging every later row up to its own (live run 4, flip 4)
   idle_poll_s: 5           # with park.enabled off the engine's park loop only sleeps, and looks at the flag this often
   start_retry_s: 30        # the stream on screen could not be placed (no read, no fresh tune): try again after this long
+  football_slider: 50      # [football slider] football nights (Nick, Nov 11): 0 = "More everything else" ... 100 = "More football".
+                           # Football's value x 16^((s-50)/50) (1/16 .. 16); the ends are weights, not anchors, so at 100 the
+                           # other games still backfill football's long breaks when a whole look fits. 50 = value decides,
+                           # unchanged. Shown in Settings only with park.enabled and a football game live
+  feed_lag:                # [PARK-NFL-LAG] a late feed's game is parked deeper so its dead time is known before it is shown
+    enabled: false         # OFF. On: each game of a listed league starts from its league's feed lag in redzone/lab/feed_lag_profile.json
+                           # (Nov 2-3: nfl median 44 s, q90 62.5 s; n=150) instead of park.show.feed_lag (8 s), and is parked
+                           # (lag - 8 s) deeper: Prime by a longer pause hold, YouTube TV by more LEFT presses. The lag is then
+                           # measured live from each new row's stamp to its first sight. Off: every game as before
+    leagues: [nfl, cfb]    # basketball is not listed: its rows do not change
+    prior_q: 90            # the profile's quantile to start from
+    min_samples: 5         # new rows seen before the measured lag replaces the prior
+    move_s: 5              # ...and only when it moved this much
+  prime:                   # [PRIME-PARK] Prime Video games in the PARK show (redzone/noggin/park_prime.py)
+    enabled: false         # OFF. On: the show also takes live games with a Prime event link (prime:<gti>). A Prime tune is the
+                           # existing Prime tuner, its cost decider.switch_cost.prime plus a pause-hold (prime_pause, in
+                           # buffered_jump.hold_chunk_s chunks); no back route (replay.apps); its place from the epoch position;
+                           # its K from the hidden stick's own score-bug reads (sync.edge.k_min_reads / k_sd_max_s bars).
+                           # Off: decision-identical to before (tests/test_park_prime.py). Unproven on the TV
+    pair_offset_s: 60.0    # K from a paused frame's bug: decider.sync.clock_sample only returns delays of 2-180 s, so the frame's
+                           # epoch is shifted by this before the call and taken off again (K may be negative: -58 to +120 s fit)
+    stop_match_s: 1.0      # a parked frame's bug clock this close to the stoppage's own clock is inside that stoppage (a whole-second
+                           # clock read)
+    pin_football: true     # [pinned anchor] (only with park.prime.enabled on) a Prime FOOTBALL game on screen when the show starts is
+                           # kept on its stick: never held paused when left (it plays on unseen, then is parked again before the way
+                           # back), re-tuned (about 100 s on Prime) only at the lateness cap; all roaming is on the other stick.
+                           # Replay, fake sticks, 3 nights, lag 44 s: football snaps with 3 NBA games 0.11 -> 0.19 (slider 50) and
+                           # 0.26 (slider 100); all value seen 0.46 -> 0.52; both judges 0 / 0 / 0; behind live max 143 s
+    bug_gate: false        # [PARK-NFL-LAG] OFF. On: a parked Prime FOOTBALL frame is kept only if its score bug's play clock is
+                           # below 40 (counting down from a dead ball; at 40 a play runs). Unread: kept (the feed's facts rule).
+                           # The play clock was readable on 76% of frames of one Thursday replay (watcher, Nov 11); unproven live
   show:                    # the show's own numbers (redzone/noggin/park_show.py ShowParams; each as the local show runner ended
                            # Nov 10 on, its READY-B state). Pace is a soft pull, never a rule (Nick, Nov 10)
     show_delay: 35         # the whole show runs this far behind each stream's live edge, so the feed is complete for what is
@@ -1421,6 +1454,13 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
       "nba|personal foul": 9.0
       "nba|personal take foul": 14.0
       "nba|shooting foul": 4.0
+      # [PARK-NFL-LAG] football, from the action row that starts the gap (BRAIN, Kaggle redzone-brain-history-nfl v1: 505 games
+      # of the 2024-25 seasons, locked nights never fetched; dead = next action stamp - 7 s - this stamp; 1st percentile, n)
+      "nfl|timeout": 43.0              # n=10,728 (timeouts, official ones included)
+      "nfl|official timeout": 43.0
+      "nfl|two-minute warning": 78.0   # n=1,011
+      "nfl|end period": 168.0          # n=1,041 (quarter end)
+      "nfl|end of half": 811.0         # n=505
 
 eyes:                      # [EYES, integration plan unit 0b] the hidden watcher: its own muted Chrome reads the on-air game clock and
                            # each frame's time, and keeps each game's offset K

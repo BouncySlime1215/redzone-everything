@@ -143,11 +143,12 @@ def test_update_takes_summaries_and_starts_over_when_the_feed_rewrites_a_row():
         g.add(row(100, "Jump Shot", "7:30"))
 
 
-def test_basketball_only():
-    for lg in ("nfl", "nhl", "mlb"):
+def test_basketball_and_football_only():
+    for lg in ("nhl", "mlb"):
         with pytest.raises(ValueError):
             pf.GameFacts(lg)
     assert pf.GameFacts("cbb").league == League("cbb")
+    assert pf.GameFacts("nfl").football and not pf.GameFacts("nba").football    # [PARK-NFL] tests/test_park_nfl.py
 
 
 def test_high_leverage_and_value_rows_are_kept_per_row():

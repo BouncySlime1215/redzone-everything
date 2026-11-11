@@ -39,6 +39,21 @@ const SIMPLE = [
   ["score.personal.bet_max", "Bet boost", "Extra priority while a bet is sweating", 0, 60, 1],
   ["decider.switch_margin", "Switch margin", "How much better a game must be to switch", 0, 30, 1],
 ];
+// [football slider] Nick, Nov 11: one end max football, the other sports backfill; the reverse at the other end. Shown only
+// with PARK on (park.enabled) and a live football game, so every other night looks exactly as before.
+function footballSlider(S) {
+  const path = "park.football_slider";
+  const on = cfg("park.enabled") === true && arr(S && S.games).some((g) => (g.league === "nfl" || g.league === "cfb") && g.phase === "live");
+  if (!on) return "";
+  const v = num(cfg(path), 50);
+  const help = v >= 90 ? "Football first: every football play, and the other games fill its long breaks"
+    : v <= 10 ? "The other games first; football fills their long breaks"
+    : v === 50 ? "Value decides, as usual" : v > 50 ? "Leaning to football" : "Leaning to the other games";
+  return `<div class="slider" data-key="football-slider"><div class="slider-top"><span class="t1">Football night</span><span class="val tnum" data-val-for="${attr(path)}">${esc(v)}</span></div>
+      <div class="t2">${esc(help)}. Never mid-play either way.</div>
+      <input class="range" type="range" min="0" max="100" step="5" value="${v}" style="--p:${v}" data-sync data-input="slider" data-path="${attr(path)}" aria-label="Football night: more everything else to more football">
+      <div class="row" style="justify-content:space-between;font-size:12px"><span class="dim">More everything else</span><span class="dim">More football</span></div></div>`;
+}
 const RETIRED_LIMITS = new Set(["decider.min_dwell_s", "decider.chase_min_dwell_s", "decider.max_switches_per_5min", "decider.min_gap_s", "decider.ping_pong_freeze_s"]);
 
 export function renderSettings(root) {
@@ -90,7 +105,7 @@ export function renderSettings(root) {
     <input id="fan-team" class="input" inputmode="numeric" placeholder="0" value="${attr(cfg("fantasy.team_id") ?? 0)}" data-input="fan" autocomplete="off">
     <button class="btn btn--primary btn--block" style="margin-top:14px" data-act="fan-save">Save fantasy league</button></div>`;
 
-  const sliders = `${sec("How it picks", { key: "s-pick" })}<div class="card set" data-key="pick">${SIMPLE.map(([path, label, help, lo, hi, step]) => {
+  const sliders = `${sec("How it picks", { key: "s-pick" })}<div class="card set" data-key="pick">${footballSlider(S)}${SIMPLE.map(([path, label, help, lo, hi, step]) => {
     const lim = limitFor(path);
     const min = lim ? Math.max(lo, lim[0]) : lo, max = lim ? Math.min(hi, lim[1]) : hi;
     const v = num(cfg(path), min);
