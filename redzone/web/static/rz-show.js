@@ -529,7 +529,7 @@ function health() {
       <p class="sh-foot ${isStr(le) ? "sh-err" : ""}">${isStr(le) ? `Last error: ${esc(le)}` : "No errors."}</p></div>`;
 }
 
-const LOG_IC = { jump: "swap", park: "pin", stay: "hourglass", big_play: "star", alert: "alert" };
+const LOG_IC = { jump: "swap", park: "pin", stay: "hourglass", big_play: "star", alert: "alert", hold: "pin" };
 function logRow(e) {
   let title = "", why = "";
   switch (e.kind) {
@@ -538,18 +538,23 @@ function logRow(e) {
     case "stay": title = `Stayed${isNum(e.for_s) ? ` ${secs(e.for_s)}` : ""}`; why = isStr(e.reason) ? cap(e.reason) : ""; break;
     case "big_play": title = `Big play: ${e.what || "—"}`; why = `${e.game || "—"} · ${e.seen === true ? "seen on the TV" : "missed"}`; break;
     case "alert": title = cap(e.text); why = e.level === "error" ? "Error" : "Warning"; break;
+    // The in-app show grades every look's hold (park_show._hold_read): "Place held after jump 3", with the change.
+    case "hold": title = `${{ held: "Place held", drifted: "Place DRIFTED", loose: "Place moved", unread: "Place not read" }[e.verdict] || "Place checked"}${isNum(e.n) ? ` after jump ${e.n}` : ""}`;
+      why = [isNum(e.change_s) ? `${e.change_s > 0 ? "+" : ""}${e.change_s.toFixed(1)} s from where it was read` : "", isNum(e.at_s) ? `${e.at_s} s after its resume` : ""].filter(Boolean).join(" · "); break;
     default: title = cap(String(e.kind).replace(/_/g, " ")); why = isStr(e.text) ? e.text : isStr(e.reason) ? e.reason : "";
   }
-  const tone = e.kind === "alert" ? (e.level === "error" ? "bad" : "warn") : e.kind === "big_play" && e.seen !== true ? "warn" : "";
+  const tone = e.kind === "alert" ? (e.level === "error" ? "bad" : "warn") : (e.kind === "big_play" && e.seen !== true) || (e.kind === "hold" && e.verdict === "drifted") ? "warn" : "";
   const g = e.to || e.game;
   return `<div class="tl-i sh-log-i ${tone}" data-key="e:${attr(e.t)}:${attr(e.kind)}:${attr(g || "")}"><span class="tl-node" style="${isStr(g) ? `--g:${colorOf(g)}` : ""}">${icon(LOG_IC[e.kind] || "info")}</span>
     <div style="min-width:0"><div class="tl-top"><span class="m ell">${esc(title)}</span><span class="t">${esc(fmtTime(e.t))}</span></div>${why ? `<div class="tl-why">${esc(why)}</div>` : ""}</div></div>`;
 }
 /* One row per run: back-to-back stays for the same reason become one "Stayed 3 min" row, repeated parks of the
-   same game one "Parked x 10" row. */
+   same game one "Parked x 10" row. Raw media-session position reports ("position", up to four per look) are left
+   out: their verdict is the "hold" row. */
 function folded() {
   const out = [];
   for (const e of V.events) {
+    if (e.kind === "position") continue;
     const prev = out[out.length - 1];
     if (prev && e.kind === "stay" && prev.kind === "stay" && prev.reason === e.reason) {
       out[out.length - 1] = { ...prev, t: e.t, for_s: Math.max(num(prev.for_s), num(e.for_s)), n: (prev.n || 1) + 1 };

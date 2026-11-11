@@ -23,7 +23,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-SCRIPT_TAG = '<script type="module" src="/static/rz-show.js?v=5"></script>'
+SCRIPT_TAG = '<script type="module" src="/static/rz-show.js?v=6"></script>'
 STATE_MAX_BYTES = 1_000_000      # a state file bigger than this is not the show's
 EVENTS_TAIL_BYTES = 2_000_000    # only the end of a long events file is read
 EVENTS_MAX = 500                 # newest events per answer

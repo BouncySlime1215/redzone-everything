@@ -236,4 +236,4 @@ def test_real_run_through_the_route(engine):
     s = c.get("/api/show").json()
     assert s["on_screen"]["game"] == "BOS @ PHI" and s["stale_s"] > 0
     assert "undefined" not in json.dumps(s) and "NaN" not in json.dumps(s)
-    assert "rz-show.js?v=5" in c.get("/").text
+    assert "rz-show.js?v=6" in c.get("/").text
