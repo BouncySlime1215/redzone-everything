@@ -38,13 +38,21 @@ from redzone.scoring import dead_left  # noqa: E402
 from redzone.sources import espn  # noqa: E402
 
 
-def stoppages(league: League) -> tuple[list[tuple[str, str, float]], int]:
-    """((kind, class, length in seconds) of every stoppage on the TRAIN nights, the number of train nights)."""
+def stoppages(league: League, which: str = "train") -> tuple[list[tuple[str, str, float]], int]:
+    """((kind, class, length in seconds) of every stoppage on the TRAIN nights (or `which`: "valid"), the number of nights).
+    The locked nights cannot be asked for."""
+    if which not in ("train", "valid"):
+        raise ValueError(f"only dev nights (train, valid), not {which}")
     arch = ROOT / "data" / "archive" / league.value
     nights = splits.archive_nights(arch)
-    train = splits.league_split(league.value, nights).train
+    chosen = getattr(splits.league_split(league.value, nights), which)
+    return rows_for(league, arch, {n: nights[n] for n in chosen}), len(chosen)
+
+
+def rows_for(league: League, arch: Path, nights: dict[str, list[str]]) -> list[tuple[str, str, float]]:
+    """(kind, class, length in seconds) of every stoppage in these nights' games (night -> game ids)."""
     out = []
-    for night in train:
+    for night in sorted(nights):
         for gid in nights[night]:
             f = arch / f"summary_{gid}.json"
             r = Replay.load(league, f) if f.exists() else None
@@ -59,7 +67,7 @@ def stoppages(league: League) -> tuple[list[tuple[str, str, float]], int]:
                         cls = dead_left.stoppage_class(league, k, (p.get("type") or {}).get("text") or "", p.get("text") or "")
                         out.append((k.value, cls, float(res - r.wall[i])))
                 prev = k
-    return out, len(train)
+    return out
 
 
 def _down(x: float) -> float:

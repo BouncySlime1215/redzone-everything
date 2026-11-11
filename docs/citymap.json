@@ -8854,6 +8854,7 @@
     "scripts/buffered_jump_try.py",
     "scripts/build_reasoner_data.py",
     "scripts/coverage_audit.py",
+    "scripts/dead_left_coverage.py",
     "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
@@ -10885,7 +10886,8 @@
     "drives": []
    },
    "outputs": [
-    "redzone/scoring/dead_left.py"
+    "redzone/scoring/dead_left.py",
+    "scripts/dead_left_coverage.py"
    ],
    "owner": "unowned",
    "role": "[timing.dead_v2, off] The dead-time-left reader: seconds of an open stoppage surely still to come, from its break class and the time it has already run.",
@@ -13992,6 +13994,33 @@
    "role": "Data ledger: fold a factory manifest into docs/data-ledger.json and print the cycle plan's table.",
    "serves": [
     "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)"
+   ]
+  },
+  "scripts/dead_left_coverage.py": {
+   "calls": [
+    "redzone/models.py:League",
+    "redzone/scoring/dead_left_lite.py:TABLE_FILE"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models.py",
+    "redzone/scoring/dead_left_lite.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[timing.dead_v2] Coverage of the dead-time-left table on recorded dev nights: how often the real stoppage outlasted the bound.",
+   "serves": [
+    "untagged"
    ]
   },
   "scripts/delay_grade.py": {
@@ -18606,13 +18635,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2157,
+  "calls": 2159,
   "data_files": 203,
   "machines": 51,
-  "modules": 464,
+  "modules": 465,
   "orphans": 34,
-  "unowned": 266,
-  "untagged": 395
+  "unowned": 267,
+  "untagged": 396
  },
  "version": 2
 }
