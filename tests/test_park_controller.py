@@ -431,12 +431,16 @@ def test_the_plan_plans_with_the_step_times_the_real_sticks_took(loaded):
 
 
 @needs_archive
-def test_a_first_stream_that_was_never_placed_is_almost_never_left(loaded):
-    """Why Controller.park_start exists: the feed is hardly ever far enough ahead of a stream at its live edge, whose
-    place was never read, for a padded leave. Placed by a read, the same half hour has its jumps."""
-    lost, _, _ = run(loaded, minutes=30, first="live")
+def test_a_first_stream_that_was_never_placed_is_never_left(loaded):
+    """Why Controller.park_start exists. A stream at its live edge, whose place was never read, runs about 13 s behind
+    the feed's edge: the rows that date what it shows may not be in yet (on this night a row arrives there carrying a
+    stamp 19 minutes off, and before the guard below the show left that game in live play on it). So nothing is cut on
+    within the grader's restart lead of the feed's edge. Placed by a read, the same half hour has its jumps."""
+    lost, _, rows = run(loaded, minutes=30, first="live")
     placed, _, _ = run(loaded, minutes=30)
-    assert lost.jumps_done <= 2 and placed.jumps_done >= lost.jumps_done + 2 and rule1(lost) == rule1(placed) == (0, 0, 0)
+    assert lost.jumps_done == 0 and placed.jumps_done >= 2 and rule1(lost) == rule1(placed) == (0, 0, 0)
+    assert lost.refused.get("the cut is too close to the feed's edge: the rows that date it may not be in yet", 0) >= 1
+    assert "the cut is too close to the feed's edge: the rows that date it may not be in yet" not in placed.refused
 
 
 # ---------------------------------------------------------------------------------------------- F. the seams

@@ -1038,6 +1038,12 @@ class Show:
         first second seen of game g2 = j (stream k2). Never traded for pace."""
         if k1 in self.drifted or k2 in self.drifted:
             return "a stream's place drifted after its resume: no cut on it until it is read again"
+        for g, p, skip in ((g1, i, over), (g2, j, False)):
+            # Nothing is cut on within the grader's restart lead of the feed's edge, final or not: the rows that date that
+            # second may not be in yet (a row can also arrive carrying a stamp far from its place in the list). A stream
+            # placed by its read sits about 50 s behind the edge, so this only ever stops a stream at its live edge.
+            if not skip and self.feed.edge(g) < 10 ** 8 and self.feed.edge(g) - p < self.P.open_hold:
+                return "the cut is too close to the feed's edge: the rows that date it may not be in yet"
         return refusal(self.A, self.pad0, t, self.flip, self.know, self.s.late_cap, g1, i, over, g2, j,
                        self.sure, self.open_from, self.tail, self.extra_of(k1, g1), self.extra_of(k2, g2))
 
