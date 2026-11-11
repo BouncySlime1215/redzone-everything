@@ -903,6 +903,8 @@ class Controller:
         if (self._busy() or self._flipping or not self.live_control or self._reasserts >= REASSERT_MAX
                 or now < self._reassert_at or self.cec_view not in ("none", "both")):
             return
+        if self._sound_blocked():
+            return   # [sound guard] an open sound incident: HOME could turn a TV the guard powered off back on; no try is used up
         stick = self.main
         if stick is None or stick.host not in self.hdmi:
             return
@@ -3431,6 +3433,14 @@ class Controller:
                        resumed=(how is not None) if (home or tv_flip) else None,
                        settled=settled, stall_s=stall or None)
 
+    def _sound_blocked(self) -> str:
+        """[sound guard] Why no input change may go out ("" = it may): an open sound incident (SamsungTV.sound_blocked).
+        With sound_guard.enabled off the TV has no guard and this is always "": nothing is asked and nothing changes."""
+        tv = self.tv
+        if getattr(tv, "sound_guard", None) is None:
+            return ""
+        return str(tv.sound_blocked() or "")
+
     async def _flip_to(self, stick: Stick) -> bool:
         """Make the TV show this stick.
 
@@ -3448,6 +3458,12 @@ class Controller:
         self._flip_s = None
         self._flip_how = ""
         ok = False
+        blocked = self._sound_blocked()
+        if blocked:
+            # [sound guard] tv.set_input refuses by itself while a sound incident is open, but this function would then
+            # fall back to HOME on the stick, which changes the TV's input without the guard seeing it
+            self.tv.last_error = f"sound incident open ({blocked}): no input change"
+            return False
         requested = self.hdmi.get(stick.host)
         if not requested:
             self.tv.last_error = "no input configured for this stick"
