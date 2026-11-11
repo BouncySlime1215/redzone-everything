@@ -56,7 +56,8 @@ if ! git diff --quiet HEAD; then
 fi
 
 # The script may not exist in old commits, so each step runs a copy from outside the checkout.
-copy=$(mktemp -t rz_bisect) || exit 2
+# An explicit XXXXXX template: GNU mktemp (Linux CI) rejects `-t rz_bisect` ("too few X's"); BSD accepts both.
+copy=$(mktemp "${TMPDIR:-/tmp}/rz_bisect.XXXXXX") || exit 2
 cp "$script" "$copy"
 trap 'git bisect reset >/dev/null 2>&1; rm -f "$copy"' EXIT
 
