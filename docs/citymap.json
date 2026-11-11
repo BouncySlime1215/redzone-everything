@@ -151,6 +151,13 @@
    ],
    "writers": []
   },
+  "ci_shard_weights.json": {
+   "readers": [
+    "scripts/ci_shard.py"
+   ],
+   "users": [],
+   "writers": []
+  },
   "config.json": {
    "readers": [
     "agent/kaggle/dequant.py"
@@ -14273,6 +14280,29 @@
     "untagged"
    ]
   },
+  "scripts/ci_shard.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "ci_shard_weights.json"
+    ],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Split the Linux unit suite into N CI shards by test file, and prove the shards cover every file exactly once.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/citymap.py": {
    "calls": [],
    "contracts": [],
@@ -19364,12 +19394,12 @@
  },
  "summary": {
   "calls": 2295,
-  "data_files": 206,
+  "data_files": 207,
   "machines": 53,
-  "modules": 481,
+  "modules": 482,
   "orphans": 34,
-  "unowned": 279,
-  "untagged": 409
+  "unowned": 280,
+  "untagged": 410
  },
  "version": 2
 }
