@@ -27,6 +27,15 @@ NEEDED = ("id", "kind", "cycle", "priority", "name", "access", "verdict", "licen
           "raw_gb", "status", "owner", "needs_nick")
 
 
+FOCUS = ("nba", "nfl", "shared-basketball", "shared-football", "other")   # Nick 2:00 AM Nov 5: NBA first, then NFL
+
+
+def rank_key(s: dict) -> tuple:
+    """NBA impact first, then NFL, then shared pretraining; then priority, then info per GB."""
+    f = s.get("focus", "other")
+    return (FOCUS.index(f) if f in FOCUS else len(FOCUS), s["priority"], -score(s))
+
+
 def score(s: dict) -> float:
     """New tokens (M) x novelty per raw GB downloaded."""
     return s["est_tokens_m"] * s["novelty"] / max(s["raw_gb"], 0.05)
@@ -59,7 +68,7 @@ def check(d: dict) -> list[str]:
 
 def render(d: dict) -> str:
     allsrc = d["candidates"]
-    src = sorted([s for s in allsrc if s["kind"] != "derived"], key=score, reverse=True)
+    src = sorted([s for s in allsrc if s["kind"] != "derived"], key=rank_key)
     der = [s for s in allsrc if s["kind"] == "derived"]
     tag = d["personal_use_tag"]
     L = ["# Data scout ledger", "",
@@ -73,11 +82,11 @@ def render(d: dict) -> str:
          "any paid feed needs Nick's OK; jobs run on Kaggle/Colab, never the Mac.", "",
          "## Ranked sources", "",
          "Derived rows are listed after the ranking and never count toward new information.", "",
-         "| Rank | Source | Pri | Kind | Verdict | Est. tokens (M) | Raw GB | Info/GB | Status | Owner | Nick action | License line |",
-         "|---:|---|---:|---|---|---:|---:|---:|---|---|---|---|"]
+         "| Rank | Focus | Source | Pri | Kind | Verdict | Est. tokens (M) | Raw GB | Info/GB | Status | Owner | Nick action | License line |",
+         "|---:|---|---|---:|---|---|---:|---:|---:|---|---|---|---|"]
     for i, s in enumerate(src, 1):
         v = s["verdict"] + (f" ({tag})" if s["verdict"] == "yellow-B" else "")
-        L.append(f"| {i} | {s['name']} | {s['priority']} | {s['kind']} | {v} | {s['est_tokens_m']:g} | {s['raw_gb']:g} | "
+        L.append(f"| {i} | {s.get('focus', 'other')} | {s['name']} | {s['priority']} | {s['kind']} | {v} | {s['est_tokens_m']:g} | {s['raw_gb']:g} | "
                  f"{score(s):.1f} | {s['status']} | {s['owner']} | {s['needs_nick']} | {s['license']} |")
     L += ["", "## Derived (no new knowledge)", "", "| Source | Est. tokens (M) | What |", "|---|---:|---|"]
     L += [f"| {s['name']} | {s['est_tokens_m']:g} | {s['access']} |" for s in der]
