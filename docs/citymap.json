@@ -805,10 +805,10 @@
    "writers": []
   },
   "eyes_state.json": {
-   "readers": [],
-   "users": [
+   "readers": [
     "redzone/web/show.py"
    ],
+   "users": [],
    "writers": []
   },
   "fallbacks.jsonl": {
@@ -12983,11 +12983,10 @@
    "data": {
     "reads": [
      "events.jsonl",
+     "eyes_state.json",
      "state.json"
     ],
-    "uses": [
-     "eyes_state.json"
-    ],
+    "uses": [],
     "writes": []
    },
    "inputs": [],
