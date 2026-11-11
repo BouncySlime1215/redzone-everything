@@ -1013,6 +1013,11 @@ timing:
     "Fire TV Stick 4K Plus": {pause_s: 0.60, resume_s: 0.53, sd_s: 0.08}     # n=6 each
   game_offset: false             # per-game K (feed time minus YouTube's clock) from game_offset_file; no K = delay unknown
   game_offset_file: ""           # JSON {"games": {id: {night, k_s, sd_s, spread_s}}}; empty = off (redzone/decider/tune_offset.py)
+  dead_v2: false           # [DEAD-V2] OFF: true = a caller sizes an open stoppage's sure dead time by break class (an NFL timeout
+                           # the feed calls official is a commercial, "Timeout #n by TEAM" is short) and by the time already run
+                           # (scoring/dead_left_lite.guaranteed_left, table broadcast/dead_left_table.json, train nights only).
+                           # Off = dead_left.guaranteed_left, the pooled quantile less the elapsed time, as before. No app code
+                           # reads it yet (salvaged from branch anchor-mode without its anchor mode). Simulated only (ledger L1, L5)
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback

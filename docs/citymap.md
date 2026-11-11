@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**472 modules**, 400 untagged, 270 unowned, 35 orphans (no importer); 2214 call edges, 204 data files, 52 machines.
+**475 modules**, 403 untagged, 273 unowned, 35 orphans (no importer); 2229 call edges, 205 data files, 52 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -19,7 +19,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/decider/core.py` | The decision core: ONE expected-value function that every action is chosen by. | models -> contracts, contracts.guard, contracts.legacy, contracts.switching, contracts.views, decider.decider +1 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/cuts.py` | Cut timing: WHEN to leave a game and WHEN to come into one. | models, sources.espn -> decider.buffered, decider.decider, decider.gate, decider.screen, noggin.features, scripts.buffered_jump_sim +1 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/decider.py` | The switch decider: a producer that never cuts you off mid-play. | config, contracts.brain, contracts.switching, decider.break_tail, decider.buffered, decider.core +23 -> buffer_shadow, contracts.legacy, decider.gate, demo.engine, engine, lab.backtest +10 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), GAME-01, GAME-04, GAME-05, GAME-09, Landings in dead time, Mid-play entries (per 100 landings), SAFE-01, SAFE-09, Your-team crunch live |
-| `redzone/decider/screen.py` | What's on your screen right now, estimated from the data and the stream delay. | config, decider.cuts, decider.delaymodel, decider.sync, fsm, machines.decider +1 -> decider.decider, decider.gate, demo.engine, engine, grading, lab.backtest +9 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
+| `redzone/decider/screen.py` | What's on your screen right now, estimated from the data and the stream delay. | config, decider.cuts, decider.delaymodel, decider.sync, fsm, machines.decider +2 -> decider.decider, decider.gate, demo.engine, engine, grading, lab.backtest +9 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/fantasy.py` | ESPN Fantasy Football: boost games where your (or your opponent's) starters are about to score. | models, tv -> engine | untagged |
 | `redzone/plan.py` | Tonight's plan: every game on today's slate, where it will be watched, and whether that was checked on the hidden stick before it started. | channels, models -> engine, lab.night.run, scripts.plan_tonight | League order respected (no lower-league non-crunch over a higher-league crunch) |
 | `redzone/reel.py` | Catch-up reel: 5+ plays you missed, back to back, in 30-60 s (RedZone's "here's what you missed"). | governor -> decider.gate, engine, lab.night.run, moments.fill | Big plays live or replayed within 2 min (stretch), Big plays live or replayed within 3 min |
@@ -189,7 +189,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/recorded.py` | Explicit recorded-game navigation, isolated from live decisions and calibration. | machines.platform, screen_ocr, tuners.adb, tuners.prime_search -> engine, scripts.find_yttv_code | untagged |
 | `redzone/recorder.py` | Flight recorder: the real-world numbers the simulator needs. | models, sources.espn, sources.leagues -> engine, lab.night.run | untagged |
 | `redzone/sources/__init__.py` (package) | no docstring | - -> - | untagged |
-| `redzone/sources/espn.py` | ESPN's free site API: the backbone for all four leagues. | models, scoring.postseason -> agent.distill.jump, contracts.events, decider.cuts, demo.engine, engine, grading +41 | untagged |
+| `redzone/sources/espn.py` | ESPN's free site API: the backbone for all four leagues. | models, scoring.postseason -> agent.distill.jump, contracts.events, decider.cuts, demo.engine, engine, grading +42 | untagged |
 | `redzone/sources/eventlinks.py` | Per-game streaming deep links (Prime Video GTIs, ESPN+/ESPN watch ids) with no login. | - -> discovery.yttv, engine, scripts.plan_tonight, scripts.providers_check | untagged |
 | `redzone/sources/fastcast.py` | ESPN Fastcast: the push feed behind espn.com's live gamecasts. | machines.platform, models, sources.espn, views -> engine | untagged |
 | `redzone/sources/fastcast_check.py` | [fastcast live check] Is ESPN's push feed faster than polling, and does it say the same thing? | - -> engine, scripts.fastcast_check | untagged |
@@ -241,21 +241,21 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/demo/download.py` | Fetch one day's finished games (scoreboard + play-by-play) into data/demo/<day>/<league>/. | - -> demo.__main__ | untagged |
 | `redzone/demo/engine.py` | The real Engine, replaying a past day on a simulated clock. | channels, config, control, crunch, decider.decider, decider.screen +10 -> demo.__main__ | untagged |
 | `redzone/engine.py` | The producer loop: poll every feed -> merge -> score -> decide -> act -> tell the phone. | bets, buffer_rc8, buffer_shadow, calibration, channels, cheap_labels +63 -> __main__, demo.engine, lab.night.run, web.server, scripts.fault_drill, scripts.perf_probe +1 | BTN-04, BTN-05, FEED-01, SAFE-01, SAFE-03, STK-06 |
-| `redzone/lab/backtest.py` | Replay a real slate of past games through the scorer and decider, then grade it. | channels, config, contracts.switching, decider.decider, decider.screen, decider.whistle +16 -> agent.kaggle.build_moments_kaggle, demo.engine, lab.cutgrade, lab.night.run, lab.optimize, lab.oracle +29 | untagged |
-| `redzone/lab/cutgrade.py` | Cut-timing scorecard: WHERE in each game we left, and WHERE we landed. | decider.screen, grading, lab.backtest, models, sources.espn -> lab.backtest, lab.oracle, lab.sportsgrade, scripts.buffer_shadow_grade, scripts.entry_autopsy, scripts.eval +3 | untagged |
+| `redzone/lab/backtest.py` | Replay a real slate of past games through the scorer and decider, then grade it. | channels, config, contracts.switching, decider.decider, decider.screen, decider.whistle +16 -> agent.kaggle.build_moments_kaggle, demo.engine, lab.cutgrade, lab.night.run, lab.optimize, lab.oracle +30 | untagged |
+| `redzone/lab/cutgrade.py` | Cut-timing scorecard: WHERE in each game we left, and WHERE we landed. | decider.screen, grading, lab.backtest, models, sources.espn -> lab.backtest, lab.oracle, lab.sportsgrade, scripts.buffer_shadow_grade, scripts.entry_autopsy, scripts.eval +4 | untagged |
 | `redzone/lab/datasets.py` | Training datasets: per-league game-state snapshots with break / key-moment / hotness labels. | - -> lab.brain3data, lab.brainfit, lab.breakblend, lab.sportsdata, scripts.build_training, scripts.train_brain | untagged |
 | `redzone/lab/optimize.py` | Training lab: search decider settings against real past slates. | config, lab.backtest, models -> lab.tune, scripts.eval | untagged |
 | `redzone/lab/replaycheck.py` | Exact-date replay diagnostics. | config, decider.screen, lab.backtest, lab.sportsgrade, models, sources.espn -> scripts.replay_check | untagged |
 | `redzone/lab/sportsdata.py` | Turn free public play-by-play releases into labeled game-state snapshots. | lab.datasets, models, scoring.gameflow, sources.espn -> agent.distill.jump, lab.brain3data, scripts.build_training | untagged |
 | `redzone/lab/sportsgrade.py` | League-aware report card for backtests (NFL, NBA, NHL, MLB). | decider.screen, grading, lab.backtest, lab.cutgrade, lab.leverage, models +1 -> agent.kaggle.build_moments_kaggle, lab.oracle, lab.oracle_v2, lab.reactgrade, lab.reasoner_data, lab.replaycheck +9 | untagged |
 | `redzone/lab/tune.py` | Auto-tune the decider's hand-picked knobs against the scorecards (CMA-ES, numpy only). | config, decider.decider, lab.backtest, lab.optimize, lab.splits, lab.sportsgrade +1 -> scripts.tune | untagged |
-| `redzone/models.py` | Source-agnostic game model. | - -> agent.distill.jump, agent.kaggle.build_moments_kaggle, autonomy, bets, channels, context.buzz +99 | untagged |
+| `redzone/models.py` | Source-agnostic game model. | - -> agent.distill.jump, agent.kaggle.build_moments_kaggle, autonomy, bets, channels, context.buzz +101 | untagged |
 | `scripts/backtest.py` (entry) | Replay a past NFL Sunday through the app and print the report card. | config, lab.backtest, models -> - | untagged |
 | `scripts/eval.py` (entry) | The scorecard every change is judged by. | config, lab.backtest, lab.cutgrade, lab.evaldata, lab.optimize, lab.oracle +2 -> - | untagged |
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (270)
+## unowned (273)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -315,7 +315,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/primegrade.py` | [EXP-800 Prime] Grade the diamond plan's Prime tests (docs/sync/2026-11-05-diamond-plan.md, 7f32aaa6) on the sticks' own media_session rows. | lab.syncgrade -> scripts.sync_grade | untagged |
 | `redzone/lab/reactgrade.py` | [EXP-301] Grader for the delay-and-react test (Nick, Nov 5 12:25 AM and 12:28 AM ET). | grading, lab.backtest, lab.oracle, lab.sportsgrade -> lab.delaygrade, scripts.reactgrade | untagged |
 | `redzone/lab/reasoner_data.py` | Training rows for the live game reasoner, distilled from the archive (no paid APIs). | config, lab.backtest, lab.outcome_label, lab.sportsgrade, models, reasoner.brief +2 -> agent.kaggle.build_moments_kaggle, scripts.build_reasoner_data, scripts.eval_reasoner, scripts.export_reasoner_llm, scripts.train_reasoner | untagged |
-| `redzone/lab/splits.py` | Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03). | lab.evaldata -> lab.brain3data, lab.breakblend, lab.tune, scripts.backfill_eval_v2, scripts.bucket_join_measure, scripts.buffered_jump_sim +15 | untagged |
+| `redzone/lab/splits.py` | Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03). | lab.evaldata -> lab.brain3data, lab.breakblend, lab.tune, scripts.backfill_eval_v2, scripts.bucket_join_measure, scripts.buffered_jump_sim +16 | untagged |
 | `redzone/lab/syncgrade.py` | [EXP-800 / EXP-801] Grade the sync program on the sticks' own behind-live meter (overseer tests, Nov 5 2:30 AM). | - -> lab.primegrade, scripts.sync_grade | untagged |
 | `redzone/lab/syncsim.py` | [auto sync] Sync-error scorecard: how far the delay the app uses is from the screen's real delay. | decider.screen -> scripts.eval_sync | untagged |
 | `redzone/lab/timing.py` | [switch timing] How late we learn about a dead ball, and what that leaves before it airs on screen. | grading -> lab.backtest, scripts.burst_align, scripts.exp023_belief, scripts.kaggle_gamevalue_holdset, scripts.timing_report | untagged |
@@ -374,7 +374,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/reasoner/reasoner.py` | The live game reasoner at runtime: one reading per live game, rebuilt on each new play. | jsonfind, models, reasoner.brief, reasoner.head -> engine, scoring.engine, scripts.eval_reasoner, scripts.export_reasoner_llm | untagged |
 | `redzone/scoring/__init__.py` (package) | no docstring | - -> - | untagged |
 | `redzone/scoring/brain3.py` | Brain v3: one compact model per league, numpy only at runtime. | contracts.breaks, contracts.legacy, contracts.moment, models, models_rt.forest, scoring.brain +9 -> lab.brain3cal, lab.brain3data, lab.brain3fit, noggin.pick, noggin.predict_fit, noggin.timing +3 | Big plays seen live, NBA, Big plays seen live, NFL, Big plays seen live, NHL, Your-team big plays seen (live or within 3 min) |
-| `redzone/scoring/dead_left.py` | One dead-ball predictor: how much of a stoppage is still surely to come, from the measured break lengths. | models -> decider.break_tail, scripts.veto_audit | untagged |
+| `redzone/scoring/dead_left.py` | One dead-ball predictor: how much of a stoppage is still surely to come, from the measured break lengths. | models, scoring.dead_left_lite -> decider.break_tail, decider.screen, scripts.measure_dead_left, scripts.veto_audit | untagged |
+| `redzone/scoring/dead_left_lite.py` | [timing.dead_v2, off] The dead-time-left reader: seconds of an open stoppage surely still to come, from its break class and the time it has already run. | - -> scoring.dead_left, scripts.dead_left_coverage | untagged |
 | `redzone/scoring/postseason.py` | Postseason stakes: elimination games, deciders and how close a game is to the title (default OFF). | models -> scoring.engine, sources.espn | untagged |
 | `redzone/sync_edge.py` | [SYNC program A, EXP-800/801] Where each stick is against its stream's live edge, read every second. | channels -> engine, sync_probe, tuners.yttv_timing | untagged |
 | `redzone/sync_probe.py` | [SYNC probe] What the sticks expose for auto-anchors and network features: read-only, automatic. | config, decider.sync, sync_edge, tuners.adb, tuners.yttv_timing -> engine, scripts.burst_align, scripts.sync_fit | untagged |
@@ -409,6 +410,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/controls_drill.py` (entry) | Phone controls drill: replay the end-to-end night with scripted phone presses and grade them. | - -> - | untagged |
 | `scripts/coverage_audit.py` (entry) | Route every game on a public ESPN schedule through the repo's ChannelMap and print the reach table. | channels, lab.evaldata, lab.splits, models, sources.espn -> scripts.holdset, scripts.kaggle_value_shards, scripts.reach_grid, scripts.redzone_reconstruct, scripts.show_scorecard, scripts.value2_report +1 | untagged |
 | `scripts/data_landing_grade.py` (entry) | Data landing grader (PROPOSAL, test writers, Nov 5 2026; EXP-705). | lab.evaldata, lab.splits -> - | untagged |
+| `scripts/dead_left_coverage.py` (entry) | [timing.dead_v2] Coverage of the dead-time-left table on recorded dev nights: how often the real stoppage outlasted the bound. | models, scoring.dead_left_lite -> - | untagged |
 | `scripts/delay_grade.py` (entry) | [EXP-803] Grade delay-precision arms against the base arm (redzone/lab/delaygrade.py). | lab.delaygrade -> - | untagged |
 | `scripts/delay_report.py` (entry) | How well each channel's stream delay is predicted, from the delay samples the app has stored. | config, decider.screen -> - | untagged |
 | `scripts/disk_guard.py` (entry) | Disk guard for the Mac (~5 GB free): what is using space in this checkout, and a safe cleanup of the transfer folders that cloud build threads leave behind. | governor -> - | untagged |
@@ -453,6 +455,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/license_check.py` (entry) | F8 license-tag check (Test Factory; Nick, Nov 4 2026 11:20 PM ET, data B). | - -> - | untagged |
 | `scripts/mac_brain_memory_test.py` (entry) | Test 3c: load a 4-bit model on the Mac and log peak memory, swap change and seconds per pass, stopping at the 2 GB limit. | - -> - | untagged |
 | `scripts/measure_break_lengths.py` (entry) | [Data F] Measured break lengths by league x network x break kind, from the pinned archive. | lab.backtest, lab.cutgrade, lab.splits, models, sources.espn -> - | untagged |
+| `scripts/measure_dead_left.py` (entry) | [timing.dead_v2] The dead-time-left table: sure seconds left in a stoppage, by break class and by the time already elapsed. | lab.backtest, lab.cutgrade, lab.splits, models, scoring.dead_left, sources.espn -> - | untagged |
 | `scripts/media_pull.py` (entry) | Media metadata workers (Data Division, type C): which plays got clipped, and how much people watched. | - -> - | untagged |
 | `scripts/module_headers.py` (entry) | Check that every module says what it is and why it exists, ratcheted so only new gaps fail. | - -> - | untagged |
 | `scripts/moment_rates.py` (entry) | Measured must-see rates per league from the archive, compared with the planner's table (read only). | lab.splits, moments, moments.detect, moments.tiers -> - | untagged |
@@ -530,7 +533,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 | `scripts/yttv_search_tune_try.py` (entry) | Tune the LOCAL stations by YouTube TV search on the HIDDEN stick, through the app's own routing and tuner as if tuners.yttv_local_search were on (ChannelMap.... | channels, tuners.adb, tuners.tuners -> - | untagged |
 
-## Untagged (400)
+## Untagged (403)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -736,6 +739,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/recorder.py`
 - `redzone/scoring/__init__.py`
 - `redzone/scoring/dead_left.py`
+- `redzone/scoring/dead_left_lite.py`
 - `redzone/scoring/drive.py`
 - `redzone/scoring/engine.py`
 - `redzone/scoring/gameflow.py`
@@ -797,6 +801,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/controls_drill.py`
 - `scripts/coverage_audit.py`
 - `scripts/data_landing_grade.py`
+- `scripts/dead_left_coverage.py`
 - `scripts/delay_grade.py`
 - `scripts/delay_report.py`
 - `scripts/deploy.py`
@@ -848,6 +853,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/license_check.py`
 - `scripts/mac_brain_memory_test.py`
 - `scripts/measure_break_lengths.py`
+- `scripts/measure_dead_left.py`
 - `scripts/media_pull.py`
 - `scripts/module_headers.py`
 - `scripts/moment_rates.py`
@@ -971,37 +977,37 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/tuners/identity.py`
 - `redzone/tuners/yttv_nerds.py`
 
-## Most-called symbols (top 25 of 1154)
+## Most-called symbols (top 25 of 1161)
 
 | symbol | callers |
 |---|---:|
-| `redzone/models.py:League` | 40 |
+| `redzone/models.py:League` | 42 |
 | `redzone/config.py:Config` | 35 |
 | `redzone/sources/espn.py:_get` | 23 |
 | `redzone/tuners/adb.py:Stick` | 23 |
-| `redzone/lab/backtest.py:Replay` | 20 |
+| `redzone/lab/backtest.py:Replay` | 21 |
 | `redzone/channels.py:ChannelMap` | 19 |
 | `redzone/sources/espn.py:_ts` | 17 |
+| `redzone/sources/espn.py:stoppage_for` | 16 |
 | `redzone/config.py:default` | 15 |
+| `redzone/lab/splits.py:archive_nights` | 15 |
 | `redzone/sources/espn.py:_int` | 15 |
-| `redzone/sources/espn.py:stoppage_for` | 15 |
-| `redzone/lab/splits.py:archive_nights` | 14 |
 | `agent/kaggle/data_fetch.py:SourceSpec` | 12 |
 | `redzone/sources/espn.py:flatten_plays` | 12 |
 | `redzone/lab/splits.py:nights_for` | 11 |
 | `agent/kaggle/data_fetch.py:cli` | 10 |
+| `redzone/lab/splits.py:league_split` | 10 |
 | `redzone/sources/espn.py:_clock_s` | 10 |
 | `redzone/discovery/providers.py:classify_screen` | 9 |
 | `redzone/discovery/providers.py:is_purchase_screen` | 9 |
 | `redzone/fsm.py:MachineMap` | 9 |
 | `redzone/lab/backtest.py:run` | 9 |
-| `redzone/lab/splits.py:league_split` | 9 |
 | `redzone/models.py:pro_period` | 9 |
 | `redzone/grading.py:dead_at` | 8 |
 | `redzone/lab/evaldata.py:window_end` | 8 |
 | `redzone/lab/oracle.py:tables` | 8 |
 
-## Shared data files (84 of 204)
+## Shared data files (84 of 205)
 
 Files two or more modules name (the rest are in the JSON). Best effort from string literals: w = writes, r = reads, u = named but unclassified.
 

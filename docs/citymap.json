@@ -591,6 +591,13 @@
     "redzone/discovery/yttv.py"
    ]
   },
+  "dead_left_table.json": {
+   "readers": [
+    "redzone/scoring/dead_left_lite.py"
+   ],
+   "users": [],
+   "writers": []
+  },
   "default_config.yaml": {
    "readers": [
     "redzone/config.py",
@@ -5847,7 +5854,8 @@
     "redzone/fsm.py:MachineMap",
     "redzone/models.py:ByLeague",
     "redzone/models.py:Stoppage",
-    "redzone/models.py:pro_period"
+    "redzone/models.py:pro_period",
+    "redzone/scoring/dead_left.py:stoppage_class"
    ],
    "contracts": [],
    "data": {
@@ -5862,7 +5870,8 @@
     "redzone/decider/sync.py",
     "redzone/fsm.py",
     "redzone/machines/decider.py",
-    "redzone/models.py"
+    "redzone/models.py",
+    "redzone/scoring/dead_left.py"
    ],
    "kind": "module",
    "machines": {
@@ -7079,6 +7088,7 @@
     "scripts/ladder_replay.py",
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
+    "scripts/measure_dead_left.py",
     "scripts/noggin_selfplay.py",
     "scripts/park_ceiling.py",
     "scripts/park_facts_check.py",
@@ -7345,6 +7355,7 @@
     "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/measure_break_lengths.py",
+    "scripts/measure_dead_left.py",
     "scripts/northstar.py",
     "scripts/veto_audit.py"
    ],
@@ -8303,6 +8314,7 @@
     "scripts/exp023_belief.py",
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
+    "scripts/measure_dead_left.py",
     "scripts/moment_rates.py",
     "scripts/park_ceiling.py",
     "scripts/park_facts_check.py",
@@ -8912,6 +8924,7 @@
     "scripts/buffered_jump_try.py",
     "scripts/build_reasoner_data.py",
     "scripts/coverage_audit.py",
+    "scripts/dead_left_coverage.py",
     "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
@@ -8921,6 +8934,7 @@
     "scripts/kaggle_gamevalue_holdset.py",
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
+    "scripts/measure_dead_left.py",
     "scripts/noggin_factory.py",
     "scripts/noggin_tokens.py",
     "scripts/park_ceiling.py",
@@ -11058,7 +11072,11 @@
   },
   "redzone/scoring/dead_left.py": {
    "calls": [
-    "redzone/models.py:League"
+    "redzone/models.py:League",
+    "redzone/scoring/dead_left_lite.py:cell",
+    "redzone/scoring/dead_left_lite.py:guaranteed_left",
+    "redzone/scoring/dead_left_lite.py:left_at",
+    "redzone/scoring/dead_left_lite.py:level"
    ],
    "contracts": [],
    "data": {
@@ -11069,7 +11087,8 @@
     "writes": []
    },
    "inputs": [
-    "redzone/models.py"
+    "redzone/models.py",
+    "redzone/scoring/dead_left_lite.py"
    ],
    "kind": "module",
    "machines": {
@@ -11078,10 +11097,38 @@
    },
    "outputs": [
     "redzone/decider/break_tail.py",
+    "redzone/decider/screen.py",
+    "scripts/measure_dead_left.py",
     "scripts/veto_audit.py"
    ],
    "owner": "unowned",
    "role": "One dead-ball predictor: how much of a stoppage is still surely to come, from the measured break lengths.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/scoring/dead_left_lite.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "dead_left_table.json"
+    ],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/scoring/dead_left.py",
+    "scripts/dead_left_coverage.py"
+   ],
+   "owner": "unowned",
+   "role": "[timing.dead_v2, off] The dead-time-left reader: seconds of an open stoppage surely still to come, from its break class and the time it has already run.",
    "serves": [
     "untagged"
    ]
@@ -11504,6 +11551,7 @@
     "scripts/green_summaries.py",
     "scripts/holdset_public.py",
     "scripts/measure_break_lengths.py",
+    "scripts/measure_dead_left.py",
     "scripts/noggin_factory.py",
     "scripts/noggin_tokens.py",
     "scripts/park_ceiling.py",
@@ -14301,6 +14349,33 @@
     "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)"
    ]
   },
+  "scripts/dead_left_coverage.py": {
+   "calls": [
+    "redzone/models.py:League",
+    "redzone/scoring/dead_left_lite.py:TABLE_FILE"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models.py",
+    "redzone/scoring/dead_left_lite.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[timing.dead_v2] Coverage of the dead-time-left table on recorded dev nights: how often the real stoppage outlasted the bound.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/delay_grade.py": {
    "calls": [
     "redzone/lab/delaygrade.py:grade",
@@ -16104,6 +16179,43 @@
    "outputs": [],
    "owner": "unowned",
    "role": "[Data F] Measured break lengths by league x network x break kind, from the pinned archive.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/measure_dead_left.py": {
+   "calls": [
+    "redzone/lab/backtest.py:Replay",
+    "redzone/lab/cutgrade.py:resume_after",
+    "redzone/lab/splits.py:archive_nights",
+    "redzone/lab/splits.py:league_split",
+    "redzone/models.py:League",
+    "redzone/scoring/dead_left.py:conformal_lower",
+    "redzone/scoring/dead_left.py:stoppage_class",
+    "redzone/sources/espn.py:stoppage_for"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/lab/splits.py",
+    "redzone/models.py",
+    "redzone/scoring/dead_left.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[timing.dead_v2] The dead-time-left table: sure seconds left in a stoppage, by break class and by the time already elapsed.",
    "serves": [
     "untagged"
    ]
@@ -18943,13 +19055,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2214,
-  "data_files": 204,
+  "calls": 2229,
+  "data_files": 205,
   "machines": 52,
-  "modules": 472,
+  "modules": 475,
   "orphans": 35,
-  "unowned": 270,
-  "untagged": 400
+  "unowned": 273,
+  "untagged": 403
  },
  "version": 2
 }
