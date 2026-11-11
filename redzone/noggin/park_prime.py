@@ -96,7 +96,7 @@ def epoch_s(position_s: float | None) -> float | None:
 # ---------------------------------------------------------------------------------------------- K from the bug
 def k_sample(tracker, target: str, bug_clock_s: float, frame_epoch: float, plays: list[tuple[float, float]],
              sd: float, get: Callable[..., object] | None = None) -> float | None:
-    """One GAME K sample (content minus feed time, park_timing's K, with the frame's epoch as content time) from a bug
+    """One GAME K sample (content minus feed time, the PARK timing model's K, with the frame's epoch as content time) from a bug
     clock read on a frame whose epoch is `frame_epoch`, against the current period's plays [(feed wallclock, clock s
     remaining)], fused into `tracker` (its own sync_edge.EdgeTracker, which gates outliers). EdgeTracker's own number
     is a FRAME K (arena minus frame clock); the epoch is shifted by pair_offset_s and booked as its frame delay, so

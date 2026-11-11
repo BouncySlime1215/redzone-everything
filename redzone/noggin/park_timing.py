@@ -15,7 +15,7 @@ THREE NUMBERS HAVE BEEN CALLED "K" (PARK-UNIFY); each has its own name, and only
              (park_prime borrows EdgeTracker's fusing only, in its own tracker, with the epoch shifted so it returns
              a GAME K.)
   FEED LEAD  how far the feed runs ahead of a stream's live edge on the wall clock (park_replay.FEED_LEAD,
-             `prior_delay`, park_core's feed_lead_s): GAME K + the live lag less the feed's own lag. Not a K.
+             `prior_delay`, the planner core's feed_lead_s): GAME K + the live lag less the feed's own lag. Not a K.
 
 so the frame showing feed time F is at content time F + K. K belongs to ONE game on ONE night (Nov 10: espn2 -2.78 s,
 espn +2.85 s, nbc +24.77 s; 27 s apart), so it is looked up by channel, league, game and date and is never borrowed
