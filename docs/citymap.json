@@ -9558,6 +9558,55 @@
     "SAFE-02"
    ]
   },
+  "redzone/noggin/park_core.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/noggin/park_plan.py",
+    "scripts/park_sim.py"
+   ],
+   "owner": "unowned",
+   "role": "PARK core: the two-stick show, one second at a time, on a night's per-second facts.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/noggin/park_plan.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/noggin/park_core.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/park_plan.py"
+   ],
+   "owner": "unowned",
+   "role": "PARK planner: the search that plans the two-stick show (stay, jump, hold, roll, skip, tune) a few jumps ahead.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/noggin/pick.py": {
    "calls": [
     "redzone/grading.py:Lags",
@@ -16265,14 +16314,18 @@
    ]
   },
   "scripts/park_plan.py": {
-   "calls": [],
+   "calls": [
+    "redzone/noggin/park_plan.py:Plan"
+   ],
    "contracts": [],
    "data": {
     "reads": [],
     "uses": [],
     "writes": []
    },
-   "inputs": [],
+   "inputs": [
+    "redzone/noggin/park_plan.py"
+   ],
    "kind": "entry",
    "machines": {
     "declares": [],
@@ -16307,14 +16360,21 @@
    ]
   },
   "scripts/park_sim.py": {
-   "calls": [],
+   "calls": [
+    "redzone/noggin/park_core.py:Night",
+    "redzone/noggin/park_core.py:Setting",
+    "redzone/noggin/park_core.py:run",
+    "redzone/noggin/park_core.py:summarize"
+   ],
    "contracts": [],
    "data": {
     "reads": [],
     "uses": [],
     "writes": []
    },
-   "inputs": [],
+   "inputs": [
+    "redzone/noggin/park_core.py"
+   ],
    "kind": "entry",
    "machines": {
     "declares": [],
@@ -18523,13 +18583,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2144,
+  "calls": 2149,
   "data_files": 202,
   "machines": 51,
-  "modules": 462,
+  "modules": 464,
   "orphans": 34,
-  "unowned": 264,
-  "untagged": 393
+  "unowned": 266,
+  "untagged": 395
  },
  "version": 2
 }
