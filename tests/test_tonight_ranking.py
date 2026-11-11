@@ -1,4 +1,5 @@
 """Tonight's ranking / big-play / delay-default fixes (risk sweep, Nov 2)."""
+import pytest
 from pathlib import Path
 
 import yaml
@@ -68,6 +69,7 @@ def test_sticky_home_break_only_visits_games_we_can_leave(cfg, clock):
     assert dec._break_destination(watchable, "h") == "n"         # switchable off from config
 
 
+@pytest.mark.playbook("FEED-07")
 def test_vanished_basketball_game_is_held_longer_than_football(cfg, clock):
     from redzone.decider.decider import GONE_MAX_HOLD_CONTINUOUS_S, GONE_MAX_HOLD_S
     from redzone.decider.screen import Event

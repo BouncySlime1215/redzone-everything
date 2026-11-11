@@ -559,6 +559,7 @@ async def test_hold_on_a_live_game_is_kept(world):
 
 # --- log_growth ------------------------------------------------------------------------------
 
+@pytest.mark.playbook("MAC-08")
 async def test_logs_jsonl_imgcache_and_wal_kept_under_caps(world):
     w = world
     w.s.opt = lambda k: {"log_every_s": 600, "max_log_bytes": 1000, "keep_log_bytes": 100,
@@ -626,6 +627,7 @@ def test_report_has_every_section(tmp_path):
     assert "Seen live: 0 of 1" in text
 
 
+@pytest.mark.playbook("SLATE-02")
 async def test_nightly_report_written_once_and_pushed_only_when_configured(world):
     w = world
     pushed = []

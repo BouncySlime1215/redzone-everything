@@ -224,6 +224,10 @@ or why it wasn't bisected), per [debugging.md](runbooks/debugging.md), and name 
   flip, so there is no free "use the fast stick" choice; what we can do is price the stick that will tune. Tunes now
   also book under `<app>@<model>`; tune_estimate uses it after 3, deadline_cost its p90 after 8. The decider's
   long-run switch_cost stays the shared figure, so the config doesn't flap with whichever stick is hidden.
+- **2026-11-04: a catch-up replay left the game on screen 65 s into an internet outage** (night lab `mac_offline`,
+  seed 1). SAFE-01 only gated switches, so a replay of a play learned before the outage still cut away, its
+  "dead ball" judged from a timeline that had stopped hearing from its feed. No mid-play cut that time, but the
+  leave was unjudgeable. NET-01 (playbooks.safe, off): with every feed stale, no cut of any kind until one is back.
 - 2026-11-04: **A tuner's hard-coded holdout went stale when the splits were re-pinned.** #16's auto-tuner held
   out only the old section-7 slice (NFL `eval.py --n 2`, NBA/NHL from Oct 29), while eval-data-v1's LOCKED split
   has 19 NFL nights. Salvaging it as-is would have tuned on locked. Fix: hold out `splits.nights_for(..., "test")`

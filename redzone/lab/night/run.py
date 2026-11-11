@@ -570,6 +570,7 @@ def cuts(night: Night) -> tuple[list[dict], list[dict]]:
     return mid, every
 
 
+NET_GRACE_S = 30.0   # NET-01 / FEED-07: seconds before the faults' "no cut" is graded (stale detection)
 SAFE_FAULTS = ("feed_stale", "sync_wide", "wifi_degrade", "clock_skew")
 
 
@@ -873,6 +874,31 @@ def grade(night: Night) -> dict:
                    **{k: v for k, v in f.items() if k in ("host", "seconds", "scale", "hit")}})
     if pb:
         check("playbook_faults_no_midplay", all(x["mid_play_cuts"] == 0 for x in pb), pb)
+    # NET-01: while the Mac is offline, no cut of ours (the game on screen keeps playing). FEED-07: no
+    # switch into a game missing from the scoreboard while it's missing, and it's still known after.
+    netx = []
+    for f in night.fault_log:
+        if f["event"] != "start" or f["name"] not in ("mac_offline", "game_missing"):
+            continue
+        lo, hi = f["t"], f["t"] + float(f.get("dur") or 0)
+        # From the moment a feed CAN read stale (one poll cadence + playbooks.safe feed_stale_s, ~20 s;
+        # 30 s here): a cut decided on 15 s-old data is an ordinary lag, not an offline one.
+        during = [x for x in every if lo + NET_GRACE_S <= x["t"] <= hi and x.get("cause") != "user"]
+        if f["name"] == "mac_offline":
+            graded = bool(night.engine.cfg.get("playbooks.safe.enabled", False))   # the hold is a safety playbook
+            netx.append({"fault": f["name"], "playbook": "NET-01", "et": _et(lo), "dur": round(hi - lo),
+                         "cuts": len(during), "graded": graded, "ok": not during or not graded,
+                         "detail": [{"after_s": round(x["t"] - lo, 1), "from": x["from"], "to": x["to"],
+                                     "cause": x.get("cause")} for x in during]})
+        else:
+            into = [x for x in during if f.get("target") and x["to"] == f.get("target")]
+            stop = next((g for g in night.fault_log if g["name"] == "game_missing" and g["event"] == "stop"
+                         and g["t"] >= lo), None)
+            kept = (stop or {}).get("kept", True) if f.get("game") else True
+            netx.append({"fault": f["name"], "playbook": "FEED-07", "et": _et(lo), "game": f.get("game"),
+                         "switched_into": len(into), "kept": kept, "ok": not into and kept})
+    if netx:
+        check("net_feed_faults_handled", all(x["ok"] for x in netx), netx)
     # TV-03 / TV-04 outcomes (faults:tv). TV-03: while a person has the TV on another input, no input
     # change of ours. TV-04: after the TV jumped to a rebooted stick by itself, seconds until it shows
     # the game it was showing again (graded <= 30 s only with hardening.tv, which does the undo).

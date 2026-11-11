@@ -319,6 +319,7 @@ async def test_refuses_missing_app_and_odd_links():
     assert not res.ok and "doesn't look right" in res.error and st.cmds == []
 
 
+@pytest.mark.playbook("APP-01")
 async def test_diagnosing_wrapper_names_the_reason():
     class Inner:
         app = role = "youtubetv"
@@ -422,6 +423,7 @@ def test_tunable_beats_better_app_that_cannot_tune_yet():
     assert p.provider == "fubo" and p.tunable
 
 
+@pytest.mark.playbook("APP-01")
 def test_unavailable_apps_are_skipped_with_reasons():
     g = game()
     states = {"youtubetv": prov.ProviderState("youtubetv", installed=False),
@@ -436,6 +438,7 @@ def test_unavailable_apps_are_skipped_with_reasons():
     assert only.target is None and "isn't installed" in only.label
 
 
+@pytest.mark.playbook("APP-06")
 def test_blackout_is_never_picked_and_geo_blocked_only_as_last_resort():
     g = game()
     p = prov.best_source(g, [src("prime", "prime:a", blackout=True)])
@@ -627,6 +630,7 @@ def test_learning_from_tunes(tmp_path):
     assert prov.ProviderBook(tmp_path / "p.json", clock=clock).states()["peacock"].subscribed is None
 
 
+@pytest.mark.playbook("APP-01")
 def test_learning_signin_blackout_and_failures(tmp_path):
     clock = Clock(1_800_000_000.0)
     book = prov.ProviderBook(tmp_path / "p.json", clock=clock)
@@ -694,6 +698,7 @@ def test_outcomes_without_a_tune_teach_nothing(tmp_path):
     assert rt.book._fails.get("youtubetv:espn")             # a hidden-stick tune that failed still counts
 
 
+@pytest.mark.playbook("APP-06")
 def test_local_nba_game_is_blacked_out_on_every_league_pass_feed(tmp_path):
     book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1_800_000_000.0))
     g = game("CHA", "DET", gid="401909908")
@@ -703,6 +708,7 @@ def test_local_nba_game_is_blacked_out_on_every_league_pass_feed(tmp_path):
     assert book.choose(g).target is None
 
 
+@pytest.mark.playbook("APP-06")
 def test_blackout_or_failure_skips_the_whole_game_on_that_app(tmp_path):
     book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1_800_000_000.0))
     g = game("IND", "ATL", gid="g9")
