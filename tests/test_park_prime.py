@@ -38,7 +38,7 @@ from redzone.sync_edge import EdgeTracker  # noqa: E402
 from redzone.tuners import yttv_timing  # noqa: E402
 from redzone.tuners.adb import RunResult  # noqa: E402
 from redzone.tuners.tuners import TuneResult  # noqa: E402
-from test_park_hands import PKG, TV, Clock, Labels, Tuner, YTStick, world  # noqa: E402,F401
+from test_park_hands import PKG, TV, Labels, Tuner, YTStick, world  # noqa: E402,F401
 
 NIGHT = "20261023"
 needs_archive = pytest.mark.skipif(not (ROOT / "data/archive/nba").exists(), reason="pinned eval data not fetched (scripts/fetch_eval_data.py)")
@@ -107,10 +107,10 @@ def _show_hash(show) -> str:
     return hashlib.sha256(json.dumps(blob, sort_keys=True, default=str).encode()).hexdigest()
 
 
-# Hashed at a705a906 (origin/park-controller, the commit this branch was cut from) with _show_hash, recorded night
+# Hashed at 399e9bd7 (origin/park-controller, the commit this branch is rebased on) with _show_hash, recorded night
 # 20261023, 2 games, 45 minutes, seed 0: the app's hands and the runner's (which uses the back route).
-BASE = {"app": "5b5289f02503bf6c423ab11df6cea3937fef8194737b6281a512ae6e2ec646ad",
-        "runner": "c126e3db22dc13cd4644a1afd153b33b60d94535e3907386829f4787f4044b9c"}
+BASE = {"app": "1c3ba27ba1b501dcbec5f5e5d49f3384445ea8b41ba4fb1716f1e580c8b24ab5",
+        "runner": "024152fc5387ff71e05b8c61828717ade971f93780129f01549a27bfba4c8353"}
 
 
 @needs_archive
@@ -139,8 +139,12 @@ async def test_flag_off_a_prime_game_is_not_taken_by_the_show_and_nothing_is_tun
 
 
 # ---------------------------------------------------------------------------------------------- the Prime stick
-class RealClock(Clock):
-    """Wall time at real speed: prime_pause's own hold sleeps on the real clock."""
+class RealClock:
+    """Wall time at real speed: prime_pause's own hold sleeps on the real clock (the fake clock of the park steps' tests
+    moves only when every task waits on it, which prime_pause's real asyncio.sleep never does)."""
+
+    def __init__(self):
+        self.m0, self.t0 = time.monotonic(), 1_794_000_000.0
 
     def now(self) -> float:
         return self.t0 + (time.monotonic() - self.m0)
