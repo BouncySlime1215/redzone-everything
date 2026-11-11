@@ -264,6 +264,20 @@ class FactsFeed:
             k -= 1
         return floor
 
+    def _stoppage(self, g: int, since: float) -> dict | None:
+        """The open stoppage as the stoppage model reads one: every row of it the feed has shown, as (seconds after its
+        first row, type text, play text), its period, and the grid second of its first row."""
+        fx = self.fx[g]
+        k0 = len(fx.plays) - 1
+        while k0 > 0 and fx.wall[k0 - 1] > since - 1.0:
+            k0 -= 1
+        if k0 < 0:
+            return None
+        rows = [(fx.wall[k] - fx.wall[k0], str(espn._get(fx.plays[k], "type", "text") or ""), str(fx.plays[k].get("text") or ""))
+                for k in range(k0, len(fx.plays))]
+        return {"rows": rows, "period": espn._int(espn._get(fx.plays[k0], "period", "number")),
+                "first": int(fx.wall[k0] + self.shifts[g] - self.night.base)}
+
     def offer(self, g: int, summary: dict, at: int, final: bool | None = None) -> bool:
         """A summary of game g read at grid second `at`. True when it changed that game's facts."""
         try:
@@ -301,8 +315,8 @@ class FactsFeed:
             o = fx._open(max(edge, fx.wall[-1]))
             mine = o is not None and of >= o.since - 1.0         # what is not final is the stoppage still open at the last row
             floor = self._floor(g, o.since) if (mine and self.stop_min) else None
-            kind = raw_type(fx.plays[bisect.bisect_right(fx.wall, o.row) - 1]) if mine else None
-            op = (max(1, int(of + d - base)), None if floor is None else max(1, int(floor + d - base)), kind)
+            op = (max(1, int(of + d - base)), None if floor is None else max(1, int(floor + d - base)),
+                  self._stoppage(g, o.since) if mine else None)
         self.fresh[g] = (clip(shift(view, d), base + 1), op)
         return True
 
@@ -327,15 +341,20 @@ class FactsFeed:
 
 # ---------------------------------------------------------------------------------------------- the seams (each off by default)
 class NoModel:
-    """The stoppage model seam, off. A model reader (the stage 3 stoppage model) answers the same two questions;
-    None = "I do not know", and the show then runs exactly as it does without a model."""
+    """The stoppage model seam, off. A model reader answers the same two questions, with the stage 3 reader's own
+    arguments (`surely_left(league, features, elapsed_s, alpha)`, `landing_soon(league, features, horizon_s)`);
+    None = "I do not know", and the show then runs exactly as it does without a model. No model file is in the repo."""
 
-    def surely_left(self, league: str, row_type: str, elapsed_s: float) -> float | None:
-        """Seconds a stoppage that began with a row of this type `elapsed_s` ago is SURELY still to last, or None."""
+    def surely_left(self, league: str, features: dict, elapsed_s: float, alpha: float = 0.01) -> float | None:
+        """Seconds of dead time SURELY still to come (at 1 - alpha) in an open stoppage, `elapsed_s` after its first row.
+        features: {"rows": [(seconds after the first row, type text, play text), ...], "period", "first"}. The show
+        only ever takes it as a LATER floor: it can add trust to an open stoppage, never take the feed's away."""
         return None
 
-    def landing_soon(self, league: str, row_type: str, elapsed_s: float) -> float | None:
-        """The chance (0-1) that this stoppage ends in a play within the next landing wait, or None."""
+    def landing_soon(self, league: str, features: dict, horizon_s: float) -> float | None:
+        """The chance (0-1) that a dead stretch long enough to land on begins within horizon_s on a game in play.
+        features: {"period", "clock_s", "margin"} as the feed last reported them. It only weights where the hidden
+        stream WAITS when nothing can be planned; it never passes a guard."""
         return None
 
 
@@ -496,8 +515,11 @@ class Show:
         if op is not None and edge < 10 ** 8 and edge - op[0] >= self.P.long_break:
             return 0.0
         base = 1.0 if self.pad[g] <= self.P.wide_pad else self.P.wide_prospect
-        if self.model is not None and op is not None and len(op) > 2 and op[2] is not None and edge < 10 ** 8:
-            soon = self.model.landing_soon(self.leagues[g], op[2], max(0.0, float(edge - op[0])))
+        if self.model is not None and op is None and 0 <= edge < 10 ** 8:
+            x = self.A[g]
+            e = min(x.n - 1, edge)
+            soon = self.model.landing_soon(self.leagues[g], {"period": (self.feed.line(g, e) or {}).get("period"),
+                                                             "clock_s": x.left_s[e], "margin": x.margin[e]}, float(self.P.land_wait))
             if soon is not None:                                 # the model seam: how likely a landing comes soon (never below 0.05:
                 base *= min(1.0, max(0.05, float(soon)))         # only a long break takes a game off the list)
         return base
@@ -698,7 +720,7 @@ class Show:
                 of, adv = op[0], self.feed.edge(g) - self.P.open_hold
                 fix = op[1] if op[1] is not None else fix
                 if self.model is not None and len(op) > 2 and op[2] is not None:
-                    more = self.model.surely_left(self.leagues[g], op[2], max(0.0, float(self.feed.edge(g) - op[0])))
+                    more = self.model.surely_left(self.leagues[g], op[2], max(0.0, float(self.feed.edge(g) - op[2]["first"])))
                     if more is not None and more > 0:            # the model seam: a later floor only (never an earlier one)
                         fix = max(fix, int(self.feed.edge(g) + more))
             sp = (self.eyes.spans(g) or [None])[-1] if self.eyes is not None else None

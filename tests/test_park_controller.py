@@ -221,10 +221,14 @@ def test_a_stoppage_model_can_only_add_trust_and_a_watcher_rules_on_each_jump(lo
     class Model(NoModel):
         asked = 0
 
-        def surely_left(self, league, row_type, elapsed_s):
+        def surely_left(self, league, features, elapsed_s, alpha=0.01):
             Model.asked += 1
-            assert league == "nba" and isinstance(row_type, str) and elapsed_s >= 0
+            assert league == "nba" and elapsed_s >= 0 and features["rows"][0][0] == 0 and isinstance(features["rows"][0][1], str)
             return 0.0                                                         # "nothing more is sure": must change nothing
+
+        def landing_soon(self, league, features, horizon_s):
+            assert set(features) == {"period", "clock_s", "margin"} and horizon_s == 20
+            return 1.0                                                         # "a landing is coming": the full weight, as without a model
 
     class Watcher(NoWatcher):
         def verdict(self, g, p):
