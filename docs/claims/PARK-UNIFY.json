@@ -16,7 +16,8 @@
     "tests/test_park_unify.py",
     "redzone/web/static/rz-show.js",
     "redzone/web/show.py",
-    "tests/test_show_ui.py"
+    "tests/test_show_ui.py",
+    "scripts/park_replay.py"
   ],
   "started": 1794435058,
   "expires": 1794521458

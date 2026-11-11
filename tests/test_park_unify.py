@@ -205,3 +205,66 @@ async def test_s9_a_prime_hidden_tune_matches_the_buffer_list_only_with_its_flag
     c.cfg.update({"timing": {"behind_live_s": {"enabled": True, "prime_buffer": True}}})
     assert c._buffer_for(stick, "prime:amzn1.dv.gti.x", res) == 60.0
     assert c._buffer_for(stick, "youtubetv:espn", res) == 60.0 and c._buffer_for(stick, "espn:x", res) == 0.0
+
+
+# ---------------------------------------------------------------------------------------------- 3a. one answer for the hidden stick
+async def test_the_hidden_sticks_hold_has_one_answer_whoever_holds_it(world):  # noqa: F811
+    """PARK's place of the hidden stick lives in the controller's one standby record (park_held's payload), next to the
+    snap park, the left-game hold and the replay park; `hidden_hold()` reads only that record."""
+    w, c, rig = await _placed(world)
+    assert c.hidden_hold() is None
+    assert (await rig.tune(1, 1))[0]
+    assert c.park_place is w.hands.place_of(w.b)                              # the same object, not a copy
+    h = c.hidden_hold()
+    assert h["owner"] == "park" and h["target"] == c.hidden_target == rig.targets[1] and h["paused"] is False and h["read"]
+    assert (await rig.pause(1, None))[0]
+    h = c.hidden_hold()
+    assert h["paused"] is True and h["since"] == w.hands.place_of(w.b).paused_at
+    assert (await rig.jump(1, True, 0))[0] == "ok"                           # the stick left (a) is held by PARK now
+    assert c.hidden is w.a and c.park_place is w.hands.place_of(w.a)
+    h = c.hidden_hold()
+    assert h["owner"] == "park" and h["target"] == rig.targets[0] and h["paused"] is True
+
+
+def test_the_old_switch_paths_holds_answer_through_the_same_record(cfg, tmp_path):
+    from redzone.channels import ChannelMap
+    c = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    c._set_hidden("youtubetv:espn", True)
+    c._snap_park = ctl.Parked("snap", "youtubetv:espn", 100.0, True)
+    assert c.hidden_hold() == {"owner": "snap_park", "target": "youtubetv:espn", "paused": True, "since": 100.0}
+    assert c.park_place is None
+    c._snap_park = None
+    c._left = ctl.LeftHold("youtubetv:espn", "b:5555", 200.0, 30.0)
+    assert c.hidden_hold(now=210.0) == {"owner": "left_hold", "target": "youtubetv:espn", "paused": True, "since": 200.0,
+                                        "behind_s": 40.0}
+    c._set_hidden(None, False)
+    assert c.hidden_hold() is None
+
+
+# ---------------------------------------------------------------------------------------------- 3b. one home per timing number
+def test_the_show_reads_device_step_numbers_from_their_one_home_and_old_keys_as_aliases():
+    from redzone import config
+    from redzone.noggin.park_show import SHOW, ShowParams
+    P = ShowParams.from_config(config.default)
+    assert (P.resume_lead, P.step) == (config.default("park.steps.resume_lead_s"), config.default("park.steps.left_step_s"))
+    assert (P.resume_lead, P.step) == (SHOW.resume_lead, SHOW.step)            # the shipped values: unchanged
+    over = {"park.steps.resume_lead_s": 0.4, "park.steps.left_step_s": 10}
+    P2 = ShowParams.from_config(lambda k, d=None: over.get(k, config.default(k, d)))
+    assert (P2.resume_lead, P2.step) == (0.4, 10.0)
+    alias = {**over, "park.show.resume_lead": 0.5, "park.show.step": 12}       # an old key, if anything passes one, still reads
+    P3 = ShowParams.from_config(lambda k, d=None: alias.get(k, config.default(k, d)))
+    assert (P3.resume_lead, P3.step) == (0.5, 12.0)
+
+
+def test_one_derivation_of_the_flip_and_read_back_times_matches_what_each_rig_computed_before():
+    import math
+
+    from redzone import config
+    from redzone.noggin.park_show import ShowParams
+    P = ShowParams.from_config(config.default)
+    flip_s, unseen_s, hold_off = P.flip_times()
+    assert flip_s == P.jump_real - P.resume_lead                               # the replay rig's old lines
+    assert unseen_s == flip_s + P.resume_lead - 0.5 == P.jump_real - 0.5        # ...and the device rig's
+    assert hold_off == int(math.ceil(P.resume_lead + flip_s + unseen_s)) == int(math.ceil(P.jump_real + (P.jump_real - 0.5)))
+    for steps in (0, 1, 2, 5):
+        assert P.read_back(steps) == ((P.step * steps + P.read_sat) if steps else 0.0)

@@ -1598,15 +1598,16 @@ class Controller:
         self.standby_m.to(state, why=why or f"{state} {target or ''}".strip())
 
     def _set_hidden(self, target: str | None, ready: bool, parked: Parked | None = None, *, why: str = "",
-                    state: str | None = None) -> None:
-        """The one setter of what the hidden stick holds. `state` names a not-ready phase (scrubbing) explicitly.
+                    state: str | None = None, payload: Any = None) -> None:
+        """The one setter of what the hidden stick holds. `state` names a not-ready phase (scrubbing) explicitly, with
+        its `payload` ([PARK-UNIFY] park_held carries PARK's own ParkPlace, so the one standby record holds it).
         Kept as they were: a snap park or a left hold when the same target stays ready (the old _set_hidden never
         dropped those), and a pause-hold in progress when the same target is marked not ready."""
         cur, same = self.standby_m.state, target is not None and target == self._sb_target
         if target is None:
             self._sb_move("empty", None, None, why or "cleared")
         elif state is not None:
-            self._sb_move(state, target, None, why)
+            self._sb_move(state, target, payload, why)
         elif parked is not None:
             if ready:
                 self._sb_move("replay_parked", target, parked, why or f"parked on replay {parked.replay_id}")
@@ -1661,6 +1662,28 @@ class Controller:
             self._sb_move("snap_parked", value.target, value, why="paused before its snap")
         elif self.standby_m.is_("snap_parked"):
             self._sb_move("ready", self._sb_target, None, why="snap park rolled or dropped")
+
+    @property
+    def park_place(self) -> "ParkPlace | None":
+        """[PARK-UNIFY] PARK's place of the hidden stick, from the one standby record (park_held's payload)."""
+        return self._sb_payload if self.standby_m.is_("park_held") else None
+
+    def hidden_hold(self, now: float | None = None) -> dict | None:
+        """[PARK-UNIFY] THE answer to "where is the hidden stick, and is it held?", whoever holds it: PARK (park_held,
+        its ParkPlace), the buffered jump's snap park (snap_parked, Parked), the STK-07 left-game hold (left_hold,
+        LeftHold) or a replay park (replay_parked, Parked). All four live in the standby record (`_sb_move` is its one
+        writer), so there is no second copy to disagree with. None = nothing held. Read only: numbers and words."""
+        st, p = self.standby_m.state, self._sb_payload
+        if p is None or st not in ("park_held", "snap_parked", "left_hold", "replay_parked"):
+            return None
+        now = time.time() if now is None else now
+        if st == "park_held":
+            return {"owner": "park", "target": p.target, "paused": bool(p.paused), "since": p.paused_at,
+                    "read": bool(p.read)}
+        if st == "left_hold":
+            return {"owner": "left_hold", "target": p.target, "paused": True, "since": p.at, "behind_s": p.behind_s(now)}
+        return {"owner": "snap_park" if st == "snap_parked" else "replay_park", "target": p.target,
+                "paused": bool(p.paused), "since": p.at}
 
     @property
     def _left(self) -> LeftHold | None:
@@ -4424,7 +4447,7 @@ class Controller:
         async with self._lock:
             out = await hands.tune(hid, target, fresh=fresh)
             if out.ok and self.hidden is hid:
-                self._set_hidden(target, False, state="park_held", why=f"PARK: {out.way}")
+                self._set_hidden(target, False, state="park_held", why=f"PARK: {out.way}", payload=hands.place_of(hid))
             elif self.hidden is hid and self.hidden_target == target:
                 self._set_hidden(None, False, why="PARK: tune failed")
             return out
@@ -4472,7 +4495,7 @@ class Controller:
                 self.latency.record("flip", out.numbers["flip_s"])
                 lp = hands.place_of(vis)
                 if lp is not None and lp.paused and vis is self.hidden:
-                    self._set_hidden(lp.target, False, state="park_held", why="PARK: the stick left is held")
+                    self._set_hidden(lp.target, False, state="park_held", why="PARK: the stick left is held", payload=lp)
                 else:
                     self._set_hidden(None, False, why="PARK: the stick left is not held")
             elif out.outcome == "kept":

@@ -1357,7 +1357,8 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
     poll_s: 0.25           # the media session is read this often while a step waits on it (the runner read 4 times a second)
     tune_timeout_s: 90     # one way of tuning (direct code, local search, search) gets at most this long
     read_steps: 2          # the read gesture's LEFT presses (CENTER, LEFT x this, read the label, CENTER); 0 = no read
-    left_step_s: 15        # one committed LEFT is exactly this far back (69 of 69)
+    left_step_s: 15        # one committed LEFT is exactly this far back (69 of 69). [PARK-UNIFY] its ONE home: the show's
+                           # planner reads it too (ShowParams.step; park.show.step is only an alias)
     center_wait_s: 1.3     # after the first CENTER: the overlay comes up and the player pauses
     left_gap_s: 0.6        # between LEFT presses
     label_wait_s: 0.7      # after the last LEFT, before the label is read
@@ -1375,7 +1376,8 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
     pause_lead_plus_s: 0.60   # ...the 4K Plus
     back_after_s: 0.4      # BACK clears the pause banner this long after the pause key...
     confirm_s: 1.6         # ...then the stick is read back (still paused, YouTube TV in front) this long after BACK
-    resume_lead_s: 0.3     # a jump: the resume key goes out this long before the flip command
+    resume_lead_s: 0.3     # a jump: the resume key goes out this long before the flip command. [PARK-UNIFY] its ONE home:
+                           # the planner reads it too (ShowParams.resume_lead; park.show.resume_lead only an alias)
     hold_key_s: 1.35       # ...and the pause key to the stick being left this long after the flip command (60 of 60)
     flip_methods: [smartthings]   # the TV's own input change; never HOME on a stick
     input_rereads: 2       # an input the sound readback did not return is read again this many times...
@@ -1438,8 +1440,11 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
     long_break: 90         # stopped this long at the feed's edge with no restart reported = a long break: nothing is parked there
     tune_stick: 1.0        # a new tune must be worth this many jump bonuses more than the best plan without one (no thrash)
     late_cap: 145          # nothing comes up further behind its stream's live edge than this (Nick's lateness cap)
-    jump_real: 3.0         # a jump on the real TV, first key to the new picture: 2.4-3.5 s (ledger L45); the plan uses this
-    read: 10.5             # the per-tune read gesture, first key to playing again (a tune with it took 13-19 s)
+    jump_real: 3.0         # a jump on the real TV, first key to the new picture: 2.4-3.5 s (ledger L45); the plan uses this.
+                           # [PARK-UNIFY] the flip's other times come from it and resume_lead_s by ONE derivation
+                           # (ShowParams.flip_times: flip, unseen, hold-off), used by the app's rig and the replay's
+    read: 10.5             # the per-tune read gesture, first key to playing again (a tune with it took 13-19 s). Where the
+                           # read leaves a stream: ONE formula, ShowParams.read_back (LEFT steps x left_step_s + read_sat)
     stop_max:              # the sanity gate: the longest an OPEN stoppage of each kind can plausibly last (s). "No row since"
                            # means "still stopped" only this long; after it the feed has gone quiet or lost a row, and the rest
                            # is unknown (never a place to cut). Plain caps set above the longest real stretch of each kind on
