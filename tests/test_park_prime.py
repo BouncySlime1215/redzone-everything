@@ -107,10 +107,10 @@ def _show_hash(show) -> str:
     return hashlib.sha256(json.dumps(blob, sort_keys=True, default=str).encode()).hexdigest()
 
 
-# Hashed at 399e9bd7 (origin/park-controller, the commit this branch is rebased on) with _show_hash, recorded night
+# Hashed at 37130062 (origin/park-controller, the commit this branch is rebased on) with _show_hash, recorded night
 # 20261023, 2 games, 45 minutes, seed 0: the app's hands and the runner's (which uses the back route).
-BASE = {"app": "1c3ba27ba1b501dcbec5f5e5d49f3384445ea8b41ba4fb1716f1e580c8b24ab5",
-        "runner": "024152fc5387ff71e05b8c61828717ade971f93780129f01549a27bfba4c8353"}
+BASE = {"app": "300b332a0094650ba5fe95a0af72f63b05ffddb42a150f26f330bec279df35e3",
+        "runner": "f66ddb9bdbe273491e4d15a8ce11ab6e52fc699c6766b503b6f89e62bae96685"}
 
 
 @needs_archive

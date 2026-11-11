@@ -123,12 +123,12 @@ def test_football_facts_are_the_graders_dead_time_less_only_the_play_clock_guard
     assert middead <= fdead | {s for s in middead if s >= cut - 1}            # final then, final now
     acts = sum(1 for p in r.plays if is_action(League.NFL, p))
     assert acts > 100 and not f.shots
-    pic = GameFacts("nfl", r.gid)                                             # picture model: 15 s after each snap stamp is play
+    pic = GameFacts("nfl", r.gid)                                             # picture model: 12 s (scrimmage) after each snap stamp is play
     for p in r.plays:
         pic.add(p)
     pic.set_final()
     pdead = {s for a, b in pic.facts().dead for s in range(int(a), int(b))}
-    assert pdead <= fdead and len(fdead - pdead) >= 0.15 * len(fdead)       # it only removes, and it costs a lot
+    assert pdead <= fdead and len(fdead - pdead) >= 0.08 * len(fdead)       # it only removes, and it costs: 12% on game 0
 
 
 @needs_archive
