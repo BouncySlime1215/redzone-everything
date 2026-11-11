@@ -307,3 +307,71 @@ async def test_through_the_controller_a_failed_flip_is_kept_and_a_sound_stop_is_
     sent = (len(w.a.keys), len(w.b.keys), len(w.tv.sets))
     assert (await rig.tune(1, 0))[0] is False and (await rig.jump(1, True, 0))[0] != "ok"
     assert (len(w.a.keys), len(w.b.keys), len(w.tv.sets)) == sent              # nothing more is sent
+
+
+# ---------------------------------------------------------------------------------------------- A. the engine's loop
+def _engine(w, tmp_path):
+    """A stand-in engine over the park steps' fake world: two live NBA games of a recorded fixture night on two channels."""
+    import json
+    from dataclasses import replace as dc_replace
+    from types import SimpleNamespace
+
+    from redzone.models import League, Phase
+    from redzone.sources import espn
+    fix = ROOT / "tests" / "fixtures" / "your_team_crunch"
+    ids = [e["id"] for e in json.loads((fix / "espn_nba_scoreboard_20251212.json").read_text())["events"]][:2]
+    data = {i: json.loads((fix / f"espn_nba_summary_{i}.json").read_text()) for i in ids}
+    games = {i: dc_replace(espn.parse_summary(League.NBA, data[i]), phase=Phase.LIVE) for i in ids}
+    targets = dict(zip(ids, ("youtubetv:tnt", "youtubetv:espn")))
+    w.c.cfg.update({"show": {"state_dir": str(tmp_path / "show")}})
+    w.c.on_target = "youtubetv:tnt"
+    dec = SimpleNamespace(owner_m=SimpleNamespace(state="normal"), target_of=targets.get, park_show=None)
+    return SimpleNamespace(cfg=w.c.cfg, control=w.c, decider=dec, merger=SimpleNamespace(games=games), summaries=data), ids
+
+
+async def test_the_engines_loop_starts_a_show_stands_down_for_the_user_and_a_stop_is_final(world, tmp_path):  # noqa: F811
+    from redzone.park_run import ParkRun
+    w = world
+    eng, ids = _engine(w, tmp_path)
+    run_ = ParkRun(eng, now=w.clk.now, sleep=w.clk.sleep)
+    assert not run_.owns()
+    assert await w.tv.sound_guard.check("session start") == "ok"
+    await run_.step()                                                          # places the stream on screen, then starts
+    assert run_.state == "running" and run_.owns() and run_.gids == ids, run_.why
+    assert run_.rig.game[0] == 0 and run_.rig.read[0] and run_.show.on == 0
+    for _ in range(3):
+        await run_.step()
+        await run_.clock.sleep(1.0)
+    assert (tmp_path / "show" / "state.json").exists() and run_.view()["show"]["mode"] == "live"
+    eng.decider.owner_m.state = "user"                                         # your tap, pause or lock: the show lets go
+    await run_.step()
+    assert run_.state == "waiting" and "user" in run_.why and not run_.owns() and run_.show is None
+    assert w.a.ps == "playing" and w.b.ps in ("playing", "none")               # never a stick left paused
+    eng.decider.owner_m.state = "normal"
+    run_.retry_at = 0.0
+    await run_.step()
+    assert run_.state == "running" and run_.shows == 2
+    run_.show.stop = "SOUND INCIDENT: made for the test"
+    run_.show.rig.sync()
+    await run_.step()
+    assert run_.final.startswith("SOUND INCIDENT") and not run_.owns()
+    await run_.step()
+    assert run_.state == "stopped" and run_.show is None                       # only turning the flag off and on clears it
+    eng.cfg.update({"park": {"enabled": False}})
+    assert not run_.on() and not run_.owns()
+
+
+async def test_the_engines_loop_waits_with_fewer_than_two_games_or_when_the_park_steps_may_not_run(world, tmp_path):  # noqa: F811
+    from redzone.park_run import ParkRun
+    w = world
+    eng, ids = _engine(w, tmp_path)
+    run_ = ParkRun(eng, now=w.clk.now, sleep=w.clk.sleep)
+    del eng.summaries[ids[1]]
+    await run_.step()
+    assert run_.state == "waiting" and run_.why == "fewer than two live games the show can take" and w.tuner.calls == []
+    w.c.on_target = "youtubetv:fs1"
+    await run_.step()
+    assert run_.why == "the game on screen is not a live game the show can take"
+    w.tv.settings["sound_guard.must_be_silent"] = False
+    await run_.step()
+    assert run_.state == "waiting" and "must_be_silent" in run_.why and w.a.keys == [] and w.b.keys == []
