@@ -554,3 +554,78 @@ async def test_finish_never_leaves_a_stick_paused(world):
     assert w.hands.place_of(w.b) is None and w.c.standby_m.is_("empty")
     view = w.hands.view()
     assert set(view["sticks"]) == {"Stick on HDMI1", "Stick on HDMI2"} and view["last"]["step"] == "finish"
+
+
+# --- S10: the controller's own switch and tune under the sound guard (sound_guard.enabled only) -------------------
+
+class Guard:
+    """What SamsungTV asks of a sound guard: an incident open (`why`), or a first-switch silence that fails."""
+
+    def __init__(self, why="", first_fails=False):
+        self.why, self.first_fails = why, first_fails
+
+    def blocked_why(self):
+        return self.why
+
+    def ensure_running(self):
+        pass
+
+    async def before_switch(self):
+        if self.first_fails:
+            self.why = "silence could not be read back"         # the guard raises its incident and refuses
+            return False
+        return not self.why
+
+    async def after_switch(self):
+        pass
+
+    def view(self):
+        return {}
+
+
+@pytest.fixture
+def two_stick(cfg, tmp_path, monkeypatch):
+    from test_hot_standby import FakeStick, FakeTuner
+    cfg.update({"mode": {"dry_run": False}})
+    ch = ChannelMap(tmp_path / "ch.json")
+    ch.codes.update({"espn": "AAAAAAAAAAA", "fox": "BBBBBBBBBBB"})
+    c = ctl.Controller(cfg, ch)
+    c.sticks, c.hdmi = [FakeStick("a:5555"), FakeStick("b:5555")], {"a:5555": "HDMI1", "b:5555": "HDMI2"}
+    c.tv.st_device = "explicit-test-display"
+    tuner = FakeTuner()
+    monkeypatch.setitem(ctl.TUNERS, "youtubetv", tuner)
+    FakeStick.last_input_host = "a:5555"
+
+    async def input_status():
+        return c.hdmi.get(FakeStick.last_input_host)
+    monkeypatch.setattr(c.tv, "input_status", input_status)
+    monkeypatch.setattr(type(c.tv), "paths", lambda self: ["smartthings"])
+    monkeypatch.setattr(type(c.tv), "ready", lambda self: True)
+    yield c, tuner
+    FakeStick.last_input_host = None
+    if c._refresh_task:
+        c._refresh_task.cancel()
+
+
+def homes(stick):
+    return [x for x in stick.log if "KEYCODE_HOME" in x or "onetouchplay" in x or "WAKEUP" in x]
+
+
+async def test_a_switch_the_guard_refuses_at_the_first_silence_check_sends_no_home_and_degrades_nothing(two_stick):
+    c, _ = two_stick
+    c.tv.sound_guard = Guard(first_fails=True)
+    a, b = c.sticks
+    c.on_target = "youtubetv:fox"
+    out = await c.execute("youtubetv:espn", may_cut=lambda: True)
+    assert not out.ok and out.screen_unchanged and "sound guard" in out.detail
+    assert homes(a) == [] and homes(b) == [] and c.main is a
+    assert c.two_stick_m.is_("on") and not c.input_unknown and c.on_target == "youtubetv:fox"
+
+
+async def test_no_tune_goes_out_while_a_sound_incident_is_open(two_stick):
+    c, tuner = two_stick
+    c.tv.sound_guard = Guard("not silent")
+    res = await c._tune(c.sticks[1], "youtubetv:espn")
+    assert not res.ok and res.error.startswith("sound incident open") and tuner.calls == [] and c.sticks[1].log == []
+    c.tv.sound_guard = None                                   # no guard (sound_guard.enabled off): as before
+    assert (await c._tune(c.sticks[1], "youtubetv:espn")).ok and tuner.calls == [("b:5555", "youtubetv:espn")]

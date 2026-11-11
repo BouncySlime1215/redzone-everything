@@ -191,6 +191,7 @@ _LAZY: dict[str, Callable[[Any], Any]] = {
     "_resume_kind": lambda c: "", "command_m": lambda c: COMMAND.new(clock=_now),
     "adopt_m": lambda c: ADOPT.new(clock=_now),
     "_park_hands": lambda c: None,   # [park.enabled] ParkHands, made by the first park_* step with the flag on
+    "_flip_sound_refused": lambda c: False,   # [sound guard] the last _flip_to was refused before any input command
 }
 
 
@@ -2272,6 +2273,12 @@ class Controller:
         tuner = TUNERS.get(app)
         if tuner is None or not ref:
             return TuneResult(False, target, 0.0, [], "channel link not set up yet" if tuner else f"no tuner for {app}")
+        blocked = self._sound_blocked()
+        if blocked:
+            # [sound guard, PARK-HANDS S10] a tune can wake a sleeping stick, and a waking Fire TV takes the TV's input
+            # over CEC: no tune goes out while a sound incident is open (no guard: "" and nothing changes)
+            return TuneResult(False, target, 0.0, [], f"sound incident open ({blocked}): nothing sent",
+                              screen_changed=False)
         br = getattr(stick, "breaker", None)
         if br is not None and br.is_open:
             # Hung stick: fail now (nothing sent) instead of waiting out every adb timeout again.
@@ -3302,6 +3309,11 @@ class Controller:
             self._mark("flip_done")
         finally:
             self._screen_settle("flip over")
+        if not flipped and self._flip_sound_refused:
+            # [sound guard, PARK-HANDS S10] nothing was sent to the TV: the input is what it was (still known), and a
+            # sound block is not a broken flip path, so two-stick mode is not degraded
+            return Outcome(False, target, time.time() - t0, self.tv.last_error or "sound guard: no input change sent",
+                           False, path=path, screen_unchanged=True)
         if not flipped:
             self._two_stick_retry_at = time.time() + TWO_STICK_RETRY_S
             self.note = f"Two-stick mode off: couldn't switch TV input ({self.tv.last_error or 'unknown'})"
@@ -3459,11 +3471,13 @@ class Controller:
         self._flip_s = None
         self._flip_how = ""
         ok = False
+        self._flip_sound_refused = False
         blocked = self._sound_blocked()
         if blocked:
             # [sound guard] tv.set_input refuses by itself while a sound incident is open, but this function would then
             # fall back to HOME on the stick, which changes the TV's input without the guard seeing it
             self.tv.last_error = f"sound incident open ({blocked}): no input change"
+            self._flip_sound_refused = True
             return False
         requested = self.hdmi.get(stick.host)
         if not requested:
@@ -3489,6 +3503,11 @@ class Controller:
                 if took > TV_FLIP_MAX_S:
                     log.warning("TV input change to %s took %.1fs (%s)", requested, took, ev.how if ev else "")
                 return True
+            if ev is not None and str(ev.detail or "").startswith("sound guard:"):
+                # [sound guard, PARK-HANDS S10] the guard refused the switch before any input command (an open
+                # incident, or silence not read back on the first switch): no HOME fallback either
+                self._flip_sound_refused = True
+                return False
             log.warning("TV input change to %s not confirmed (%s: %s); falling back to HOME on %s",
                         requested, ev.source if ev else "?", self.tv.last_error or (ev.detail if ev else ""),
                         stick.host)
@@ -5742,6 +5761,7 @@ class ParkHands:
                     st.outcome, st.way, st.numbers = "ok", "kept: already on it, place read", nums
                     self._to(stick, "playing", "kept: already on it, place read")
                     return self._done(st, t0)
+                self._drop(stick, "already on it, place not read: tune fresh")
                 st.way = "already on it but its place was not read: tuned fresh; "
         return await self._tune_fresh(stick, target, st, t0)
 
@@ -6042,6 +6062,10 @@ class ParkHands:
             if r is not None and r.state == "playing":
                 place.paused, place.ref_wall, place.ref_pos = False, r.wall, r.pos_now_s
                 self._to(to, "playing", "the flip did not land: it plays unseen")
+            elif r is not None and r.state == "paused":
+                self._to(to, "parked", "the flip did not land: still paused")
+            else:
+                self._drop(to, "the flip did not land and it is neither playing nor paused")
             st.outcome = "kept"
             st.why = "the flip did not confirm" if not fok else "the TV is not on the new input"
             return self._done(st, t0)
@@ -6097,6 +6121,8 @@ class ParkHands:
         if lp is not None and r is not None and r.state == "playing":
             lp.paused, lp.ref_wall, lp.ref_pos = False, r.wall, r.pos_now_s
             self._to(left, "playing", "the flip did not land: started again")
+        elif lp is not None:
+            self._drop(left, "the flip did not land and it did not start again")
 
     async def _hold_left(self, left: Stick, lp: ParkPlace | None, held_at: float | None) -> bool:
         """The stick left: its pause seen, then BACK and the read back (as a park). False = not held."""
