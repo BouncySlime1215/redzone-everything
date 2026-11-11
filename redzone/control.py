@@ -6085,7 +6085,8 @@ class ParkHands:
                     pl = list(plays(per) or [])
                 except Exception:
                     pl = []
-                row["k"] = park_prime.k_sample(self.k_track, target, c, ep, pl, K_SD_MIN)   # one read: K's own floor
+                row["k"] = park_prime.k_sample(self.k_track, target, c, ep, pl, K_SD_MIN,   # one read: K's own floor
+                                               get=self.ctl.cfg.get)
         self.prime_reads.append(row)
         return row
 

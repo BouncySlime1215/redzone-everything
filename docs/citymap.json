@@ -4251,6 +4251,7 @@
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/tune.py",
+    "redzone/noggin/park_prime.py",
     "redzone/platform/sound_guard.py",
     "redzone/standby.py",
     "redzone/supervisor.py",
@@ -9892,6 +9893,7 @@
   },
   "redzone/noggin/park_prime.py": {
    "calls": [
+    "redzone/config.py:default",
     "redzone/contracts/switching.py:ConfigSwitchPaths",
     "redzone/decider/sync.py:clock_sample"
    ],
@@ -9904,8 +9906,10 @@
     "writes": []
    },
    "inputs": [
+    "redzone/config.py",
     "redzone/contracts/switching.py",
     "redzone/decider/sync.py",
+    "redzone/screen/scorebug.py",
     "redzone/sync_edge.py",
     "uses:ConfigSwitchPaths"
    ],
@@ -11685,6 +11689,7 @@
     "redzone/cheap_labels.py",
     "redzone/control.py",
     "redzone/engine.py",
+    "redzone/noggin/park_prime.py",
     "redzone/screen/tap_bug.py",
     "scripts/park_prime_accept.py"
    ],
@@ -19568,7 +19573,7 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2350,
+  "calls": 2351,
   "data_files": 208,
   "machines": 53,
   "modules": 484,

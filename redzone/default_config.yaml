@@ -1399,6 +1399,10 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
                            # buffered_jump.hold_chunk_s chunks); no back route (replay.apps); its place from the epoch position;
                            # its K from the hidden stick's own score-bug reads (sync.edge.k_min_reads / k_sd_max_s bars).
                            # Off: decision-identical to before (tests/test_park_prime.py). Unproven on the TV
+    pair_offset_s: 60.0    # K from a paused frame's bug: decider.sync.clock_sample only returns delays of 2-180 s, so the frame's
+                           # epoch is shifted by this before the call and taken off again (K may be negative: -58 to +120 s fit)
+    stop_match_s: 1.0      # a parked frame's bug clock this close to the stoppage's own clock is inside that stoppage (a whole-second
+                           # clock read)
     pin_football: true     # [pinned anchor] (only with park.prime.enabled on) a Prime FOOTBALL game on screen when the show starts is
                            # kept on its stick: never held paused when left (it plays on unseen, then is parked again before the way
                            # back), re-tuned (about 100 s on Prime) only at the lateness cap; all roaming is on the other stick.

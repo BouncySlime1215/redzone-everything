@@ -26,10 +26,14 @@ import math
 import re
 from collections.abc import Callable
 
+from redzone.screen.scorebug import PRIME  # the repo's own name for the Prime app
 
-PRIME = "prime"
-PAIR_OFFSET_S = 60.0     # clock_sample only returns delays of 2-180 s: the frame time is shifted by this and taken off again
-STOP_MATCH_S = 1.0       # a parked frame's bug clock this close to the stoppage's clock is inside that stoppage
+
+def _setting(key: str, get: Callable[..., object] | None = None) -> float:
+    """park.prime.<key> from `get` (the app's config) when it gives a number, else the shipped default (rule K2)."""
+    from redzone import config
+    v = get(f"park.prime.{key}", None) if get is not None else None
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else float(config.default(f"park.prime.{key}"))
 
 
 def app_of(target: str) -> str:
@@ -91,16 +95,17 @@ def epoch_s(position_s: float | None) -> float | None:
 
 # ---------------------------------------------------------------------------------------------- K from the bug
 def k_sample(tracker, target: str, bug_clock_s: float, frame_epoch: float, plays: list[tuple[float, float]],
-             sd: float) -> float | None:
+             sd: float, get: Callable[..., object] | None = None) -> float | None:
     """One K sample (content minus feed time) from a bug clock read on a frame whose epoch is `frame_epoch`, against
     the current period's plays [(feed wallclock, clock s remaining)], fused into `tracker` (sync_edge.EdgeTracker,
     which gates outliers). None when no running-clock pair of plays brackets the reading."""
     from redzone.decider.sync import clock_sample
-    t = float(frame_epoch) + PAIR_OFFSET_S
+    offset = _setting("pair_offset_s", get)
+    t = float(frame_epoch) + offset
     d = clock_sample(float(bug_clock_s), t, plays)
     if d is None:
         return None
-    tracker.epoch_at[target] = (t, PAIR_OFFSET_S)            # the screen sits PAIR_OFFSET_S behind this "frame clock"
+    tracker.epoch_at[target] = (t, offset)                   # the screen sits `offset` behind this "frame clock"
     return tracker.frame_k(target, d, t, sd, 1.0)
 
 
@@ -116,12 +121,12 @@ def game_k(tracker, target: str, get: Callable[..., object]) -> tuple[float, flo
     return round(k, 3), sd, n
 
 
-def parked_in_stop(bug_clock_s: float | None, stop_clock_s: float | None) -> bool | None:
+def parked_in_stop(bug_clock_s: float | None, stop_clock_s: float | None, get: Callable[..., object] | None = None) -> bool | None:
     """Is a parked Prime frame inside the stoppage the plan parked on? Its bug clock (stopped) equals the clock of
     that stoppage's whistle. None = cannot tell (no read)."""
     if bug_clock_s is None or stop_clock_s is None:
         return None
-    return abs(float(bug_clock_s) - float(stop_clock_s)) <= STOP_MATCH_S
+    return abs(float(bug_clock_s) - float(stop_clock_s)) <= _setting("stop_match_s", get)
 
 
 # ---------------------------------------------------------------------------------------------- [PARK-NFL-LAG] football play clock
