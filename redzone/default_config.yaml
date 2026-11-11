@@ -1317,3 +1317,12 @@ show:                      # the phone's Show view over the new show's state fil
   ui: false                # on: a "Show" tab with what is on the TV, the next move, pace, sound and Rule #1 counters
   state_dir: ""            # the folder the show writes state.json and events.jsonl to (empty = no show yet)
   eyes_dir: ""             # the folder the clock watcher writes eyes_state.json to (empty = the state folder, then its sibling eyes/)
+
+park:                      # [PARK, integration plan unit 0b] the two-stick show run by the app itself: the hidden stick is paused on the
+                           # next game; a jump resumes it, flips the TV input and pauses the stick that was left
+  enabled: false           # OFF and read by nothing yet. The planner, the facts and the timing model are in redzone/noggin/park_*.py;
+                           # the stick steps and the decision-path owner come with units PARK-HANDS and PARK-CONTROLLER
+
+eyes:                      # [EYES, integration plan unit 0b] the hidden watcher: its own muted Chrome reads the on-air game clock and
+                           # each frame's time, and keeps each game's offset K
+  enabled: false           # OFF and read by nothing yet (units EYES-PACKAGE and EYES-LINK). Needs Nick's one sign-in in the watcher's own profile
