@@ -6,6 +6,17 @@ WALL time: when the frame is on the TV.
 
     K = content time of a frame  -  feed time of the game-clock second shown on it          (ledger L29, L30, L36)
 
+THREE NUMBERS HAVE BEEN CALLED "K" (PARK-UNIFY); each has its own name, and only the first is PARK's K:
+  GAME K     content time of a frame - feed stamp of the second it shows (above). PARK's K: this module, k_table (the
+             "K" / "k_s" fields of every K file), decider/tune_offset, Eyes' K map, and a Prime game's K
+             (park_prime.k_sample: the same quantity with Prime's frame EPOCH as content time).
+  FRAME K    arena time - a Prime frame's own clock (about 9.6 s on Nov 4): a property of a Prime STREAM, fused by
+             sync_edge.EdgeTracker on the old sync path (engine.sync_probe). Not a game's offset; PARK never pads with it.
+             (park_prime borrows EdgeTracker's fusing only, in its own tracker, with the epoch shifted so it returns
+             a GAME K.)
+  FEED LEAD  how far the feed runs ahead of a stream's live edge on the wall clock (park_replay.FEED_LEAD,
+             `prior_delay`, park_core's feed_lead_s): GAME K + the live lag less the feed's own lag. Not a K.
+
 so the frame showing feed time F is at content time F + K. K belongs to ONE game on ONE night (Nov 10: espn2 -2.78 s,
 espn +2.85 s, nbc +24.77 s; 27 s apart), so it is looked up by channel, league, game and date and is never borrowed
 from another game or defaulted. A game with no K of its own tonight is UNKNOWN: it gets the wide prior (`prior_k`,

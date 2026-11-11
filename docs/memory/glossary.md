@@ -2,6 +2,9 @@
 
 | Word | Meaning |
 |---|---|
+| GAME K | PARK's K: a frame's content time (YouTube's clock; Prime's epoch) minus the feed stamp of the second it shows. One game, one night, never borrowed (`redzone/noggin/park_timing.py`). |
+| FRAME K | Arena time minus a Prime frame's own clock (~9.6 s): a property of a Prime stream on the old sync path (`redzone/sync_edge.py`). Not GAME K. |
+| FEED LEAD | How far the feed runs ahead of a stream's live edge on the wall clock (GAME K + live lag - feed lag). Not a K. |
 | Dead ball / dead time | No live play: commercial, timeout, free throws, review, injury. The only time we cut. |
 | Mid-play cut / entry | Leaving or landing on a game while a play is live. Must be 0. |
 | Missed on entry | A play that started before our switch landed and we never saw. |
