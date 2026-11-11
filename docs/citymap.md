@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**475 modules**, 403 untagged, 273 unowned, 34 orphans (no importer); 2233 call edges, 205 data files, 52 machines.
+**476 modules**, 404 untagged, 274 unowned, 34 orphans (no importer); 2236 call edges, 205 data files, 52 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -255,7 +255,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (273)
+## unowned (274)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -281,7 +281,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/decider/playbooks.py` | Safety playbooks SAFE-01/02/03/05 (docs/playbooks.md, family flag `playbooks.safe.enabled`, OFF). | - -> decider.decider, decider.scenarios | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), SAFE-01, SAFE-02, SAFE-03, SAFE-05, Your-team crunch live |
 | `redzone/decider/scenarios.py` | Scenario-tree lookup on the Mac (idea #19, Mac half; docs/playbooks.md GAME-*). | decider.playbooks -> decider.decider | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), GAME-01, GAME-02, GAME-03, GAME-21, GAME-22, Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/sync.py` | Automatic per-channel sync: each channel's screen delay tracked by a small Kalman filter, no taps. | contracts.sync, uses:SyncEstimate -> decider.screen, engine, screen.scorebug, sync_probe, scripts.timing_replay | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
-| `redzone/decider/tune_offset.py` | [POSITION-FIX items 4 and 7] A YouTube TV picture's delay as three numbers kept apart, not one. | config, tuners.yttv_nerds, tuners.yttv_timing -> engine | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
+| `redzone/decider/tune_offset.py` | [POSITION-FIX items 4 and 7] A YouTube TV picture's delay as three numbers kept apart, not one. | config, noggin.k_table, tuners.yttv_nerds, tuners.yttv_timing -> engine | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/whistle.py` | [EXP-610] A basketball clock-stopped dead ball, judged from play-by-play (wall time, period, game clock, type). | - -> decider.gate, engine, lab.backtest | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/fallback_ladder.py` | Per-stick fallback ladder (Nick's Nov 7 sync order, item 2). | - -> control | untagged |
 | `redzone/fsm.py` | Explicit state machines: one named state, declared transitions, a reason and a history. | - -> __main__, autonomy, control, decider.decider, decider.screen, engine +10 | untagged |
@@ -345,13 +345,14 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/noggin/features.py` | Noggin Timing features and window labels: numpy + stdlib only (the live app has no pandas). | decider.cuts, models, sources.espn -> noggin.factory, noggin.live, noggin.pick, noggin.predict, noggin.predict_fit, noggin.timing +2 | untagged |
 | `redzone/noggin/gamequeue.py` | Queue core: readiness R0-R5, prep time, who gets the hidden stick, and what a failed tune does next. | - -> control, engine, platform.faults, scripts.buffered_jump_sim, scripts.fault_drill, scripts.queue_replay +1 | untagged |
 | `redzone/noggin/gamevalue.py` | GameValue runtime: one game's causal features -> value_next_3m (0-100) and p_tier1_60s (0-1), numpy only. | context.tokens, models_rt.forest, moments.detect, noggin.wide_features -> agent.kaggle.qwen_common, agent.kaggle.qwen_eval, agent.kaggle.qwen_finetune, noggin.value_shards, noggin.wide_features, scripts.kaggle_gamevalue +2 | untagged |
+| `redzone/noggin/k_table.py` | The per-game offset K: one reader for every K file, whatever its shape. | - -> decider.tune_offset, noggin.park_timing | untagged |
 | `redzone/noggin/legal.py` | legal_options(): what the show may do right now, as typed options. | contracts.brain -> decider.decider, noggin.arbiter, scripts.veto_audit | untagged |
 | `redzone/noggin/live.py` | Noggin Timing v1 on the live path: a calibrated "surely still dead" bound for an open dead window. | models, noggin.features, noggin.predict, noggin.timing -> decider.decider | untagged |
 | `redzone/noggin/lookahead.py` | Clairvoyance: what the feed already knows that the screen hasn't shown yet (cycle 02, lane 2). | - -> decider.decider, engine | GAME-04, SAFE-02 |
 | `redzone/noggin/park_core.py` | PARK core: the two-stick show, one second at a time, on a night's per-second facts. | - -> noggin.park_plan, scripts.park_compare, scripts.park_sim, scripts.park_table | untagged |
 | `redzone/noggin/park_facts.py` | PARK facts: one LIVE basketball game's facts for the PARK planner, built row by row from the ESPN feed, honestly. | grading, models, moments.detect, moments.value2, noggin.arbiter, noggin.park_timing +2 -> scripts.park_facts_check | untagged |
 | `redzone/noggin/park_plan.py` | PARK planner: the search that plans the two-stick show (stay, jump, hold, roll, skip, tune) a few jumps ahead. | noggin.park_core -> scripts.park_compare, scripts.park_plan, scripts.park_table | untagged |
-| `redzone/noggin/park_timing.py` | PARK timing: where a game's feed time sits on a stick's picture, how sure that is, and each game's padding. | - -> noggin.park_facts | untagged |
+| `redzone/noggin/park_timing.py` | PARK timing: where a game's feed time sits on a stick's picture, how sure that is, and each game's padding. | noggin.k_table -> noggin.park_facts | untagged |
 | `redzone/noggin/pick.py` | Noggin Reflex PICK v1: which game should be on screen, learned by imitating the hindsight oracle. | grading, models, models_rt.forest, noggin.features, noggin.timing, scoring.brain3 +1 -> decider.decider, scripts.buffer_sweep, scripts.eval_sports, scripts.noggin_selfplay, scripts.train_noggin_pick, scripts.train_noggin_pick_dagger | untagged |
 | `redzone/noggin/predict.py` | Noggin Reflex Predict v1: P(a big play in the next 30 / 60 / 120 s of play) at a restart (numpy only). | models_rt.forest, noggin.features, noggin.timing -> noggin.live, noggin.predict_fit, scripts.train_noggin_predict | untagged |
 | `redzone/noggin/predict_fit.py` | Fit and grade Noggin Predict v1 (pandas + LightGBM; Kaggle CPU / cloud only, never the Mac). | noggin.features, noggin.predict, noggin.timing_fit, scoring.brain3 -> agent.kaggle.qwen_finetune, scripts.kaggle_gamevalue, scripts.train_noggin_predict | untagged |
@@ -533,7 +534,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 | `scripts/yttv_search_tune_try.py` (entry) | Tune the LOCAL stations by YouTube TV search on the HIDDEN stick, through the app's own routing and tuner as if tuners.yttv_local_search were on (ChannelMap.... | channels, tuners.adb, tuners.tuners -> - | untagged |
 
-## Untagged (403)
+## Untagged (404)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -700,6 +701,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/noggin/features.py`
 - `redzone/noggin/gamequeue.py`
 - `redzone/noggin/gamevalue.py`
+- `redzone/noggin/k_table.py`
 - `redzone/noggin/legal.py`
 - `redzone/noggin/live.py`
 - `redzone/noggin/park_core.py`
@@ -976,7 +978,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/lab/night/presses.py`
 - `redzone/tuners/identity.py`
 
-## Most-called symbols (top 25 of 1161)
+## Most-called symbols (top 25 of 1163)
 
 | symbol | callers |
 |---|---:|

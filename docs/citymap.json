@@ -5955,7 +5955,9 @@
   },
   "redzone/decider/tune_offset.py": {
    "calls": [
-    "redzone/config.py:default"
+    "redzone/config.py:default",
+    "redzone/noggin/k_table.py:k_rows",
+    "redzone/noggin/k_table.py:read_k_table"
    ],
    "contracts": [],
    "data": {
@@ -5965,6 +5967,7 @@
    },
    "inputs": [
     "redzone/config.py",
+    "redzone/noggin/k_table.py",
     "redzone/tuners/yttv_nerds.py",
     "redzone/tuners/yttv_timing.py"
    ],
@@ -9568,6 +9571,30 @@
     "untagged"
    ]
   },
+  "redzone/noggin/k_table.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/decider/tune_offset.py",
+    "redzone/noggin/park_timing.py"
+   ],
+   "owner": "unowned",
+   "role": "The per-game offset K: one reader for every K file, whatever its shape.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/noggin/legal.py": {
    "calls": [
     "redzone/contracts/brain.py:Option"
@@ -9765,14 +9792,18 @@
    ]
   },
   "redzone/noggin/park_timing.py": {
-   "calls": [],
+   "calls": [
+    "redzone/noggin/k_table.py:k_rows"
+   ],
    "contracts": [],
    "data": {
     "reads": [],
     "uses": [],
     "writes": []
    },
-   "inputs": [],
+   "inputs": [
+    "redzone/noggin/k_table.py"
+   ],
    "kind": "module",
    "machines": {
     "declares": [],
@@ -19075,13 +19106,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2233,
+  "calls": 2236,
   "data_files": 205,
   "machines": 52,
-  "modules": 475,
+  "modules": 476,
   "orphans": 34,
-  "unowned": 273,
-  "untagged": 403
+  "unowned": 274,
+  "untagged": 404
  },
  "version": 2
 }

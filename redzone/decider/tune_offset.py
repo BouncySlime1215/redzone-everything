@@ -1,30 +1,38 @@
 """[POSITION-FIX items 4 and 7] A YouTube TV picture's delay as three numbers kept apart, not one.
 
 Why: on the TV on Nov 10 a fresh tune did NOT land at a fixed lag (espn sd 1.24 s n=21, fs1 sd 1.98 s n=10, range 5 s on
-both), and the feed-to-YouTube offset K turned out to be per GAME (espn2 -2.78 s, espn +2.85 s, two hours apart; ledger
-L29, L30). Flags timing.per_tune_offset and timing.game_offset, both OFF.
+both), and the offset K turned out to be per GAME (espn2 -2.78 s, espn +2.85 s, two hours apart; ledger L29, L30).
+Flags timing.per_tune_offset and timing.game_offset, both OFF.
 
-    delay behind real life  =  U (this tune's lag behind YouTube's clock)  +  K (this game's feed time - YouTube's clock)
+    delay behind real life  =  U (this tune's lag behind YouTube's clock)  +  K (this game's offset)
+
+    K = YouTube-clock time of a frame  -  feed time of the game-clock second shown on it
+
+So a game whose picture shows each feed stamp 24.30 s later on YouTube's clock has K = +24.30 s, and a picture at the
+live edge (U = 20 s) is 44.30 s behind the feed. The same sign as the PARK timing model (tests/test_k_table.py).
 
   * U has two parts: the channel's usual landing lag and this tune's own offset. The tune's offset is UNKNOWN after a
     fresh tune (spread `tune_sd_s`, measured 1.2-2.0 s) until one absolute read on that tune: the overlay label (0.29 s,
     yttv_label with timing.label_stamp_at_pause) or Stats for nerds' Live Latency (0.19 s, yttv_nerds). After the read
     the readout doubt is all that is left. A seek or pause on the same tune keeps it (the tune's counter holds).
-  * K is read from a small JSON file (timing.game_offset_file; empty = off), one row per game, valid for that game on
-    that night only. Its spread goes into the doubt. No K for a game means the delay is UNKNOWN: never K = 0.
+  * K is read from a small JSON file (timing.game_offset_file; empty = off), valid for ONE game on ONE night only.
+    Its spread goes into the doubt. No K for a game means the delay is UNKNOWN: never K = 0.
 
-File format (numbers only; game ids are public ESPN ids):
+File: any shape `noggin/k_table.k_rows` reads (one reader for every K file), e.g. (numbers only; public ESPN ids)
     {"games": {"<game id>": {"night": "2026-11-10", "k_s": -2.78, "sd_s": 0.28, "spread_s": 0.50, "n": 5}}}
+or the watcher's table, keyed by channel: {"nbc": {"channel": "nbc", "league": "nba", "game": "<game id>", "K": 24.3,
+"spread": 0.5, "n": 6, "date": "2026-11-10"}}. Only a row that names a game id is used here: a row that names no game
+is never another game's K.
 """
 from __future__ import annotations
 
-import json
 import logging
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from redzone.config import default as _shipped
+from redzone.noggin.k_table import K_SD_MIN, KRow, k_rows, read_k_table
 from redzone.tuners.yttv_nerds import LL_SD_S
 from redzone.tuners.yttv_timing import LABEL_SD_S
 
@@ -87,34 +95,25 @@ class GameK:
 class GameOffsets:
     """timing.game_offset_file: per-game K for one night. Missing file, bad rows, another night: no K (unknown)."""
 
-    def __init__(self, rows: dict | None = None):
-        self.rows = rows or {}
+    def __init__(self, data: dict | None = None):
+        self.rows: dict[tuple[str, str], KRow] = {}   # (game id, night) -> its row; the first row for a pair is kept
+        for r in k_rows(data or {}):
+            if r.game and not r.wide:                 # a row naming no game is never borrowed for another game
+                self.rows.setdefault((r.game, r.date), r)
 
     @classmethod
     def load(cls, path: str | Path | None) -> "GameOffsets":
         if not path:
             return cls()
-        try:
-            data = json.loads(Path(path).expanduser().read_text())
-        except (OSError, ValueError) as e:
-            log.warning("game offsets: could not read %s (%s): every K unknown", path, type(e).__name__)
-            return cls()
-        games = data.get("games") if isinstance(data, dict) else None
-        return cls(games if isinstance(games, dict) else {})
+        if not Path(path).expanduser().is_file():
+            log.warning("game offsets: no file at the configured path: every K unknown")
+        return cls(read_k_table(path))
 
     def k(self, game_id: str | None, night: str) -> GameK | None:
-        row = self.rows.get(str(game_id)) if game_id else None
-        if not isinstance(row, dict) or row.get("night") != night:
+        r = self.rows.get((str(game_id), str(night))) if game_id else None
+        if r is None:
             return None
-        try:
-            k = float(row["k_s"])
-            sd = float(row.get("sd_s", 0.5))
-            spread = float(row.get("spread_s", 0.0))
-        except (KeyError, TypeError, ValueError):
-            return None
-        if not (math.isfinite(k) and math.isfinite(sd) and sd >= 0 and spread >= 0):
-            return None
-        return GameK(k, round(math.sqrt(sd * sd + (spread / 2.0) ** 2), 3))
+        return GameK(r.k, round(r.doubt(K_SD_MIN), 3))
 
 
 def delay_sample(read: TuneRead | None, k: GameK | None, behind_s: float = 0.0) -> tuple[float, float] | None:

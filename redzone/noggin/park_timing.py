@@ -15,8 +15,9 @@ Four error parts per game, kept apart (ledger L18, L29-L30): the position readou
 1.5 s for a tune not read), K's own spread (about 0.5 s from 5-11 reads; never trusted under `k_sd_min`), the feed
 stamp (NBA 0.33 s, college 0.5 s), the keys (0.13 s). Padding = pad_k x the root of their summed squares, per game.
 
-Pure: no device, no network; `read_k_table` is the one file read. Nothing in the app imports this module yet: the PARK
-controller (a later unit) will, behind `park.enabled`. Numbers are fields of `TimingParams`, read from `park.timing.*`
+Pure: no device, no network. K files are read by `noggin/k_table` (one reader for all three shapes, which
+`decider/tune_offset.GameOffsets` uses too). Nothing in the app imports this module yet: the PARK controller (a later
+unit) will, behind `park.enabled`. Numbers are fields of `TimingParams`, read from `park.timing.*`
 (and `park.pad_k`) by `TimingParams.from_config` (rule K2).
 
 Why: the local show runner (`tools/park_live`) keeps this model inside a script; the app needs the same model as plain
@@ -24,13 +25,13 @@ data and functions, with the sign of K pinned by a test, so a jump is padded by 
 """
 from __future__ import annotations
 
-import json
 import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, fields
-from pathlib import Path
 from typing import NamedTuple
+
+from redzone.noggin.k_table import K_SD_MIN, KRow, k_rows, read_k_table  # noqa: F401  (read_k_table: the file read, kept here)
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ class TimingParams:
     pad_k: float = 4.0              # padding = pad_k x the root sum of the four parts
     read_sd: float = 0.29           # position readout after one read per tune (the label is a whole-second floor)
     tune_sd: float = 1.5            # a tune that was not read: a fresh tune lands 1.2-2.0 s (sd) off its nominal lag
-    k_sd_min: float = 0.5           # K is never trusted tighter than this (5-11 reads in two clumps 0.9 s apart)
+    k_sd_min: float = K_SD_MIN      # K is never trusted tighter than this (5-11 reads in two clumps 0.9 s apart)
     stamp_sd_nba: float = 0.33      # ESPN NBA play stamps vs the game clock
     stamp_sd_college: float = 0.5   # college stat crews: looser
     key_sd: float = 0.13            # a key's landing
@@ -81,45 +82,37 @@ class GameK:
     source: str = "table"
 
 
-def read_k_table(path: str | Path) -> dict:
-    """The K table the calibration tools write (`{key: {"channel", "K", "spread", "n", "date", "league", "game"?, ...}}`).
-    A missing or unreadable file is an empty table: every game unknown."""
-    try:
-        data = json.loads(Path(path).read_text())
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
 def k_for(table: dict, *, channel: str, league: str, game_id: str, teams: tuple = (), today: str,
           eyes_k: dict | None = None, unnamed_ok: bool = False, params: TimingParams = TIMING) -> GameK | None:
-    """This game's K tonight, or None (unknown). A row counts only when its channel and league match, it is dated
-    `today` (YYYY-MM-DD, given by the caller), it is not marked `wide`, and it NAMES this game (its feed id or a team).
-    A row that names no game could be an earlier game on that channel: it counts only with `unnamed_ok` (the operator
-    says it is this game's). Eyes's K map (`"<channel>|<league>|<game id>" -> {"k_s", "spread_s", "n"}`) is read the
-    same way. Never another game's K, never a default."""
+    """This game's K tonight, or None (unknown). `table` is any K file's data (`read_k_table`; shapes in `k_rows`).
+    A row counts only when it is dated `today` (YYYY-MM-DD, given by the caller), it is not marked `wide`, its league
+    matches (or it names none), and it NAMES this game: on this channel, by its feed id or a team; or, with no channel
+    (the per-game file), by exactly this game id. A row on this channel that names no game could be an earlier game's:
+    it counts only with `unnamed_ok` (the operator says it is this game's). Eyes's live K map (`"<channel>|<league>|<game
+    id>" -> {"k_s", "spread_s", "n"}`, no date) is read the same way. Never another game's K, never a default."""
     channel, league = str(channel).lower(), str(league).lower()
     names = {str(game_id).upper()} | {str(x).upper() for x in teams if x}
     names.discard("")
 
-    def mine(tag) -> bool:
-        if tag is None or tag == "":
+    def mine(tag: str) -> bool:
+        if not tag:
             return unnamed_ok
-        return bool(names & set(re.split(r"[^A-Z0-9]+", str(tag).upper())))
+        return bool(names & set(re.split(r"[^A-Z0-9]+", tag.upper())))
 
-    rows = [r for r in (table or {}).values() if isinstance(r, dict) and r.get("K") is not None and not r.get("wide")
-            and str(r.get("channel", "")).lower() == channel and str(r.get("date", "")) == today
-            and str(r.get("league", league)).lower() == league and mine(r.get("game"))]
-    rows.sort(key=lambda r: not r.get("game"))                    # a row that names the game beats one that does not
+    def usable(r: KRow, dated: bool = True) -> bool:
+        if r.wide or (dated and r.date != today) or (r.league and r.league != league):
+            return False
+        if r.channel:
+            return r.channel == channel and mine(r.game)
+        return bool(r.game) and r.game == str(game_id)
+
+    rows = sorted((r for r in k_rows(table) if usable(r)), key=lambda r: not r.game)   # a named row beats an unnamed one
     if rows:
         r = rows[0]
-        return GameK(float(r["K"]), max(params.k_sd_min, float(r.get("spread") or params.k_sd_min)), int(r.get("n") or 0),
-                     str(r.get("source") or "table"))
-    for key, r in (eyes_k or {}).items():
-        part = str(key).split("|")
-        if len(part) >= 2 and part[0].lower() == channel and part[1].lower() == league and isinstance(r, dict) \
-                and r.get("k_s") is not None and mine(part[2] if len(part) > 2 else r.get("game")):
-            return GameK(float(r["k_s"]), max(params.k_sd_min, float(r.get("spread_s") or params.k_sd_min)), int(r.get("n") or 0), "eyes")
+        return GameK(r.k, max(params.k_sd_min, r.doubt(params.k_sd_min)), r.n, r.source)
+    for r in k_rows(eyes_k):
+        if r.shape == "eyes" and usable(r, dated=False):
+            return GameK(r.k, max(params.k_sd_min, r.doubt(params.k_sd_min)), r.n, "eyes")
     return None
 
 

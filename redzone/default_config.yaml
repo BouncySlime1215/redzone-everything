@@ -1012,8 +1012,8 @@ timing:
   key_constants_by_stick:        # MEDIA_PLAY_PAUSE: frozen frame this long after the key; playing this long after the resume key
     "Fire TV Stick 4K (2023)": {pause_s: 0.70, resume_s: 0.69, sd_s: 0.13}   # n=11 each
     "Fire TV Stick 4K Plus": {pause_s: 0.60, resume_s: 0.53, sd_s: 0.08}     # n=6 each
-  game_offset: false             # per-game K (feed time minus YouTube's clock) from game_offset_file; no K = delay unknown
-  game_offset_file: ""           # JSON {"games": {id: {night, k_s, sd_s, spread_s}}}; empty = off (redzone/decider/tune_offset.py)
+  game_offset: false             # per-game K (YouTube-clock time of a frame minus the feed time on it) from game_offset_file; no K = delay unknown
+  game_offset_file: ""           # any K file shape (noggin/k_table.k_rows), only rows naming a game id; empty = off (redzone/decider/tune_offset.py)
   # [POSITION-FIX] measured numbers the helpers above read once from this file (not live settings; Nov 10 TV, hidden 2023 stick)
   yttv_left_step_s: 15.0         # one committed LEFT lands exactly this far back (69 of 69 single steps)
   nerds_shots_s: [11.0, 17.0, 22.0]   # Stats for nerds: Live Latency is readable about 11-23 s after a fresh tune
