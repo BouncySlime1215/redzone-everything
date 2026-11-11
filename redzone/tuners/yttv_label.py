@@ -33,6 +33,7 @@ import argparse
 import asyncio
 import datetime as dt
 import json
+import logging
 import os
 import re
 import shutil
@@ -41,6 +42,8 @@ import time
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Awaitable, Callable, Iterable
+
+log = logging.getLogger("redzone.yttv_label")
 
 LABEL_READER_FLAG = "timing.behind_live_s.label_reader"
 
@@ -367,6 +370,23 @@ class LabelProbe:
         self.anchors: dict[str, LabelRead] = {}
         self.armed: dict[str, float] = {}       # stick -> its behind_live_s when armed (0 = at the live edge)
         self.held: dict[str, tuple[float, float]] = {}   # stick -> (behind_s, wall) from the last measured read
+        # [timing.label_stamp_at_pause] stick -> (the anchor's pause event, its behind-live then); stick -> the tune's
+        # position counter on YouTube's clock from the last stamped read. Empty with the flag off.
+        self.anchor_stamps: dict[str, tuple] = {}
+        self.clocks: dict[str, object] = {}
+        # (stick key, u_s, behind_s, sd_s, wall): this tune's lag behind YouTube's clock at its live edge, from one
+        # stamped read, and how far the stick plays behind that edge now (engine: the per-tune offset; flag on only)
+        self.on_tune_offset: Callable[[str, float, float, float, float], None] | None = None
+
+    def _flag(self, name: str) -> bool:
+        from redzone.tuners import yttv_timing
+        return yttv_timing.on(self.cfg, name)
+
+    async def _pause_stamp(self, stick):
+        """[timing.label_stamp_at_pause] The media session's pause event (read with the YouTube TV package), or None."""
+        from redzone.tuners import yttv_timing
+        pkg = (getattr(stick, "packages", None) or {}).get("youtubetv")
+        return yttv_timing.pause_stamp(await yttv_timing.read_session(stick, pkg))
 
     def _c(self, key: str, default):
         v = self.cfg.get(f"timing.behind_live_s.label_{key}") if self.cfg is not None and hasattr(self.cfg, "get") \
@@ -386,6 +406,7 @@ class LabelProbe:
         k = self._key(stick)
         self.anchors.pop(k, None)
         self.armed.pop(k, None)
+        self.anchor_stamps.pop(k, None)
         if getattr(stick, "behind_on", None):
             return False
         self.armed[k] = float(behind_before_s)
@@ -420,14 +441,26 @@ class LabelProbe:
         k = self._key(stick)
         if ov is not None and ov.bar_focused and lab is not None and lab.ok and k in self.armed:
             # knob is one LEFT behind the playhead; the playhead is `armed` s behind live
-            self.anchors[k] = replace(lab, label_s=lab.label_s + self.armed.pop(k))
+            armed = self.armed.pop(k)
+            self.anchors[k] = replace(lab, label_s=lab.label_s + armed)
+            if self._flag("label_stamp_at_pause"):
+                # the picture froze at the CENTER that opened this overlay: the anchor's time is that pause event
+                stamp = await self._pause_stamp(stick)
+                if stamp is not None:
+                    a = self.anchors[k]
+                    self.anchors[k] = replace(a, cap_wall=stamp.wall, ui_delay_s=None if a.prog_start is None
+                                              else round(stamp.wall - (a.prog_start + a.label_s), 2))
+                    self.anchor_stamps[k] = (stamp, armed)
         return ov
 
     async def _key_press(self, stick, code: str) -> bool:
         r = await stick.shell(f"input keyevent KEYCODE_{code}", timeout=4)
         return bool(getattr(r, "ok", False))
 
-    async def probe(self, stick, still_hidden: Callable[[], bool] | None = None) -> ProbeResult:
+    async def probe(self, stick, still_hidden: Callable[[], bool] | None = None,
+                    behind_s: float | None = None) -> ProbeResult:
+        """behind_s: where the caller believes the stick is (None = behind live, as after a scrub). Only read with
+        timing.no_right_probe_at_live: at the live edge the RIGHT is dropped and the LEFT step booked."""
         still_hidden = still_hidden or (lambda: True)
         k = self._key(stick)
         anchor = self.anchors.get(k)
@@ -435,8 +468,14 @@ class LabelProbe:
         wait = float(self._c("overlay_wait_s", 1.3))
         tries = int(self._c("open_tries", 4))
         keys: list[str] = []
+        stamp_on = self._flag("label_stamp_at_pause")
+        left_at_live = self._flag("no_right_probe_at_live") and behind_s is not None and behind_s < step / 2
+        stamp = None
         if anchor is None:
             return ProbeResult(None, LabelRead("no_label"), keys, "no at-live anchor: arm() before enter_buffer")
+        if self._flag("stats_for_nerds") and getattr(stick, "nerds_panel_on", False):
+            # the Stats for nerds panel covers the label (3 of 3 reads failed with it on): never read under it
+            return ProbeResult(None, LabelRead("no_label"), keys, "stats for nerds panel is on")
 
         async def press(code):
             if not still_hidden():
@@ -468,8 +507,16 @@ class LabelProbe:
                 await self.sleep(wait)
             if got is None:
                 return ProbeResult(None, LabelRead("banner"), keys, "no scrub label after the probe (banner)")
-            await press("DPAD_RIGHT")                    # knob back onto the playhead, then commit there
-            await self.sleep(float(self._c("key_gap_s", 0.35)))
+            if stamp_on:
+                # [timing.label_stamp_at_pause] the label shows the frame the CENTER froze: stamp it at the session's
+                # pause event (4.5-6 s before this screencap on the TV), not at the screencap
+                stamp = await self._pause_stamp(stick)
+                if stamp is not None:
+                    got = replace(got, cap_wall=stamp.wall, ui_delay_s=None if got.prog_start is None
+                                  else round(stamp.wall - (got.prog_start + got.label_s), 2))
+            if not left_at_live:
+                await press("DPAD_RIGHT")                # knob back onto the playhead, then commit there
+                await self.sleep(float(self._c("key_gap_s", 0.35)))
             await press("DPAD_CENTER")
             committed_at = time.time()
         except RuntimeError as e:
@@ -477,11 +524,60 @@ class LabelProbe:
         b = behind_from_pair(anchor, got, max_s=float(self._c("max_behind_s", MAX_BEHIND_S)))
         if b is None:
             return ProbeResult(None, got, keys, "pair out of range or new program")
+        if stamp is not None:
+            after = await self._stamped_behind(stick, k, b, stamp, got)
+            if after is not None:
+                b2, wall, clock, pos_now = after
+                if clock is not None:
+                    self.clocks[k] = clock
+                    if self.on_tune_offset is not None:
+                        try:   # U = the picture's lag behind YouTube's clock now, less how far it plays behind the edge
+                            self.on_tune_offset(k, round(clock.ui_delay(wall, pos_now) - b2, 2), b2, clock.sd_s, wall)
+                        except Exception:   # the delay model's hand-off must never break a read
+                            log.exception("label probe: tune offset hand-off failed")
+                self.held[k] = (b2, wall)
+                return ProbeResult(b2, got, keys, "measured (pause stamp, commit position)")
         # The picture stands still while the overlay is up (scrub thread, Nov 7): every second between this
         # screencap and the commit landing adds a second behind. Measured, not a constant.
         b = round(b + max(0.0, committed_at - got.cap_wall), 2)
+        if left_at_live:
+            from redzone.tuners import yttv_timing
+            b = round(b + yttv_timing.LEFT_STEP_S, 2)   # the committed LEFT: exactly one step back (69 of 69)
         self.held[k] = (b, got.cap_wall)
         return ProbeResult(b, got, keys, "measured")
+
+    async def _stamped_behind(self, stick, k: str, pair_b: float, stamp, read: LabelRead):
+        """[timing.label_stamp_at_pause] Behind-live where the commit landed: the session's position after the commit
+        against the pause event (both on the tune's own counter, 0.02 s). With the anchor's own pause stamp the
+        label is not needed for this at all; without it, the pair (both reads stamped at their pause) plus the
+        move since. Returns (behind_s, wall, TuneClock or None, position now), or None when the session read fails."""
+        from redzone.tuners import yttv_timing
+        pkg = (getattr(stick, "packages", None) or {}).get("youtubetv")
+        end = time.monotonic() + float(self._c("settle_s", 4.0))
+        now = None
+        while True:
+            now = await yttv_timing.read_session(stick, pkg)
+            if now is not None and now.state == "playing" and now.pos_now_s is not None:
+                break
+            if time.monotonic() >= end:
+                return None
+            await self.sleep(0.25)
+        a = self.anchor_stamps.get(k)
+        if a is not None:
+            a_stamp, armed = a
+            b = armed + (now.wall - a_stamp.wall) - (now.pos_now_s - a_stamp.position_s)
+        else:
+            b = pair_b + (now.wall - stamp.wall) - (now.pos_now_s - stamp.position_s)
+        max_s = float(self._c("max_behind_s", MAX_BEHIND_S))
+        if not -5 <= b <= max_s:
+            return None
+        return round(b, 2), now.wall, self._clock_from(read, stamp), now.pos_now_s
+
+    def _clock_from(self, read: LabelRead, stamp):
+        from redzone.tuners import yttv_timing
+        if read.prog_start is None or read.label_s is None:
+            return None
+        return yttv_timing.TuneClock.from_label(read.prog_start, read.label_s, stamp)
 
     async def __call__(self, stick) -> float | None:
         """enter_buffer's read_behind: seconds behind live, measured once after the commit, or None."""

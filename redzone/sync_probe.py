@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Callable
 
 from redzone import config, sync_edge
+from redzone.tuners import yttv_timing
 from redzone.tuners.adb import EDGE_READ, parse_playback
 
 log = logging.getLogger(__name__)
@@ -263,7 +264,7 @@ class SyncProbe:
             row = {"t": round(now, 2), "host": host, "role": role, "target": target,
                    "app": (target or "").split(":", 1)[0] or None}
             text = await self._sh(stick, EDGE_READ)
-            ms = parse_playback(text)
+            ms = parse_playback(text, yttv_timing.yttv_package(stick, target or "", self.cfg))   # [playback_with_package]
             row["ms"] = {k: ms.get(k) for k in ("state", "pkg", "position", "updated", "speed",
                                                 "title", "subtitle", "description") if ms.get(k) is not None}
             # [SYNC A] YouTube TV refreshes `position` only on play / pause / seek / tune: the raw value is
@@ -445,7 +446,8 @@ class SyncProbe:
                 delay = self.delay_of(target)
             except Exception:
                 log.debug("edge: no delay estimate for %s", target, exc_info=True)
-            row = self.edge.read(name, role, target, parse_playback(text), sync_edge.parse_uptime(text), wall,
+            ms = parse_playback(text, yttv_timing.yttv_package(stick, target or "", self.cfg))   # [playback_with_package]
+            row = self.edge.read(name, role, target, ms, sync_edge.parse_uptime(text), wall,
                                  pred_behind_s=float(held.get(target, 0.0)), tune_t=tuned.get(stick.host),
                                  delay=delay)
             if row is None:

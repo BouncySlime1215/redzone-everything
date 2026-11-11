@@ -1,0 +1,19 @@
+{
+  "card": "position-fix",
+  "session": "position-fix",
+  "branch": "position-fix",
+  "files": [
+    "redzone/tuners/yttv_label.py",
+    "redzone/tuners/yttv_seek.py",
+    "redzone/tuners/yttv_timing.py",
+    "redzone/tuners/yttv_nerds.py",
+    "redzone/decider/tune_offset.py",
+    "redzone/decider/sync.py",
+    "redzone/sync_probe.py",
+    "tests/test_position_fix*.py",
+    "redzone/engine.py",
+    "redzone/control.py"
+  ],
+  "started": 1794358138,
+  "expires": 1794444538
+}

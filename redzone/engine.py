@@ -304,6 +304,16 @@ class Engine:
         if self.cfg.get("timing.behind_live_s.label_reader", False):
             from redzone.tuners.yttv_label import LabelProbe
             self.control.label_probe = LabelProbe(self.cfg)   # [label reader] off by default
+        # [timing.per_tune_offset / timing.game_offset, Nov 10 TV] a tune's own lag and a game's K kept apart (both OFF)
+        self.tune_offsets = self.game_offsets = None
+        if self.cfg.get("timing.per_tune_offset", False):
+            from redzone.decider.tune_offset import TuneOffsets
+            self.tune_offsets = TuneOffsets(dict(self.cfg.get("timing.per_tune_offset_sd_s") or {}))
+            if getattr(self.control, "label_probe", None) is not None:
+                self.control.label_probe.on_tune_offset = self._probe_tune_offset
+        if self.cfg.get("timing.game_offset", False) and self.cfg.get("timing.game_offset_file"):
+            from redzone.decider.tune_offset import GameOffsets
+            self.game_offsets = GameOffsets.load(self.cfg.get("timing.game_offset_file"))
         if hasattr(self.delays, "on_label_stale"):
             self.delays.on_label_stale = self.control.label_stale
         if self.cfg.get("delay.edge_prior.enabled", False) and self.cfg.get("delay.edge_prior.refresh.enabled", False):
@@ -667,6 +677,49 @@ class Engine:
                 self.sync.tuned(target, wall, new_stream=new_stream)
             except Exception:
                 log.exception("sync: could not re-sync %s", target)
+        to = getattr(self, "tune_offsets", None)
+        if to is not None and new_stream and target.startswith("youtubetv:"):
+            # [timing.per_tune_offset] a fresh tune does not land at a fixed lag (sd 1.2-2.0 s, Nov 10): unknown until read
+            sd = to.new_tune(target, wall)
+            if self.sync is not None:
+                try:
+                    self.sync.tune_offset(target, sd, wall)
+                except Exception:
+                    log.exception("sync: could not add the tune offset doubt on %s", target)
+
+    def tune_offset_read(self, target: str, u_s: float, kind: str, wall: float, sd_s: float | None = None,
+                         behind_s: float = 0.0) -> tuple[float, float] | None:
+        """[timing.per_tune_offset] One absolute read of this tune's lag behind YouTube's clock (the label stamped at the
+        pause, or Stats for nerds' Live Latency). With the game's K (timing.game_offset) it is a delay sample for the
+        filter; with no K the delay stays unknown (K is never taken as 0). Returns the sample fed, or None."""
+        to = getattr(self, "tune_offsets", None)
+        if to is None:
+            return None
+        r = to.read(target, u_s, kind, wall, sd_s)
+        if r is None:
+            return None
+        from redzone.decider.tune_offset import delay_sample
+        from redzone.sync_edge import night_of
+        go = getattr(self, "game_offsets", None)
+        k = go.k(self._game_on(target, False), night_of(wall)) if go is not None else None
+        z = delay_sample(r, k, behind_s)
+        log.info("tune offset: %s lag %.2f s (%s, sd %.2f)%s", target, r.u_s, kind, r.sd_s,
+                 f" + K {k.k_s:+.2f} -> delay {z[0]:.2f} +- {z[1]:.2f} s" if z else ": no K for this game, delay unknown")
+        if z is not None:
+            self._sync_measure(target, z[0], kind, wall, z[1])
+        return z
+
+    def _probe_tune_offset(self, stick_key: str, u_s: float, behind_s: float, sd_s: float, wall: float) -> None:
+        """The label probe's stamped read on a stick -> the target that stick is playing."""
+        c = self.control
+        target = None
+        for st, tg in ((getattr(c, "hidden", None), getattr(c, "hidden_target", None)),
+                       (getattr(c, "main", None), getattr(c, "on_target", None))):
+            if st is not None and str(getattr(st, "host", st)) == stick_key:
+                target = tg
+                break
+        if target:
+            self.tune_offset_read(target, u_s, "label", wall, sd_s, behind_s)
 
     def _sync_clock(self, target: str, wall: float, delay_s: float) -> None:
         from redzone.decider.sync import SIGMA
