@@ -227,6 +227,13 @@ class Tuner:
     role = ""
     preferred_profile = ""
     confirm_timeout = 15.0   # per deep-link attempt
+    # [tuners.app_change_confirm, off] Measured on the TV, Nov 10: after another app was in front, the plain link starts the
+    # asked channel in about 2.5 s (2 of 2), but the resend "as a new task" restarts the app, loses the 15 s window, and the
+    # retry then snapshots the asked channel already playing: 8 of 11 app-change tunes ended "video never started" while
+    # the right channel played. On: the plain link gets `front_grace_s` to confirm before the resend, and a retry that
+    # finds the asked channel already on reports success.
+    app_change_confirm = False
+    front_grace_s = 6.0      # the plain link confirmed in 2.5-3.8 s on the TV (8 of 8, Nov 10)
     poll_s = 0.25            # "playing yet?" this often while confirming
     prompt_grace_s = 3.0     # not playing this long after the link -> read the screen for a prompt
     loading_grace_s = 6.0    # ...but a stick that says it's buffering/connecting gets this long first
@@ -271,11 +278,19 @@ class Tuner:
         if woke:
             steps.append("woke the stick")
         steps.warm = await self._was_warm(stick, pkg, before)
+        first_before = before
         for attempt in (1, 2):
             # A retry starts a new observation window. A buffering report from the
             # first attempt must not confirm an unchanged stream after the second.
             if attempt > 1:
                 before = await stick.playback(pkg)
+                named = channel_matcher(target) if self.app_change_confirm else None
+                if named is not None and playback_ready(before) and named(before) is True and named(first_before) is not True:
+                    # Our first link worked after its window closed: the asked channel is on, and it was not before the
+                    # link. A watch that waits for a change could never pass now. (Only for targets that name a channel.)
+                    steps.append("playing: the first link had worked (the asked channel is on at the retry)")
+                    stick.remember(target, before)
+                    return TuneResult(True, target, time.monotonic() - t0, steps)
             watch = NewStream(before, expect=channel_matcher(target), channel_change=self.subtitle_is_channel)
             require_cut(may_cut, steps, mutating=True)
             r = await stick.view(self.url(ref), pkg, wait=self.wait_for_launch)
@@ -298,6 +313,10 @@ class Tuner:
                 return TuneResult(False, target, time.monotonic() - t0, steps,
                                   "deep link failed; playback is unconfirmed")
             if "brought to the front" in r.out.lower():
+                if self.app_change_confirm and await self._front_confirm(stick, pkg, watch):
+                    steps.append("playing (the plain link worked once the app came to the front)")
+                    stick.remember(target, watch.report or {})
+                    return TuneResult(True, target, time.monotonic() - t0, steps)
                 # The app was in the background (e.g. the hidden stick after a HOME flip): resend
                 # the link as a fresh task so it actually opens it.
                 require_cut(may_cut, steps, mutating=True)
@@ -310,6 +329,15 @@ class Tuner:
                 stick.remember(target, watch.report or {})
                 return TuneResult(True, target, time.monotonic() - t0, steps)
         return TuneResult(False, target, time.monotonic() - t0, steps, "video never started")
+
+    async def _front_confirm(self, stick: Stick, pkg: str, watch: NewStream) -> bool:
+        """[tuners.app_change_confirm] The same new-stream check `_confirm` uses, for at most front_grace_s, pressing nothing."""
+        end = time.monotonic() + min(self.front_grace_s, self.confirm_timeout)
+        while time.monotonic() < end:
+            if watch.check(await stick.playback(pkg)):
+                return True
+            await asyncio.sleep(self.poll_s)
+        return False
 
     async def _confirm(self, stick: Stick, pkg: str, steps: list[str], watch: NewStream | None = None,
                        may_cut=None) -> bool:
@@ -427,9 +455,11 @@ def apply_flags(cfg, tuners: dict[str, "Tuner"] | None = None) -> None:
     """Copy the tuners.* flags onto the tuner objects. Controller calls this; until it does they stay OFF."""
     table = TUNERS if tuners is None else tuners
     fast, link = bool(cfg.get("tuners.prime_fast_confirm", False)), bool(cfg.get("tuners.espn_link_form", False))
+    change = bool(cfg.get("tuners.app_change_confirm", False))
     for wrapped in table.values():
         tuner = getattr(wrapped, "inner", wrapped)   # providers.DiagnosingTuner wraps the real one in the running app
         tuner.warm_probe = fast or link
+        tuner.app_change_confirm = change
         if isinstance(tuner, PrimeTuner):
             tuner.fast_confirm = fast
         if isinstance(tuner, EspnTuner):
