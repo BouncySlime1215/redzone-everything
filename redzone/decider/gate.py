@@ -436,10 +436,11 @@ def bucket_on(cfg: Any) -> bool:
 def _post_make_windows(dead: Any, floor_s: float, p: slate_mod.Params) -> list[Window]:
     """Basketball: each made basket's window, in real time. Starts when the ball is through (bucket_after_s), ends at the
     measured moment the next possession can produce a shot (floor_s after the make) or the next logged action less the
-    stamp's guard, whichever is sooner. A window needs no next row in the data: with a late feed the floor is all there is."""
+    stamp's guard, whichever is sooner. A window needs no next row in the data: with a late feed the floor is all there is.
+    A made free throw opens none: Nick's rule is made baskets, and the grader's window (cutgrade.after_bucket) is field goals only."""
     out, ms = [], dead._order()
     for i, m in enumerate(ms):
-        if m.shot != "made" or m.hi <= dead.frozen_until:
+        if m.shot != "made" or m.ft or m.hi <= dead.frozen_until:
             continue
         nxt = dead._next_action(ms, i)
         end = m.hi + floor_s if nxt is None else min(m.hi + floor_s, nxt.lo - p.bucket_guard_s)
@@ -454,11 +455,14 @@ def bucket_landing(cfg: Any, tl: Any, scored: Any, sigma: float, x0: float, x1: 
     arrival [x0, x1], widened by the doubt (bucket_sigmas times the stick delay's sigma), must sit inside one made-basket
     window: a landing that may be before the make, or after the next shot, is None (it waits or skips). Never high-leverage
     close-and-late or overtime (the leave rule's bar), never a game outside NBA and men's college.
-    x0 and x1 are real time. Made baskets only: _post_make_windows opens on shot == "made"."""
+    x0 and x1 are real time. Made baskets only: _post_make_windows opens on shot == "made".
+    [NBA-YES] basketball.join_after_bucket_crunch (off): the same window also takes a join INTO a crunch or high-leverage game.
+    The window, its doubt and "made baskets only" are unchanged; the rule about LEAVING a high-leverage moment is not read here."""
     league = tl.dead.league.value
     if not bucket_on(cfg) or league not in ("nba", "cbb"):
         return None
-    if getattr(scored, "high_leverage", False) or scored.crunch or scored.crunch_now:
+    tight = getattr(scored, "high_leverage", False) or scored.crunch or scored.crunch_now
+    if tight and not cfg.get("basketball.join_after_bucket_crunch", False):
         return None
     p = slate_mod.Params.from_config(cfg.get)
     doubt = p.bucket_sigmas * sigma

@@ -7280,7 +7280,8 @@
     "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/measure_break_lengths.py",
-    "scripts/northstar.py"
+    "scripts/northstar.py",
+    "scripts/veto_audit.py"
    ],
    "owner": "INTEGRATION",
    "role": "Cut-timing scorecard: WHERE in each game we left, and WHERE we landed.",
@@ -18260,7 +18261,9 @@
     "redzone/grading.py:idx",
     "redzone/grading.py:is_action",
     "redzone/grading.py:lag_of",
+    "redzone/grading.py:raw_type",
     "redzone/lab/backtest.py:_CALS",
+    "redzone/lab/cutgrade.py:after_bucket",
     "redzone/lab/leverage.py:high_leverage",
     "redzone/lab/splits.py:archive_nights",
     "redzone/measured_timing.py:route_costs",
@@ -18299,6 +18302,7 @@
     "redzone/engine.py",
     "redzone/grading.py",
     "redzone/lab/backtest.py",
+    "redzone/lab/cutgrade.py",
     "redzone/lab/leverage.py",
     "redzone/lab/splits.py",
     "redzone/lab/sportsgrade.py",
@@ -18523,7 +18527,7 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2144,
+  "calls": 2146,
   "data_files": 202,
   "machines": 51,
   "modules": 462,
