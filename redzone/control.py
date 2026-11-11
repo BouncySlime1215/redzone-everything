@@ -5559,7 +5559,7 @@ class ParkStep:
 @dataclass
 class ParkPlace:
     """Where one stick's stream sits on YouTube's clock: content time = anchor + media-session position (the same
-    two fields as noggin/park_timing.Tune, which the PARK controller builds from them). `read` = the anchor came
+    two fields as the PARK timing model's Tune, which the PARK controller builds from them). `read` = the anchor came
     from a label read on this tune; otherwise it is the nominal guess (the stream was at its live edge, park
     timing's live_lag behind YouTube's clock) and whoever plans must use the wider unread padding."""
     target: str
