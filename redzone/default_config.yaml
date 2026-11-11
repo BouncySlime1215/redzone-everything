@@ -645,6 +645,16 @@ hardening:                 # error handling (PLATFORM). Each switch is off until
   watchdog: false          # the watchdog may ask the app for narrow fixes (POST /api/agent/fix); off: it only tells you
   tv: false                # the TV jumped by itself to a stick on its home screen (a reboot's HDMI-CEC): flip it back
 
+sound_guard:               # [Nick, Nov 10: "Volume must be 1000% off"] the TV's mute and volume by readback (redzone/platform/sound_guard.py)
+  enabled: false           # on: read mute + volume back before the first input switch, after every switch and every check_s;
+                           # off: no guard exists and no sound call is made (read once at app start)
+  must_be_silent: false    # on: muted AND volume 0 is required (not silent, or unreadable unreadable_max times = incident),
+                           # and redzone/tv.py refuses KEY_VOLUP, KEY_MUTE, volumeUp, unmute, setVolume above 0 and volume_duck
+  check_s: 20.0            # the periodic check (tvctl.py watch used 20 s)
+  unreadable_max: 3        # this many readbacks in a row without mute or volume is an incident ("no readback, no test")
+  silence_tries: 4         # volume 0 + mute + read back, this many tries, before the first switch of a session
+  on_incident: off_tv      # off_tv: power the TV off, then block switching until cleared by hand; block: only block
+
 two_stick:
   unavailable_backoff_s: 0  # [Nick live test Nov 7] a standby tune that stopped at an account/payment/UNAVAILABLE screen keeps
                             # that game off the standby this long (0 = the usual 120 s retry). Suggested 900

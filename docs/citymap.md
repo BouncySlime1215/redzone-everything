@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**471 modules**, 399 untagged, 270 unowned, 35 orphans (no importer); 2210 call edges, 203 data files, 51 machines.
+**472 modules**, 400 untagged, 270 unowned, 35 orphans (no importer); 2214 call edges, 204 data files, 52 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -133,7 +133,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/tuners/yttv_search.py` | Bounded YouTube TV library inspection using observed menu geometry. | discovery.providers, discovery.stickio, discovery.yttv, machines.control, screen_ocr, tuners.adb +3 -> tuners.tuners, scripts.find_yttv_code | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_seek.py` | [YTTV scrub buffer, item 1] Put a YouTube TV stick a set time behind live by scrubbing the player overlay. | screen_ocr, tuners.yttv_timing -> control, tuners.join, tuners.prime_pause, tuners.replay_park, tuners.yttv_label, scripts.session_drill +1 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_timing.py` | [POSITION-FIX] Which content second a YouTube TV stick shows: the Nov 10 timing findings as small, flagged helpers. | sync_edge, tuners.adb -> control, sync_probe, tuners.yttv_label, tuners.yttv_seek | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tv.py` | Samsung TV: switch HDMI inputs (two-stick mode) and duck the volume (announcer). | config, machines.control, platform.breaker -> control, fantasy, lab.night.run, tvsetup, scripts.fault_drill, scripts.tv_local_probe | Switch time p95 (SmartThings input change), TV-01, TV-02 |
+| `redzone/tv.py` | Samsung TV: switch HDMI inputs (two-stick mode) and duck the volume (announcer). | config, machines.control, platform.breaker, platform.sound_guard -> control, fantasy, lab.night.run, platform.sound_guard, tvsetup, scripts.fault_drill +1 | Switch time p95 (SmartThings input change), TV-01, TV-02 |
 | `redzone/tvsetup.py` | One-time TV setup for instant switching (scripts/tv_setup.py is the command; this is the logic, with every network/device touch in one `Home` object that tes... | autonomy, network, tuners.adb, tv -> scripts.stick_cec, scripts.tv_setup | untagged |
 | `scripts/find_yttv_code.py` (entry) | Find the YouTube TV watch code (tv.youtube.com/watch/<code>) of a channel we lack, on a SPARE stick. | channels, config, discovery.lounge, discovery.yttv, recorded, screen_ocr +3 -> - | untagged |
 | `scripts/prime_flip_probe.py` (entry) | Prime flip probe (~15 min, needs you home with a live Prime game and the service PAUSED). | tuners.adb, tuners.tuners -> - | untagged |
@@ -170,7 +170,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/prime_multiview_grade.py` (entry) | Grade a live Prime NBA multiview night against the turn-on gate (redzone/tuners/prime_multiview.py). | tuners.prime_multiview -> - | Landings in dead time, Mid-play entries (per 100 landings), STK-03 |
 | `scripts/prime_multiview_probe.py` (entry) | At home on a Prime NBA night, ~10 minutes, before you watch: learn Prime Video's NBA multiview on one stick and write data/prime_multiview_keys.json (what Pr... | lab.prime_mv_fake, tuners.adb, tuners.prime_multiview, tuners.tuners -> - | Flips PLAYING within 3 s, STK-03, STK-04 |
 
-## PLATFORM (36)
+## PLATFORM (37)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -184,6 +184,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/platform/health.py` | Runtime invariants and the Health report (contracts/health.py), checked every supervisor tick. | contracts.health, models, uses:Fault, uses:Fix, uses:HealthReport, uses:Severity -> supervisor, scripts.fault_drill | untagged |
 | `redzone/platform/mac_health.py` | Mac health alerts: tell Nick's phone when the Mac itself is about to cost him the night. | - -> supervisor | untagged |
 | `redzone/platform/night_ops.py` | Night ops report: joins, errors, fallbacks, drift and Mac health for one night (Nick's Nov 7 order, item 7). | supervisor -> supervisor | untagged |
+| `redzone/platform/sound_guard.py` | Sound guard: the TV stays muted at volume 0, proven by reading it back (sound_guard.*, all off by default). | machines.platform, tv -> tv | untagged |
 | `redzone/platform/wake.py` | The Mac slept, or moved networks: everything that held a connection is stale (hardening.mac). | - -> engine, supervisor | untagged |
 | `redzone/recorded.py` | Explicit recorded-game navigation, isolated from live decisions and calibration. | machines.platform, screen_ocr, tuners.adb, tuners.prime_search -> engine, scripts.find_yttv_code | untagged |
 | `redzone/recorder.py` | Flight recorder: the real-world numbers the simulator needs. | models, sources.espn, sources.leagues -> engine, lab.night.run | untagged |
@@ -322,7 +323,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/machines/__init__.py` (package) | Every explicit state machine in RedZone, declared in one place (one module per area). | fsm, machines.control, machines.decider, machines.platform -> scripts.state_machines | untagged |
 | `redzone/machines/control.py` | State machines owned by the control area (redzone/control.py, redzone/tv.py, redzone/tuners/). | fsm -> control, machines, tuners.adb, tuners.tuners, tuners.yttv_search, tv | STK-06, STK-07 |
 | `redzone/machines/decider.py` | State machines owned by the decider area (redzone/decider/, redzone/engine.py). | fsm -> decider.decider, decider.screen, engine, machines | untagged |
-| `redzone/machines/platform.py` | State machines owned by the platform area. | fsm -> autonomy, discovery.runtime, governor, machines, recorded, sources.fastcast +4 | untagged |
+| `redzone/machines/platform.py` | State machines owned by the platform area. | fsm -> autonomy, discovery.runtime, governor, machines, platform.sound_guard, recorded +5 | untagged |
 | `redzone/measured_timing.py` | [timing.measured, off] One source for the stick timings measured on Nick's TV, Nov 9. | - -> decider.decider, scripts.veto_audit | untagged |
 | `redzone/memory.py` | Project memory for the AI that repairs RedZone (watchdog, auto-fix brain). | - -> agent.watchdog, scripts.context_pack | untagged |
 | `redzone/models_rt/__init__.py` (package) | [one brain, step 4] Runtime model code shared by every tree model (forest.py). | - -> - | untagged |
@@ -529,7 +530,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 | `scripts/yttv_search_tune_try.py` (entry) | Tune the LOCAL stations by YouTube TV search on the HIDDEN stick, through the app's own routing and tuner as if tuners.yttv_local_search were on (ChannelMap.... | channels, tuners.adb, tuners.tuners -> - | untagged |
 
-## Untagged (399)
+## Untagged (400)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -725,6 +726,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/platform/health.py`
 - `redzone/platform/mac_health.py`
 - `redzone/platform/night_ops.py`
+- `redzone/platform/sound_guard.py`
 - `redzone/platform/wake.py`
 - `redzone/reasoner/__init__.py`
 - `redzone/reasoner/brief.py`
@@ -969,12 +971,12 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/tuners/identity.py`
 - `redzone/tuners/yttv_nerds.py`
 
-## Most-called symbols (top 25 of 1151)
+## Most-called symbols (top 25 of 1154)
 
 | symbol | callers |
 |---|---:|
 | `redzone/models.py:League` | 40 |
-| `redzone/config.py:Config` | 34 |
+| `redzone/config.py:Config` | 35 |
 | `redzone/sources/espn.py:_get` | 23 |
 | `redzone/tuners/adb.py:Stick` | 23 |
 | `redzone/lab/backtest.py:Replay` | 20 |
@@ -999,7 +1001,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/evaldata.py:window_end` | 8 |
 | `redzone/lab/oracle.py:tables` | 8 |
 
-## Shared data files (84 of 203)
+## Shared data files (84 of 204)
 
 Files two or more modules name (the rest are in the JSON). Best effort from string literals: w = writes, r = reads, u = named but unclassified.
 
@@ -1090,7 +1092,7 @@ Files two or more modules name (the rest are in the JSON). Best effort from stri
 | `wordings_teacher.json` | - | - | agent.kaggle.teacher_distill, scripts.distill |
 | `yttv_verified.json` | - | - | autonomy, lab.night.run |
 
-## Machines (51)
+## Machines (52)
 
 | machine | declared in | owner | driven by |
 |---|---|---|---|
@@ -1133,6 +1135,7 @@ Files two or more modules name (the rest are in the JSON). Best effort from stri
 | `governor.level` | machines.platform | `governor.Governor.m` | governor |
 | `merge.feed` | machines.platform | `sources.merge.Merger.feeds` | sources.merge |
 | `phone.crunch` | machines.platform | `web.phone_v2.CrunchTracker` | web.phone_v2 |
+| `platform.sound_guard` | machines.platform | `platform.sound_guard.SoundGuard.m` | platform.sound_guard |
 | `recorded.session` | machines.platform | `recorded.RecordedPlayback.session` | recorded |
 | `supervisor.app` | machines.platform | `supervisor.Supervisor.apps` | supervisor |
 | `supervisor.condition` | machines.platform | `supervisor.Supervisor.conditions` | supervisor |
