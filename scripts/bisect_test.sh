@@ -64,7 +64,8 @@ trap 'git bisect reset >/dev/null 2>&1; rm -f "$copy"' EXIT
 git bisect start "$bad" "$good" >/dev/null || exit 2
 log=$(git bisect run bash "$copy" --step "$node" "$night" "$needs" 2>&1)
 code=$?
-if [ $code -eq 0 ] && printf '%s\n' "$log" | grep -q "is the first bad commit"; then
+# git before 2.4x prints "is the first bad commit"; newer git (2.56 on CI) quotes the term: "is the first 'bad' commit".
+if [ $code -eq 0 ] && printf '%s\n' "$log" | grep -Eq "is the first '?bad'? commit"; then
     culprit=$(git rev-parse refs/bisect/bad)
     echo "Bisected-to: $(git log -1 --format='%h %s' "$culprit")"
     exit 0
