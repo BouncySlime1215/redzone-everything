@@ -1284,3 +1284,8 @@ views:                     # [build plan WP-21] the phone's clock as of the scre
 basketball:                # [NBA-BUCKET] land right after a made basket, including the transition after it (Nick, Nov 9)
   join_after_bucket: false
   join_after_bucket_crunch: false   # [NBA-YES] with join_after_bucket: the made-basket window also takes a join INTO a crunch or high-leverage game (off: only low-leverage games). Nick decides; simulated on recorded nights only
+
+show:                      # the phone's Show view over the new show's state files (redzone/web/show.py; read-only)
+  ui: false                # on: a "Show" tab with what is on the TV, the next move, pace, sound and Rule #1 counters
+  state_dir: ""            # the folder the show writes state.json and events.jsonl to (empty = no show yet)
+  eyes_dir: ""             # the folder the clock watcher writes eyes_state.json to (empty = the state folder, then its sibling eyes/)

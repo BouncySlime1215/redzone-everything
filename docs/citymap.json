@@ -796,10 +796,19 @@
    "writers": []
   },
   "events.jsonl": {
-   "readers": [],
+   "readers": [
+    "redzone/web/show.py"
+   ],
    "users": [
     "redzone/personal/store.py"
    ],
+   "writers": []
+  },
+  "eyes_state.json": {
+   "readers": [
+    "redzone/web/show.py"
+   ],
+   "users": [],
    "writers": []
   },
   "fallbacks.jsonl": {
@@ -1339,6 +1348,7 @@
    "readers": [
     "agent/kaggle/data_fetch.py",
     "agent/kaggle/qwen_finetune.py",
+    "redzone/web/show.py",
     "scripts/deploy.py"
    ],
    "users": [
@@ -12928,7 +12938,10 @@
     "redzone/personal/store.py:store_path",
     "redzone/personal/store.py:text",
     "redzone/platform/agent_fix.py:run_fix",
-    "redzone/web/phone_v2.py:router"
+    "redzone/web/phone_v2.py:router",
+    "redzone/web/show.py:enabled",
+    "redzone/web/show.py:inject",
+    "redzone/web/show.py:router"
    ],
    "contracts": [],
    "data": {
@@ -12947,7 +12960,8 @@
     "redzone/personal/store.py",
     "redzone/platform/agent_fix.py",
     "redzone/userstate.py",
-    "redzone/web/phone_v2.py"
+    "redzone/web/phone_v2.py",
+    "redzone/web/show.py"
    ],
    "kind": "module",
    "machines": {
@@ -12960,6 +12974,33 @@
    ],
    "owner": "PLATFORM",
    "role": "Phone control page + JSON API.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/web/show.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "events.jsonl",
+     "eyes_state.json",
+     "state.json"
+    ],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/web/server.py"
+   ],
+   "owner": "PLATFORM",
+   "role": "The phone's Show view (flag `show.ui`, default OFF): read-only routes over the files the show writes.",
    "serves": [
     "untagged"
    ]
@@ -18527,13 +18568,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2146,
-  "data_files": 202,
+  "calls": 2149,
+  "data_files": 203,
   "machines": 51,
-  "modules": 462,
+  "modules": 463,
   "orphans": 34,
   "unowned": 264,
-  "untagged": 393
+  "untagged": 394
  },
  "version": 2
 }

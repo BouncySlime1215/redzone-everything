@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**462 modules**, 393 untagged, 264 unowned, 34 orphans (no importer); 2146 call edges, 202 data files, 51 machines.
+**463 modules**, 394 untagged, 264 unowned, 34 orphans (no importer); 2149 call edges, 203 data files, 51 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -168,7 +168,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/prime_multiview_grade.py` (entry) | Grade a live Prime NBA multiview night against the turn-on gate (redzone/tuners/prime_multiview.py). | tuners.prime_multiview -> - | Landings in dead time, Mid-play entries (per 100 landings), STK-03 |
 | `scripts/prime_multiview_probe.py` (entry) | At home on a Prime NBA night, ~10 minutes, before you watch: learn Prime Video's NBA multiview on one stick and write data/prime_multiview_keys.json (what Pr... | lab.prime_mv_fake, tuners.adb, tuners.prime_multiview, tuners.tuners -> - | Flips PLAYING within 3 s, STK-03, STK-04 |
 
-## PLATFORM (35)
+## PLATFORM (36)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -199,7 +199,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/supervisor.py` | Supervisor: the live system watches itself, so nobody has to. | calibration, channels, cheap_labels, config, contracts.health, control +19 -> engine, lab.night.run, observability, platform.night_ops, trace, web.phone_v2 +2 | untagged |
 | `redzone/views.py` | JSON shapes for the phone: game cards, game detail, team directory, rosters. | models, sources.espn -> demo.engine, engine, sources.fastcast | untagged |
 | `redzone/web/__init__.py` (package) | no docstring | - -> - | untagged |
-| `redzone/web/server.py` | Phone control page + JSON API. | channels, config, engine, fsm, personal.store, platform.agent_fix +2 -> __main__, demo.__main__ | untagged |
+| `redzone/web/server.py` | Phone control page + JSON API. | channels, config, engine, fsm, personal.store, platform.agent_fix +3 -> __main__, demo.__main__ | untagged |
+| `redzone/web/show.py` | The phone's Show view (flag `show.ui`, default OFF): read-only routes over the files the show writes. | - -> web.server | untagged |
 | `scripts/deploy.py` (entry) | Safe deploy for the Mac: test a new commit off to the side, switch only when no game is live, watch health for 10 minutes, and roll code + config + models ba... | machines.platform -> - | untagged |
 | `scripts/doctor.py` (entry) | Phase 0 setup checker. | network, tuners.adb -> - | untagged |
 | `scripts/download_recent.py` (entry) | Download public ESPN play-by-play for backtesting, never for live TV control. | - -> - | untagged |
@@ -520,7 +521,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 | `scripts/yttv_search_tune_try.py` (entry) | Tune the LOCAL stations by YouTube TV search on the HIDDEN stick, through the app's own routing and tuner as if tuners.yttv_local_search were on (ChannelMap.... | channels, tuners.adb, tuners.tuners -> - | untagged |
 
-## Untagged (393)
+## Untagged (394)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -751,6 +752,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/views.py`
 - `redzone/web/__init__.py`
 - `redzone/web/server.py`
+- `redzone/web/show.py`
 - `scripts/attention_labels.py`
 - `scripts/attention_pull.py`
 - `scripts/autofix_guard.py`
@@ -953,7 +955,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/lab/night/presses.py`
 - `redzone/tuners/identity.py`
 
-## Most-called symbols (top 25 of 1127)
+## Most-called symbols (top 25 of 1130)
 
 | symbol | callers |
 |---|---:|
@@ -983,7 +985,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/oracle.py:tables` | 8 |
 | `redzone/lab/sportsgrade.py:grade` | 8 |
 
-## Shared data files (83 of 202)
+## Shared data files (84 of 203)
 
 Files two or more modules name (the rest are in the JSON). Best effort from string literals: w = writes, r = reads, u = named but unclassified.
 
@@ -1024,6 +1026,7 @@ Files two or more modules name (the rest are in the JSON). Best effort from stri
 | `entry_cal_v3.json` | lab.brain3cal | scoring.brain3 | - |
 | `eval-data.lock.json` | scripts.switch_eval_pin | scripts.backfill_eval_v2, scripts.leak_check, scripts.switch_eval_pin | lab.evaldata |
 | `eval_config.yaml` | - | scripts.build_eval_data | agent.kaggle.qwen_eval, lab.evaldata, scripts.exp023_belief, scripts.holdset_public, scripts.kaggle_gamevalue_holdset, scripts.queue_replay +1 |
+| `events.jsonl` | - | web.show | personal.store |
 | `fallbacks.jsonl` | - | platform.night_ops | engine |
 | `fast_feeds.jsonl` | recorder | scripts.fast_feed_race | sources.fastfeeds |
 | `fastcast_check.json` | - | scripts.fastcast_check | engine |
@@ -1050,7 +1053,7 @@ Files two or more modules name (the rest are in the JSON). Best effort from stri
 | `seeks.jsonl` | - | calibration, scripts.sync_fit | engine |
 | `split_plan.json` | agent.kaggle.build_moments_kaggle | agent.kaggle.student_data | agent.kaggle.teacher_distill |
 | `splits.json` | noggin.value_shards | agent.kaggle.qwen_finetune, noggin.value_shards, scripts.kaggle_gamevalue, scripts.kaggle_gamevalue_select, scripts.value_leak_check | - |
-| `state.json` | agent.kaggle.data_fetch, agent.kaggle.qwen_finetune | agent.kaggle.data_fetch, agent.kaggle.qwen_finetune, scripts.deploy | agent.kaggle.fetch_sports_mlb |
+| `state.json` | agent.kaggle.data_fetch, agent.kaggle.qwen_finetune | agent.kaggle.data_fetch, agent.kaggle.qwen_finetune, web.show, scripts.deploy | agent.kaggle.fetch_sports_mlb |
 | `summary.json` | scripts.buffer_sweep, scripts.collect_live_test, scripts.publish_live_nights, scripts.redzone_reconstruct | web.phone_v2, scripts.night_report | supervisor |
 | `supervisor.jsonl` | supervisor | observability, platform.autofix, platform.night_ops, supervisor, scripts.collect_live_test, scripts.fault_drill | - |
 | `supervisor_cuts.jsonl` | supervisor | observability, scripts.collect_live_test | lab.decision_records, scripts.prime_multiview_grade |
