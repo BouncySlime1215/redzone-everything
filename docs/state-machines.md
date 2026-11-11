@@ -15,9 +15,10 @@ Only `Machine.to()` moves a state; an undeclared move fails tests and logs a war
 | [control.cec](#control.cec) | `control.Controller.cec_m` | Each stick's HDMI-CEC setting (key = host). Off = it never pauses on input loss; a HOME fallback turns it on for one flip and a restore task turns it off again. | 4 |
 | [control.command](#control.command) | `control.Controller.command_m` | One switch command (submit -> _run -> execute): the newest wins, a flip is never cancelled. The command lock's owner and age are in Controller.view (a stuck lock is visible). | 4 |
 | [control.offset](#control.offset) | `control.Controller.offset_m` | How far behind the live edge a target's stream runs (key = target); `held` keeps the seconds (persisted to data/held.json). A fresh tune puts it back at live. | 4 |
+| [control.park](#control.park) | `control.ParkHands.m` | What the PARK steps last did to one stick (key = the stick's label, never its address): tune, the per-tune read, the timed pause that freezes a dead-ball frame, a jump's resume. Exists only with park.enabled on. | 8 |
 | [control.preload_slot](#control.preload_slot) | `control.Controller.slot_m` | The hidden stick's one background job slot (_preload_task): which kind of job owns it. With the switch task and the command lock it is the one answer to 'is a stick busy?' (Controller.stick_job). | 8 |
 | [control.screen](#control.screen) | `control.Controller.screen_m` | Which stick the TV shows and whether we trust it: replaces active/_flipping/input_unknown as loose flags. Every flip start bumps _flip_gen (a read that spans a flip is stale). | 6 |
-| [control.standby](#control.standby) | `control.Controller.standby_m` | What the hidden stick holds for the next flip: one state replaces hidden_target/hidden_ready/parked/_snap_park/_holding/_left/_stuck_since, so 'ready while holding' or 'left hold and parked' can't happen. | 9 |
+| [control.standby](#control.standby) | `control.Controller.standby_m` | What the hidden stick holds for the next flip: one state replaces hidden_target/hidden_ready/parked/_snap_park/_holding/_left/_stuck_since, so 'ready while holding' or 'left hold and parked' can't happen. | 10 |
 | [control.two_stick](#control.two_stick) | `control.Controller.two_stick_m` | Two-stick (hot standby) mode health: a failed flip degrades to single-stick (hidden is None) until TWO_STICK_RETRY_S has passed and the input is known again. Config/stick-count reasons are in view. | 2 |
 | [control.visible](#control.visible) | `control.Controller.visible_m` | The stick on screen should be playing what we put there: replaces _visible_bad_since/_visible_state as loose fields (the 'how' resets when healthy). | 4 |
 | [decider.catchup_route](#decider.catchup_route) | `decider.Decider.catchup_m` | [arbiter.catchup_route] one missed must-see airing in pieces on the hidden stick, in the screen's dead time | 3 |
@@ -248,6 +249,55 @@ stateDiagram-v2
     restored --> scrubbed
 ```
 
+## control.park
+
+Owner: `control.ParkHands.m` (one per key). What the PARK steps last did to one stick (key = the stick's label, never its address): tune, the per-tune read, the timed pause that freezes a dead-ball frame, a jump's resume. Exists only with park.enabled on.
+
+| State | Meaning | Can move to |
+|---|---|---|
+| `idle` (initial) | PARK holds nothing on this stick (start, or a step that lost its place: it is tuned again) | tuning, reading, stopped |
+| `tuning` | a tune runs: the channel's direct code, then local-station search, then search | reading, playing, idle, stopped |
+| `reading` | the read gesture runs (CENTER, LEFT x steps, the time label read, CENTER) | playing, idle, stopped |
+| `playing` | on its game and playing; its place on YouTube's clock is read or not (the step says which) | tuning, reading, pausing, idle, stopped |
+| `pausing` | the timed pause key went out; BACK and the read back come next | parked, playing, idle, stopped |
+| `parked` | paused on the wanted frame, read back paused with YouTube TV in front | resuming, playing, tuning, idle, stopped |
+| `resuming` | a jump's resume key went out to it | playing, parked, idle, stopped |
+| `stopped` | a sound stop (an open incident, or silence not read back): nothing more is sent to it | idle |
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> tuning
+    idle --> reading
+    idle --> stopped
+    tuning --> reading
+    tuning --> playing
+    tuning --> idle
+    tuning --> stopped
+    reading --> playing
+    reading --> idle
+    reading --> stopped
+    playing --> tuning
+    playing --> reading
+    playing --> pausing
+    playing --> idle
+    playing --> stopped
+    pausing --> parked
+    pausing --> playing
+    pausing --> idle
+    pausing --> stopped
+    parked --> resuming
+    parked --> playing
+    parked --> tuning
+    parked --> idle
+    parked --> stopped
+    resuming --> playing
+    resuming --> parked
+    resuming --> idle
+    resuming --> stopped
+    stopped --> idle
+```
+
 ## control.preload_slot
 
 Owner: `control.Controller.slot_m`. The hidden stick's one background job slot (_preload_task): which kind of job owns it. With the switch task and the command lock it is the one answer to 'is a stick busy?' (Controller.stick_job).
@@ -386,15 +436,16 @@ Owner: `control.Controller.standby_m`. What the hidden stick holds for the next 
 
 | State | Meaning | Can move to |
 |---|---|---|
-| `empty` (initial) | holds nothing we know of (start, after a drop, a failed or cancelled tune) | loading, scrubbing, ready, replay_parked, holding |
-| `loading` | a target is being tuned, rebuilt or is unconfirmed: never flipped to | empty, scrubbing, holding, stuck, ready, replay_parked, left_hold |
-| `scrubbing` | a fresh tune is being scrubbed behind live by the overlay (yttv_seek): never flipped to | empty, loading, ready, holding |
-| `holding` | a pause-hold is running (time-shift buffer): resumes behind live, not flippable meanwhile | empty, loading, scrubbing, ready |
-| `stuck` | not ready with nothing running on it (buffered jump drops it after stuck_s) | empty, loading, scrubbing, holding, ready |
-| `ready` | playing the target, confirmed: a flip shows it (live, or behind live per control.offset) | empty, loading, scrubbing, holding, snap_parked, replay_parked, left_hold |
-| `snap_parked` | ready and paused on the line-up before its next snap: PLAY rolls it at the flip | empty, loading, scrubbing, ready, replay_parked |
-| `replay_parked` | rewound to a replay and held still: old footage, never used for a live switch | empty, loading, scrubbing, ready |
-| `left_hold` | the game we just left, paused at the dead ball we left it on (STK-07) | empty, loading, scrubbing, ready, replay_parked |
+| `empty` (initial) | holds nothing we know of (start, after a drop, a failed or cancelled tune) | loading, scrubbing, ready, replay_parked, holding, park_held |
+| `loading` | a target is being tuned, rebuilt or is unconfirmed: never flipped to | empty, scrubbing, holding, stuck, ready, replay_parked, left_hold, park_held |
+| `scrubbing` | a fresh tune is being scrubbed behind live by the overlay (yttv_seek): never flipped to | empty, loading, ready, holding, park_held |
+| `holding` | a pause-hold is running (time-shift buffer): resumes behind live, not flippable meanwhile | empty, loading, scrubbing, ready, park_held |
+| `stuck` | not ready with nothing running on it (buffered jump drops it after stuck_s) | empty, loading, scrubbing, holding, ready, park_held |
+| `ready` | playing the target, confirmed: a flip shows it (live, or behind live per control.offset) | empty, loading, scrubbing, holding, snap_parked, replay_parked, left_hold, park_held |
+| `snap_parked` | ready and paused on the line-up before its next snap: PLAY rolls it at the flip | empty, loading, scrubbing, ready, replay_parked, park_held |
+| `replay_parked` | rewound to a replay and held still: old footage, never used for a live switch | empty, loading, scrubbing, ready, park_held |
+| `left_hold` | the game we just left, paused at the dead ball we left it on (STK-07) | empty, loading, scrubbing, ready, replay_parked, park_held |
+| `park_held` | [park.enabled] PARK owns the hidden stick (park_tune, park_pause, or the stick a park_jump left): only park_jump resumes and shows it. Not in STANDBY_READY, so no other flip, check or roll uses it | empty, loading, ready |
 
 ```mermaid
 stateDiagram-v2
@@ -404,6 +455,7 @@ stateDiagram-v2
     empty --> ready
     empty --> replay_parked
     empty --> holding
+    empty --> park_held
     loading --> empty
     loading --> scrubbing
     loading --> holding
@@ -411,19 +463,23 @@ stateDiagram-v2
     loading --> ready
     loading --> replay_parked
     loading --> left_hold
+    loading --> park_held
     scrubbing --> empty
     scrubbing --> loading
     scrubbing --> ready
     scrubbing --> holding
+    scrubbing --> park_held
     holding --> empty
     holding --> loading
     holding --> scrubbing
     holding --> ready
+    holding --> park_held
     stuck --> empty
     stuck --> loading
     stuck --> scrubbing
     stuck --> holding
     stuck --> ready
+    stuck --> park_held
     ready --> empty
     ready --> loading
     ready --> scrubbing
@@ -431,20 +487,27 @@ stateDiagram-v2
     ready --> snap_parked
     ready --> replay_parked
     ready --> left_hold
+    ready --> park_held
     snap_parked --> empty
     snap_parked --> loading
     snap_parked --> scrubbing
     snap_parked --> ready
     snap_parked --> replay_parked
+    snap_parked --> park_held
     replay_parked --> empty
     replay_parked --> loading
     replay_parked --> scrubbing
     replay_parked --> ready
+    replay_parked --> park_held
     left_hold --> empty
     left_hold --> loading
     left_hold --> scrubbing
     left_hold --> ready
     left_hold --> replay_parked
+    left_hold --> park_held
+    park_held --> empty
+    park_held --> loading
+    park_held --> ready
 ```
 
 ## control.two_stick

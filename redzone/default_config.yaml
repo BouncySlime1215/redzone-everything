@@ -1327,8 +1327,44 @@ show:                      # the phone's Show view over the new show's state fil
 
 park:                      # [PARK, integration plan unit 0b] the two-stick show run by the app itself: the hidden stick is paused on the
                            # next game; a jump resumes it, flips the TV input and pauses the stick that was left
-  enabled: false           # OFF and read by nothing yet. The planner, the facts and the timing model are in redzone/noggin/park_*.py;
-                           # the stick steps and the decision-path owner come with units PARK-HANDS and PARK-CONTROLLER
+  enabled: false           # OFF. The planner, the facts and the timing model are in redzone/noggin/park_*.py; the stick steps
+                           # (tune, place, park, jump, finish) are Controller.park_* in redzone/control.py (unit PARK-HANDS),
+                           # which refuse unless this, sound_guard.enabled and sound_guard.must_be_silent are all on. Nothing calls
+                           # them until the decision-path owner (unit PARK-CONTROLLER) does
+  max_park_s: 300          # a stick paused longer than this is stale and is parked again (a 315 s pause held on Nov 10, ledger L13)
+  late_cap_s: 145          # ...and so is one whose picture is more than this behind its stream's live edge (finding 5, ledger L45)
+  steps:                   # each PARK device step as measured on the real sticks and TV on Nov 10 (ledger L13-L21, L41-L51)
+    min_real_pos_s: 60     # after a tune the media session says "playing" at position 0.0 for about 2 s: a position under this
+                           # is never a stream's place
+    live_lag_s: 20         # an unread stream's nominal place: its live edge this far behind YouTube's clock (19-27 s measured;
+                           # park.timing.live_lag wins when set). A read replaces it
+    first_report_s: 8      # ...a tune with no real position within this long is a failed tune
+    poll_s: 0.25           # the media session is read this often while a step waits on it (the runner read 4 times a second)
+    tune_timeout_s: 90     # one way of tuning (direct code, local search, search) gets at most this long
+    read_steps: 2          # the read gesture's LEFT presses (CENTER, LEFT x this, read the label, CENTER); 0 = no read
+    left_step_s: 15        # one committed LEFT is exactly this far back (69 of 69)
+    center_wait_s: 1.3     # after the first CENTER: the overlay comes up and the player pauses
+    left_gap_s: 0.6        # between LEFT presses
+    label_wait_s: 0.7      # after the last LEFT, before the label is read
+    label_timeout_s: 25    # one label read (screenshot, on-Mac text reading, frame deleted) gets at most this long
+    land_wait_s: 4         # after the committing CENTER: playing again within this
+    settle_s: 2.5          # ...then this long before checking the commit did not toggle a pause
+    replay_wait_s: 6       # a resume or pause key's report is waited for this long
+    read_age_min_s: 5      # a label with no programme start: the start is the 5-minute grid point before (capture - label)
+    read_age_max_s: 240    # ...when that leaves a frame this many seconds old or between (worked on nbc, 58.8 s behind)
+    grid_s: 300            # programmes start on this grid
+    base_lag_min_s: 5      # a fresh tune's read is believed when the picture is this far behind YouTube's clock (less the seek)...
+    base_lag_max_s: 90     # ...up to this
+    kept_lag_max_s: 600    # a stream found already on the game is believed up to this far behind (one was 120 s behind, run 6)
+    pause_lead_s: 0.70     # the frozen frame is this far past the pause key: the 2023 stick (and any model not named below)
+    pause_lead_plus_s: 0.60   # ...the 4K Plus
+    back_after_s: 0.4      # BACK clears the pause banner this long after the pause key...
+    confirm_s: 1.6         # ...then the stick is read back (still paused, YouTube TV in front) this long after BACK
+    resume_lead_s: 0.3     # a jump: the resume key goes out this long before the flip command
+    hold_key_s: 1.35       # ...and the pause key to the stick being left this long after the flip command (60 of 60)
+    flip_methods: [smartthings]   # the TV's own input change; never HOME on a stick
+    input_rereads: 2       # an input the sound readback did not return is read again this many times...
+    input_reread_s: 0.7    # ...this far apart
 
 eyes:                      # [EYES, integration plan unit 0b] the hidden watcher: its own muted Chrome reads the on-air game clock and
                            # each frame's time, and keeps each game's offset K
