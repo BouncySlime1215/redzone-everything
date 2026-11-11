@@ -55,6 +55,8 @@ for _p in (ROOT.as_posix(), (ROOT / "scripts").as_posix()):
 
 import park_plan as pp  # noqa: E402
 import park_sim as ps  # noqa: E402
+from redzone.noggin import park_core as core  # noqa: E402  (the simulator core: one copy for the app and the scripts)
+from redzone.noggin import park_plan as plan_core  # noqa: E402  (the planner: the same)
 
 FEATURES = ("role", "in_progress", "behind", "lev", "margin", "left_s", "dead_now", "since", "left", "known_s", "val_known", "live_known")
 # a game at the last second the feed has reported: all a model may know about the seconds after it
@@ -63,7 +65,7 @@ LIVE_LOOK_S = 30
 VISIT_CAP_S = 180        # a visit is followed no further than this for its hindsight labels
 
 
-def game_features(A: list, S, s: ps.Setting, t: int, g: int) -> dict:
+def game_features(A: list, S, s: core.Setting, t: int, g: int) -> dict:
     """What the app could know about game g at second t (g < 0: no such game, every feature -1)."""
     if g < 0:
         return {k: -1.0 for k in FEATURES}
@@ -86,7 +88,7 @@ def game_features(A: list, S, s: ps.Setting, t: int, g: int) -> dict:
         "since": float(min(x.since[ci], 300)) if seen else -1.0,
         "left": float(min(x.left[ci], known - ci)) if seen else -1.0,
         "known_s": float(known - ci),
-        "val_known": x.ahead(ci, min(ci + ps.RUN_UP_S, known), ci),
+        "val_known": x.ahead(ci, min(ci + core.PARK_PARAMS.run_up_s, known), ci),
         "live_known": float(sum(1 for i in range(ci + 1, min(ci + LIVE_LOOK_S, known) + 1) if not x.legal[i])),
     }
 
@@ -100,7 +102,7 @@ def unknown_features(x, k: int) -> dict:
             "k_live60": float(sum(1 for i in range(lo, k + 1) if not x.dead[i]))}
 
 
-def night_id(night: ps.Night) -> str:
+def night_id(night: core.Night) -> str:
     """The calendar day the slate's games tipped off (US evening), from the facts alone: one id per recorded night."""
     t0 = min(g["t0"] for g in night.games[-1:] + night.games[1:])      # the basketball games (a synthetic slate's football game is first)
     return (dt.datetime.fromtimestamp(t0, dt.timezone.utc) - dt.timedelta(hours=12)).strftime("%Y%m%d")
@@ -113,13 +115,13 @@ def clone(S):
     return c
 
 
-def clone_planner(pl: pp.Planner) -> pp.Planner:
+def clone_planner(pl: plan_core.Planner) -> plan_core.Planner:
     c = copy.copy(pl)          # its state is a handful of tuples, replaced whole at every search
     c.trace = None
     return c
 
 
-def actions(A: list, S, s: ps.Setting, t: int) -> list[tuple[str, int]]:
+def actions(A: list, S, s: core.Setting, t: int) -> list[tuple[str, int]]:
     out = [("stay", S.sg)]
     if S.hg >= 0:
         out.append(("jump", S.hg))
@@ -127,9 +129,9 @@ def actions(A: list, S, s: ps.Setting, t: int) -> list[tuple[str, int]]:
     return out
 
 
-def planner_action(night: ps.Night, s: ps.Setting, brain, S, pl: pp.Planner, t: int) -> tuple[str, int]:
+def planner_action(night: core.Night, s: core.Setting, brain, S, pl: plan_core.Planner, t: int) -> tuple[str, int]:
     """What the planner does at second t, in the words of the action table: one second is played from a copy."""
-    st, S2 = ps.run(night, brain, s, t0=t, t1=t + 1, state=clone(S), stats=ps.Stats(), planner=clone_planner(pl))
+    st, S2 = core.run(night, brain, s, t0=t, t1=t + 1, state=clone(S), stats=core.Stats(), planner=clone_planner(pl))
     if st.hops:
         return "jump", S2.sg
     if S2.hg >= 0 and S2.hg != S.hg and S2.hg != S.sg:
@@ -137,13 +139,13 @@ def planner_action(night: ps.Night, s: ps.Setting, brain, S, pl: pp.Planner, t: 
     return "stay", S.sg
 
 
-def table(night: ps.Night, s: ps.Setting, plan: pp.Plan, *, every: int, hold: int, horizon: int):
+def table(night: core.Night, s: core.Setting, plan: plan_core.Plan, *, every: int, hold: int, horizon: int):
     """Yield one dict per (decision second, legal action). The planner plays the night and every rollout."""
     brain = ps.Foresight()
     A = night.arrs(s.shots, s.value, s.live_w)
     a, b = night.span
-    pl = pp.Planner(plan)
-    st, S = ps.run(night, brain, s, t0=a, t1=a + every, planner=pl)
+    pl = plan_core.Planner(plan)
+    st, S = core.run(night, brain, s, t0=a, t1=a + every, planner=pl)
     t = a + every
     while t + horizon < b:
         sf, hf = game_features(A, S, s, t, S.sg), game_features(A, S, s, t, S.hg)
@@ -151,7 +153,7 @@ def table(night: ps.Night, s: ps.Setting, plan: pp.Plan, *, every: int, hold: in
         took = planner_action(night, s, brain, S, pl, t)
         rows = []
         for kind, g in acts:
-            r, _ = ps.run(night, brain, s, t0=t, t1=t + horizon, state=clone(S), stats=ps.Stats(), force=(kind, g, t + hold),
+            r, _ = core.run(night, brain, s, t0=t, t1=t + horizon, state=clone(S), stats=core.Stats(), force=(kind, g, t + hold),
                           planner=clone_planner(pl))
             rows.append({"t": t - a, "action": kind, "n_actions": len(acts), "on_screen_s": float(t - S.s_land),
                          "games_live": float(sum(1 for x in A if x.a0 <= t <= x.a1)),
@@ -164,25 +166,25 @@ def table(night: ps.Night, s: ps.Setting, plan: pp.Plan, *, every: int, hold: in
         for x in rows:
             x["q_regret"] = round(top - x["q_value"], 3)
             yield x
-        st, S = ps.run(night, brain, s, t0=t, t1=t + every, state=S, stats=st, planner=pl)
+        st, S = core.run(night, brain, s, t0=t, t1=t + every, state=S, stats=st, planner=pl)
         t += every
 
 
-def landings(night: ps.Night, s: ps.Setting, plan: pp.Plan, *, every: int):
+def landings(night: core.Night, s: core.Setting, plan: plan_core.Plan, *, every: int):
     """Yield one dict per (decision second, landing the planner's search looked at)."""
     brain = ps.Foresight()
     A = night.arrs(s.shots, s.value, s.live_w)
     a, b = night.span
     n = night.n
-    pl = pp.Planner(plan)
+    pl = plan_core.Planner(plan)
     pl.trace = []
-    st, S = ps.run(night, brain, s, t0=a, t1=a + every, planner=pl)
+    st, S = core.run(night, brain, s, t0=a, t1=a + every, planner=pl)
     t = a + every
     while t + every < b:
         pl.trace.clear()
         pl.next = -1                                   # a search this very second, from the state as it stands
         sg, s_land, s_bel, hg = S.sg, S.s_land, int(t - S.sb + S.se), S.hg
-        st, S = ps.run(night, brain, s, t0=t, t1=t + 1, state=S, stats=st, planner=pl)
+        st, S = core.run(night, brain, s, t0=t, t1=t + 1, state=S, stats=st, planner=pl)
         if pl.trace:
             _, v0, cs, K, opts, best = pl.trace[0]
             flip, low = pl.flip, s.leave_rule == "low_leverage"
@@ -203,13 +205,13 @@ def landings(night: ps.Night, s: ps.Setting, plan: pp.Plan, *, every: int):
                 while c < min(n - 1, j + VISIT_CAP_S) and tb.cl[c] - tb.cl[j] < 3:
                     c += 1
                 out = min(n - 1, c + x.leave_in(pl.G, low)[c], j + VISIT_CAP_S)
-                m0 = min(out, j + ps.SEEN_LEAD_S)
+                m0 = min(out, j + core.PARK_PARAMS.seen_lead_s)
                 u0 = max(m0, kj + 1)                   # the first second of the visit the feed had not reported
                 span_end = min(n - 1, s_bel + (tau - t) + flip + (out - j))
                 value = x.cumv[out] - x.cumv[m0]
                 stay_value = xs.cumv[span_end] - xs.cumv[min(span_end, s_bel)]
                 rows.append({
-                    "t": t - a, "game": g, "route": pp.ROUTES[route], "held": float(g == hg), "tentative": float(tent),
+                    "t": t - a, "game": g, "route": plan_core.ROUTES[route], "held": float(g == hg), "tentative": float(tent),
                     "wait_s": float(tau - t), "behind_s": float(tau + flip - j), "dead_before_play_s": float(tb.le[k] - j),
                     "known_s": float(max(0, kj - j)), "val_known": round(x.cumv[max(m0, min(out, kj + 1))] - x.cumv[m0], 3),
                     "live_known": float(tb.cl[max(j, min(j + LIVE_LOOK_S, kj + 1))] - tb.cl[j]),
@@ -226,7 +228,7 @@ def landings(night: ps.Night, s: ps.Setting, plan: pp.Plan, *, every: int):
                 r["gain_per_s"] = round((r["value"] - r["stay_value"]) / max(1.0, r["wait_s"] + flip + r["visit_s"]), 5)
                 r["n_landings"] = len(rows)
                 yield r
-        st, S = ps.run(night, brain, s, t0=t + 1, t1=t + every, state=S, stats=st, planner=pl)
+        st, S = core.run(night, brain, s, t0=t + 1, t1=t + every, state=S, stats=st, planner=pl)
         t += every
 
 
@@ -256,7 +258,7 @@ class ModelBrain:
             return init + float(nodes.value[nodes.leaves(np.array([row[f] for f in feats], dtype=np.float32))].sum())
         return cls(predict, feats)
 
-    def bind(self, arrs: list, s: ps.Setting) -> None:
+    def bind(self, arrs: list, s: core.Setting) -> None:
         self.A, self.s = arrs, s
 
     def rate(self, g: int, k: int, t: int) -> float:
@@ -272,7 +274,7 @@ class ModelBrain:
             "role": 1.0 if on_screen else 0.0, "in_progress": float(x.a0 <= t <= x.a1), "behind": float(t - ci), "lev": x.lev[ck],
             "margin": float(x.margin[ck]), "left_s": float(x.left_s[ck]), "dead_now": float(x.legal[ci]) if seen else -1.0,
             "since": float(min(x.since[ci], 300)) if seen else -1.0, "left": float(min(x.left[ci], known - ci)) if seen else -1.0,
-            "known_s": float(known - ci), "val_known": x.ahead(ci, min(ci + ps.RUN_UP_S, known), ci),
+            "known_s": float(known - ci), "val_known": x.ahead(ci, min(ci + core.PARK_PARAMS.run_up_s, known), ci),
             "live_known": float(sum(1 for i in range(ci + 1, min(ci + LIVE_LOOK_S, known) + 1) if not x.legal[i]))}))
 
 
@@ -293,7 +295,7 @@ def main() -> int:
     ap.add_argument("--csv", required=True)
     a = ap.parse_args()
     s = pp.setting(a.error, True, **ps.parse_sets(a.set))
-    plan = pp.Plan(**pp.parse_plan(a.plan))
+    plan = plan_core.Plan(**pp.parse_plan(a.plan))
     cache = Path(a.cache) if a.cache else None
     nights = [(name, k, night) for name in a.slates for k, night in enumerate(ps.slate_nights(name, a.cap, cache))]
 

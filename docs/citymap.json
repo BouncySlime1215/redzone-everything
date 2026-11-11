@@ -9607,6 +9607,59 @@
     "SAFE-02"
    ]
   },
+  "redzone/noggin/park_core.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/noggin/park_plan.py",
+    "scripts/park_compare.py",
+    "scripts/park_sim.py",
+    "scripts/park_table.py"
+   ],
+   "owner": "unowned",
+   "role": "PARK core: the two-stick show, one second at a time, on a night's per-second facts.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/noggin/park_plan.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/noggin/park_core.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/park_compare.py",
+    "scripts/park_plan.py",
+    "scripts/park_table.py"
+   ],
+   "owner": "unowned",
+   "role": "PARK planner: the search that plans the two-stick show (stay, jump, hold, roll, skip, tune) a few jumps ahead.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/noggin/pick.py": {
    "calls": [
     "redzone/grading.py:Lags",
@@ -16380,14 +16433,23 @@
    ]
   },
   "scripts/park_compare.py": {
-   "calls": [],
+   "calls": [
+    "redzone/noggin/park_core.py:Setting",
+    "redzone/noggin/park_core.py:run",
+    "redzone/noggin/park_core.py:summarize",
+    "redzone/noggin/park_plan.py:Plan",
+    "redzone/noggin/park_plan.py:Planner"
+   ],
    "contracts": [],
    "data": {
     "reads": [],
     "uses": [],
     "writes": []
    },
-   "inputs": [],
+   "inputs": [
+    "redzone/noggin/park_core.py",
+    "redzone/noggin/park_plan.py"
+   ],
    "kind": "entry",
    "machines": {
     "declares": [],
@@ -16422,14 +16484,18 @@
    ]
   },
   "scripts/park_plan.py": {
-   "calls": [],
+   "calls": [
+    "redzone/noggin/park_plan.py:Plan"
+   ],
    "contracts": [],
    "data": {
     "reads": [],
     "uses": [],
     "writes": []
    },
-   "inputs": [],
+   "inputs": [
+    "redzone/noggin/park_plan.py"
+   ],
    "kind": "entry",
    "machines": {
     "declares": [],
@@ -16464,14 +16530,21 @@
    ]
   },
   "scripts/park_sim.py": {
-   "calls": [],
+   "calls": [
+    "redzone/noggin/park_core.py:Night",
+    "redzone/noggin/park_core.py:Setting",
+    "redzone/noggin/park_core.py:run",
+    "redzone/noggin/park_core.py:summarize"
+   ],
    "contracts": [],
    "data": {
     "reads": [],
     "uses": [],
     "writes": []
    },
-   "inputs": [],
+   "inputs": [
+    "redzone/noggin/park_core.py"
+   ],
    "kind": "entry",
    "machines": {
     "declares": [],
@@ -16487,7 +16560,11 @@
   "scripts/park_table.py": {
    "calls": [
     "redzone/models_rt/forest.py:Nodes",
-    "redzone/models_rt/forest.py:load_npz"
+    "redzone/models_rt/forest.py:load_npz",
+    "redzone/noggin/park_core.py:Stats",
+    "redzone/noggin/park_core.py:run",
+    "redzone/noggin/park_plan.py:Plan",
+    "redzone/noggin/park_plan.py:Planner"
    ],
    "contracts": [],
    "data": {
@@ -16496,7 +16573,9 @@
     "writes": []
    },
    "inputs": [
-    "redzone/models_rt/forest.py"
+    "redzone/models_rt/forest.py",
+    "redzone/noggin/park_core.py",
+    "redzone/noggin/park_plan.py"
    ],
    "kind": "entry",
    "machines": {
@@ -18683,13 +18762,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2165,
+  "calls": 2179,
   "data_files": 203,
   "machines": 51,
-  "modules": 466,
+  "modules": 468,
   "orphans": 35,
-  "unowned": 265,
-  "untagged": 394
+  "unowned": 267,
+  "untagged": 396
  },
  "version": 2
 }

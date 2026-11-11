@@ -1,0 +1,16 @@
+{
+  "card": "PARK-CORE",
+  "session": "park-core",
+  "branch": "park-core",
+  "files": [
+    "redzone/noggin/park_core.py",
+    "redzone/noggin/park_plan.py",
+    "scripts/park_sim.py",
+    "scripts/park_plan.py",
+    "scripts/park_table.py",
+    "scripts/park_compare.py",
+    "tests/test_park_core.py"
+  ],
+  "started": 1794359772,
+  "expires": 1794446172
+}
