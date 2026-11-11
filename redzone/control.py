@@ -258,6 +258,16 @@ class Outcome:
     provenance: dict = field(default_factory=dict)  # [provenance] what the controller contributed: {module: value}
 
 
+def app_listed(app: str, apps) -> bool:
+    """[S-9] Is `app` (a target's prefix: "prime" for "prime:<gti>") in a config list of apps? The config names Prime
+    Video "primevideo" (timing.behind_live_s.apps) while its targets, tuner and stick packages say "prime": a list that
+    names "primevideo" also lists "prime". The one place the two spellings meet."""
+    names = {str(a) for a in (apps or ())}
+    if "primevideo" in names:
+        names.add("prime")
+    return app in names
+
+
 @dataclass
 class LeftHold:
     """playbook=STK-07 [buffer.hold_left]: the game we just left, paused on the stick we left at the
@@ -1588,15 +1598,16 @@ class Controller:
         self.standby_m.to(state, why=why or f"{state} {target or ''}".strip())
 
     def _set_hidden(self, target: str | None, ready: bool, parked: Parked | None = None, *, why: str = "",
-                    state: str | None = None) -> None:
-        """The one setter of what the hidden stick holds. `state` names a not-ready phase (scrubbing) explicitly.
+                    state: str | None = None, payload: Any = None) -> None:
+        """The one setter of what the hidden stick holds. `state` names a not-ready phase (scrubbing) explicitly, with
+        its `payload` ([PARK-UNIFY] park_held carries PARK's own ParkPlace, so the one standby record holds it).
         Kept as they were: a snap park or a left hold when the same target stays ready (the old _set_hidden never
         dropped those), and a pause-hold in progress when the same target is marked not ready."""
         cur, same = self.standby_m.state, target is not None and target == self._sb_target
         if target is None:
             self._sb_move("empty", None, None, why or "cleared")
         elif state is not None:
-            self._sb_move(state, target, None, why)
+            self._sb_move(state, target, payload, why)
         elif parked is not None:
             if ready:
                 self._sb_move("replay_parked", target, parked, why or f"parked on replay {parked.replay_id}")
@@ -1651,6 +1662,28 @@ class Controller:
             self._sb_move("snap_parked", value.target, value, why="paused before its snap")
         elif self.standby_m.is_("snap_parked"):
             self._sb_move("ready", self._sb_target, None, why="snap park rolled or dropped")
+
+    @property
+    def park_place(self) -> "ParkPlace | None":
+        """[PARK-UNIFY] PARK's place of the hidden stick, from the one standby record (park_held's payload)."""
+        return self._sb_payload if self.standby_m.is_("park_held") else None
+
+    def hidden_hold(self, now: float | None = None) -> dict | None:
+        """[PARK-UNIFY] THE answer to "where is the hidden stick, and is it held?", whoever holds it: PARK (park_held,
+        its ParkPlace), the buffered jump's snap park (snap_parked, Parked), the STK-07 left-game hold (left_hold,
+        LeftHold) or a replay park (replay_parked, Parked). All four live in the standby record (`_sb_move` is its one
+        writer), so there is no second copy to disagree with. None = nothing held. Read only: numbers and words."""
+        st, p = self.standby_m.state, self._sb_payload
+        if p is None or st not in ("park_held", "snap_parked", "left_hold", "replay_parked"):
+            return None
+        now = time.time() if now is None else now
+        if st == "park_held":
+            return {"owner": "park", "target": p.target, "paused": bool(p.paused), "since": p.paused_at,
+                    "read": bool(p.read)}
+        if st == "left_hold":
+            return {"owner": "left_hold", "target": p.target, "paused": True, "since": p.at, "behind_s": p.behind_s(now)}
+        return {"owner": "snap_park" if st == "snap_parked" else "replay_park", "target": p.target,
+                "paused": bool(p.paused), "since": p.at}
 
     @property
     def _left(self) -> LeftHold | None:
@@ -4168,7 +4201,11 @@ class Controller:
                 or config.any_league(self.cfg, "timing.behind_live_s.rc8_on") or self._buffered_jump()):
             return 0.0   # [league overrides] behind_of (the engine) says 0 for a league that doesn't run it
         app = self._ref(target)[0]
-        if app not in (self.cfg.get("timing.behind_live_s.apps") or ("youtubetv", "primevideo")):
+        apps = self.cfg.get("timing.behind_live_s.apps") or ("youtubetv", "primevideo")
+        # [S-9] Prime targets are "prime:<gti>" but this list names the app "primevideo", so a Prime tune never matched.
+        # timing.behind_live_s.prime_buffer (OFF) lets the two spellings match here as _pause_hold_ok already does.
+        if not (app_listed(app, apps) if self.cfg.get("timing.behind_live_s.prime_buffer", False) is True
+                else app in apps):
             return 0.0
         mv = self.prime_mv
         if res.path == "tile" or (mv is not None and mv.session(stick.host) is not None):
@@ -4363,7 +4400,8 @@ class Controller:
         """[PARK-CONTROLLER] Place the stream ON SCREEN (ParkHands.tune on the visible stick). A stream PARK did not tune
         is never taken to be at its live edge: its place is read (the picture steps back once, by the read gesture) or
         it is tuned afresh. The show cannot leave a game whose stream has no place. reread: its place is no longer
-        believed (it drifted): forget it and read it again."""
+        believed (it drifted): forget it and read it again; with park.reread_in_place on, without moving the picture
+        on screen (no seek, and no fresh tune if the read fails)."""
         why = self.park_why()
         vis, target = self.main, self.on_target
         if why or vis is None or not target:
@@ -4372,7 +4410,7 @@ class Controller:
         async with self._lock:
             if reread:
                 hands._drop(vis, "its place drifted: read again")
-            out = await hands.tune(vis, target)
+            out = await hands.tune(vis, target, in_place=reread and hands.reread_in_place_on())
             out.step = "start"
             return out
 
@@ -4409,7 +4447,7 @@ class Controller:
         async with self._lock:
             out = await hands.tune(hid, target, fresh=fresh)
             if out.ok and self.hidden is hid:
-                self._set_hidden(target, False, state="park_held", why=f"PARK: {out.way}")
+                self._set_hidden(target, False, state="park_held", why=f"PARK: {out.way}", payload=hands.place_of(hid))
             elif self.hidden is hid and self.hidden_target == target:
                 self._set_hidden(None, False, why="PARK: tune failed")
             return out
@@ -4457,7 +4495,7 @@ class Controller:
                 self.latency.record("flip", out.numbers["flip_s"])
                 lp = hands.place_of(vis)
                 if lp is not None and lp.paused and vis is self.hidden:
-                    self._set_hidden(lp.target, False, state="park_held", why="PARK: the stick left is held")
+                    self._set_hidden(lp.target, False, state="park_held", why="PARK: the stick left is held", payload=lp)
                 else:
                     self._set_hidden(None, False, why="PARK: the stick left is not held")
             elif out.outcome == "kept":
@@ -4739,10 +4777,7 @@ class Controller:
         hid = self.hidden
         if hid is None or not self.two_stick or not target:
             return False
-        apps = set(self.cfg.get("timing.behind_live_s.apps") or ("youtubetv", "primevideo"))
-        if "primevideo" in apps:
-            apps.add("prime")   # Prime targets are "prime:<gti>"; the config names the app "primevideo"
-        if target.split(":", 1)[0] not in apps:
+        if not app_listed(target.split(":", 1)[0], self.cfg.get("timing.behind_live_s.apps") or ("youtubetv", "primevideo")):
             return False
         mv = self.prime_mv
         return not (mv is not None and mv.session(hid.host) is not None)
@@ -5647,6 +5682,7 @@ class ParkHands:
         self.last: ParkStep | None = None
         self._probe = None
         self._overlay: dict[str, Any] = {}                    # stick host -> the overlay read of its last label frame (never shown)
+        self.guard_why: dict[str, str] = {}                   # [park.read_guard] stick host -> why its last read gesture never started
         # [park.prime] Prime Video in PARK (redzone/noggin/park_prime.py). Read only with park.prime.enabled on.
         self.apps: dict[str, str] = {}                        # stick host -> the app its PARK stream is in (youtubetv default)
         self.prime_behind_s: float | None = None              # where a fresh Prime stream is held to (s behind its frame clock;
@@ -5788,14 +5824,18 @@ class ParkHands:
         return lab
 
     # --- 1. TUNE ----------------------------------------------------------------------------------------------
-    async def tune(self, stick: Stick, target: str, fresh: bool = False) -> ParkStep:
+    async def tune(self, stick: Stick, target: str, fresh: bool = False, in_place: bool = False) -> ParkStep:
         """Put `stick` on `target` and learn its place. A stream PARK itself tuned there, still playing it, is kept.
         A stream already on the game that PARK did not tune is NEVER taken to be at its live edge (one was 120 s
         behind, run 6): it is kept only if the read gesture reads its place; otherwise it is tuned fresh. A fresh
         tune: the direct code, then local-station search, then search; a way the tuner calls failed still counts
         when the media session then names the game. Then the read gesture (place). `fresh` = nothing is kept: the
-        stream is reloaded (the PARK controller asks this for a stream held so long that it is far behind live)."""
+        stream is reloaded (the PARK controller asks this for a stream held so long that it is far behind live).
+        `in_place` [park.reread_in_place, a re-read of the stream on screen]: the read gesture seeks nothing, and a
+        read that fails is NOT followed by a fresh tune (that would reload the picture the viewer is watching): the
+        step fails and the stream keeps playing, unplaced, until a later re-read."""
         t0, st = self.now(), ParkStep("tune", "failed", stick=self.label(stick), target=target)
+        self.guard_why.pop(stick.host, None)
         if self._is_prime(target):
             return await self._tune_prime(stick, target, fresh, st, t0)
         self.apps.pop(stick.host, None)
@@ -5825,16 +5865,26 @@ class ParkHands:
                     and r.position_s >= self.step_s("min_real_pos_s"):
                 # kept only by a read: its place is whatever the read says, believed up to kept_lag_max_s behind
                 place = ParkPlace(target, 0.0, False, self.now(), r.wall, r.pos_now_s or r.position_s, kept=True)
-                nums = await self._gesture(stick, place)
+                nums = await self._gesture(stick, place, in_place=in_place)
                 if nums is not None and place.read:
                     self.places[stick.host] = place
                     self.offsets.new_tune(target, place.tuned_at)
                     self.counts["kept"] += 1
                     st.outcome, st.way, st.numbers = "ok", "kept: already on it, place read", nums
+                    if in_place:
+                        st.way += " in place (no seek)"
                     self._to(stick, "playing", "kept: already on it, place read")
+                    return self._done(st, t0)
+                if in_place:
+                    self._drop(stick, "re-read in place: place not read")
+                    st.way = "re-read in place: place not read; no fresh tune of the picture on screen"
+                    st.why = self.guard_why.get(stick.host) or (nums or {}).get("read_why") or "the read gesture did not end playing"
                     return self._done(st, t0)
                 self._drop(stick, "already on it, place not read: tune fresh")
                 st.way = "already on it but its place was not read: tuned fresh; "
+        if in_place:
+            st.way, st.why = "re-read in place", "the stream on screen is not playing this game: no fresh tune of the picture on screen"
+            return self._done(st, t0)
         return await self._tune_fresh(stick, target, st, t0)
 
     async def _tune_fresh(self, stick: Stick, target: str, st: ParkStep, t0: float) -> ParkStep:
@@ -5888,6 +5938,8 @@ class ParkHands:
             got = await self._gesture(stick, place, first=first)
             if got is None:
                 st.why = "the read gesture did not end playing"
+                if self.guard_why.get(stick.host):           # [park.read_guard] it never started: nothing was sent
+                    st.why = f"the read gesture did not start ({self.guard_why[stick.host]})"
                 self._drop(stick, "read gesture did not end playing")
                 return self._done(st, t0)
             nums.update(got)
@@ -6171,12 +6223,27 @@ class ParkHands:
                 return lab
         return lab
 
-    async def _gesture(self, stick: Stick, place: ParkPlace, first=None) -> dict | None:
+    def read_guard_on(self) -> bool:
+        """[park.read_guard] The read gesture's whole focus guard (OFF = as before: only the commit is guarded, and only
+        when a frame was read)."""
+        return self.ctl.cfg.get("park.read_guard", False) is True
+
+    def reread_in_place_on(self) -> bool:
+        """[park.reread_in_place] A re-read of the stream on screen puts the knob back before its commit (OFF = as before:
+        the re-read commits where the LEFTs put it, about 30 s back, in front of the viewer)."""
+        return self.ctl.cfg.get("park.reread_in_place", False) is True
+
+    async def _gesture(self, stick: Stick, place: ParkPlace, first=None, in_place: bool = False) -> dict | None:
         """CENTER (pause + overlay), LEFT x steps (exactly 15 s each), the label read, CENTER (commit). It ends
         playing, steps x 15 s plus the time it sat further back. With a label read that is believable the place
         becomes exact (`read`); a fresh tune's read is believed when the picture sits base_lag_min_s to
         base_lag_max_s behind YouTube's clock (less the seek), a stream found already on the game up to
-        kept_lag_max_s. None = it did not end playing."""
+        kept_lag_max_s. None = it did not end playing.
+        in_place [park.reread_in_place]: after the label read, RIGHT once per LEFT puts the knob back on the frozen
+        frame before the commit, so the read seeks nothing: the picture is only as much further back as it sat paused.
+        [park.read_guard] the focus guard of the other overlay gestures (yttv_seek.front_and_playing before any key,
+        #356; LabelProbe.probe's fail-closed): no key while another app is in front or the player does not play, and
+        no committing CENTER on a frame whose focus was never seen."""
         n, step = int(self.step_s("read_steps")), self.step_s("left_step_s")
         hidden = self.ctl.hidden is stick                     # the gesture is for THIS stick in THIS role (hidden, or on screen
         #                                                       for park_start): if a flip changes that under it, no more keys
@@ -6187,6 +6254,15 @@ class ParkHands:
         deep = self.depth_s.get(place.target, 0.0)
         if deep > 0 and n > 0:
             n += int(math.ceil(deep / step))                  # [PARK-NFL-LAG] a late feed's game: more LEFT presses, deeper
+        guarded = self.read_guard_on()
+        if guarded:
+            from redzone.tuners import yttv_seek
+            why = await yttv_seek.front_and_playing(stick, self._pkg(stick))
+            if why:                                           # nothing sent: the wrong app or screen has focus
+                self.counts["guarded"] = self.counts.get("guarded", 0) + 1
+                self.guard_why[stick.host] = f"focus guard: {why}"
+                log.info("park: read gesture on %s not started: focus guard: %s", self.label(stick), why)
+                return None
         self._to(stick, "reading", "the read gesture")
         self._overlay.pop(stick.host, None)
         if not same() or not await self._key(stick, "KEYCODE_DPAD_CENTER"):
@@ -6212,8 +6288,18 @@ class ParkHands:
             guard = "focus guard: a row button has focus"
         elif not guard and ov is not None and not getattr(ov, "overlay", True):
             guard = "focus guard: the overlay is not up"
+        elif not guard and ov is None and guarded:
+            guard = "focus guard: no frame said where the focus is"   # #356: focus never seen, no committing CENTER
         if guard:
             return await self._gesture_abort(stick, place, guard)
+        moved = step * n
+        if in_place and n > 0:
+            for _ in range(n):                                # the knob back onto the frozen frame: the commit seeks nothing
+                if not same():
+                    return await self._gesture_abort(stick, place, "the stick changed role during the read")
+                await self._key(stick, "KEYCODE_DPAD_RIGHT")
+                await self.sleep(self.step_s("left_gap_s"))
+            moved = 0.0
         t_commit = self.now()
         await self._key(stick, "KEYCODE_DPAD_CENTER")
         land = await self._wait(stick, "playing", self.step_s("land_wait_s"), since=t_commit)
@@ -6226,7 +6312,7 @@ class ParkHands:
         if land is None or r is None or r.state != "playing":
             return None
         seek = (land.position_s - pz.position_s) if pz is not None else None
-        good = seek is not None and -step * n - 0.05 <= seek <= -step * n + 0.6
+        good = seek is not None and -moved - 0.05 <= seek <= -moved + 0.6
         prog0, inferred = self._prog_start(lab) if lab is not None else (None, False)
         label_ok = lab is not None and getattr(lab, "status", "") == "ok" and getattr(lab, "label_s", None) is not None
         if label_ok:
@@ -6239,8 +6325,8 @@ class ParkHands:
         elif not good:
             why = "the seek did not land where the LEFTs put it"
         else:
-            anchor = prog0 + float(lab.label_s) - (pz.position_s - step * n)
-            base = r.wall - (anchor + r.pos_now_s) - step * n
+            anchor = prog0 + float(lab.label_s) - (pz.position_s - step * n)   # the label is the knob's: n steps back
+            base = r.wall - (anchor + r.pos_now_s) - moved
             hi = self.step_s("kept_lag_max_s") if place.kept else self.step_s("base_lag_max_s")
             if self.step_s("base_lag_min_s") < base < hi:
                 place.anchor, place.read = anchor, True

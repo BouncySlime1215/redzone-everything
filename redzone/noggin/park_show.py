@@ -107,11 +107,17 @@ class ShowParams:
 
     @classmethod
     def from_config(cls, get: Callable[..., object]) -> "ShowParams":
-        """Each field from `park.show.<name>`, or its default. A value of the wrong kind keeps the default."""
+        """Each field from `park.show.<name>`, or its default. A value of the wrong kind keeps the default.
+        [PARK-UNIFY] A number the device steps also use has ONE home, the step's own key (STEP_HOME): the show reads
+        `park.steps.resume_lead_s` and `park.steps.left_step_s`; `park.show.<name>` is still read first, as an alias."""
         kw = {}
         for f in fields(cls):
             d = f.default
-            v = get("park.max_park_s" if f.name == "max_park" else f"park.show.{f.name}", d)   # (the park age cap is ONE key)
+            if f.name in STEP_HOME:
+                v = get(f"park.show.{f.name}", None)
+                v = get(STEP_HOME[f.name], d) if v is None else v
+            else:
+                v = get("park.max_park_s" if f.name == "max_park" else f"park.show.{f.name}", d)   # (the park age cap is ONE key)
             if isinstance(d, bool):
                 kw[f.name] = v if isinstance(v, bool) else d
             elif isinstance(d, str):
@@ -125,6 +131,19 @@ class ShowParams:
         """A stoppage with no restart reported is trusted only this far short of the feed's edge (the grader's lead)."""
         return int(math.ceil(RESUME_LEAD[League.NBA]))
 
+    def flip_times(self) -> tuple[float, float, int]:
+        """The one derivation of a real jump's times from `jump_real` and `resume_lead` (the device rig and the replay's
+        realistic rig both use it): (the TV's flip after the resume key, seconds the resumed stick plays unseen before
+        its picture is up, the first second of the stream left that a return can show)."""
+        flip_s = self.jump_real - self.resume_lead
+        unseen_s = flip_s + self.resume_lead - 0.5
+        return flip_s, unseen_s, int(math.ceil(self.resume_lead + flip_s + unseen_s))
+
+    def read_back(self, steps: int) -> float:
+        """How far behind its live edge the read gesture leaves a stream: `steps` LEFT steps plus the seconds it sat
+        paused for the read (0 with no read). The one formula for the device rig, the replay rig and the planner."""
+        return self.step * steps + self.read_sat if steps else 0.0
+
     def steps_for(self, reads: bool) -> int:
         """LEFT presses of the read gesture after every tune: enough to sit `show_delay` behind live, one at least for a read."""
         d = self.show_delay
@@ -132,6 +151,8 @@ class ShowParams:
 
 
 SHOW = ShowParams()
+# [PARK-UNIFY] show numbers whose one home is a device step's key (`park.show.<name>` stays readable as an alias)
+STEP_HOME = {"resume_lead": "park.steps.resume_lead_s", "step": "park.steps.left_step_s"}
 HOLD_AT = (10, 30, 60, 120)        # seconds after a resume at which the stream on screen has its place read again (while it stays up)
 
 
@@ -670,7 +691,7 @@ class Show:
         steps = max(base, int(math.ceil((need - late + self.delay - P.read_sat + sd) / P.step)))
         if steps > P.clip_steps_max:
             return None
-        return int(math.ceil(P.step * steps + P.read_sat - self.delay + sd)) + late, int(math.ceil(0.6 * (steps - base))), steps
+        return int(math.ceil(P.read_back(steps) - self.delay + sd)) + late, int(math.ceil(0.6 * (steps - base))), steps
 
     def clip_steps(self, t: int, game: int) -> tuple | None:
         """The tune being started now, when the plan's spot has already gone by: (the lag it should end at, LEFT presses)."""

@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**484 modules**, 412 untagged, 282 unowned, 34 orphans (no importer); 2351 call edges, 208 data files, 53 machines.
+**484 modules**, 412 untagged, 282 unowned, 34 orphans (no importer); 2352 call edges, 208 data files, 53 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -994,7 +994,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/lab/night/presses.py`
 - `redzone/tuners/identity.py`
 
-## Most-called symbols (top 25 of 1207)
+## Most-called symbols (top 25 of 1208)
 
 | symbol | callers |
 |---|---:|

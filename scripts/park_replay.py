@@ -50,7 +50,8 @@ from redzone.noggin.park_facts import GRID, FactsParams, stamps_of  # noqa: E402
 from redzone.noggin.park_plan import Plan  # noqa: E402
 from redzone.noggin.park_show import SHOW, FactsFeed, LiveNight, Show, ShowParams, ShowTiming, engine_setting, peak, warrant_counts  # noqa: E402
 
-FEED_LEAD = {"tonight": 13.0, "nok": 25.0}      # replay: seconds the feed runs ahead of a stream's live edge (a K near 0: 21 s of
+FEED_LEAD = {"tonight": 13.0, "nok": 25.0}      # replay: FEED LEAD (not a K; park_timing names the three) = seconds the
+#                                                 feed runs ahead of a stream's live edge (a GAME K near 0: 21 s of
 #                                                 delay less the feed's 8 s; no K: the 33 s prior less 8 s)
 READ_BACK = (0.4, 1.6, 0.6)                     # BACK after a pause key; the read-back after BACK; the TV's read-back after a flip
 RESUME_REPORT = 0.69                            # a resume key to its "playing" report
@@ -215,15 +216,13 @@ class FakeRig:
         self.join_playing, self.deep = hands != "app", hands != "app"
         self.tune_range, self.latency, self.note = tune_range, latency, {}      # (whole tune seconds lo..hi; a channel's lag over the nominal)
         if not instant:                                          # the real TV's flips on Nov 10 night: 2.4 to 3.3 s
-            self.flip_s = P.jump_real - P.resume_lead
-            self.unseen_s = self.flip_s + P.resume_lead - 0.5
-            self.hold_off = int(math.ceil(P.resume_lead + self.flip_s + self.unseen_s))
+            self.flip_s, self.unseen_s, self.hold_off = P.flip_times()   # the one derivation (park_show.ShowParams)
         self.bad_place = bad_place                               # seconds added to what a tune reports as the stream's place (a bad reading)
         self.game, self.paused, self.lag, self.frozen, self.read = [None, None], [False, False], [0.0, 0.0], [0.0, 0.0], [read0, read0]
         self.input = self.first = 0
         self.silent, self.sent, self.fail, self.tune_s = True, [], {}, tune_s or {}
         self.delay, self.steps, self.reads = delay, steps, reads or (lambda g: False)
-        self.back = (P.step * steps + P.read_sat) if steps else 0.0   # what the read gesture puts a stream behind its live edge
+        self.back = P.read_back(steps)                           # what the read gesture puts a stream behind its live edge
         self.tune_lag = self.back - delay
         self._conf: dict = {}
         self.sound_at, self.incident = None, ""
@@ -264,7 +263,7 @@ class FakeRig:
         self.read[k] = bool(self.reads(game)) and not self._fails("read")
         self.note[k]["way"] = "code, read" if self.read[k] else "code, no read"
         self.game[k], self.paused[k] = game, False
-        back = (P.step * steps + P.read_sat - self.delay) if steps else 0.0
+        back = (P.read_back(steps) - self.delay) if steps else 0.0
         self.lag[k] = back + self.latency + (self.rng.gauss(0.0, self.tune_sd) if self.read[k] else 0.0) if (deep or not self.instant) else 0.0
         extra = float(self.depth.get(game, 0.0) or 0.0)
         self.extra[k] = 0.0

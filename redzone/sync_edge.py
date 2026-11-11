@@ -25,7 +25,8 @@ E = wall - pos_now IS how far the picture runs behind real life: `abs_behind_s`,
 filter's delay belief minus it. The other stick's Prime position was a 24 h counter (a different content type?):
 only positions above EPOCH_POSITION count. YouTube TV's absolute latency still needs an on-screen anchor per channel.
 
-K (Nick, 3:30 AM): the Prime score bug's clock / score samples measure the screen's delay behind the ARENA (Nov 4:
+FRAME K (Nick, 3:30 AM; called plain "K" here before PARK-UNIFY, and NOT the PARK timing model's GAME K =
+content - feed, named in the PARK timing model): the Prime score bug's clock / score samples measure the screen's delay behind the ARENA (Nov 4:
 15.8-16.2 s, sd 1.5); the epoch gives the screen's delay behind the FRAME CLOCK (6.4 s, sd ~0.1). Their difference
 K = arena - frame clock (~9.6 s) is a property of the stream, fused per target by inverse variance (`frame_k`):
 20 reads at sd 1.5 -> 0.34 s. Then epoch_delay_s = E + K is the screen's delay every second, not every score.

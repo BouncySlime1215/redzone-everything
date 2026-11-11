@@ -288,6 +288,19 @@ async def _fail(res: BufferResult, why: str, relink, still_hidden, pressed: bool
         await _relink(relink, still_hidden, res)
 
 
+async def front_and_playing(stick, pkg: str | None) -> str:
+    """The focus guard's first half (#356), checked before ANY key of an overlay gesture: YouTube TV is the app in
+    front and its player plays. "" = both hold; otherwise why not (and nothing may be pressed). One check for every
+    overlay gesture: the scrub here, and PARK's read gesture (control.ParkHands._gesture, park.read_guard)."""
+    front = await stick.foreground()
+    if YTTV_PKG_HINT not in (front or "") and not (pkg and pkg in (front or "")):
+        return f"YouTube TV is not in front ({front or 'unknown'})"
+    pb = await stick.playback(pkg)
+    if pb.get("state") != "playing":
+        return f"player is {pb.get('state')}, not playing"
+    return ""
+
+
 async def _keys(stick, code: str, n: int, gap: float) -> bool:
     for _ in range(n):
         r = await stick.shell(f"input keyevent {code}", timeout=4)
@@ -324,12 +337,9 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
     # 1. preconditions: nothing pressed if any fails
     if not still_hidden():
         return await _fail(res, "stick is not hidden", relink, still_hidden, pressed=False)
-    front = await stick.foreground()
-    if YTTV_PKG_HINT not in (front or "") and not (pkg and pkg in (front or "")):
-        return await _fail(res, f"YouTube TV is not in front ({front or 'unknown'})", relink, still_hidden, False)
-    pb = await stick.playback(pkg)
-    if pb.get("state") != "playing":
-        return await _fail(res, f"player is {pb.get('state')}, not playing", relink, still_hidden, False)
+    why = await front_and_playing(stick, pkg)
+    if why:
+        return await _fail(res, why, relink, still_hidden, False)
     # 2. open the overlay; the bar must hold focus
     if not await _keys(stick, "KEYCODE_DPAD_CENTER", 1, 0.0):
         return await _fail(res, "CENTER not sent", relink, still_hidden, pressed=True)

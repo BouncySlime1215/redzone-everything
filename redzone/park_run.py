@@ -67,9 +67,9 @@ class ControllerRig:
         hands = ctl.park_hands()
         self.ctl, self.clock, self.targets, self.P, self.hands = ctl, clock, list(targets), params, hands
         self.steps, self.delay, self.live_lag = int(hands.step_s("read_steps")), params.show_delay, hands._live_lag()
-        self.tune_lag = (params.step * self.steps + params.read_sat - self.delay) if self.steps else 0.0
-        self.jump_s, self.unseen_s = params.jump_real, params.jump_real - 0.5
-        self.hold_off = int(math.ceil(params.jump_real + self.unseen_s))
+        self.tune_lag = (params.read_back(self.steps) - self.delay) if self.steps else 0.0
+        _, self.unseen_s, self.hold_off = params.flip_times()    # the one derivation (park_show.ShowParams.flip_times)
+        self.jump_s = params.jump_real
         self.pause_lead = tuple(hands.pause_lead(s) for s in ctl.sticks[:2])
         self.names = tuple(ctl._stick_label(s.host) for s in ctl.sticks[:2])
         self.ports = tuple(str(ctl.hdmi.get(s.host) or "") for s in ctl.sticks[:2])
@@ -181,7 +181,7 @@ class ControllerRig:
 
     async def reread(self, k: int) -> tuple:
         """Read stream k's place again after it drifted: only the stream on screen (Controller.park_start(reread=True):
-        the read gesture, which steps the picture back once)."""
+        the read gesture, which steps the picture back once; with park.reread_in_place on it seeks nothing)."""
         t0 = self.clock.now()
         if self.ctl.main is None or self.ctl.sticks.index(self.ctl.main) != k:
             return False, 0.0
