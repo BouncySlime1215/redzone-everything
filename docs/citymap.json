@@ -5916,6 +5916,35 @@
     "Your-team crunch live"
    ]
   },
+  "redzone/decider/tune_offset.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/engine.py"
+   ],
+   "owner": "unowned",
+   "role": "[POSITION-FIX items 4 and 7] A YouTube TV picture's delay as three numbers kept apart, not one.",
+   "serves": [
+    "Crunch live, NBA",
+    "Crunch live, NFL",
+    "Crunch live, NHL",
+    "Entries at a possession start (dead ball, no play missed)",
+    "Landings in dead time",
+    "Mid-play entries (per 100 landings)",
+    "Your-team crunch live"
+   ]
+  },
   "redzone/decider/whistle.py": {
    "calls": [],
    "contracts": [],
@@ -6424,6 +6453,9 @@
     "redzone/decider/screen.py:break_on_arrival",
     "redzone/decider/screen.py:catchable",
     "redzone/decider/screen.py:screen_evidence",
+    "redzone/decider/tune_offset.py:GameOffsets",
+    "redzone/decider/tune_offset.py:TuneOffsets",
+    "redzone/decider/tune_offset.py:delay_sample",
     "redzone/decider/whistle.py:clock_stopped",
     "redzone/discovery/runtime.py:DiscoveryRuntime",
     "redzone/fantasy.py:boosts",
@@ -6506,6 +6538,7 @@
     "redzone/standby.py:options",
     "redzone/store.py:Store",
     "redzone/supervisor.py:Supervisor",
+    "redzone/sync_edge.py:night_of",
     "redzone/sync_probe.py:SyncProbe",
     "redzone/trace.py:JsonlTrace",
     "redzone/trace.py:MemoryTrace",
@@ -6578,6 +6611,7 @@
     "redzone/decider/gate.py",
     "redzone/decider/screen.py",
     "redzone/decider/sync.py",
+    "redzone/decider/tune_offset.py",
     "redzone/decider/whistle.py",
     "redzone/discovery/runtime.py",
     "redzone/fantasy.py",
@@ -6621,6 +6655,7 @@
     "redzone/standby.py",
     "redzone/store.py",
     "redzone/supervisor.py",
+    "redzone/sync_edge.py",
     "redzone/sync_probe.py",
     "redzone/trace.py",
     "redzone/tuners/prime_multiview.py",
@@ -11754,6 +11789,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/engine.py",
     "redzone/sync_probe.py",
     "redzone/tuners/yttv_timing.py"
    ],
@@ -18602,12 +18638,12 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2156,
+  "calls": 2160,
   "data_files": 202,
   "machines": 51,
-  "modules": 464,
+  "modules": 465,
   "orphans": 35,
-  "unowned": 264,
+  "unowned": 265,
   "untagged": 393
  },
  "version": 2
