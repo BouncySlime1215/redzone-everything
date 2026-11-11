@@ -269,6 +269,15 @@ class ParkRun:
         elif t >= self.end or not self.still_live():
             await self.stand_down("the session ended")
 
+    def my_teams(self) -> list:
+        """Nick's teams, as the engine reads them from `teams` (every league's, as short names)."""
+        read = getattr(self.e, "_my_teams", None)
+        try:
+            return sorted({str(t) for teams in (read() if read is not None else {}).values() for t in teams})
+        except Exception:
+            log.exception("park show: my teams")
+            return []
+
     def still_live(self) -> bool:
         games = self.e.merger.games
         return sum(1 for gid in self.gids if gid in games and games[gid].phase == Phase.LIVE) >= 2
@@ -345,7 +354,7 @@ class ParkRun:
         self.show = Show(night, eng, tm, rig, feed, names=names, chans=[t.split(":", 1)[1] for t in targets],
                          leagues=[g.league.value for _, g, _ in games], board=self.board, say=lambda line: log.info("park show: %s", line),
                          tune0={k: P.tune0_code + (P.read if steps else 0.0) for k in range(len(games))},
-                         prefs=my_prefs(names, list(cfg.get("teams.mine", None) or cfg.get("my_teams", None) or []), P.my_pref),
+                         prefs=my_prefs(names, self.my_teams(), P.my_pref),
                          params=P, model=self.model, eyes=self.watcher)
         self.show.begin(0, on, a)
         self.rig, self.clock, self.gids, self.seen = rig, clock, [gid for gid, _, _ in games], {}

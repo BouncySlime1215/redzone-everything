@@ -1366,6 +1366,9 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
     input_rereads: 2       # an input the sound readback did not return is read again this many times...
     input_reread_s: 0.7    # ...this far apart
   leagues: [nba, cbb]      # [PARK-CONTROLLER, unit 8] the leagues whose live games the PARK show takes (its facts are basketball's)
+  session_min: 240         # one show plans on a grid this many minutes long; the engine starts the next one when it ends
+  idle_poll_s: 5           # with park.enabled off the engine's park loop only sleeps, and looks at the flag this often
+  start_retry_s: 30        # the stream on screen could not be placed (no read, no fresh tune): try again after this long
   show:                    # the show's own numbers (redzone/noggin/park_show.py ShowParams; each as the local show runner ended
                            # Nov 10 on, its READY-B state). Pace is a soft pull, never a rule (Nick, Nov 10)
     show_delay: 35         # the whole show runs this far behind each stream's live edge, so the feed is complete for what is
