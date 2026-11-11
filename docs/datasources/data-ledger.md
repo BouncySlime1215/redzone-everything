@@ -109,4 +109,20 @@ D's and are not in these rows. Data is in the private project folder (`data-b/sh
 | NBA Last Two Minute reports (atlhawksfanatic/L2M) | green | done | 2014-15 to 2024-25 | 4,484 | 35,698 | 26,804 | 8,894 | L2M MIT over public NBA reports; credit L2M and the NBA |
 | NBA official injury report archive | yellow-B | code ready (Actions run) | | | | | | NBA official injury report, public; personal-use, not for commercial release |
 | Wikipedia pageviews + edits (buzz, test run) | green | done (test) | NFL Oct 5-8 2025 | 13 | 1,352 | 1,352 | 0 | Wikimedia CC0 |
-| **Cycle 16 total** | | | | | **1,291,700** | **38,682** | **1,253,018** | |
+| Wikipedia pageviews + edits (buzz, test run 2) | green | done (test) | NBA + NFL Nov 1-4 2025 | 31 | 3,016 | 3,016 | 0 | Wikimedia CC0 |
+| Wikipedia + GDELT news (buzz, test run 3, GDELT fix) | green / yellow (cite GDELT) | done (test) | NBA + NFL Nov 2-4 2025 | 22 | 2,894 | 2,894 | 0 | Wikimedia CC0; GDELT free and open, cite The GDELT Project |
+| NFL Next Gen Stats weekly (nflverse release), pregame team form | yellow-B (upstream NFL) | done | NFL 2016-2026 | 2,858 | 44,579 | 44,579 | 0 | nflverse release (CC-BY-4.0) of NFL Next Gen Stats; personal-use, not for commercial release |
+| Open-Meteo archive kickoff weather (outdoor NFL; chunks on Actions) | yellow (CC BY 4.0, non-commercial) | partial: 2022-2025 done; 2016-2021 slowed by the free-tier hourly cap, 1999-2015 not run (nflverse temp/wind cover those years) | NFL 2022-2025 | 777 | 3,129 | 3,108 | 21 | Open-Meteo CC BY 4.0, credit Open-Meteo |
+| **Cycle 16 total** | | | | | **1,345,318** | **92,279** | **1,253,039** | |
+
+### Cycle 16b (2026-11-05), crew B: Wikipedia attention labels for EXP-1704 (Data G, labels only)
+
+Live `*_live_z` facts are after the fact by design (asof = end of bin). Crew G uses them as Watch Value labels, never
+as inputs. Outputs are on `data-b-out/backfill-<from>_<to>` (NBA 2026-10-19..11-05; NFL 2025-09-04..2026-02-10 and
+2026-09-01..11-05). Hourly pageviews are capped at 40 dump hours per run, so pass 2 is topping up `pageviews_live_z`.
+
+| Source | Verdict | Status | Seasons held | Games | Facts (tokens) | New | Derived | License line |
+|---|---|---|---|---:|---:|---:|---:|---|
+| Wikipedia edits, live z (`edit_rate_live_z`) + pregame `edit_rate_z` | green | done (pass 1) | NBA 2026-27 to 11-05; NFL 2025, 2026 to 11-05 | 513 | 41,098 | 41,098 | 0 | Wikimedia CC0 |
+| Wikipedia hourly pageviews, live z (`pageviews_live_z`) + pregame `pageviews_z` | green | partial (146 of 513 games live; pass 2 running) | same | 513 | 3,700 | 3,700 | 0 | Wikimedia CC0 |
+| **Cycle 16b total** | | | | 513 | **44,798** | **44,798** | **0** | |
