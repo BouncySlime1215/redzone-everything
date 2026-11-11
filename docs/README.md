@@ -11,15 +11,17 @@ Not in this worktree (untracked in the main checkout, not listed): `docs/club/`,
 - [agents/INDEX.md](agents/INDEX.md) - [GEN] every agent report by stream, status and gate items
 - [test-queue.md](test-queue.md) - what gets tested on the TV, in order
 
+- [../README.md](../README.md) - what RedZone is today, how to run it (dry run, replay), the hard rules
+- [park.md](park.md) - the two-stick PARK show (flag `park.enabled`, off): guard, warrant, padding, Prime and football, config, replay, what is unproven
 - [../CLAUDE.md](../CLAUDE.md) - hard rules, North Star, branches, commands (read first)
-- [handoff.md](handoff.md) - live handoff; newest status is section 5, updated by the overseer (Nov 7)
+- [handoff.md](handoff.md) - live handoff and "Verify first" commands
 - [northstar.md](northstar.md) - [GEN] where we are vs perfect (measured, 2026-11-06)
 - [roadmap.md](roadmap.md) - [GEN] what next, ranked from roadmap.json
 - [research/README.md](research/README.md) - research index: findings, affected files, open questions
 - [plans/2026-11-08-fix-plan.md](plans/2026-11-08-fix-plan.md) - what to fix first (from the Nov 8 audits) and next steps, immediate and long term
 - [coordination.md](coordination.md) - how agents work together: roles, claims, hard rules and what enforces them, merge path
 - [system-map.md](system-map.md) - how the parts connect; `citymap.py --focus/--impact`, `/api/machines`, `scripts/why.py`
-- [audits/](audits/) - the six Nov 8 reviews (decider, switch path, devices, feeds/scoring, platform, rules/config)
+- [audits/](audits/) - the six Nov 8 reviews: [decider](audits/2026-11-08-decider.md), [switch path](audits/2026-11-08-switch-path.md), [devices](audits/2026-11-08-devices.md), [feeds and scoring](audits/2026-11-08-feeds-scoring.md), [platform](audits/2026-11-08-platform.md), [rules and config](audits/2026-11-08-rules-and-config.md)
 
 ## Live status
 
@@ -32,6 +34,8 @@ Not in this worktree (untracked in the main checkout, not listed): `docs/club/`,
 - [nights/2026-11-04.md](nights/2026-11-04.md) - night health report
 - [nights/2026-11-05.md](nights/2026-11-05.md) - night health report
 - [nights/2026-11-06.md](nights/2026-11-06.md) - night health report
+- [nights/2026-11-07.md](nights/2026-11-07.md) - night health report
+- [nights/2026-11-10.md](nights/2026-11-10.md) - night health report
 - Data (not .md): `northstar-history.jsonl`, `roadmap.json`, `releases.json`, `catchup_ratchet.json`, `gate_baseline.json`, `grader_freeze.json`, `contract_baseline.json`, `families.json`, `scorecards-2026-11-02.json`, `tonight-risk-findings.json`, `label_checks/*.json`
 
 ## Architecture & contracts
@@ -63,7 +67,7 @@ Not in this worktree (untracked in the main checkout, not listed): `docs/club/`,
 - [grading.md](grading.md) - training and grading rules ("grading even sharper")
 - [replay-testing.md](replay-testing.md) - testing when no live games: replay vs archived feed
 - [verification-2026-11-02.md](verification-2026-11-02.md) - software verification, archived-event sims **[STALE]**
-**Data sources** (folder `datasources/`; also .json ledgers `scout.json`, `pbp-ledger.json`, `terms.json`)
+**Data sources** (folder `datasources/`; also .json ledgers `datasources/scout.json`, `datasources/pbp-ledger.json`, `datasources/terms.json`)
 - [data-sources.md](data-sources.md) - license, terms and rate limits (summary)
 - [datasources/sources-catalog.md](datasources/sources-catalog.md) - Data sources catalog (Noggin world model)
 - [datasources/ingest-plan.md](datasources/ingest-plan.md) - Ingest plan: the Kaggle data factory for the Noggin world model
@@ -88,7 +92,11 @@ Not in this worktree (untracked in the main checkout, not listed): `docs/club/`,
 **Ops, deploy, recovery**
 - [auto-fix.md](auto-fix.md) - Claude repairs what the watchdog can't
 - [new-environment.md](new-environment.md) - moving to a new Claude account / machine
+- [handoff-2026-11-09-account.md](handoff-2026-11-09-account.md) - Nov 9 account handoff **[STALE]**
 **Sync test suite (YTTV)**
+- [sync/2026-11-06-yttv-scrub-buffer-spec.md](sync/2026-11-06-yttv-scrub-buffer-spec.md) - spec of the YouTube TV scrub and buffered jump (cited by `default_config.yaml`, `tuners/yttv_seek.py`); ported from the old branch
+- [sync/2026-11-05-yttv-live-edge-tests.md](sync/2026-11-05-yttv-live-edge-tests.md) - live-edge measurements behind `delay.edge_prior` (cited by `sync_edge.py`, `lab/syncgrade.py`); ported
+- [sync/2026-11-05-diamond-plan.md](sync/2026-11-05-diamond-plan.md) - Prime diamond plan (cited by `lab/primegrade.py`); ported
 - [sync/yttv_tests/README.md](sync/yttv_tests/README.md) - how to run the stream-delay tests (scripts in ads/ fusion/ mechanics/ truth/ ui/; work/ = dry-run logs)
 
 ## State machines
@@ -109,6 +117,7 @@ Not in this worktree (untracked in the main checkout, not listed): `docs/club/`,
 - [memory/runbooks/stick-offline.md](memory/runbooks/stick-offline.md) - A stick looks offline
 - [memory/runbooks/tv-setup.md](memory/runbooks/tv-setup.md) - TV setup (TV-side input switching)
 - [memory/runbooks/usage-pause.md](memory/runbooks/usage-pause.md) - Usage pause
+- Other runbooks: [canary](memory/runbooks/canary.md), [debugging](memory/runbooks/debugging.md), [join-calibration](memory/runbooks/join-calibration.md), [join-watchdog](memory/runbooks/join-watchdog.md), [mac-health](memory/runbooks/mac-health.md), [merge](memory/runbooks/merge.md), [personal-intake](memory/runbooks/personal-intake.md), [stick-session](memory/runbooks/stick-session.md), [sync-fallback](memory/runbooks/sync-fallback.md), [why](memory/runbooks/why.md)
 **Claude-memory mirror** (copies of Nick's standing preferences)
 - [context/claude-memory/MEMORY.md](context/claude-memory/MEMORY.md) - memory note
 - [context/claude-memory/mac-load-limits.md](context/claude-memory/mac-load-limits.md) - memory note
@@ -152,10 +161,12 @@ Full index with findings, files affected, open questions: [research/README.md](r
 - [research/2026-11-03/05-eval-and-learning-loop.md](research/2026-11-03/05-eval-and-learning-loop.md) - Nov 3; gates are pooled point estimates; use confidence intervals.
 - [research/watch-science-playbook.md](research/watch-science-playbook.md) - Nov 4; rank on suspense, replay on surprise, care multiplies suspense.
 - [research/arenaswap-compare.md](research/arenaswap-compare.md) - Nov 4; ArenaSwap comparison, ideas only, no code copied.
-- Scripts (not .md): `research/2026-11-03/analysis/dead_windows.py`, `nhl_race_check.py`
+- Scripts (not .md): `research/2026-11-03/analysis/dead_windows.py`
 
 ## Plans
 
+- [plans/2026-11-09-anchor-mode.md](plans/2026-11-09-anchor-mode.md) - anchor mode (the crunch-time anchor in the PARK show)
+- [plans/2026-11-09-value-v2.md](plans/2026-11-09-value-v2.md) - value v2: graded moments (`redzone/moments/value2.py`)
 - [plans/2026-11-04-noggin-master-plan.md](plans/2026-11-04-noggin-master-plan.md) - The Noggin master plan: becoming THE sports AI
 - [plans/2026-11-05-brain-engines.md](plans/2026-11-05-brain-engines.md) - Two 24/7 brain engines: the context and hype data engine, and the test factory
 - [plans/2026-11-05-compressed-4day.md](plans/2026-11-05-compressed-4day.md) - Compressed plan: master plan v2, Phases 0-2 by Sun Nov 8
@@ -171,6 +182,7 @@ Full index with findings, files affected, open questions: [research/README.md](r
 
 - [gate-report-rc5.md](gate-report-rc5.md) - RC5 candidate gate triage (latest gate report)
 **Pre-registrations** (`prereg/`; scripts/json beside them)
+- [prereg/exp-609.md](prereg/exp-609.md), [prereg/exp-610.md](prereg/exp-610.md) - newest pre-registrations
 - [prereg/exp-023.md](prereg/exp-023.md) - EXP-023 pre-registration: belief tracker
 - [prereg/exp-1704.md](prereg/exp-1704.md) - EXP-1704 pre-registration: Watch Value trained on real human-attention labels
 - [prereg/exp-1715.md](prereg/exp-1715.md) - EXP-1715 pre-registration: Game Importance on human attention (market volume), N

@@ -1,0 +1,145 @@
+# PARK: the two-stick show
+
+PARK is how RedZone cuts between live games with two Fire TV sticks and one TV. It is behind the flag
+`park.enabled`, which is **off by default**. Nothing in this file has run end to end on the real TV yet
+(see "What is not proven").
+
+## What the show does
+
+- Two sticks play two different games. The TV shows one of them. The other stick is the **hidden stick**.
+- The hidden stick is tuned to the next game and **paused** on a dead-ball frame (a moment when the ball is dead).
+- A **jump** does three things: resume the hidden stick, flip the TV input to it, then pause the stick that was
+  just left. The viewer sees a new game starting right after a dead ball.
+- Each stick is held 35 s behind its stream's live edge (`park.show.show_delay`), so the feed is complete for
+  everything on screen.
+- A jump takes about 3 s on the real sticks; a tune with a read takes 13 to 19 s.
+- The plan looks a few jumps ahead each second. Pace is only a soft pull (`park.show.bonus`).
+
+## Rule #1
+
+Rule #1 is: never join mid-play; never leave a high-leverage moment (close and late, or overtime). The root
+[CLAUDE.md](../CLAUDE.md) holds the full wording. It is judged by the **frozen grader**, which PARK never edits:
+`redzone/grading.py` (`dead_at`, the grader's own answer for "is the ball dead at this second") and
+`redzone/lab/cutgrade.py` (scores both ends of every switch). High leverage is `redzone/lab/leverage.py`.
+
+PARK never trades Rule #1 for pace. If a step fails or a read-back is missing, there is no jump; the picture
+that is up stays up.
+
+## How it is wired
+
+1. `Engine._park_loop` (`redzone/engine.py`) sleeps while the flag is off. With it on, it makes a `ParkRun`.
+2. `ParkRun.loop` (`redzone/park_run.py`) runs once a second. It starts a show only when the steps may run, no user,
+   safe-mode or replay owner holds the TV, and two or more live games of `park.leagues` are on YouTube TV (or Prime)
+   with the game on screen among them. On any stand-down it finishes first (`park_finish`), so a stick is never left paused.
+3. `redzone/noggin/park_show.py:Show.tick` is the brain: facts, padding, plan, guard, then a stick move.
+4. Helpers in `redzone/noggin/`: `park_facts.py` (what is known so far, never hindsight), `park_plan.py` (the planner),
+   `park_core.py` (the step function shared with the simulator), `park_timing.py` (K and padding), `park_prime.py`.
+5. `redzone/moments/value2.py:grade` scores a moment as base x leverage x stakes (football, basketball).
+6. `ControllerRig` (`park_run.py`) turns moves into `Controller.park_*` calls in `redzone/control.py`; `ParkHands`
+   there does the stick work (tune, read the place, pause, resume, flip).
+
+## The hard guard before each jump
+
+`Controller.park_why` (`control.py`) refuses every step unless `park.enabled` is on, the app is live (not dry run),
+two sticks are usable, `sound_guard.enabled` and `sound_guard.must_be_silent` are on, and no sound incident is open.
+A sound stop ends the show until a person clears it.
+
+Then `park_facts.refusal` is asked once more before any key goes out. It refuses a jump if:
+
+- the leave is inside a padded high-leverage span;
+- the leave is outside a padded legal window (the grader's dead time only);
+- the landing is outside a padded legal window;
+- the landing would be more than `park.late_cap_s` (145 s) behind live.
+
+`ParkHands.jump` keeps the old picture if the flip does not land.
+
+## The warrant on each jump
+
+Every jump gets a **warrant** before it is planned: why leave here and go there (`park_plan.py`, `warrant`
+inside the search). A jump is warranted when:
+
+- the game being left is over; or
+- live play will be on screen at least 5 s sooner (`WARRANT_GAIN`); or
+- the next 30 s are worth more there than here (`WARRANT_LOOK`).
+
+A landing that shows no play is never warranted. With `park.show.warrant: need`, an unwarranted jump is not planned,
+and `Show` checks again before it goes. The warrant is kept in each jump's decision record and the Show tab (`show.ui`).
+
+## Padding
+
+Padding is extra seconds kept clear at both ends of every legal window and around every high-leverage span.
+`park_timing.py` sets it per game: `pad_k` (4) times the root of the summed squares of four error parts: the position
+read, the spread of K, the feed stamp, and the keys. **K** is the content time of a frame minus the feed time of the
+same moment. It belongs to one game on one night, and comes from the K file named by `timing.game_offset_file`.
+
+- A game with a read tune and a known K gets about 3 s.
+- A game with no K tonight is **unknown**: it gets a wide prior, about 48 s, never zero.
+- `park_facts.GRID` trims a few more seconds because the planner works on a 1 s grid.
+
+## Prime and football
+
+Football uses the grader's NFL dead time (`dead_at`): each action row covers the 7 s before its stamp, and
+everything else is dead. One extra guard: a dead stretch more than `park.play_clock_s` (40) plus `park.snap_slack_s`
+(5) after an action row, with no stoppage row to explain it, is not trusted. Football padding is about 3 s
+(`park.timing.stamp_sd_football`).
+
+Prime Video games (Thursday Night Football, Friday NBA) need `park.prime.enabled`. A Prime tune uses the existing
+Prime tuner and a pause-hold; Prime has no rewind. K comes from the hidden stick's score-bug reads (numbers only).
+
+**The anchor.** With `park.prime.pin_football` on, a Prime football game that is on screen when the show starts is
+pinned on its stick. It is never held paused when left. It plays on unseen, and is re-tuned (about 100 s on Prime) only
+when it reaches the lateness cap. All the roaming happens on the other stick. Separately, in crunch time
+(`park.show.crunch`) the best high-leverage game is the anchor and the others only fill its stoppages.
+
+**The NFL-night slider.** `park.football_slider` runs from 0 ("more everything else") to 100 ("more football").
+Football's value is multiplied by 16 to the power of (slider minus 50) over 50, so the range is 1/16 to 16. The ends
+are weights, not locks: at 100 other games still backfill football's long breaks. 50 leaves value in charge, and is
+the same as no slider.
+
+## Config keys (`park.*`, defaults in `redzone/default_config.yaml`)
+
+Top level:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | false | master switch |
+| `leagues` | [nba, cbb] | leagues the show takes; add nfl, cfb for football |
+| `max_park_s` | 180 | a stick parked longer is stale and never jumped onto |
+| `late_cap_s` | 145 | nothing shown further behind live than this |
+| `session_min` | 240 | length of one planned show |
+| `possession_cap_s`, `late_row_s` | 30, 60 | feed-quality caps: silence after a review ruling; a late-edited row |
+| `idle_poll_s`, `start_retry_s` | 5, 30 | idle flag check; retry wait |
+| `football_slider` | 50 | the NFL-night slider |
+
+Groups (numbers measured on the sticks or picked in replay; the YAML comments say how):
+
+- `steps.*`: stick step times from the Nov 10 TV runs (tune, read gesture, pause, resume, flip). `flip_methods` is [smartthings].
+- `feed_lag.*`: `enabled` false. Parks a late-feed football game deeper. `leagues`, `prior_q`, `min_samples`, `move_s`.
+- `prime.*`: `enabled` false, `pin_football` true, `bug_gate` false, `pair_offset_s` 60, `stop_match_s` 1.
+- `show.*`: `show_delay` 35, `bonus` 3.0, `min_look` 3.0, `warrant` need, `crunch` true, `stops` true, `land_wait` 20,
+  `long_break` 90, `tune_stick` 1.0, `late_cap` 145, `jump_real` 3.0, `read` 10.5, and the tables `stop_max` and `stop_min`.
+
+Read in code but absent from the YAML (defaults in `park_facts.py`, `park_timing.py`): `pad_k`, `play_clock_s`,
+`snap_slack_s`, `timing.*` (error parts, `live_lag`).
+
+## Run the replay (no TV, no sticks)
+
+`scripts/park_replay.py` runs the app's own `Show` on a recorded dev night with fake sticks and a fake TV. It needs
+the pinned eval data once (`python scripts/fetch_eval_data.py`). Dev nights only; a locked night is never opened.
+
+```sh
+nice -n 15 .venv/bin/python scripts/park_replay.py --night 20261023 --games 4
+.venv/bin/python scripts/park_replay.py --night 20261023 --games 4 --fail flip=2 --fail read=3 --lines 30
+```
+
+Other flags: `--league`, `--hands app|runner`, `--slider 0-100`, `--pin`, `--prime N`, `--nfl i`, `--deep`, `--seed`.
+It reports Rule #1 counts, jumps a minute and the warranted share, judged where the pictures truly were. No device I/O.
+
+## What is NOT yet proven
+
+- **Nothing has run on the real TV through the app.** A local show runner ran on the TV on Nov 10;
+  the in-app version is proven only in replay with fake sticks. The flip path is SmartThings; its free access ends 2026-12-15.
+- A pause held longer than 180 s, or on other channels, has not been read back. The 40-minute hold test and a muted 10-minute Prime test are still to do.
+- Prime football timing, football K and the play-clock gate rest on one replay and priors.
+- Pace is a replay result with fake sticks: the app's own controller on 3 recorded NBA nights with 4 games made about 0.52 jumps a minute at 3 s padding and 0.39 at 8 s, with the frozen grader at 0 / 0 / 0. The real TV will use 8 s until enough measured whistles exist. Live results are unmeasured.
+- The Mac runs `42e2ee8f`, which lacks this code.
