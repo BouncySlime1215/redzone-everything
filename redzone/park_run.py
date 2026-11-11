@@ -181,7 +181,7 @@ class ControllerRig:
 
     async def reread(self, k: int) -> tuple:
         """Read stream k's place again after it drifted: only the stream on screen (Controller.park_start(reread=True):
-        the read gesture, which steps the picture back once)."""
+        the read gesture, which steps the picture back once; with park.reread_in_place on it seeks nothing)."""
         t0 = self.clock.now()
         if self.ctl.main is None or self.ctl.sticks.index(self.ctl.main) != k:
             return False, 0.0
