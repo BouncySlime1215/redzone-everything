@@ -6877,9 +6877,11 @@
     "redzone/lab/reactgrade.py",
     "redzone/lab/sportsgrade.py",
     "redzone/lab/timing.py",
+    "redzone/noggin/park_facts.py",
     "redzone/noggin/pick.py",
     "scripts/bucket_join_measure.py",
     "scripts/park_ceiling.py",
+    "scripts/park_facts_check.py",
     "scripts/thread_replay.py",
     "scripts/veto_audit.py"
    ],
@@ -7065,6 +7067,7 @@
     "scripts/measure_break_lengths.py",
     "scripts/noggin_selfplay.py",
     "scripts/park_ceiling.py",
+    "scripts/park_facts_check.py",
     "scripts/queue_replay.py",
     "scripts/queue_trace.py",
     "scripts/scrub_flip_replay.py",
@@ -8288,6 +8291,7 @@
     "scripts/measure_break_lengths.py",
     "scripts/moment_rates.py",
     "scripts/park_ceiling.py",
+    "scripts/park_facts_check.py",
     "scripts/queue_replay.py",
     "scripts/queue_trace.py",
     "scripts/switch_eval_pin.py",
@@ -8856,6 +8860,7 @@
     "redzone/noggin/factory.py",
     "redzone/noggin/features.py",
     "redzone/noggin/live.py",
+    "redzone/noggin/park_facts.py",
     "redzone/noggin/pick.py",
     "redzone/noggin/priority.py",
     "redzone/noggin/show.py",
@@ -8903,6 +8908,7 @@
     "scripts/noggin_factory.py",
     "scripts/noggin_tokens.py",
     "scripts/park_ceiling.py",
+    "scripts/park_facts_check.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
     "scripts/queue_replay.py",
@@ -9054,6 +9060,7 @@
     "redzone/moments/fill.py",
     "redzone/moments/value2.py",
     "redzone/noggin/gamevalue.py",
+    "redzone/noggin/park_facts.py",
     "redzone/noggin/value_shards.py",
     "redzone/noggin/wide_features.py",
     "scripts/buffered_jump_sim.py",
@@ -9213,6 +9220,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/noggin/park_facts.py",
     "redzone/noggin/value_shards.py",
     "scripts/park_ceiling.py",
     "scripts/value2_report.py"
@@ -9300,6 +9308,7 @@
    "outputs": [
     "redzone/decider/decider.py",
     "redzone/noggin/catchup.py",
+    "redzone/noggin/park_facts.py",
     "scripts/buffered_jump_sim.py",
     "scripts/park_ceiling.py",
     "scripts/veto_audit.py"
@@ -9633,6 +9642,61 @@
     "untagged"
    ]
   },
+  "redzone/noggin/park_facts.py": {
+   "calls": [
+    "redzone/grading.py:dead_at",
+    "redzone/grading.py:held_stop",
+    "redzone/grading.py:is_action",
+    "redzone/grading.py:play_clock",
+    "redzone/grading.py:raw_type",
+    "redzone/models.py:GameState",
+    "redzone/models.py:League",
+    "redzone/models.py:Team",
+    "redzone/moments/detect.py:detect",
+    "redzone/moments/value2.py:config",
+    "redzone/moments/value2.py:grade",
+    "redzone/moments/value2.py:leverage",
+    "redzone/moments/value2.py:seconds_left",
+    "redzone/noggin/arbiter.py:trigger_rank",
+    "redzone/scoring/engine.py:high_leverage",
+    "redzone/sources/espn.py:_clock_s",
+    "redzone/sources/espn.py:_get",
+    "redzone/sources/espn.py:_int",
+    "redzone/sources/espn.py:_ts",
+    "redzone/sources/espn.py:flatten_plays",
+    "redzone/sources/espn.py:parse_summary",
+    "redzone/sources/espn.py:stoppage_for"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/grading.py",
+    "redzone/models.py",
+    "redzone/moments/detect.py",
+    "redzone/moments/value2.py",
+    "redzone/noggin/arbiter.py",
+    "redzone/noggin/park_timing.py",
+    "redzone/scoring/engine.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/park_facts_check.py"
+   ],
+   "owner": "unowned",
+   "role": "PARK facts: one LIVE basketball game's facts for the PARK planner, built row by row from the ESPN feed, honestly.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/noggin/park_plan.py": {
    "calls": [],
    "contracts": [],
@@ -9656,6 +9720,29 @@
    ],
    "owner": "unowned",
    "role": "PARK planner: the search that plans the two-stick show (stay, jump, hold, roll, skip, tune) a few jumps ahead.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/noggin/park_timing.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/noggin/park_facts.py"
+   ],
+   "owner": "unowned",
+   "role": "PARK timing: where a game's feed time sits on a stick's picture, how sure that is, and each game's padding.",
    "serves": [
     "untagged"
    ]
@@ -11031,6 +11118,7 @@
     "redzone/lab/backtest.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/reasoner_data.py",
+    "redzone/noggin/park_facts.py",
     "redzone/scoring/drive.py",
     "scripts/holdset_public.py",
     "scripts/kaggle_gamevalue_holdset.py"
@@ -11350,6 +11438,7 @@
     "redzone/lab/sportsgrade.py",
     "redzone/noggin/factory.py",
     "redzone/noggin/features.py",
+    "redzone/noggin/park_facts.py",
     "redzone/noggin/pick.py",
     "redzone/recorder.py",
     "redzone/sources/fastcast.py",
@@ -11369,6 +11458,7 @@
     "scripts/noggin_factory.py",
     "scripts/noggin_tokens.py",
     "scripts/park_ceiling.py",
+    "scripts/park_facts_check.py",
     "scripts/plan_tonight.py",
     "scripts/queue_replay.py",
     "scripts/queue_trace.py",
@@ -16462,6 +16552,44 @@
     "untagged"
    ]
   },
+  "scripts/park_facts_check.py": {
+   "calls": [
+    "redzone/grading.py:dead_at",
+    "redzone/grading.py:play_clock",
+    "redzone/lab/backtest.py:Replay",
+    "redzone/lab/splits.py:archive_nights",
+    "redzone/lab/splits.py:nights_for",
+    "redzone/models.py:League",
+    "redzone/noggin/park_facts.py:GameFacts",
+    "redzone/sources/espn.py:_get",
+    "redzone/sources/espn.py:_int"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/grading.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/splits.py",
+    "redzone/models.py",
+    "redzone/noggin/park_facts.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Check the live PARK facts builder against the grader's whole-game facts, row by row, on recorded dev nights.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/park_pick.py": {
    "calls": [],
    "contracts": [],
@@ -18762,13 +18890,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2179,
+  "calls": 2210,
   "data_files": 203,
   "machines": 51,
-  "modules": 468,
+  "modules": 471,
   "orphans": 35,
-  "unowned": 267,
-  "untagged": 396
+  "unowned": 270,
+  "untagged": 399
  },
  "version": 2
 }
