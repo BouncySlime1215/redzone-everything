@@ -76,6 +76,7 @@ class Judge:
         self.land_wait: list = []                                # per jump: seconds from the landing to the play's start
         self.cuts: list = []                                     # per jump: (game left, its true second, game joined, its true second)
         self.e_log: list = []
+        self.on: dict = {}                                       # [PARK-NFL] game -> the true seconds that were on screen
 
     def _draw(self, g: int, read_ok: bool) -> float:
         return self.rng.gauss(0.0, self.tm.errs(g, read_ok)[0]) + self.gd[g]
@@ -89,6 +90,7 @@ class Judge:
     def second(self, k: int, g: int, pos: float, t: int | None = None) -> None:
         x = self.A[g]
         ti = self._at(x, pos - self.e.get(k, 0.0))
+        self.on.setdefault(g, set()).add(ti)
         dead = bool(x.dead[ti])
         self.pic += 1
         if not dead:
@@ -226,6 +228,9 @@ class FakeRig:
         self.drift = [0.0, 0.0]                                  # seconds a minute stream k creeps after a resume (a pause that did not hold)
         self.drift_rate, self.drift_left = float(drift), int(drift_n)   # ...made to order: the next drift_n resumes creep at this rate
         self.played_at = [None, None]                            # when stream k last started playing (its session's update time)
+        self.depth: dict = {}                                    # [PARK-NFL-LAG] game -> s deeper (set by the show)
+        self.prime_games: set = set()                            # [PARK-NFL-LAG] games on Prime: depth by a longer pause hold
+        self.extra: dict = {}                                    # [PARK-NFL-LAG] stream -> s its last tune was put deeper
 
     def _fails(self, what: str) -> bool:
         n = self.fail.get(what, 0)
@@ -258,6 +263,21 @@ class FakeRig:
         self.game[k], self.paused[k] = game, False
         back = (P.step * steps + P.read_sat - self.delay) if steps else 0.0
         self.lag[k] = back + self.latency + (self.rng.gauss(0.0, self.tune_sd) if self.read[k] else 0.0) if (deep or not self.instant) else 0.0
+        extra = float(self.depth.get(game, 0.0) or 0.0)
+        self.extra[k] = 0.0
+        if extra > 0:                                            # [PARK-NFL-LAG] parked deeper: Prime holds the pause longer,
+            if game in self.prime_games:                         # YouTube TV steps back with more LEFT presses (15 s each)
+                took += extra
+                await self._wait(extra)
+                self.lag[k] += extra
+                self.extra[k] = extra
+            else:
+                add = int(math.ceil(extra / P.step))
+                took += 0.6 * add
+                await self._wait(0.6 * add)
+                self.lag[k] += P.step * add
+                self.extra[k] = P.step * add
+                self.sent += [("key", k, "KEYCODE_DPAD_LEFT")] * add
         self.true_lag[k] = self.lag[k]
         self.lag[k] += self.bad_place
         if steps:
@@ -428,8 +448,9 @@ class RowFeed:
     """Hands a recorded game to the show's feed row by row: a row stamped s is in the feed once the show's edge is
     `lead` short of s (the stream's delay less the feed's lag, plus the show's own delay); read every `poll` seconds."""
 
-    def __init__(self, replays: list, feed: FactsFeed, base: int, lead: int, poll: int = 3):
-        self.rs, self.feed, self.base, self.lead, self.poll = replays, feed, base, int(lead), max(1, poll)
+    def __init__(self, replays: list, feed: FactsFeed, base: int, lead, poll: int = 3):
+        self.rs, self.feed, self.base, self.poll = replays, feed, base, max(1, poll)
+        self.leads = [int(x) for x in lead] if isinstance(lead, (list, tuple)) else [int(lead)] * len(replays)
         self.k, self.first = [0] * len(replays), True
 
     def step(self, t: int) -> None:
@@ -437,7 +458,7 @@ class RowFeed:
             return
         self.first = False
         for g, r in enumerate(self.rs):
-            k = bisect.bisect_right(r.wall, self.base + t + self.lead)
+            k = bisect.bisect_right(r.wall, self.base + t + self.leads[g])
             if k != self.k[g]:
                 self.feed.offer_rows(g, r.plays[self.k[g]:k], t, final=k == len(r.plays), data=r.data)
                 self.k[g] = k
@@ -462,7 +483,9 @@ async def drive(show: Show, clock, rows: RowFeed, a: int, b: int) -> None:
 def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str = "app", first: str = "", minutes: float = 0,
            seed: int = 0, league: str = "nba", fail: dict | None = None, poll: int = 3, say=None, loaded: tuple | None = None,
            params: ShowParams | None = None, stop_min: dict | None = None, board=None, rig_kw: dict | None = None,
-           model=None, eyes=None, emit=None, any_shot: bool = False, grid: tuple | None = None) -> Show:
+           model=None, eyes=None, emit=None, any_shot: bool = False, grid: tuple | None = None, prime: int = 0,
+           prime_k: str = "bug", prime_pad: int | None = None, walk: str = "any", nfl: int = -1, nfl_lag: float | None = None,
+           deep: bool = False, slider: float | None = None) -> Show:
     """The app's PARK controller on a recorded dev night: fake sticks, a fake TV, a clock that is not the wall.
     first = "read" (the first picture's place was read: the app's `Controller.park_start`, the local runner's start) or
     "live" (what happens WITHOUT that step: the stream on screen sits at its live edge, never read; the feed is never
@@ -470,10 +493,20 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
     P = params or ShowParams.from_config(config.default)
     first = first or "read"
     rs, slate = loaded or load_replay(night_id, games, league)
+    if nfl >= 0:                                                 # [PARK-NFL] one recorded NFL night game, time-shifted onto this slate
+        rs, slate = list(rs) + [shifted_nfl(nfl, slate)[0]], list(slate) + [shifted_nfl(nfl, slate)[1]]
+    if walk != "any":
+        slate = walk_points(rs, slate, walk)
     tm = ShowTiming.case(case, len(rs), league=league, delay=P.show_delay)
     known = case == "tonight"
     lead = int(P.show_delay + FEED_LEAD[case])
     steps = P.steps_for(known)
+    primes = prime_games(len(rs), prime)
+    for g, r in enumerate(rs):                                   # [PARK-NFL] a football game keeps its own league's timing
+        if r.league.base == League.NFL:
+            tm.g[g] = football_timing(tm.g[g])
+    for g in primes:
+        tm.g[g] = prime_timing(tm.g[g], prime_k, prime_pad)
     eng = engine_setting(tm.pad0(), lead, late_cap=P.late_cap - P.show_delay - P.jump_slack, tune_s=3.0 + (P.read if steps else 0.0),
                          min_live=P.min_look, land_wait=P.land_wait, flip=P.jump_real, pause_reach=P.pause_reach,
                          any_shot=any_shot)                      # (any_shot: the what-if OUTSIDE Rule #1; the app never sets it)
@@ -485,29 +518,197 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
     night.big_total, night.v2_total = full.big_total, full.v2_total
     if stop_min is None:
         stop_min = dict(config.default("park.show.stop_min") or {}) if P.stops else {}
-    feed = FactsFeed([(r.league, r.gid) for r in rs], night, [0.0] * len(rs), [lead] * len(rs), stop_min=stop_min,
+    leads = [lead if (r.league.base != League.NFL or nfl_lag is None) else int(P.show_delay + FEED_LEAD["tonight"] + 8.0 - nfl_lag)
+             for r in rs]                                        # [PARK-NFL] a football feed nfl_lag s late instead of the show's 8 s
+    feed = FactsFeed([(r.league, r.gid) for r in rs], night, [0.0] * len(rs), leads, stop_min=stop_min,
                      params=FactsParams.from_config(config.default), keep_shots=any_shot)
     _, S0 = park_core.run(full, _Hindsight(), eng, t0=a, t1=a)     # the first picture, picked the way park_plan.py picks it
     clock = FakeClock(float(a))
+    tune0 = {g: 2.7 + (P.read if steps else 0.0) for g in range(len(rs))}
+    if primes:                                                   # [park.prime] a Prime tune: switch_cost.prime + its hold
+        rk = dict(rig_kw or {})
+        cost = prime_cost(P, steps)
+        rk["tune_s"] = {**dict(rk.get("tune_s") or {}), **{g: cost - (P.read if steps else 0.0) for g in primes}}
+        rig_kw = rk
+        tune0.update({g: cost for g in primes})
     rig = FakeRig(clock, instant=False, seed=seed, delay=P.show_delay, steps=steps, reads=tm.reads, hands=hands, params=P,
                   tune_sd=tm.p.tune_sd, **(rig_kw or {}))
     rig.fail.update(fail or {})
+    rig.prime_games = set(primes)
+    depth = None
+    if deep and nfl_lag is not None:                             # [PARK-NFL-LAG] each late feed's game parked (lag - the show's 8 s) deeper
+        depth = {g: max(0.0, nfl_lag - P.feed_lag) for g, r in enumerate(rs) if r.league.base == League.NFL}
+        for g, x in depth.items():
+            tune0[g] = tune0[g] + (x if g in primes else 0.6 * math.ceil(x / P.step))
     rig.game[0] = S0.sg
     if first == "live":                                          # the app's start: on screen since before PARK, never read
         rig.read[0], rig.lag[0] = False, -float(P.show_delay)
     judge = Judge(A, tm, seed, S0.sg, first_read=rig.read[0])
-    tune0 = {g: 2.7 + (P.read if steps else 0.0) for g in range(len(rs))}
     show = Show(night, eng, tm, rig, feed, plan=Plan(jump_bonus=P.bonus), judge=judge, board=board, say=say or (lambda line: None),
                 names=[r.matchup or r.gid for r in rs], chans=[f"channel {k + 1}" for k in range(len(rs))], tune0=tune0,
-                params=P, model=model, eyes=eyes, emit=emit)
-    show.replays = rs                                            # for the frozen grader (graded)
+                params=P, model=model, eyes=eyes, emit=emit, no_back=set(primes) or None, depth=depth,
+                football_slider=slider)
+    show.replays, show.base = rs, full.base                      # for the frozen grader (graded) and the stamp = snap judge
     S = show.begin(S0.sg, 0, a)
     S.sb = float(rig.lag[0])
-    rows = RowFeed(rs, feed, full.base, lead, poll)
+    rows = RowFeed(rs, feed, full.base, leads, poll)
     if board is not None:
         board.start(show, "replay", (b - a) / 60.0)
     asyncio.run(clock.run(drive(show, clock, rows, a, b)))
     return show
+
+
+# ---------------------------------------------------------------------------------------------- [park.prime] Prime games
+# ---------------------------------------------------------------------------------------------- [PARK-NFL] a football game
+def nfl_nights() -> list[str]:
+    """The dev nights that hold exactly one NFL game (a Monday, Thursday or Sunday night), oldest first."""
+    from redzone.lab import splits
+    d = ROOT / "data/archive/nfl"
+    keep, games = splits.nights_for(d, "fit") or set(), splits.archive_nights(d)
+    return [n for n in sorted(keep) if len(games.get(n, ())) == 1]
+
+
+_NFL_CACHE: dict = {}
+
+
+def shifted_nfl(i: int, slate: list) -> tuple:
+    """The i-th one-game NFL dev night, every row's wallclock moved so it kicks off at the basketball slate's median tip
+    (park_ceiling.slates_for's synthetic "mnf+K" slate: the archives are different seasons, so this is NOT a recorded
+    night; different games' dead and live stretches do not depend on each other). (Replay, its truth)."""
+    import json
+    import statistics
+    import tempfile
+    from datetime import datetime, timezone
+
+    from redzone.lab import splits
+    from redzone.lab.backtest import Replay
+    from redzone.sources import espn
+    tip = statistics.median(g["t0"] for g in slate)
+    key = (i, int(tip))
+    if key in _NFL_CACHE:
+        return _NFL_CACHE[key]
+    d = ROOT / "data/archive/nfl"
+    night = nfl_nights()[i]
+    gid = splits.archive_nights(d)[night][0]
+    src = d / f"summary_{gid}.json"
+    r0 = Replay.load(League.NFL, src)
+    dt = int(round(tip - r0.wall[0]))
+    data = json.loads(src.read_text())
+
+    def move(p):
+        t = espn._ts(p.get("wallclock"))
+        if t is not None:
+            p["wallclock"] = datetime.fromtimestamp(t + dt, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for dr in (espn._get(data, "drives", "previous") or []):
+        for p in dr.get("plays") or []:
+            move(p)
+    for p in (espn._get(data, "drives", "current", "plays") or []):
+        move(p)
+    with tempfile.TemporaryDirectory(prefix="rz-nfl-") as tmp:
+        f = Path(tmp) / f"summary_{gid}.json"
+        f.write_text(json.dumps(data))
+        r = Replay.load(League.NFL, f)
+    out = (r, pc.truth_of(r))
+    _NFL_CACHE[key] = out
+    return out
+
+
+def football_timing(gt):
+    """A football game's timing: its own league (stamp sd park.timing.stamp_sd_football, so padding about 8 s), its K
+    as the replay case gives it."""
+    from redzone.noggin.park_timing import GameTiming
+    return GameTiming("nfl", gt.k, gt.params)
+
+
+def picture_grade(show: Show, after_s: float = 6.0) -> dict:
+    """[PARK-NFL-LAG] A second judge for football, the picture model: ESPN's NFL stamp is the SNAP (watcher, Nov 11:
+    snap = stamp + 0.57 s, dead ball = stamp + 5.49 s), so a cut whose true second on a football game is within
+    [stamp, stamp + after_s] is mid-play on the picture. The frozen grader's own counts are not changed by it."""
+    import bisect as _b
+
+    from redzone.grading import is_action
+    j, rs, base = show.judge, getattr(show, "replays", None), getattr(show, "base", None)
+    if j is None or rs is None:
+        return {}
+    acts = {g: [w for w, p in zip(r.wall, r.plays) if is_action(r.league, p)] for g, r in enumerate(rs)
+            if r.league.base == League.NFL}
+
+    def live(g, sec):
+        ws = acts.get(g)
+        if not ws:
+            return False
+        i = _b.bisect_right(ws, base + sec) - 1
+        return i >= 0 and base + sec - ws[i] <= after_s
+    joins = sum(1 for g1, ti, g2, ej in j.cuts if live(g2, ej))
+    leaves = sum(1 for g1, ti, g2, ej in j.cuts if live(g1, ti))
+    return {"football_joins_mid": joins, "football_leaves_mid": leaves,
+            "football_cuts": sum(1 for g1, ti, g2, ej in j.cuts if g1 in acts or g2 in acts)}
+
+
+def snap_share(show: Show, g: int) -> dict:
+    """Of football game g's plays (action rows), how many were on screen from 1 s before the snap (stamp - 7 s, the
+    grader's play) to the whistle, judged where the picture truly was."""
+    from redzone.grading import is_action, plen
+    j, rs, base = show.judge, getattr(show, "replays", None), getattr(show, "base", None)
+    if j is None or rs is None:
+        return {}
+    r, on = rs[g], j.on.get(g, set())
+    n = seen = 0
+    for w, p in zip(r.wall, r.plays):
+        if not is_action(r.league, p):
+            continue
+        n += 1
+        a, b = int(w - plen(r.league) - 1 - base), int(w - base)
+        seen += all(x in on for x in range(a, b + 1))
+    return {"plays": n, "seen_from_snap": seen, "share": round(seen / n, 3) if n else None}
+
+
+class _Defaults:
+    get = staticmethod(config.default)
+
+
+def prime_games(n: int, k: int) -> list[int]:
+    """Which games of the slate are on Prime Video: the last k (k <= n)."""
+    return list(range(max(0, n - max(0, k)), n))
+
+
+def prime_cost(P: ShowParams, steps: int) -> float:
+    """A Prime tune ready to park: decider.switch_cost.prime plus the hold to where a YouTube TV tune and its read sit
+    (park_prime.tune_cost, the app's own number)."""
+    from redzone.noggin import park_prime
+    lag = (P.step * steps + P.read_sat - P.show_delay) if steps else 0.0
+    return park_prime.tune_cost("prime:x", _Defaults(), yttv_s=0.0, show_delay=P.show_delay, tune_lag=lag)
+
+
+def prime_timing(gt, how: str, pad: int | None):
+    """A Prime game's timing: "none" = no K (the wide prior); "bug" = a K from its own bug reads at the K floor (the
+    same model as a YouTube TV game with a K); with `pad`, every error part scaled so the padding is `pad` s (a what-if
+    for the bug check of the parked frame)."""
+    from dataclasses import replace
+
+    from redzone.noggin.park_timing import GameK, GameTiming
+    if how == "none":
+        return GameTiming(gt.league, None, gt.params)
+    p = gt.params
+    if pad is not None:
+        tot = GameTiming(gt.league, GameK(0.0, p.k_sd_min), p).errors(True).total
+        f = float(pad) / (p.pad_k * tot)
+        p = replace(p, read_sd=p.read_sd * f, k_sd_min=p.k_sd_min * f, stamp_sd_nba=p.stamp_sd_nba * f,
+                    stamp_sd_college=p.stamp_sd_college * f, key_sd=p.key_sd * f)
+    return GameTiming(gt.league, GameK(0.0, p.k_sd_min, 10, "bug"), p)
+
+
+def walk_points(rs: list, slate: list, walk: str) -> list:
+    """The slate's walk-in points (the any-shot rule's 4 s after a shot, which the replay's mask also lets a LEAVE use):
+    "made" = after MADE field goals only (the frozen grader's join window); "none" = none at all, so every leave and
+    every join must be in dead time (the coordinator's Nov 11 bar, until the planner keeps leaves to dead time itself)."""
+    from redzone.grading import raw_type
+    out = []
+    for r, g in zip(rs, slate):
+        made = [w for w, p in zip(r.wall, r.plays) if p.get("shootingPlay") and p.get("scoringPlay")
+                and "free throw" not in raw_type(p)] if walk == "made" else []
+        out.append(dict(g, shots=made))
+    return out
 
 
 class _Hindsight:
@@ -624,6 +825,15 @@ def main() -> int:
                     help="WHAT-IF: whole seconds cut off the start and the end of every dead stretch for the 1 s grid (the show uses 1 2)")
     ap.add_argument("--what-if-any-shot", action="store_true",
                     help="WHAT-IF, OUTSIDE RULE #1: also cut in the 4 s after ANY shot, made or missed (the app never does)")
+    ap.add_argument("--prime", type=int, default=0, help="[park.prime] how many of the slate's games are on Prime Video (the last N)")
+    ap.add_argument("--prime-k", choices=("bug", "none"), default="bug", help="a Prime game's K: from its own bug reads, or none")
+    ap.add_argument("--prime-pad", type=int, default=None, help="what-if: a Prime game's padding in s (the parked-frame bug check)")
+    ap.add_argument("--nfl", type=int, default=-1, help="[PARK-NFL] add the i-th one-game NFL dev night, time-shifted onto the slate")
+    ap.add_argument("--slider", type=float, default=None, help="[football slider] 0 = more everything else ... 100 = more football")
+    ap.add_argument("--deep", action="store_true", help="[PARK-NFL-LAG] park the late-feed game (lag - 8 s) deeper")
+    ap.add_argument("--nfl-lag", type=float, default=None, help="[PARK-NFL] the football feed's lag in s (default: the show's 8 s)")
+    ap.add_argument("--walk", choices=("any", "made", "none"), default="any",
+                    help="walk-in points: after any shot (as before), MADE field goals only, or none (dead time only)")
     a = ap.parse_args()
     shown = [0]
 
@@ -633,11 +843,17 @@ def main() -> int:
             print(line)
     fail = {k: int(v) for k, v in (x.split("=", 1) for x in a.fail)}
     show = replay(a.night, a.games, case=a.case, hands=a.hands, first=a.first, minutes=a.minutes, seed=a.seed, league=a.league,
-                  fail=fail, say=say, any_shot=a.what_if_any_shot, grid=tuple(a.what_if_grid) if a.what_if_grid else None)
+                  fail=fail, say=say, any_shot=a.what_if_any_shot, grid=tuple(a.what_if_grid) if a.what_if_grid else None,
+                  prime=a.prime, prime_k=a.prime_k, prime_pad=a.prime_pad, walk=a.walk, nfl=a.nfl, nfl_lag=a.nfl_lag,
+                  deep=a.deep, slider=a.slider)
     _, text = summary(show, f"SUMMARY (replayed on recorded night {a.night} with FAKE sticks, not measured on the TV; {a.games} games, "
                             f"case {a.case}, hands {a.hands}, paddings {sorted(set(show.pad))} s, show delay {show.delay} s)"
                       + ("\n  WHAT-IF, OUTSIDE RULE #1: the any-shot rule is ON (cuts in the 4 s after any shot, made or missed)" if a.what_if_any_shot else ""))
     print(f"... {max(0, shown[0] - a.lines)} more lines not shown\n{text}")
+    if any(r.league.base == League.NFL for r in getattr(show, "replays", [])):
+        pic = picture_grade(show)
+        print(f"  stamp = snap judge (football): joins mid-play {pic['football_joins_mid']}, leaves mid-play {pic['football_leaves_mid']} "
+              f"of {pic['football_cuts']} football cuts; plays seen from the snap {snap_share(show, len(show.replays) - 1)}")
     return 0
 
 

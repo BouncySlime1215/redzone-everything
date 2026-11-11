@@ -26,7 +26,12 @@ Also the hard guards the PARK controller asks before any jump (`refusal`), the p
 arrays (`pad_arr`), how far an open stoppage is trusted (`sure_until`), and Eyes's spans put over the feed's
 (`merge_eyes`), ported from the local show runner (`tools/park_live/park_live.py`).
 
-Basketball only (NBA and college): football and hockey facts read the rows ahead differently and are not written.
+Basketball (NBA and college) and [PARK-NFL] football (NFL and college). Football reads the grader's own football rule
+(`grading.dead_at`): each action row covers the 7 s before its stamp (`PLAY_LEN`), everything else is dead, and a restart
+is the next action row less those 7 s; there is no shot window. One guard on top, never looser than the grader: a dead
+stretch more than `play_clock_s` + `snap_slack_s` after an action row, with no stoppage, marker or score row to explain
+it, is not trusted (the play clock would have run out; live feeds hold rows stamped minutes late that drag later rows
+forward, Nov 10). Hockey facts are not written.
 Pure: no device, no network, no file. It calls the grader's functions and never changes them. Nothing in the app
 imports it yet: the PARK controller (a later unit) will, behind `park.enabled`, reading the ESPN rows the engine
 already polls (`engine.summaries`). Numbers are fields of `FactsParams` (`park.<name>`; rule K2).
@@ -41,7 +46,7 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 
-from redzone.grading import RESUME_LEAD, dead_at, held_stop, is_action, play_clock, raw_type
+from redzone.grading import RESUME_LEAD, dead_at, held_stop, idx, is_action, play_clock, plen, raw_type
 from redzone.models import GameState, League, Phase, Stoppage, Team
 from redzone.moments import value2
 from redzone.moments.detect import detect as detect_moments
@@ -72,9 +77,23 @@ class FactsParams:
     #                                 edit (a substitution row re-stamped half an hour on): it takes the stamp of the row before
     #                                 it. The show sets 60 (park.late_row_s). Off here (inf) = the repo loader's own stamps, row
     #                                 for row, which is what the recorded-night checks of these facts compare against
+    football_lead_s: float = 15.0   # [PARK-NFL] football: an open stoppage may have restarted this long before the feed's edge
+    #                                 (the 7 s play the grader gives a row, plus the show's 8 s feed lag)
+    play_clock_s: float = 40.0      # [PARK-NFL] NFL play clock: the next snap comes within this of a whistle unless a row says why
+    snap_slack_s: float = 5.0       # [PARK-NFL] ... plus this (spotting the ball, the stamp's own slack)
+    play_after_s: float = 15.0      # [PARK-NFL] picture model: ESPN's NFL stamp marks the SNAP (watcher, Nov 11, Prime replay:
+    #                                 snap = stamp + 0.57 s sd 0.23 n=4, dead ball = stamp + 5.49 s sd 0.35 n=3), so the
+    #                                 seconds after a stamp are play on the picture. Not legal for this long after an action
+    #                                 stamp (cautious until the watcher's distribution by play type arrives)
 
     def lead(self, league: League) -> float:
+        if is_football(league):
+            return self.football_lead_s
         return self.open_lead_s if self.open_lead_s >= 0 else float(RESUME_LEAD[league])
+
+    @property
+    def clock_cap(self) -> float:
+        return self.play_clock_s + self.snap_slack_s
 
     @classmethod
     def from_config(cls, get: Callable[..., object]) -> "FactsParams":
@@ -94,6 +113,10 @@ class FactsParams:
 
 
 FACTS = FactsParams()
+
+
+def is_football(league: League | str) -> bool:
+    return League(league).base == League.NFL
 
 
 def value_of(kind: str) -> float:
@@ -184,8 +207,9 @@ class GameFacts:
 
     def __init__(self, league: League | str, gid: str = "", params: FactsParams = FACTS):
         self.league = League(league)
-        if self.league.base != League.NBA:
-            raise ValueError(f"PARK facts are written for basketball only, not {self.league.value}")
+        self.football = is_football(self.league)
+        if self.league.base != League.NBA and not self.football:
+            raise ValueError(f"PARK facts are written for basketball and football only, not {self.league.value}")
         self.gid, self.p = str(gid), params
         self.edge_hint: float | None = None       # the feed time the feed has been read up to (FactsFeed sets it before each poll)
         self.data: dict | None = None
@@ -275,7 +299,7 @@ class GameFacts:
                 self.lev.append((t, float(value2.leverage(lg.value, abs(hs - as_), left, ot, self._cfg2)), abs(hs - as_), left))
             except (KeyError, TypeError, ValueError):
                 self.lev.append((t, 1.0, abs(hs - as_), -1.0))
-        if p.get("shootingPlay") and "free throw" not in raw_type(p):
+        if not self.football and p.get("shootingPlay") and "free throw" not in raw_type(p):
             self.shots.append(t)
         self._settled = None
 
@@ -289,6 +313,8 @@ class GameFacts:
     def _dead_row(self, i: int) -> bool:
         """Does row i leave the ball dead (a stoppage, a held stoppage, or a made basket's 4 s)?"""
         lg, p = self.league, self.plays[i]
+        if self.football:
+            return True                                      # football: after every row the ball is dead until the next snap
         stop = espn.stoppage_for(lg, p)
         if stop == Stoppage.NONE:
             stop = held_stop(lg, self.wall, self.plays, i)
@@ -303,6 +329,8 @@ class GameFacts:
         Undated: (None, the next play row or None, False)."""
         lg, wall, plays, n = self.league, self.wall, self.plays, len(self.plays)
         j = next((k for k in range(i + 1, n) if is_action(lg, plays[k])), None)
+        if self.football:                                    # grading.resume_after: the next action row less its play
+            return (max(wall[i], wall[j] - plen(lg)), j, True) if j is not None else (None, None, False)
         per_i, c0 = espn._int(espn._get(plays[i], "period", "number")), play_clock(lg, plays[i])
         cut = False
         for k in range(i + 1, n if j is None else min(n, j + SCAN_ROWS)):
@@ -327,7 +355,50 @@ class GameFacts:
 
     def _flag(self, ws: list[float], ps: list[dict], st: float) -> int:
         d, b, _ = dead_at(self.league, ws, ps, st)
+        if d and self.football and (not self._clock_ok(ws, ps, st) or self._after_snap(ws, ps, st)):
+            return 0                                         # past the play clock unexplained, or the play after a snap stamp
         return 2 if d and b else 1 if d else 0
+
+    def _after_snap(self, ws: list[float], ps: list[dict], st: float) -> bool:
+        """[football, picture model] Is st within play_after_s after an action row's stamp (the stamp is the snap)?"""
+        i = idx(ws, st)
+        while i >= 0 and st - ws[i] <= self.p.play_after_s:
+            if is_action(self.league, ps[i]):
+                return True
+            i -= 1
+        return False
+
+    def _explained(self, ps: list[dict], a: int, i: int) -> bool:
+        """[football] Does a row from action row a to row i explain a long dead ball (a stoppage, a marker such as a
+        timeout or quarter end, or a score)?"""
+        lg = self.league
+        return i > a or espn.stoppage_for(lg, ps[a]) != Stoppage.NONE or bool(ps[a].get("scoringPlay"))
+
+    def _clock_ok(self, ws: list[float], ps: list[dict], st: float) -> bool:
+        """[football] Is a dead second st inside what the play clock allows after the last action row before it (or
+        explained by a row)? Before the first action row: yes (the kickoff wait is the grader's)."""
+        i = idx(ws, st)
+        if i < 0:
+            return True
+        a = i
+        while a >= 0 and not is_action(self.league, ps[a]):
+            a -= 1
+        if a < 0 or st - ws[a] <= self.p.clock_cap:
+            return True
+        return self._explained(ps, a, i)
+
+    def clock_cap_at(self, since_row: int | None = None) -> float | None:
+        """[football] The feed time past which an open stoppage is not trusted (the last action row + the play clock),
+        or None when a row explains it (or not football)."""
+        if not self.football or not self.plays:
+            return None
+        i = len(self.plays) - 1
+        a = i
+        while a >= 0 and not is_action(self.league, self.plays[a]):
+            a -= 1
+        if a < 0 or self._explained(self.plays, a, i):
+            return None
+        return self.wall[a] + self.p.clock_cap
 
     def _settle(self) -> float:
         """Move the final frontier forward over the rows now dated and fill the final seconds; returns `settled`."""
@@ -402,6 +473,14 @@ class GameFacts:
             return None                                      # its restart is dated: the clock has moved, it is not open
         p, w = self.plays[i], self.wall[i]
         lead = self.p.lead(lg)
+        if self.football:                                    # no basket window; the restart can be no earlier than edge - lead
+            cap = self.clock_cap_at()
+            a = i
+            while a >= 0 and not is_action(lg, self.plays[a]):
+                a -= 1
+            since = max(w, self.wall[a] + self.p.play_after_s) if a >= 0 else w     # the play after its snap stamp is not dead
+            soon = max(since, (self.wall[j] if j is not None else edge) - lead)
+            return OpenStop(since, w, soon if cap is None else min(soon, cap), "row" if j is not None else "edge", False)
         only_basket = espn.stoppage_for(lg, p) == Stoppage.NONE and held_stop(lg, self.wall, self.plays, i) == Stoppage.NONE
         if only_basket and edge - w > self.p.shot_window_s:
             return None                                      # a made basket's 4 s are over: play runs unless a row says not

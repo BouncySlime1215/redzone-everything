@@ -22,7 +22,7 @@ stream does not wait on a game in a long break while another is in play; a new t
 one; a stream's place is believed only inside what a tune can leave; the plan uses the step times the sticks took.
 
 Pure: no device, no network, no file. Imported only with `park.enabled` on. Numbers are fields of `ShowParams`
-(`park.show.<name>`; rule K2). Basketball only (the facts are).
+(`park.show.<name>`; rule K2). Basketball, and football when `park.leagues` lists it (park_facts reads both).
 
 Why: the show that worked on the TV lived in a local tool with its own loop; the app must run the same show itself.
 """
@@ -34,7 +34,7 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass, fields
 
-from redzone.grading import RESUME_LEAD, raw_type
+from redzone.grading import RESUME_LEAD, is_action, raw_type
 from redzone.models import League
 from redzone.noggin import park_core
 from redzone.noggin.park_core import PARK_PARAMS, Arr, Night, Setting, State, Stats
@@ -133,6 +133,34 @@ class ShowParams:
 
 SHOW = ShowParams()
 HOLD_AT = (10, 30, 60, 120)        # seconds after a resume at which the stream on screen has its place read again (while it stays up)
+
+
+# ---------------------------------------------------------------------------------------------- the football slider
+SLIDER_ANCHOR = 10.0        # within this of an end, that end's side is the anchor ("never miss a snap" or the mirror)
+SLIDER_RANGE = 4.0          # at the ends football's value is weighted x4 (100) or x1/4 (0) against the others; 50 = x1
+
+
+def football_weight(s: float) -> float:
+    """Football's value weight at slider position s (0-100): SLIDER_RANGE ** ((s - 50) / 50), smooth and symmetric in
+    log: 0 -> 1/4, 25 -> 1/2, 50 -> 1, 75 -> 2, 100 -> 4."""
+    s = min(100.0, max(0.0, float(s)))
+    return SLIDER_RANGE ** ((s - 50.0) / 50.0)
+
+
+def slider_anchor(s: float, crunch: int, football: list, live: list, lev: list) -> int:
+    """The anchor game at slider position s. Near 100 (>= 100 - SLIDER_ANCHOR): a live football game, so the others only
+    fill its dead time. Near 0 (<= SLIDER_ANCHOR): never football; the live non-football game with the most leverage (or
+    crunch's own, when it is not football). In between: crunch's anchor as before. Rule #1 is not touched: the anchor
+    only weighs the plan; every jump still needs the guard's legal leave and landing, and a warrant."""
+    if s >= 100.0 - SLIDER_ANCHOR:
+        fb = [g for g, (f, ok) in enumerate(zip(football, live)) if f and ok]
+        return max(fb, key=lambda g: lev[g]) if fb else crunch
+    if s <= SLIDER_ANCHOR:
+        if crunch >= 0 and not football[crunch]:
+            return crunch
+        others = [g for g, (f, ok) in enumerate(zip(football, live)) if not f and ok]
+        return max(others, key=lambda g: lev[g]) if others else -1
+    return crunch
 
 
 # ---------------------------------------------------------------------------------------------- timing
@@ -266,6 +294,7 @@ class FactsFeed:
         self.keep_shots = keep_shots       # False (the app, always): the show's arrays are handed NO shots, so nothing but the
         #                                    grader's dead time can make a second legal (only the replay's what-if keeps them)
         self.fx = [GameFacts(lg, gid, params) for lg, gid in self.games]
+        self.lag_seen: dict = {}                                 # [PARK-NFL-LAG] game -> wall seconds from a row's stamp to its first sight
         self.fresh: dict = {}
         self.key = [None] * len(games)
         self.at = [NEVER] * len(games)
@@ -285,10 +314,22 @@ class FactsFeed:
         dead time after it."""
         fx, lg, floor = self.fx[g], self.games[g][0], None
         k = len(fx.plays) - 1
-        while k >= 0 and fx.wall[k] > since - 1.0:
+        lo = since - 1.0
+        if fx.football:                                          # [PARK-NFL-LAG] football's table is measured from the action
+            a = k                                                # row before the stoppage (the gap's start), so its rows are
+            while a >= 0 and not is_action(lg, fx.plays[a]):     # looked at from there
+                a -= 1
+            lo = min(lo, fx.wall[a] - 1.0) if a >= 0 else lo
+        while k >= 0 and fx.wall[k] > lo:
             m = self.stop_min.get(f"{lg.value}|{raw_type(fx.plays[k])}")
             if m:
-                floor = max(floor or 0.0, fx.wall[k] + float(m))
+                base = fx.wall[k]
+                if fx.football:
+                    a = k
+                    while a >= 0 and not is_action(lg, fx.plays[a]):
+                        a -= 1
+                    base = fx.wall[a] if a >= 0 else base     # the gap's own start, as the table measured it
+                floor = max(floor or 0.0, base + float(m))
             k -= 1
         return floor
 
@@ -308,13 +349,25 @@ class FactsFeed:
 
     def offer(self, g: int, summary: dict, at: int, final: bool | None = None) -> bool:
         """A summary of game g read at grid second `at`. True when it changed that game's facts."""
+        fx = self.fx[g]
+        n0, first = len(fx.plays), self.at[g] <= NEVER
+        last0 = fx.wall[-1] if fx.wall else None
         try:
             self.fx[g].edge_hint = self.night.base + at + self.leads[g] - self.shifts[g]
             self.fx[g].update(summary, final)
         except (KeyError, TypeError, ValueError):
             self.errors += 1
             return False
+        if not first and n0 and len(fx.plays) > n0 and fx.wall[n0 - 1] == last0:     # (not after a reset)
+            seen = self.lag_seen.setdefault(g, [])                # rows new since the last poll: how late each one came
+            seen.extend(self.night.base + at - w for w in fx.wall[n0:])
+            del seen[:-40]
         return self._publish(g, at)
+
+    def lag_s(self, g: int, min_n: int = 5) -> float | None:
+        """[PARK-NFL-LAG] The feed's measured lag for game g (median of its newest first sightings), None before min_n."""
+        seen = self.lag_seen.get(g) or []
+        return sorted(seen)[len(seen) // 2] if len(seen) >= min_n else None
 
     def offer_rows(self, g: int, rows: list, at: int, final: bool = False, data: dict | None = None) -> bool:
         """The same from rows handed over one by one (the replay: `rows` are the game's NEW rows, in feed order)."""
@@ -350,8 +403,9 @@ class FactsFeed:
             o = fx._open(max(edge, fx.wall[-1]))
             mine = o is not None and of >= o.since - 1.0         # what is not final is the stoppage still open at the last row
             floor = self._floor(g, o.since) if (mine and self.stop_min) else None
+            cap = fx.clock_cap_at() if (mine and fx.football) else None     # [PARK-NFL] the play clock's limit, or None
             op = (max(1, int(of + d - base)), None if floor is None else max(1, int(floor + d - base)),
-                  self._stoppage(g, o.since) if mine else None)
+                  self._stoppage(g, o.since) if mine else None, None if cap is None else int(cap + d - base))
         self.fresh[g] = (clip(shift(view, d), base + 1), op)
         return True
 
@@ -451,8 +505,13 @@ class Show:
 
     def __init__(self, night, s: Setting, timing: ShowTiming, rig, feed, *, plan: Plan | None = None, names=None, chans=None,
                  leagues=None, keep=None, judge=None, eyes=None, model=None, board=None, say=print, emit=None, tune0=None,
-                 prefs=None, params: ShowParams = SHOW, crunch: bool | None = None, clips: bool = False, warrant: str | None = None):
+                 prefs=None, params: ShowParams = SHOW, crunch: bool | None = None, clips: bool = False, warrant: str | None = None,
+                 no_back=None, depth=None, football_slider: float | None = None):
         P = self.P = params
+        self.depth = dict(depth or {})                           # [PARK-NFL-LAG] game -> seconds deeper its stream is parked (its feed is late)
+        if depth is not None:
+            rig.depth = self.depth                               # the rig puts each tune of that game this much further back
+        self.no_back = frozenset(no_back or ())                 # [park.prime] games whose app cannot be sent back (no rewind)
         self.night, self.s, self.tm, self.rig, self.feed = night, s, timing, rig, feed
         self.A = night.arrs(s.shots, s.value, s.live_w)
         self.N = len(self.A)
@@ -502,6 +561,14 @@ class Show:
         self.to_judge: list = []                                 # cuts the watcher has still to rule on: [what, game, second, tries]
         self.eyes_says = {"leaves_ok": 0, "leaves_bad": 0, "leaves_unknown": 0, "joins_ok": 0, "joins_bad": 0, "joins_unknown": 0}
         self.prefs, self.crunch, self.anchor_now = prefs or [1.0] * self.N, (P.crunch if crunch is None else crunch), -1
+        # [football slider] Nick, Nov 11: "one end is max football plays other sports backfill in / and the reverse". None
+        # (no football game, or the park flag off) and 50 change nothing; see football_weight / slider_anchor.
+        from redzone.noggin.park_facts import is_football
+        self.football = [is_football(lg) for lg in self.leagues]
+        self.slider = float(football_slider) if (football_slider is not None and any(self.football)) else None
+        if self.slider is not None and self.slider != 50.0:
+            w = football_weight(self.slider)
+            self.prefs = [p * (w if f else 1.0) for p, f in zip(self.prefs, self.football)]
         self.clips, self.aired, self.clip_tunes = clips, [[] for _ in range(self.N)], 0     # must-see seconds that have been on screen
         self.refused: dict[str, int] = {}
         self.stayed: dict[str, int] = {}
@@ -544,6 +611,8 @@ class Show:
 
     def tune_lag_of(self, g: int, default: int) -> int:
         v = self.lags.get(g)
+        if not v and self.depth.get(g):
+            return int(default + math.ceil(self.depth[g]))     # [PARK-NFL-LAG] a deep game's tune lands this much further back
         return default if not v else int(math.ceil(sorted(v)[len(v) // 2] + self.tm.p.tune_sd))
 
     def limit(self, g: int) -> tuple:
@@ -577,6 +646,27 @@ class Show:
         return base
 
     def anchor(self) -> int:
+        """The anchor: crunch time's (below), or the football slider's near its ends (`slider_anchor`)."""
+        a = self._crunch_anchor()
+        if self.slider is None or self.last_t is None:
+            return a
+        out = slider_anchor(self.slider, a, self.football, self._live_now(), self._lev_now())
+        self.anchor_now = out
+        return out
+
+    def _live_now(self) -> list:
+        t = self.last_t
+        return [self.A[g].a0 <= t <= self.A[g].a1 for g in range(self.N)]
+
+    def _lev_now(self) -> list:
+        out = []
+        for g in range(self.N):
+            x = self.A[g]
+            e = min(x.n - 1, max(0, min(self.last_t + self.know, self.feed.edge(g))))
+            out.append(x.lev[e])
+        return out
+
+    def _crunch_anchor(self) -> int:
         """Crunch time: the game that must be on whenever it is in play (the other games only fill its stoppages), or -1.
         A game is in crunch time while the feed's last `crunch_look` seconds hold a high-leverage play (the grader's own
         close-and-late rule, overtime included); of several, the one with the most leverage."""
@@ -603,6 +693,8 @@ class Show:
         LEFT presses put it, the extra seconds they take, the presses), or None when that is past the rewind's reach.
         A game whose tunes have ended further back than the gesture alone puts them (a channel that runs late) keeps
         that extra."""
+        if g in self.no_back:
+            return None                                          # [park.prime] no rewind on this game's app: no back route
         rig, P, sd = self.rig, self.P, self.tm.p.tune_sd
         base = max(1, rig.steps)
         usual = int(math.ceil(rig.tune_lag + sd))
@@ -689,6 +781,20 @@ class Show:
             self.pad[g], self.read_now[g] = pad, ok
             self.extra[g] = max(0, pad - self.pad0)
             self._rebuild(g)
+
+    def set_k(self, g: int, k) -> bool:
+        """[park.prime] Game g's K, learned during the show (a Prime stick's own score-bug reads, `park_prime.game_k`):
+        its timing is replaced and its padding made again at the next second. Only a game with no K of its own takes
+        one this way, and never a K of another game. True when taken."""
+        from redzone.noggin.park_timing import GameTiming
+        if k is None or not 0 <= g < self.N or self.tm.g[g].known:
+            return False
+        old = self.tm.g[g]
+        self.tm.g[g] = GameTiming(old.league, k, old.params)
+        self._pad_key = None
+        self.say(f"K: {self.names[g]} now has its own K from its stick's score bug ({k.k:+.2f} s, sd {k.spread:.2f}, {k.n} reads).")
+        self.emit({"ev": "k", "tick": self.last_t, "game": g, "k_s": k.k, "sd_s": round(k.spread, 3), "n": k.n, "source": k.source})
+        return True
 
     # ---- one second ----------------------------------------------------------------------------------------------
     async def tick(self, t: int) -> None:
@@ -783,8 +889,10 @@ class Show:
             op, of, fix, adv, tail = self.open[g], None, NEVER, ALWAYS, self.pad[g]
             eyes_pad = self.tm.eyes_pad(self.read_now[g])
             if op is not None:
-                of, adv = op[0], self.feed.edge(g) - self.P.open_hold
+                of, adv = op[0], self.feed.edge(g) - self._open_hold(g)
                 fix = op[1] if op[1] is not None else fix
+                if len(op) > 3 and op[3] is not None:            # [PARK-NFL] never past the play clock with nothing to say why
+                    adv, fix = min(adv, op[3]), min(fix, op[3])
                 if self.model is not None and len(op) > 2 and op[2] is not None:
                     more = self.model.surely_left(self.leagues[g], op[2], max(0.0, float(self.feed.edge(g) - op[2]["first"])))
                     if more is not None and more > 0:            # the model seam: a later floor only (never an earlier one)
@@ -803,6 +911,14 @@ class Show:
                 of = sp["hi"] + 1                                # inside what the watcher saw, its word is final and exact
             self.open_from[g], self.fix[g], self.adv[g], self.tail[g] = of, fix, adv, tail
             self.sure[g] = max(fix, adv) if of is not None else ALWAYS
+
+    def _open_hold(self, g: int) -> int:
+        """How far short of the feed's edge an open stoppage is trusted: basketball the grader's lead (open_hold), football
+        [PARK-NFL] its own play plus the feed lag (park_facts.FactsParams.football_lead_s)."""
+        from redzone.noggin.park_facts import is_football
+        if is_football(self.leagues[g]):
+            return int(math.ceil(self.feed.fx[g].p.lead(League(self.leagues[g]))))
+        return self.P.open_hold
 
     def _collect(self, t: int) -> None:
         """Steps that finished since the last second."""
@@ -885,13 +1001,14 @@ class Show:
                 back_s = P.step * (deep[1] - max(1, rig.steps)) if deep is not None else 0.0     # sent back this much further than usual
                 adopted = str(note.get("way", "")).startswith(("adopted:", "kept:"))     # not reloaded: it is where its read says (up to minutes back)
                 top = P.lag_read_max if (rig.read[h] and adopted) else rig.tune_lag + P.lag_sane
-                if not rig.instant and not (-self.delay - P.lag_early <= rig.lag[h] - back_s <= top):
+                extra = float((getattr(rig, "extra", None) or {}).get(h, 0.0)) if self.depth.get(game) else 0.0   # [PARK-NFL-LAG]
+                if not rig.instant and not (-self.delay - P.lag_early <= rig.lag[h] - back_s - extra <= top):
                     # not a place a fresh tune can be at: take the gesture's own (it is where the stream was just put), and
                     # count its tune as not read (the wide padding)
                     self.emit({"ev": "step", "kind": "place", "tick": t, "game": game, "stream": h, "ok": 0, "lag_s": round(rig.lag[h], 1),
                                "why": "not a place a fresh tune can be at: the read gesture's own place is used"})
                     self.say(f"NOTE: the hidden stick's place after its tune was not believable ({rig.lag[h]:.0f} s behind): using where the tune put it.")
-                    rig.replace(h, rig.tune_lag + back_s)
+                    rig.replace(h, rig.tune_lag + back_s + extra)
                 self.fresh[h] = 0.0 if rig.instant else (rig.lag[h] - back_s) if not adopted else float(rig.tune_lag)
                 if not rig.instant and not adopted:
                     self.lags.setdefault(game, []).append(rig.lag[h] - back_s)
