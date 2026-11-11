@@ -257,6 +257,18 @@ def test_the_show_writes_the_contract_the_show_tab_reads(loaded, tmp_path):
     jumps = [e for e in events if e["kind"] == "jump"]
     assert len(jumps) == show.jumps_done and all(e["warrant"]["ok"] for e in jumps)
     assert board.latest == state and "/" not in json.dumps(state["on_screen"])
+    served = tab.build_state(tmp_path, now=state["updated"] + 1.0)             # and the tab's own reader takes it whole
+    assert served["on_screen"]["game"] == state["on_screen"]["game"] and served["pace"]["jumps"] == show.jumps_done
+    assert served["rule1"]["judged"] == "replay" and served["stale_s"] == pytest.approx(1.0, abs=0.2)
+
+
+def test_with_no_folder_set_the_show_tab_reads_where_the_apps_own_show_writes(cfg):
+    from redzone.web import show as tab
+    assert tab._folder(cfg) is None                                            # flag off: no folder, as before
+    cfg.update({"park": {"enabled": True}})
+    assert tab._folder(cfg) == Path("data/show") and tab._folder(cfg, "show.eyes_dir") is None
+    cfg.update({"show": {"state_dir": "/tmp/elsewhere"}})
+    assert tab._folder(cfg) == Path("/tmp/elsewhere")                          # a folder that is set always wins
 
 
 # ---------------------------------------------------------------------------------------------- A. the controller's park steps as the show's sticks

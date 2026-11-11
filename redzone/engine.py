@@ -3431,6 +3431,7 @@ class Engine:
             "screen_evidence": self.screen_evidence(),
             "queue": [self._queue_item(m) for m in sorted(dec.queue, key=lambda m: -m.value)[:10]],
             **({"game_queue": self._game_queue} if self.cfg.get("queue.enabled", False) else {}),
+            **({"park": self.park.view()} if self.park is not None else {}),   # [park.enabled] the app's own show (absent with the flag off)
             "log": self._log(),
             "server_time": time.time(),
             "recorded_playback": self.recorded.snapshot(),

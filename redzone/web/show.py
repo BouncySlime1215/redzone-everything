@@ -137,7 +137,11 @@ def _read_json(path: Path):
 
 def _folder(cfg, key: str = "show.state_dir") -> Path | None:
     raw = cfg.get(key, "") or ""
-    return Path(raw).expanduser() if isinstance(raw, str) and raw.strip() else None
+    if isinstance(raw, str) and raw.strip():
+        return Path(raw).expanduser()
+    if key == "show.state_dir" and cfg.get("park.enabled", False):
+        return Path("data/show")   # [park.enabled] where the app's own show writes when no folder is set (redzone/park_run.py)
+    return None
 
 
 def build_state(folder: Path | None, now: float | None = None, eyes_dir: Path | None = None) -> dict:
