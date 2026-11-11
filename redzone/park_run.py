@@ -444,8 +444,13 @@ class ParkRun:
         self.board = Board(folder, now=self._now)
         prime = park_prime.prime_on(cfg.get)                     # [park.prime] off: every line below is as before
         yttv_s = P.tune0_code + (P.read if steps else 0.0)
+        keep = None
         if prime:
             self._prime_setup(ctl, rig, P, games)
+            kf = next((k for k, (_, g, t) in enumerate(games)
+                       if park_prime.app_of(t) == park_prime.PRIME and g.league.base.value == "nfl"), None)
+            if cfg.get("park.prime.pin_football", False) is True and kf is not None and rig.game[on] == kf:
+                keep = on                                        # [pinned anchor] the Prime football stream is never re-tuned
         self.show = Show(night, eng, tm, rig, feed, names=names,
                          chans=[("prime" if park_prime.app_of(t) == park_prime.PRIME else t.split(":", 1)[1]) for t in targets],
                          leagues=[g.league.value for _, g, _ in games], board=self.board, say=lambda line: log.info("park show: %s", line),
@@ -456,7 +461,7 @@ class ParkRun:
                          no_back={k for k, t in enumerate(targets) if not park_prime.rewinds(t, cfg.get)} if prime else None,
                          depth=({k: max(0.0, lags[k] - P.feed_lag) for k in range(len(games)) if lags[k] > P.feed_lag}
                                 if cfg.get("park.feed_lag.enabled", False) is True else None),
-                         football_slider=football_slider(cfg))
+                         football_slider=football_slider(cfg), keep=keep, keep_live=keep is not None)
         self.show.begin(0, on, a)
         self.rig, self.clock, self.gids, self.seen, self.told = rig, clock, [gid for gid, _, _ in games], {}, 0
         self.shows += 1

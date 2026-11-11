@@ -77,6 +77,7 @@ class Judge:
         self.cuts: list = []                                     # per jump: (game left, its true second, game joined, its true second)
         self.e_log: list = []
         self.on: dict = {}                                       # [PARK-NFL] game -> the true seconds that were on screen
+        self.tl: dict = {}                                       # [football slider] grid second -> the game on screen
 
     def _draw(self, g: int, read_ok: bool) -> float:
         return self.rng.gauss(0.0, self.tm.errs(g, read_ok)[0]) + self.gd[g]
@@ -91,6 +92,8 @@ class Judge:
         x = self.A[g]
         ti = self._at(x, pos - self.e.get(k, 0.0))
         self.on.setdefault(g, set()).add(ti)
+        if t is not None:
+            self.tl[int(t)] = g                                  # [football slider] which game was on screen at each grid second
         dead = bool(x.dead[ti])
         self.pic += 1
         if not dead:
@@ -485,7 +488,7 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
            params: ShowParams | None = None, stop_min: dict | None = None, board=None, rig_kw: dict | None = None,
            model=None, eyes=None, emit=None, any_shot: bool = False, grid: tuple | None = None, prime: int = 0,
            prime_k: str = "bug", prime_pad: int | None = None, walk: str = "any", nfl: int = -1, nfl_lag: float | None = None,
-           deep: bool = False, slider: float | None = None) -> Show:
+           deep: bool = False, slider: float | None = None, pin: bool = False) -> Show:
     """The app's PARK controller on a recorded dev night: fake sticks, a fake TV, a clock that is not the wall.
     first = "read" (the first picture's place was read: the app's `Controller.park_start`, the local runner's start) or
     "live" (what happens WITHOUT that step: the stream on screen sits at its live edge, never read; the feed is never
@@ -540,16 +543,21 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
         depth = {g: max(0.0, nfl_lag - P.feed_lag) for g, r in enumerate(rs) if r.league.base == League.NFL}
         for g, x in depth.items():
             tune0[g] = tune0[g] + (x if g in primes else 0.6 * math.ceil(x / P.step))
-    rig.game[0] = S0.sg
+    first_g = S0.sg
+    if pin and any(r.league.base == League.NFL for r in rs):     # [pinned anchor] the football game starts on stream 0, kept there
+        first_g = next(g for g, r in enumerate(rs) if r.league.base == League.NFL)
+    rig.game[0] = first_g
+    if pin and depth and first_g in depth:                       # the pinned football stream starts as deep as its feed needs
+        rig.lag[0] = rig.true_lag[0] = float(depth[first_g])
     if first == "live":                                          # the app's start: on screen since before PARK, never read
         rig.read[0], rig.lag[0] = False, -float(P.show_delay)
-    judge = Judge(A, tm, seed, S0.sg, first_read=rig.read[0])
+    judge = Judge(A, tm, seed, first_g, first_read=rig.read[0])
     show = Show(night, eng, tm, rig, feed, plan=Plan(jump_bonus=P.bonus), judge=judge, board=board, say=say or (lambda line: None),
                 names=[r.matchup or r.gid for r in rs], chans=[f"channel {k + 1}" for k in range(len(rs))], tune0=tune0,
                 params=P, model=model, eyes=eyes, emit=emit, no_back=set(primes) or None, depth=depth,
-                football_slider=slider)
+                football_slider=slider, keep=0 if pin and any(r.league.base == League.NFL for r in rs) else None, keep_live=pin)
     show.replays, show.base = rs, full.base                      # for the frozen grader (graded) and the stamp = snap judge
-    S = show.begin(S0.sg, 0, a)
+    S = show.begin(first_g, 0, a)
     S.sb = float(rig.lag[0])
     rows = RowFeed(rs, feed, full.base, leads, poll)
     if board is not None:
@@ -643,6 +651,22 @@ def picture_grade(show: Show, after_s: float = 6.0) -> dict:
     leaves = sum(1 for g1, ti, g2, ej in j.cuts if live(g1, ti))
     return {"football_joins_mid": joins, "football_leaves_mid": leaves,
             "football_cuts": sum(1 for g1, ti, g2, ej in j.cuts if g1 in acts or g2 in acts)}
+
+
+def backfill(show: Show, g: int) -> dict:
+    """[football slider] Seconds the picture showed another game while football game g was in dead time at the show's
+    edge (its breaks backfilled), and while it was in play there (football play away from screen, shown later or not)."""
+    j = show.judge
+    x = j.A[g]
+    fill = away = 0
+    for t, on in j.tl.items():
+        if on == g or not (x.a0 <= t <= x.a1):
+            continue
+        if x.dead[min(x.n - 1, max(0, t))]:
+            fill += 1
+        else:
+            away += 1
+    return {"backfill_s": fill, "away_in_play_s": away}
 
 
 def snap_share(show: Show, g: int) -> dict:
@@ -829,6 +853,7 @@ def main() -> int:
     ap.add_argument("--prime-k", choices=("bug", "none"), default="bug", help="a Prime game's K: from its own bug reads, or none")
     ap.add_argument("--prime-pad", type=int, default=None, help="what-if: a Prime game's padding in s (the parked-frame bug check)")
     ap.add_argument("--nfl", type=int, default=-1, help="[PARK-NFL] add the i-th one-game NFL dev night, time-shifted onto the slate")
+    ap.add_argument("--pin", action="store_true", help="[pinned anchor] the football game stays on stream 0 and is never re-tuned")
     ap.add_argument("--slider", type=float, default=None, help="[football slider] 0 = more everything else ... 100 = more football")
     ap.add_argument("--deep", action="store_true", help="[PARK-NFL-LAG] park the late-feed game (lag - 8 s) deeper")
     ap.add_argument("--nfl-lag", type=float, default=None, help="[PARK-NFL] the football feed's lag in s (default: the show's 8 s)")
@@ -845,7 +870,7 @@ def main() -> int:
     show = replay(a.night, a.games, case=a.case, hands=a.hands, first=a.first, minutes=a.minutes, seed=a.seed, league=a.league,
                   fail=fail, say=say, any_shot=a.what_if_any_shot, grid=tuple(a.what_if_grid) if a.what_if_grid else None,
                   prime=a.prime, prime_k=a.prime_k, prime_pad=a.prime_pad, walk=a.walk, nfl=a.nfl, nfl_lag=a.nfl_lag,
-                  deep=a.deep, slider=a.slider)
+                  deep=a.deep, slider=a.slider, pin=a.pin)
     _, text = summary(show, f"SUMMARY (replayed on recorded night {a.night} with FAKE sticks, not measured on the TV; {a.games} games, "
                             f"case {a.case}, hands {a.hands}, paddings {sorted(set(show.pad))} s, show delay {show.delay} s)"
                       + ("\n  WHAT-IF, OUTSIDE RULE #1: the any-shot rule is ON (cuts in the 4 s after any shot, made or missed)" if a.what_if_any_shot else ""))

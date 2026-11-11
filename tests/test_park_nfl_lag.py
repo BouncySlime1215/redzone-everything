@@ -120,16 +120,10 @@ def test_with_no_football_the_basketball_show_is_unchanged_by_the_lag_settings()
 
 
 # ---------------------------------------------------------------------------------------------- the football slider
-def test_the_slider_curve_and_where_each_end_takes_the_anchor():
-    from redzone.noggin.park_show import football_weight, slider_anchor
-    assert [round(football_weight(s), 3) for s in (0, 25, 50, 75, 100)] == [0.25, 0.5, 1.0, 2.0, 4.0]
-    fb, live, lev = [False, True, False], [True, True, True], [0.5, 0.2, 0.9]
-    assert slider_anchor(50, -1, fb, live, lev) == -1 and slider_anchor(50, 2, fb, live, lev) == 2      # as before
-    assert slider_anchor(89, -1, fb, live, lev) == -1 and slider_anchor(90, -1, fb, live, lev) == 1      # more football
-    assert slider_anchor(100, 2, fb, live, lev) == 1                          # over a basketball crunch anchor too
-    assert slider_anchor(10, 1, fb, live, lev) == 2 and slider_anchor(0, -1, fb, live, lev) == 2         # more everything else
-    assert slider_anchor(0, 0, fb, live, lev) == 0                            # a basketball crunch anchor stands
-    assert slider_anchor(95, -1, fb, [True, False, True], lev) == -1          # no live football: nothing to anchor
+def test_the_slider_ends_are_value_weights_not_anchors():
+    from redzone.noggin import park_show
+    assert [round(park_show.football_weight(s), 4) for s in (0, 25, 50, 75, 100)] == [0.0625, 0.25, 1.0, 4.0, 16.0]
+    assert not hasattr(park_show, "slider_anchor")                          # no end takes the anchor: the others backfill
 
 
 def test_the_slider_ships_at_50_and_50_means_off():
@@ -152,13 +146,13 @@ def test_at_50_or_with_no_football_the_show_decides_exactly_as_without_the_slide
 
 @needs_archive
 @pytest.mark.parametrize("s", [0, 100])
-def test_at_either_end_rule_1_and_warrants_hold(s):
+def test_at_either_end_rule_1_and_warrants_hold_and_the_show_still_jumps(s):
     show = pr.replay("20261023", 1, minutes=30, walk="none", nfl=0, slider=s)
     fg, pic = pr.graded(show), pr.picture_grade(show)
     assert (fg["grader_entries_mid_play"], fg["grader_entries_mid_play_strict"], fg["grader_leaves_mid_play"]) == (0, 0, 0)
     assert (pic["football_joins_mid"], pic["football_leaves_mid"]) == (0, 0)
     row = pr.result(show)
-    assert row["warranted"] == row["warrant_n"]
+    assert row["warranted"] == row["warrant_n"] and row["jumps"] >= 1
 
 
 @needs_archive
@@ -169,3 +163,20 @@ def test_the_feed_lag_is_measured_from_each_rows_first_sight():
     for g in range(2):
         lag, lead = show.feed.lag_s(g), show.feed.leads[g]
         assert lag is not None and -lead - 0.5 <= lag <= -lead + 3.5
+
+
+# ---------------------------------------------------------------------------------------------- the pinned anchor
+@needs_archive
+def test_a_pinned_prime_football_stream_is_re_tuned_only_at_the_lateness_cap():
+    """[pinned anchor] The Prime football game stays on stream 0: it is not held when left (it plays on unseen), it is
+    parked again before the way back, and it is re-tuned (about 100 s on Prime) only once it has run up to the lateness
+    cap. All roaming happens on stream 1. Fake sticks."""
+    show = pr.replay("20261023", 1, minutes=60, nfl=0, prime=1, nfl_lag=44.0, deep=True, pin=True)
+    assert show.keep == 0 and show.keep_live and show.rig.game[0] is not None
+    tunes0 = [x for x in show.rig.sent if x[0] == "tune" and x[1] == 0]
+    tunes1 = [x for x in show.rig.sent if x[0] == "tune" and x[1] == 1]
+    assert len(tunes1) >= 3 and 3 * len(tunes0) <= len(tunes1)              # the other stick roams; football re-tuned only at the cap (3 in 60 min)
+    fg, pic = pr.graded(show), pr.picture_grade(show)
+    assert (fg["grader_entries_mid_play"], fg["grader_entries_mid_play_strict"], fg["grader_leaves_mid_play"]) == (0, 0, 0)
+    assert (pic["football_joins_mid"], pic["football_leaves_mid"]) == (0, 0) and show.jumps_done >= 4
+    assert pr.result(show)["behind_max_s"] <= 145 + 1

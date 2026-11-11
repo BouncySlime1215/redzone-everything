@@ -46,8 +46,8 @@ function footballSlider(S) {
   const on = cfg("park.enabled") === true && arr(S && S.games).some((g) => (g.league === "nfl" || g.league === "cfb") && g.phase === "live");
   if (!on) return "";
   const v = num(cfg(path), 50);
-  const help = v >= 90 ? "Football is the anchor: every snap it can legally show; the others fill its breaks"
-    : v <= 10 ? "The other games are the anchor; football fills their breaks"
+  const help = v >= 90 ? "Football first: every football play, and the other games fill its long breaks"
+    : v <= 10 ? "The other games first; football fills their long breaks"
     : v === 50 ? "Value decides, as usual" : v > 50 ? "Leaning to football" : "Leaning to the other games";
   return `<div class="slider" data-key="football-slider"><div class="slider-top"><span class="t1">Football night</span><span class="val tnum" data-val-for="${attr(path)}">${esc(v)}</span></div>
       <div class="t2">${esc(help)}. Never mid-play either way.</div>

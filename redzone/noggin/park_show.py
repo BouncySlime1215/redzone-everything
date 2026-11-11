@@ -136,31 +136,15 @@ HOLD_AT = (10, 30, 60, 120)        # seconds after a resume at which the stream 
 
 
 # ---------------------------------------------------------------------------------------------- the football slider
-SLIDER_ANCHOR = 10.0        # within this of an end, that end's side is the anchor ("never miss a snap" or the mirror)
-SLIDER_RANGE = 4.0          # at the ends football's value is weighted x4 (100) or x1/4 (0) against the others; 50 = x1
+SLIDER_RANGE = 16.0         # at the ends football's value is weighted x16 (100) or x1/16 (0) against the others; 50 = x1.
+#                             The ends are weights, not anchors (coordinator, Nov 11: "others backfill in" at 100)
 
 
 def football_weight(s: float) -> float:
     """Football's value weight at slider position s (0-100): SLIDER_RANGE ** ((s - 50) / 50), smooth and symmetric in
-    log: 0 -> 1/4, 25 -> 1/2, 50 -> 1, 75 -> 2, 100 -> 4."""
+    log: 0 -> 1/16, 25 -> 1/4, 50 -> 1, 75 -> 4, 100 -> 16."""
     s = min(100.0, max(0.0, float(s)))
     return SLIDER_RANGE ** ((s - 50.0) / 50.0)
-
-
-def slider_anchor(s: float, crunch: int, football: list, live: list, lev: list) -> int:
-    """The anchor game at slider position s. Near 100 (>= 100 - SLIDER_ANCHOR): a live football game, so the others only
-    fill its dead time. Near 0 (<= SLIDER_ANCHOR): never football; the live non-football game with the most leverage (or
-    crunch's own, when it is not football). In between: crunch's anchor as before. Rule #1 is not touched: the anchor
-    only weighs the plan; every jump still needs the guard's legal leave and landing, and a warrant."""
-    if s >= 100.0 - SLIDER_ANCHOR:
-        fb = [g for g, (f, ok) in enumerate(zip(football, live)) if f and ok]
-        return max(fb, key=lambda g: lev[g]) if fb else crunch
-    if s <= SLIDER_ANCHOR:
-        if crunch >= 0 and not football[crunch]:
-            return crunch
-        others = [g for g, (f, ok) in enumerate(zip(football, live)) if not f and ok]
-        return max(others, key=lambda g: lev[g]) if others else -1
-    return crunch
 
 
 # ---------------------------------------------------------------------------------------------- timing
@@ -502,7 +486,7 @@ class Show:
     def __init__(self, night, s: Setting, timing: ShowTiming, rig, feed, *, plan: Plan | None = None, names=None, chans=None,
                  leagues=None, keep=None, judge=None, eyes=None, model=None, board=None, say=print, emit=None, tune0=None,
                  prefs=None, params: ShowParams = SHOW, crunch: bool | None = None, clips: bool = False, warrant: str | None = None,
-                 no_back=None, depth=None, football_slider: float | None = None):
+                 no_back=None, depth=None, football_slider: float | None = None, keep_live: bool = False):
         P = self.P = params
         self.depth = dict(depth or {})                           # [PARK-NFL-LAG] game -> seconds deeper its stream is parked (its feed is late)
         if depth is not None:
@@ -541,6 +525,9 @@ class Show:
         self.chans = chans or ["" for _ in range(self.N)]
         self.leagues = leagues or [x.league for x in timing.g]
         self.on, self.keep, self.keep_rolls = 0, keep, False      # the stream on screen; the stream never to be re-tuned
+        # [pinned anchor] the kept stream is not held paused when it is left: it plays on unseen at a constant lateness and is
+        # parked again on a dead ball before the way back (a Prime football game: no re-tune, no back route)
+        self.keep_live = bool(keep_live) and keep is not None
         self.judge, self.board, self.say, self.emit = judge, board, say, emit or (lambda row: None)
         self.eyes = eyes                                         # the watcher seam (NoWatcher's shape), or None
         self.model = model                                       # the stoppage model seam (NoModel's shape), or None
@@ -558,7 +545,7 @@ class Show:
         self.eyes_says = {"leaves_ok": 0, "leaves_bad": 0, "leaves_unknown": 0, "joins_ok": 0, "joins_bad": 0, "joins_unknown": 0}
         self.prefs, self.crunch, self.anchor_now = prefs or [1.0] * self.N, (P.crunch if crunch is None else crunch), -1
         # [football slider] Nick, Nov 11: "one end is max football plays other sports backfill in / and the reverse". None
-        # (no football game, or the park flag off) and 50 change nothing; see football_weight / slider_anchor.
+        # (no football game, or the park flag off) and 50 change nothing; the ends are value weights (football_weight).
         from redzone.noggin.park_facts import is_football
         self.football = [is_football(lg) for lg in self.leagues]
         self.slider = float(football_slider) if (football_slider is not None and any(self.football)) else None
@@ -593,12 +580,18 @@ class Show:
 
     # ---- what the planner asks the show ----------------------------------------------------------------------------
     def tune_cost(self, g: int, default: int) -> int:
-        if self.keep is not None and self.keep == 1 - self.on:
+        if self.keep is not None and self.keep == 1 - self.on and not self._kept_too_late():
             return NO_TUNE                                           # the hidden stream is the kept one: no tune is on offer
         if self.last_t is not None and self.last_t < self.block.get(g, -1):
             return NO_TUNE                                           # its tune has just failed
         v = self.tunes.get(g)
         return default if not v else int(math.ceil(sorted(v)[int(0.8 * (len(v) - 1) + 0.5)]))     # the slow side of what its tunes have taken
+
+    def _kept_too_late(self) -> bool:
+        """[pinned anchor] The kept stream, held while left, has run up to the lateness cap: only then may it be re-tuned
+        (a Prime football game: about 100 s with its hold), since it can never catch up any other way."""
+        S = self.S
+        return bool(self.keep_live and S is not None and S.hg >= 0 and S.hb - S.he >= self.reach - self.P.keep_margin)
 
     def fresh_gap(self, hidden: bool) -> int:
         """A tune of the game a stream already holds lands where a stream that simply kept playing already is: it is only
@@ -642,27 +635,6 @@ class Show:
         return base
 
     def anchor(self) -> int:
-        """The anchor: crunch time's (below), or the football slider's near its ends (`slider_anchor`)."""
-        a = self._crunch_anchor()
-        if self.slider is None or self.last_t is None:
-            return a
-        out = slider_anchor(self.slider, a, self.football, self._live_now(), self._lev_now())
-        self.anchor_now = out
-        return out
-
-    def _live_now(self) -> list:
-        t = self.last_t
-        return [self.A[g].a0 <= t <= self.A[g].a1 for g in range(self.N)]
-
-    def _lev_now(self) -> list:
-        out = []
-        for g in range(self.N):
-            x = self.A[g]
-            e = min(x.n - 1, max(0, min(self.last_t + self.know, self.feed.edge(g))))
-            out.append(x.lev[e])
-        return out
-
-    def _crunch_anchor(self) -> int:
         """Crunch time: the game that must be on whenever it is in play (the other games only fill its stoppages), or -1.
         A game is in crunch time while the feed's last `crunch_look` seconds hold a high-leverage play (the grader's own
         close-and-late rule, overtime included); of several, the one with the most leverage."""
@@ -713,11 +685,11 @@ class Show:
 
     def allow(self, t: int, S, out: tuple) -> tuple:
         jump, game, spot, how = out
-        hid_kept = self.keep is not None and self.keep == 1 - self.on
+        hid_kept = self.keep is not None and self.keep == 1 - self.on and not self._kept_too_late()
         hold = (False, S.hg, int(t - S.hb + S.he) if S.h_paused else -1, "")
         if (how == "tune" or (game >= 0 and game != S.hg)) and (hid_kept or t < self.block.get(game, -1)):
             return (False, S.hg, -1, "") if hid_kept else hold   # a kept stream plays on instead
-        if hid_kept and not jump and S.hg >= 0:
+        if hid_kept and not jump and S.hg >= 0 and not self.keep_live:
             if self.keep_rolls or (S.h_paused and S.hb - S.he >= self.reach - self.P.keep_margin):
                 self.keep_rolls = True                           # close to the lateness cap and it cannot be re-tuned:
                 return False, S.hg, -1, ""                       # from here on it plays on hidden and is joined as it plays
@@ -1200,7 +1172,7 @@ class Show:
             return
         if rig.instant and paused and not rig.paused[tgt]:
             await rig.pause(tgt, None)                           # the engine parked it and jumped in the same second
-        hold = None if (self.keep == self.on and self.keep_rolls) else self.on
+        hold = None if (self.keep == self.on and (self.keep_rolls or self.keep_live)) else self.on
         self.held_s = (t - self.paused_since) if (paused and self.paused_since is not None) else 0   # how long the landing was held
         self.relied = self._relied(t, g1, i, t > self.A[g1].a1 + S0["sb"], g2, j)   # what both ends of this cut rest on, as known NOW
         ctx = (snap, t, g1, i, g2, j, paused, self.on, tgt, wr)
@@ -1261,7 +1233,7 @@ class Show:
                         S.h_ready = t + 1
                 elif fut is not None:
                     fut.cancel()
-                if self.keep == was_on and self.keep_rolls:
+                if self.keep == was_on and (self.keep_rolls or self.keep_live):
                     S.h_paused, S.hb = False, S.he + rig.lag[was_on]
             return
         self.on, self.retune = was_on, False                     # nothing changed on the TV: the picture that was up stays up

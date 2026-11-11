@@ -1380,10 +1380,10 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
                            # of the row before it instead of dragging every later row up to its own (live run 4, flip 4)
   idle_poll_s: 5           # with park.enabled off the engine's park loop only sleeps, and looks at the flag this often
   start_retry_s: 30        # the stream on screen could not be placed (no read, no fresh tune): try again after this long
-  football_slider: 50      # [football slider] football nights (Nick, Nov 11): 0 = "More everything else" (the other sports are the
-                           # anchor; football fills their dead time) ... 100 = "More football" (football is the anchor; the others
-                           # fill its dead time). Football's value x 4^((s-50)/50); the anchor switches within 10 of an end. 50 =
-                           # value decides, unchanged. Shown in Settings only with park.enabled and a football game live
+  football_slider: 50      # [football slider] football nights (Nick, Nov 11): 0 = "More everything else" ... 100 = "More football".
+                           # Football's value x 16^((s-50)/50) (1/16 .. 16); the ends are weights, not anchors, so at 100 the
+                           # other games still backfill football's long breaks when a whole look fits. 50 = value decides,
+                           # unchanged. Shown in Settings only with park.enabled and a football game live
   feed_lag:                # [PARK-NFL-LAG] a late feed's game is parked deeper so its dead time is known before it is shown
     enabled: false         # OFF. On: each game of a listed league starts from its league's feed lag in redzone/lab/feed_lag_profile.json
                            # (Nov 2-3: nfl median 44 s, q90 62.5 s; n=150) instead of park.show.feed_lag (8 s), and is parked
@@ -1399,6 +1399,11 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
                            # buffered_jump.hold_chunk_s chunks); no back route (replay.apps); its place from the epoch position;
                            # its K from the hidden stick's own score-bug reads (sync.edge.k_min_reads / k_sd_max_s bars).
                            # Off: decision-identical to before (tests/test_park_prime.py). Unproven on the TV
+    pin_football: true     # [pinned anchor] (only with park.prime.enabled on) a Prime FOOTBALL game on screen when the show starts is
+                           # kept on its stick: never held paused when left (it plays on unseen, then is parked again before the way
+                           # back), re-tuned (about 100 s on Prime) only at the lateness cap; all roaming is on the other stick.
+                           # Replay, fake sticks, 3 nights, lag 44 s: football snaps with 3 NBA games 0.11 -> 0.19 (slider 50) and
+                           # 0.26 (slider 100); all value seen 0.46 -> 0.52; both judges 0 / 0 / 0; behind live max 143 s
     bug_gate: false        # [PARK-NFL-LAG] OFF. On: a parked Prime FOOTBALL frame is kept only if its score bug's play clock is
                            # below 40 (counting down from a dead ball; at 40 a play runs). Unread: kept (the feed's facts rule).
                            # The play clock was readable on 76% of frames of one Thursday replay (watcher, Nov 11); unproven live
