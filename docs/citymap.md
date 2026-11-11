@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**476 modules**, 404 untagged, 274 unowned, 34 orphans (no importer); 2240 call edges, 205 data files, 53 machines.
+**477 modules**, 405 untagged, 275 unowned, 34 orphans (no importer); 2246 call edges, 206 data files, 53 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -101,8 +101,8 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/channels.py` | Where can you actually watch a game? | models -> autonomy, canary, control, decider.gate, demo.engine, discovery.providers +24 | untagged |
-| `redzone/control.py` | Turns decisions into TV actions. | autonomy, channels, config, contracts.switching, decider.tune_offset, fallback_ladder +16 -> autonomy, demo.engine, engine, lab.night.run, supervisor, scripts.fault_drill +3 | APP-04, BTN-05, Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), SAFE-08, STK-01, STK-02, STK-05, STK-06, STK-07, Switch time p95 (SmartThings input change), TV-04 |
+| `redzone/channels.py` | Where can you actually watch a game? | models -> autonomy, canary, control, decider.gate, demo.engine, discovery.providers +25 | untagged |
+| `redzone/control.py` | Turns decisions into TV actions. | autonomy, channels, config, contracts.switching, decider.tune_offset, fallback_ladder +16 -> autonomy, demo.engine, engine, lab.night.run, supervisor, scripts.fault_drill +4 | APP-04, BTN-05, Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), SAFE-08, STK-01, STK-02, STK-05, STK-06, STK-07, Switch time p95 (SmartThings input change), TV-04 |
 | `redzone/discovery/__init__.py` (package) | Finding where things are watchable, by itself. | - -> - | untagged |
 | `redzone/discovery/lounge.py` | Ask the YouTube TV app on a stick which video id it is playing, over the network, no login. | - -> discovery.yttv, scripts.find_yttv_code | untagged |
 | `redzone/discovery/providers.py` | Provider candidates: installed apps, learned access failures, and per-game routes. | channels, models -> discovery.runtime, discovery.search, discovery.stickio, supervisor, tuners.prime_search, tuners.profiles +7 | untagged |
@@ -184,7 +184,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/platform/health.py` | Runtime invariants and the Health report (contracts/health.py), checked every supervisor tick. | contracts.health, models, uses:Fault, uses:Fix, uses:HealthReport, uses:Severity -> supervisor, scripts.fault_drill | untagged |
 | `redzone/platform/mac_health.py` | Mac health alerts: tell Nick's phone when the Mac itself is about to cost him the night. | - -> supervisor | untagged |
 | `redzone/platform/night_ops.py` | Night ops report: joins, errors, fallbacks, drift and Mac health for one night (Nick's Nov 7 order, item 7). | supervisor -> supervisor | untagged |
-| `redzone/platform/sound_guard.py` | Sound guard: the TV stays muted at volume 0, proven by reading it back (sound_guard.*, all off by default). | config, machines.platform, tv -> tv | untagged |
+| `redzone/platform/sound_guard.py` | Sound guard: the TV stays muted at volume 0, proven by reading it back (sound_guard.*, all off by default). | config, machines.platform, tv -> tv, scripts.park_hands_live | untagged |
 | `redzone/platform/wake.py` | The Mac slept, or moved networks: everything that held a connection is stale (hardening.mac). | - -> engine, supervisor | untagged |
 | `redzone/recorded.py` | Explicit recorded-game navigation, isolated from live decisions and calibration. | machines.platform, screen_ocr, tuners.adb, tuners.prime_search -> engine, scripts.find_yttv_code | untagged |
 | `redzone/recorder.py` | Flight recorder: the real-world numbers the simulator needs. | models, sources.espn, sources.leagues -> engine, lab.night.run | untagged |
@@ -216,7 +216,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, buffer_rc8, control, crunch +56 | untagged |
+| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, buffer_rc8, control, crunch +57 | untagged |
 | `redzone/contracts/__init__.py` (package) | Interfaces every thread codes against. | contracts.brain, contracts.breaks, contracts.budget, contracts.clock, contracts.events, contracts.feeds +62 -> - | untagged |
 | `redzone/contracts/brain.py` | Brain contract: the typed input and output of the brain, and `valid()`. | - -> agent.kaggle.qwen_common, agent.kaggle.qwen_eval, contracts, decider.decider, noggin.arbiter, noggin.legal +1 | untagged |
 | `redzone/contracts/breaks.py` | BreakModel contract: when a stoppage starts, what kind it is, how long it runs, when play restarts. | models -> contracts, contracts.legacy, contracts.views, contracts.world, scoring.brain3 | untagged |
@@ -255,7 +255,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (274)
+## unowned (275)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -474,6 +474,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/park_ceiling.py` (entry) | PARK step 0: the supply ceiling. | grading, lab.backtest, lab.leverage, lab.splits, models, moments.detect +3 -> - | untagged |
 | `scripts/park_compare.py` (entry) | One table per slate and timing error: live-edge physics, the last sweep's best pick, the planner, the greedy ceiling. | noggin.park_core, noggin.park_plan -> - | untagged |
 | `scripts/park_facts_check.py` (entry) | Check the live PARK facts builder against the grader's whole-game facts, row by row, on recorded dev nights. | grading, lab.backtest, lab.splits, models, noggin.park_facts, sources.espn -> - | untagged |
+| `scripts/park_hands_live.py` (entry) | PARK-HANDS acceptance on the real sticks and TV: the park loop through the APP's controller (unit 7). | channels, config, control, platform.sound_guard -> - | untagged |
 | `scripts/park_pick.py` (entry) | Pick the best safe PARK setting per slate from a park_sim sweep, print it beside today's physics, then vary one thing at a time. | - -> - | untagged |
 | `scripts/park_plan.py` (entry) | PARK-BRAIN: a planning controller for the two-stick show, run inside park_sim (its nights, physics, padding and counters). | noggin.park_plan -> - | untagged |
 | `scripts/park_report.py` (entry) | Read a park_sim sweep CSV: the best safe settings beside today's physics, and what each knob does on average. | - -> - | untagged |
@@ -534,7 +535,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 | `scripts/yttv_search_tune_try.py` (entry) | Tune the LOCAL stations by YouTube TV search on the HIDDEN stick, through the app's own routing and tuner as if tuners.yttv_local_search were on (ChannelMap.... | channels, tuners.adb, tuners.tuners -> - | untagged |
 
-## Untagged (404)
+## Untagged (405)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -871,6 +872,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/park_ceiling.py`
 - `scripts/park_compare.py`
 - `scripts/park_facts_check.py`
+- `scripts/park_hands_live.py`
 - `scripts/park_pick.py`
 - `scripts/park_plan.py`
 - `scripts/park_report.py`
@@ -978,16 +980,16 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/lab/night/presses.py`
 - `redzone/tuners/identity.py`
 
-## Most-called symbols (top 25 of 1163)
+## Most-called symbols (top 25 of 1164)
 
 | symbol | callers |
 |---|---:|
 | `redzone/models.py:League` | 42 |
-| `redzone/config.py:Config` | 35 |
+| `redzone/config.py:Config` | 36 |
 | `redzone/sources/espn.py:_get` | 23 |
 | `redzone/tuners/adb.py:Stick` | 23 |
 | `redzone/lab/backtest.py:Replay` | 21 |
-| `redzone/channels.py:ChannelMap` | 19 |
+| `redzone/channels.py:ChannelMap` | 20 |
 | `redzone/config.py:default` | 19 |
 | `redzone/sources/espn.py:_ts` | 17 |
 | `redzone/sources/espn.py:stoppage_for` | 16 |
@@ -1008,7 +1010,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/evaldata.py:window_end` | 8 |
 | `redzone/lab/oracle.py:tables` | 8 |
 
-## Shared data files (84 of 205)
+## Shared data files (84 of 206)
 
 Files two or more modules name (the rest are in the JSON). Best effort from string literals: w = writes, r = reads, u = named but unclassified.
 
@@ -1027,7 +1029,7 @@ Files two or more modules name (the rest are in the JSON). Best effort from stri
 | `data/agent.jsonl` | agent.watchdog, canary, scripts.deploy | - | - |
 | `data/buffer.jsonl` | - | web.phone_v2, scripts.buffered_jump_try | - |
 | `data/canary.jsonl` | - | - | canary, scripts.canary |
-| `data/channels.json` | channels | channels | scripts.coverage_audit |
+| `data/channels.json` | channels | channels | scripts.coverage_audit, scripts.park_hands_live |
 | `data/config.yaml` | config, scripts.deploy, scripts.service | agent.watchdog, config, demo.engine, scripts.deploy, scripts.jump_try, scripts.service | agent.kaggle.build_moments_kaggle, engine, lab.optimize, lab.tune, platform.autofix, scripts.backtest +4 |
 | `data/devices.json` | autonomy, tvsetup, scripts.doctor | autonomy, control, discovery.yttv, tvsetup, scripts.doctor, scripts.multiview_probe +4 | network |
 | `data/eval_config.yaml` | - | - | agent.kaggle.build_moments_kaggle, agent.kaggle.pack_data, demo.__main__, lab.tune, scripts.bucket_join_measure, scripts.build_eval_data +3 |

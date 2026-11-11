@@ -264,7 +264,8 @@
     "redzone/channels.py"
    ],
    "users": [
-    "scripts/coverage_audit.py"
+    "scripts/coverage_audit.py",
+    "scripts/park_hands_live.py"
    ],
    "writers": [
     "redzone/channels.py"
@@ -478,6 +479,13 @@
     "redzone/web/phone_v2.py"
    ],
    "users": [],
+   "writers": []
+  },
+  "data/run.jsonl": {
+   "readers": [],
+   "users": [
+    "scripts/park_hands_live.py"
+   ],
    "writers": []
   },
   "data/smartthings_oauth.json": {
@@ -4112,6 +4120,7 @@
     "scripts/find_yttv_code.py",
     "scripts/hold_left_probe.py",
     "scripts/multiview_probe.py",
+    "scripts/park_hands_live.py",
     "scripts/plan_tonight.py",
     "scripts/queue_replay.py",
     "scripts/queue_trace.py",
@@ -4250,6 +4259,7 @@
     "scripts/hold_left_probe.py",
     "scripts/holdset_public.py",
     "scripts/night_report.py",
+    "scripts/park_hands_live.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
     "scripts/queue_replay.py",
@@ -5259,6 +5269,7 @@
     "redzone/supervisor.py",
     "scripts/fault_drill.py",
     "scripts/hold_left_probe.py",
+    "scripts/park_hands_live.py",
     "scripts/rz.py",
     "scripts/tv_practice.py"
    ],
@@ -10691,7 +10702,8 @@
     ]
    },
    "outputs": [
-    "redzone/tv.py"
+    "redzone/tv.py",
+    "scripts/park_hands_live.py"
    ],
    "owner": "PLATFORM",
    "role": "Sound guard: the TV stays muted at volume 0, proven by reading it back (sound_guard.*, all off by default).",
@@ -16821,6 +16833,42 @@
     "untagged"
    ]
   },
+  "scripts/park_hands_live.py": {
+   "calls": [
+    "redzone/channels.py:ChannelMap",
+    "redzone/config.py:Config",
+    "redzone/config.py:_deep_merge",
+    "redzone/control.py:Controller",
+    "redzone/platform/sound_guard.py:MARKER",
+    "redzone/platform/sound_guard.py:SoundGuard"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [
+     "data/channels.json",
+     "data/run.jsonl"
+    ],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/config.py",
+    "redzone/control.py",
+    "redzone/platform/sound_guard.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "PARK-HANDS acceptance on the real sticks and TV: the park loop through the APP's controller (unit 7).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/park_pick.py": {
    "calls": [],
    "contracts": [],
@@ -19121,13 +19169,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2240,
-  "data_files": 205,
+  "calls": 2246,
+  "data_files": 206,
   "machines": 53,
-  "modules": 476,
+  "modules": 477,
   "orphans": 34,
-  "unowned": 274,
-  "untagged": 404
+  "unowned": 275,
+  "untagged": 405
  },
  "version": 2
 }
