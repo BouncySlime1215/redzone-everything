@@ -291,10 +291,12 @@ def main() -> int:
     ap.add_argument("--horizon", type=int, default=180, help="seconds of screen the label counts")
     ap.add_argument("--plan", action="append", default=[], help="key=value on park_plan.Plan (repeatable)")
     ap.add_argument("--set", action="append", default=[], help="key=value on park_sim.Setting (repeatable)")
+    ap.add_argument("--any-shot", action="store_true",
+                    help="WHAT-IF, OUTSIDE RULE #1: the 4 s after ANY shot, made or missed, counts as a legal point (off by default)")
     ap.add_argument("--cache", default=None, help="a folder OUTSIDE the repo for the per-game facts")
     ap.add_argument("--csv", required=True)
     a = ap.parse_args()
-    s = pp.setting(a.error, True, **ps.parse_sets(a.set))
+    s = pp.setting(a.error, a.any_shot, **ps.parse_sets(a.set))
     plan = plan_core.Plan(**pp.parse_plan(a.plan))
     cache = Path(a.cache) if a.cache else None
     nights = [(name, k, night) for name in a.slates for k, night in enumerate(ps.slate_nights(name, a.cap, cache))]

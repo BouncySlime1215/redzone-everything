@@ -4359,14 +4359,55 @@ class Controller:
     def _park_refused(self, step: str, target: str | None, why: str) -> ParkStep:
         return ParkStep(step, "refused", why=why, target=target or "")
 
-    async def park_tune(self, target: str) -> ParkStep:
-        """Tune the hidden stick to `target` and read its place (ParkHands.tune). It is then PARK's (park_held)."""
+    async def park_start(self, reread: bool = False) -> ParkStep:
+        """[PARK-CONTROLLER] Place the stream ON SCREEN (ParkHands.tune on the visible stick). A stream PARK did not tune
+        is never taken to be at its live edge: its place is read (the picture steps back once, by the read gesture) or
+        it is tuned afresh. The show cannot leave a game whose stream has no place. reread: its place is no longer
+        believed (it drifted): forget it and read it again."""
+        why = self.park_why()
+        vis, target = self.main, self.on_target
+        if why or vis is None or not target:
+            return self._park_refused("start", target, why or "nothing is on screen")
+        hands = self.park_hands()
+        async with self._lock:
+            if reread:
+                hands._drop(vis, "its place drifted: read again")
+            out = await hands.tune(vis, target)
+            out.step = "start"
+            return out
+
+    async def park_look(self) -> ParkStep:
+        """[PARK-CONTROLLER] Where the stream ON SCREEN is now, by one media-session read (ParkHands.look): no key, no
+        change. The show grades every look's hold with it (did the place it cut on stay where it was read)."""
+        why = self.park_why()
+        vis = self.main
+        if why or vis is None:
+            return self._park_refused("look", self.on_target, why or "nothing is on screen")
+        return await self.park_hands().look(vis)
+
+    async def park_resume(self, target: str) -> ParkStep:
+        """[PARK-CONTROLLER] Let the hidden stick, parked on `target`, play on unseen (ParkHands.resume): the plan moved
+        its landing to a later dead ball. Its place stands."""
+        why = self.park_why()
+        hid = self.hidden
+        if why or hid is None:
+            return self._park_refused("resume", target, why or "no hidden stick")
+        hands = self.park_hands()
+        async with self._lock:
+            out = await hands.resume(hid, target)
+            if self.hidden is hid and hands.place_of(hid) is None and self.hidden_target == target:
+                self._set_hidden(None, False, why="PARK: lost its place")
+            return out
+
+    async def park_tune(self, target: str, fresh: bool = False) -> ParkStep:
+        """Tune the hidden stick to `target` and read its place (ParkHands.tune). It is then PARK's (park_held).
+        fresh: reload the stream even when the stick already holds this game (one held too long is far behind live)."""
         why = self.park_why()
         if why:
             return self._park_refused("tune", target, why)
         hands, hid = self.park_hands(), self.hidden
         async with self._lock:
-            out = await hands.tune(hid, target)
+            out = await hands.tune(hid, target, fresh=fresh)
             if out.ok and self.hidden is hid:
                 self._set_hidden(target, False, state="park_held", why=f"PARK: {out.way}")
             elif self.hidden is hid and self.hidden_target == target:
@@ -5604,6 +5645,7 @@ class ParkHands:
         self.counts = {"reads_tried": 0, "reads_ok": 0, "inferred_start": 0, "tunes": 0, "jumps": 0, "kept": 0}
         self.last: ParkStep | None = None
         self._probe = None
+        self._overlay: dict[str, Any] = {}                    # stick host -> the overlay read of its last label frame (never shown)
 
     # --- settings -------------------------------------------------------------------------------------------
     def _num(self, key: str) -> float:
@@ -5720,17 +5762,23 @@ class ParkHands:
         from redzone.tuners import yttv_label
         if self._probe is None:
             self._probe = yttv_label.LabelProbe(self.ctl.cfg)
-        _ov, lab = await self._probe._frame(stick, 0.0)
+        ov, lab = await self._probe._frame(stick, 0.0)
+        self._overlay[stick.host] = ov                        # the same frame's overlay read: the gesture's focus guard
         return lab
 
     # --- 1. TUNE ----------------------------------------------------------------------------------------------
-    async def tune(self, stick: Stick, target: str) -> ParkStep:
+    async def tune(self, stick: Stick, target: str, fresh: bool = False) -> ParkStep:
         """Put `stick` on `target` and learn its place. A stream PARK itself tuned there, still playing it, is kept.
         A stream already on the game that PARK did not tune is NEVER taken to be at its live edge (one was 120 s
         behind, run 6): it is kept only if the read gesture reads its place; otherwise it is tuned fresh. A fresh
         tune: the direct code, then local-station search, then search; a way the tuner calls failed still counts
-        when the media session then names the game. Then the read gesture (place)."""
+        when the media session then names the game. Then the read gesture (place). `fresh` = nothing is kept: the
+        stream is reloaded (the PARK controller asks this for a stream held so long that it is far behind live)."""
         t0, st = self.now(), ParkStep("tune", "failed", stick=self.label(stick), target=target)
+        if fresh:
+            self._drop(stick, "a fresh tune asked")
+            st.way = "fresh: "
+            return await self._tune_fresh(stick, target, st, t0)
         pb = await stick.playback(self._pkg(stick))
         place = self.places.get(stick.host)
         if place is not None and place.target == target and self.names(pb, target) and not place.paused:
@@ -5867,17 +5915,39 @@ class ParkHands:
         base_lag_max_s behind YouTube's clock (less the seek), a stream found already on the game up to
         kept_lag_max_s. None = it did not end playing."""
         n, step = int(self.step_s("read_steps")), self.step_s("left_step_s")
+        hidden = self.ctl.hidden is stick                     # the gesture is for THIS stick in THIS role (hidden, or on screen
+        #                                                       for park_start): if a flip changes that under it, no more keys
+
+        def same() -> bool:
+            return (self.ctl.hidden is stick) == hidden
+
         self._to(stick, "reading", "the read gesture")
-        if not await self._key(stick, "KEYCODE_DPAD_CENTER"):
+        self._overlay.pop(stick.host, None)
+        if not same() or not await self._key(stick, "KEYCODE_DPAD_CENTER"):
             return None
         await self.sleep(self.step_s("center_wait_s"))
         for _ in range(n):
+            if not same():
+                break
             await self._key(stick, "KEYCODE_DPAD_LEFT")
             await self.sleep(self.step_s("left_gap_s"))
         await self.sleep(self.step_s("label_wait_s"))
         pz = await self._read(stick)                          # the pause report: the frozen frame's exact position
         pz = pz if pz is not None and pz.state == "paused" and pz.position_s is not None else None
         lab = await self._label(stick)
+        # THE FOCUS GUARD (the label probe's own, tuners/yttv_label.LabelProbe.probe; why: tuners/yttv_seek.py, #356).
+        # A LEFT with a row button in focus only moves the focus; the key that does harm is the committing CENTER, which
+        # would PRESS that button. The frame the label was just read from says where the focus is: with a row button
+        # focused, or no overlay up, CENTER is never sent: BACK closes the overlay, the stream is started again, and the
+        # place stays unread (nothing was sought).
+        ov = self._overlay.pop(stick.host, None)
+        guard = "" if same() else "the stick changed role during the read"
+        if not guard and ov is not None and getattr(ov, "row_focused", False):
+            guard = "focus guard: a row button has focus"
+        elif not guard and ov is not None and not getattr(ov, "overlay", True):
+            guard = "focus guard: the overlay is not up"
+        if guard:
+            return await self._gesture_abort(stick, place, guard)
         t_commit = self.now()
         await self._key(stick, "KEYCODE_DPAD_CENTER")
         land = await self._wait(stick, "playing", self.step_s("land_wait_s"), since=t_commit)
@@ -5921,6 +5991,26 @@ class ParkHands:
         out = self._place_numbers(place, r)
         out.update(seek_s=round(seek, 2) if seek is not None else None, sat_s=round(sat, 2) if sat is not None else None,
                    start_inferred=bool(inferred and place.read), read_why=why)
+        return out
+
+    async def _gesture_abort(self, stick: Stick, place: ParkPlace, why: str) -> dict | None:
+        """The read gesture stopped by its guard before the committing CENTER: BACK closes the overlay (it commits
+        nothing), the stream is started again if the first CENTER paused it, and its place stays unread. None = it
+        did not end playing (the tune then fails and the stick is tuned again)."""
+        self.counts["guarded"] = self.counts.get("guarded", 0) + 1
+        if (self.ctl.hidden is stick) or (self.ctl.main is stick):
+            await self._key(stick, "KEYCODE_BACK")
+            await self.sleep(self.step_s("back_after_s"))
+        r = await self._read(stick)
+        if r is not None and r.state == "paused":
+            await self._key(stick, "KEYCODE_MEDIA_PLAY_PAUSE")
+            r = await self._wait(stick, "playing", self.step_s("replay_wait_s"), since=self.now())
+        if r is None or r.state != "playing":
+            return None
+        place.ref_wall, place.ref_pos, place.paused = r.wall, r.pos_now_s, False
+        self._to(stick, "playing", f"read gesture stopped: {why}")
+        out = self._place_numbers(place, r)
+        out.update(seek_s=None, sat_s=None, start_inferred=False, read_why=why)
         return out
 
     def _place_numbers(self, place: ParkPlace, r) -> dict:
@@ -5988,6 +6078,50 @@ class ParkHands:
         place.paused_at = pz.event_wall if pz.event_wall is not None else key_at + self.pause_lead(stick)
         self._to(stick, "parked", "paused, banner cleared, read back")
         return True, ""
+
+    async def look(self, stick: Stick) -> ParkStep:
+        """[PARK-CONTROLLER] One media-session read of a placed stick, no key: where its stream is now, the report it
+        came from (the session's own position and when it was last updated), and how far behind YouTube's clock that
+        puts the picture by its place. The show reads the stream on screen this way after every resume, to see whether
+        the place held."""
+        t0, st = self.now(), ParkStep("look", "failed", stick=self.label(stick), way="one media-session read")
+        place = self.places.get(stick.host)
+        if place is None:
+            st.outcome, st.why = "refused", "the stick has no place"
+            return self._done(st, t0)
+        r = await self._read(stick)
+        if r is None or r.position_s is None or r.pos_now_s is None:
+            st.why = "no media-session report"
+            return self._done(st, t0)
+        st.target, st.outcome = place.target, "ok"
+        st.numbers = {"state": r.state, "pos_s": round(r.pos_now_s, 2), "report_pos_s": round(r.position_s, 2),
+                      "updated_wall": round(r.event_wall, 2) if r.event_wall is not None else None, "wall": round(r.wall, 2),
+                      "behind_youtube_s": round(r.wall - place.content(r.pos_now_s), 2), "read": place.read}
+        return self._done(st, t0)
+
+    async def resume(self, stick: Stick, target: str) -> ParkStep:
+        """[PARK-CONTROLLER] Let a parked stick play on, unseen: the resume key, then its playing report. Its place (the
+        tune's read) stands; only where it is on its own clock moves on."""
+        t0, st = self.now(), ParkStep("resume", "failed", stick=self.label(stick), target=target,
+                                      way="resume key, read back")
+        place = self.places.get(stick.host)
+        if place is None or place.target != target or not place.paused:
+            st.outcome, st.why = "refused", "the stick is not parked on this game"
+            return self._done(st, t0)
+        self._to(stick, "resuming", "resume: the park moves on")
+        if not await self._key(stick, "KEYCODE_MEDIA_PLAY_PAUSE"):
+            self._to(stick, "parked", "resume key not sent")
+            st.why = "the resume key was not sent"
+            return self._done(st, t0)
+        e = await self._wait(stick, "playing", self.step_s("replay_wait_s"), since=t0)
+        if e is None:
+            self._drop(stick, "it did not start playing after the resume key")
+            st.why = "no playing report after the resume key"
+            return self._done(st, t0)
+        place.paused, place.ref_wall, place.ref_pos = False, e.wall, e.pos_now_s
+        self._to(stick, "playing", "resumed: it plays on unseen")
+        st.outcome, st.numbers = "ok", self._place_numbers(place, e)
+        return self._done(st, t0)
 
     def stale(self, stick: Stick) -> str:
         """Why the stick's park should be made again ("" = it holds): paused longer than park.max_park_s, or its

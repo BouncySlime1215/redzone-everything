@@ -1331,7 +1331,9 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
                            # (tune, place, park, jump, finish) are Controller.park_* in redzone/control.py (unit PARK-HANDS),
                            # which refuse unless this, sound_guard.enabled and sound_guard.must_be_silent are all on. Nothing calls
                            # them until the decision-path owner (unit PARK-CONTROLLER) does
-  max_park_s: 300          # a stick paused longer than this is stale and is parked again (a 315 s pause held on Nov 10, ledger L13)
+  max_park_s: 180          # the park age cap: a stick paused longer than this is stale; the show tunes it afresh and never jumps
+                           # onto it. 180 = the longest hold whose place was READ BACK after its resume (4 pauses of
+                           # 20-180 s on one channel, ledger L74); nothing longer, no other channel, has been read
   late_cap_s: 145          # ...and so is one whose picture is more than this behind its stream's live edge (finding 5, ledger L45)
   steps:                   # each PARK device step as measured on the real sticks and TV on Nov 10 (ledger L13-L21, L41-L51)
     min_real_pos_s: 60     # after a tune the media session says "playing" at position 0.0 for about 2 s: a position under this
@@ -1365,6 +1367,60 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
     flip_methods: [smartthings]   # the TV's own input change; never HOME on a stick
     input_rereads: 2       # an input the sound readback did not return is read again this many times...
     input_reread_s: 0.7    # ...this far apart
+  leagues: [nba, cbb]      # [PARK-CONTROLLER, unit 8] the leagues whose live games the PARK show takes (its facts are basketball's)
+  session_min: 240         # one show plans on a grid this many minutes long; the engine starts the next one when it ends
+  possession_cap_s: 30     # after a review's RULING the stoppage is over: silence after it (and the plays it re-logs) is dead only
+                           # this long from the last row; the rest is UNKNOWN, never a place to cut. 24 s shot clock + 6 s
+                           # (inbound, stamp slack). Night 20261023 LAC @ LAL Q1 7:21: a timeout, a challenge ruled 32 s later,
+                           # then 149 s of silence trusted as dead up to the review cap (420 s): a mid-play leave
+  late_row_s: 60           # a feed row stamped more than this after a row that FOLLOWS it in the feed's order is a late edit (a
+                           # substitution re-stamped half an hour on; 30 such rows in four games on Nov 10): it takes the stamp
+                           # of the row before it instead of dragging every later row up to its own (live run 4, flip 4)
+  idle_poll_s: 5           # with park.enabled off the engine's park loop only sleeps, and looks at the flag this often
+  start_retry_s: 30        # the stream on screen could not be placed (no read, no fresh tune): try again after this long
+  show:                    # the show's own numbers (redzone/noggin/park_show.py ShowParams; each as the local show runner ended
+                           # Nov 10 on, its READY-B state). Pace is a soft pull, never a rule (Nick, Nov 10)
+    show_delay: 35         # the whole show runs this far behind each stream's live edge, so the feed is complete for what is
+                           # on screen and the per-tune read (which steps the stream back) costs nothing extra
+    bonus: 3.0             # the planner's jump bonus: the soft pull toward pace; it only chooses among WARRANTED jumps
+    min_look: 3.0          # seconds of play a look must show before the next jump (whole possessions stay)
+    warrant: need          # need: no jump without a warrant worked out before it (Nick, Nov 10: "If we jump the warrant
+                           # has to exist") | note: only write it down | off
+    crunch: true           # in crunch time the best game is the anchor: the others only fill its stoppages
+    stops: true            # trust an open stoppage for the shortest time its kind has lasted (stop_min below)
+    land_wait: 20          # no landing more than this before a play start the feed has reported (never onto a long break)
+    long_break: 90         # stopped this long at the feed's edge with no restart reported = a long break: nothing is parked there
+    tune_stick: 1.0        # a new tune must be worth this many jump bonuses more than the best plan without one (no thrash)
+    late_cap: 145          # nothing comes up further behind its stream's live edge than this (Nick's lateness cap)
+    jump_real: 3.0         # a jump on the real TV, first key to the new picture: 2.4-3.5 s (ledger L45); the plan uses this
+    read: 10.5             # the per-tune read gesture, first key to playing again (a tune with it took 13-19 s)
+    stop_max:              # the sanity gate: the longest an OPEN stoppage of each kind can plausibly last (s). "No row since"
+                           # means "still stopped" only this long; after it the feed has gone quiet or lost a row, and the rest
+                           # is unknown (never a place to cut). Plain caps set above the longest real stretch of each kind on
+                           # one recorded night (20261023, four games: whistle 219 s, timeout 258, review 346, period end 223,
+                           # halftime 1046); the stoppage model has the real spread
+      whistle: 240         # a foul, a violation, out of bounds, free throws
+      unknown: 240
+      timeout: 300
+      review: 420
+      injury: 900
+      end_period: 300
+      halftime: 1500
+    stop_min:              # "<league>|<feed row type>": the shortest dead time (s) such a row was followed by on the NBA dev
+                           # nights (1st percentile, never above any one night's; learned by the local show runner, Nov 10)
+      "nba|coach's challenge (overturned)": 9.0
+      "nba|end period": 3.0
+      "nba|free throw - 1 of 3": 4.0
+      "nba|free throw - 2 of 3": 4.0
+      "nba|free throw - technical": 6.0
+      "nba|kicked ball": 4.0
+      "nba|offensive charge": 11.0
+      "nba|offensive foul": 8.0
+      "nba|out of bounds - lost ball turnover": 3.0
+      "nba|out of bounds - step turnover": 6.0
+      "nba|personal foul": 9.0
+      "nba|personal take foul": 14.0
+      "nba|shooting foul": 4.0
 
 eyes:                      # [EYES, integration plan unit 0b] the hidden watcher: its own muted Chrome reads the on-air game clock and
                            # each frame's time, and keeps each game's offset K

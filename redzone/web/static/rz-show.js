@@ -338,10 +338,21 @@ function parked() {
 function jumpsCard() {
   const js = V.events.filter((e) => e.kind === "jump" && isNum(e.t)).slice(-5).reverse();
   if (!js.length) return "";
+  // After a jump's resume the show reads that stream's place again: did it hold? The newest verdict for each jump.
+  const held = {};
+  V.events.forEach((e) => { if (e.kind === "hold" && isNum(e.n) && isStr(e.verdict)) held[e.n] = e; });
+  const holdText = (j) => {
+    const h = isNum(j.n) ? held[j.n] : null;
+    if (!h) return "";
+    if (h.verdict === "held") return "place held";
+    if (h.verdict === "drifted") return isNum(h.change_s) ? `place DRIFTED ${h.change_s.toFixed(1)} s` : "place DRIFTED";
+    if (h.verdict === "loose") return isNum(h.change_s) ? `place moved ${h.change_s.toFixed(1)} s` : "place moved";
+    return "place not read";
+  };
   const rows = js.map((j) => `<div class="sh-j" data-key="j:${attr(j.t)}">
     <span class="sh-j-t tnum">${esc(fmtTime(j.t))}</span>
     <div class="grow"><div class="sh-j-g"><span>${esc(niceGame(j.from))}</span><span class="sh-j-to">${icon("arrow-right", "ico--xs")}<b style="--g:${colorOf(j.to)}">${esc(niceGame(j.to))}</b></span></div>
-      <div class="sh-j-w">${esc([isStr(j.reason) ? cap(j.reason) : "", isNum(j.jump_s) ? `${j.jump_s.toFixed(1)} s to switch` : "", isNum(j.look_s) ? `after a ${secs(j.look_s)} look` : ""].filter(Boolean).join(" · "), "")}</div></div></div>`).join("");
+      <div class="sh-j-w">${esc([isStr(j.reason) ? cap(j.reason) : "", isNum(j.jump_s) ? `${j.jump_s.toFixed(1)} s to switch` : "", isNum(j.look_s) ? `after a ${secs(j.look_s)} look` : "", holdText(j)].filter(Boolean).join(" · "), "")}</div></div></div>`).join("");
   return `${sec("Last jumps", { key: "s-jumps", aside: js.length < 5 ? "" : "newest first" })}<div class="card sh-js" data-key="sh-js">${rows}</div>`;
 }
 

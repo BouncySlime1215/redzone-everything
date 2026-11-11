@@ -23,7 +23,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-SCRIPT_TAG = '<script type="module" src="/static/rz-show.js?v=4"></script>'
+SCRIPT_TAG = '<script type="module" src="/static/rz-show.js?v=5"></script>'
 STATE_MAX_BYTES = 1_000_000      # a state file bigger than this is not the show's
 EVENTS_TAIL_BYTES = 2_000_000    # only the end of a long events file is read
 EVENTS_MAX = 500                 # newest events per answer
@@ -80,6 +80,13 @@ EYES_SPEC = {
 EVENT_SPEC = {
     "t": NUM, "kind": TEXT, "from": TEXT, "to": TEXT, "reason": TEXT, "jump_s": NUM, "look_s": NUM, "game": TEXT,
     "channel": TEXT, "took_s": NUM, "for_s": NUM, "what": TEXT, "seen": BOOL, "level": TEXT, "text": TEXT,
+    # [park.enabled] the app's own show: which jump (n), how long its landing was held, what each end rested on, and,
+    # after the resume, the stream's position reports and whether its place held ("held" / "loose" / "drifted" / "unread")
+    "n": NUM, "held_s": NUM, "verdict": TEXT, "change_s": NUM, "at_s": NUM, "pos_s": NUM, "updated": NUM, "lag_s": NUM,
+    "leave_on": {"kind": TEXT, "second": NUM, "since_s": NUM, "left_s": NUM, "open": BOOL, "feed_edge_s": NUM,
+                 "row": {"type": TEXT, "period": NUM, "clock": TEXT, "age_s": NUM, "rows_in": NUM}},
+    "join_on": {"kind": TEXT, "second": NUM, "since_s": NUM, "left_s": NUM, "open": BOOL, "feed_edge_s": NUM,
+                "row": {"type": TEXT, "period": NUM, "clock": TEXT, "age_s": NUM, "rows_in": NUM}},
 }
 
 
@@ -137,7 +144,11 @@ def _read_json(path: Path):
 
 def _folder(cfg, key: str = "show.state_dir") -> Path | None:
     raw = cfg.get(key, "") or ""
-    return Path(raw).expanduser() if isinstance(raw, str) and raw.strip() else None
+    if isinstance(raw, str) and raw.strip():
+        return Path(raw).expanduser()
+    if key == "show.state_dir" and cfg.get("park.enabled", False):
+        return Path("data/show")   # [park.enabled] where the app's own show writes when no folder is set (redzone/park_run.py)
+    return None
 
 
 def build_state(folder: Path | None, now: float | None = None, eyes_dir: Path | None = None) -> dict:

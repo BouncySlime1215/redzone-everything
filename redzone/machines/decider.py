@@ -22,8 +22,10 @@ OWNER = Spec(
         "normal": "the normal decider (jump mode off, or the screen's game isn't in the rotation)",
         "jump": "jump mode's rotation: it decides every optional switch; the normal decider's become stays",
         "buffered": "buffered jump (both sticks behind live): the editor decides, incl. the screen-gone free cut",
+        "park": "[park.enabled] the PARK show holds both sticks (redzone/park_run.py): it alone jumps; every other "
+                "decider's switch becomes a stay. A user, safe-mode or replay owner still comes first",
     },
-    edges={s: (ANY,) for s in ("idle", "safe", "user", "replay", "hard", "normal", "jump", "buffered")},
+    edges={s: (ANY,) for s in ("idle", "safe", "user", "replay", "hard", "normal", "jump", "buffered", "park")},
     initial="idle")
 
 DECIDER_SCREEN = Spec(
@@ -178,8 +180,9 @@ STANDBY_PLAN = Spec(
         "buffered": "buffered jump: the rotation picks the game, the park step scrubs / parks it",
         "planner": "the standby planner (redzone/standby.py): break returns, replays, the likely next switch",
         "queue": "the game queue (redzone/noggin/gamequeue.py, queue.enabled) chose it",
+        "park": "[park.enabled] the PARK show holds it (tuned, paused on a dead-ball frame, or held after a jump)",
     },
-    edges={s: (ANY,) for s in ("idle", "peek", "rotation", "buffered", "planner", "queue")},
+    edges={s: (ANY,) for s in ("idle", "peek", "rotation", "buffered", "planner", "queue", "park")},
     initial="idle")
 
 HOLD = Spec(

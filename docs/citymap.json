@@ -824,7 +824,9 @@
    "users": [
     "redzone/personal/store.py"
    ],
-   "writers": []
+   "writers": [
+    "redzone/showboard.py"
+   ]
   },
   "eyes_state.json": {
    "readers": [
@@ -1385,7 +1387,8 @@
    ],
    "writers": [
     "agent/kaggle/data_fetch.py",
-    "agent/kaggle/qwen_finetune.py"
+    "agent/kaggle/qwen_finetune.py",
+    "redzone/showboard.py"
    ]
   },
   "student_data.json": {
@@ -4267,6 +4270,7 @@
     "scripts/holdset_public.py",
     "scripts/night_report.py",
     "scripts/park_hands_live.py",
+    "scripts/park_replay.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
     "scripts/queue_replay.py",
@@ -6558,6 +6562,7 @@
     "redzone/noggin/gamequeue.py:view",
     "redzone/noggin/lookahead.py:ahead",
     "redzone/noggin/show.py:ShowDecider",
+    "redzone/park_run.py:ParkRun",
     "redzone/plan.py:Tonight",
     "redzone/plan.py:day_of",
     "redzone/plan.py:path_for",
@@ -6705,6 +6710,7 @@
     "redzone/noggin/gamequeue.py",
     "redzone/noggin/lookahead.py",
     "redzone/noggin/show.py",
+    "redzone/park_run.py",
     "redzone/plan.py",
     "redzone/platform/agent_fix.py",
     "redzone/platform/wake.py",
@@ -6946,10 +6952,12 @@
     "redzone/lab/sportsgrade.py",
     "redzone/lab/timing.py",
     "redzone/noggin/park_facts.py",
+    "redzone/noggin/park_show.py",
     "redzone/noggin/pick.py",
     "scripts/bucket_join_measure.py",
     "scripts/park_ceiling.py",
     "scripts/park_facts_check.py",
+    "scripts/park_replay.py",
     "scripts/thread_replay.py",
     "scripts/veto_audit.py"
    ],
@@ -7137,6 +7145,7 @@
     "scripts/noggin_selfplay.py",
     "scripts/park_ceiling.py",
     "scripts/park_facts_check.py",
+    "scripts/park_replay.py",
     "scripts/queue_replay.py",
     "scripts/queue_trace.py",
     "scripts/scrub_flip_replay.py",
@@ -7402,6 +7411,7 @@
     "scripts/measure_break_lengths.py",
     "scripts/measure_dead_left.py",
     "scripts/northstar.py",
+    "scripts/park_replay.py",
     "scripts/veto_audit.py"
    ],
    "owner": "INTEGRATION",
@@ -8363,6 +8373,7 @@
     "scripts/moment_rates.py",
     "scripts/park_ceiling.py",
     "scripts/park_facts_check.py",
+    "scripts/park_replay.py",
     "scripts/queue_replay.py",
     "scripts/queue_trace.py",
     "scripts/switch_eval_pin.py",
@@ -8935,9 +8946,11 @@
     "redzone/noggin/features.py",
     "redzone/noggin/live.py",
     "redzone/noggin/park_facts.py",
+    "redzone/noggin/park_show.py",
     "redzone/noggin/pick.py",
     "redzone/noggin/priority.py",
     "redzone/noggin/show.py",
+    "redzone/park_run.py",
     "redzone/plan.py",
     "redzone/platform/agent_fix.py",
     "redzone/platform/health.py",
@@ -8985,6 +8998,7 @@
     "scripts/noggin_tokens.py",
     "scripts/park_ceiling.py",
     "scripts/park_facts_check.py",
+    "scripts/park_replay.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
     "scripts/queue_replay.py",
@@ -9620,7 +9634,8 @@
    },
    "outputs": [
     "redzone/decider/tune_offset.py",
-    "redzone/noggin/park_timing.py"
+    "redzone/noggin/park_timing.py",
+    "redzone/park_run.py"
    ],
    "owner": "unowned",
    "role": "The per-game offset K: one reader for every K file, whatever its shape.",
@@ -9731,8 +9746,13 @@
     "drives": []
    },
    "outputs": [
+    "redzone/noggin/park_facts.py",
     "redzone/noggin/park_plan.py",
+    "redzone/noggin/park_show.py",
+    "redzone/park_run.py",
+    "redzone/showboard.py",
     "scripts/park_compare.py",
+    "scripts/park_replay.py",
     "scripts/park_sim.py",
     "scripts/park_table.py"
    ],
@@ -9758,6 +9778,7 @@
     "redzone/moments/value2.py:leverage",
     "redzone/moments/value2.py:seconds_left",
     "redzone/noggin/arbiter.py:trigger_rank",
+    "redzone/noggin/park_core.py:stretches",
     "redzone/scoring/engine.py:high_leverage",
     "redzone/sources/espn.py:_clock_s",
     "redzone/sources/espn.py:_get",
@@ -9779,6 +9800,7 @@
     "redzone/moments/detect.py",
     "redzone/moments/value2.py",
     "redzone/noggin/arbiter.py",
+    "redzone/noggin/park_core.py",
     "redzone/noggin/park_timing.py",
     "redzone/scoring/engine.py",
     "redzone/sources/espn.py"
@@ -9789,7 +9811,10 @@
     "drives": []
    },
    "outputs": [
-    "scripts/park_facts_check.py"
+    "redzone/noggin/park_show.py",
+    "redzone/park_run.py",
+    "scripts/park_facts_check.py",
+    "scripts/park_replay.py"
    ],
    "owner": "unowned",
    "role": "PARK facts: one LIVE basketball game's facts for the PARK planner, built row by row from the ESPN feed, honestly.",
@@ -9814,12 +9839,66 @@
     "drives": []
    },
    "outputs": [
+    "redzone/noggin/park_show.py",
     "scripts/park_compare.py",
     "scripts/park_plan.py",
+    "scripts/park_replay.py",
     "scripts/park_table.py"
    ],
    "owner": "unowned",
    "role": "PARK planner: the search that plans the two-stick show (stay, jump, hold, roll, skip, tune) a few jumps ahead.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/noggin/park_show.py": {
+   "calls": [
+    "redzone/grading.py:raw_type",
+    "redzone/models.py:League",
+    "redzone/noggin/park_core.py:Arr",
+    "redzone/noggin/park_core.py:Setting",
+    "redzone/noggin/park_core.py:State",
+    "redzone/noggin/park_core.py:Stats",
+    "redzone/noggin/park_core.py:run",
+    "redzone/noggin/park_facts.py:GameFacts",
+    "redzone/noggin/park_facts.py:merge_eyes",
+    "redzone/noggin/park_facts.py:pad_arr",
+    "redzone/noggin/park_facts.py:refusal",
+    "redzone/noggin/park_facts.py:shift",
+    "redzone/noggin/park_plan.py:Plan",
+    "redzone/noggin/park_plan.py:Planner",
+    "redzone/noggin/park_timing.py:ErrorParts",
+    "redzone/noggin/park_timing.py:GameK",
+    "redzone/noggin/park_timing.py:GameTiming",
+    "redzone/sources/espn.py:_get",
+    "redzone/sources/espn.py:_int"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/grading.py",
+    "redzone/models.py",
+    "redzone/noggin/park_core.py",
+    "redzone/noggin/park_facts.py",
+    "redzone/noggin/park_plan.py",
+    "redzone/noggin/park_timing.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/park_run.py",
+    "scripts/park_replay.py"
+   ],
+   "owner": "unowned",
+   "role": "PARK show: the in-app controller of the two-stick show, one second at a time (integration plan unit 8).",
    "serves": [
     "untagged"
    ]
@@ -9843,7 +9922,9 @@
     "drives": []
    },
    "outputs": [
-    "redzone/noggin/park_facts.py"
+    "redzone/noggin/park_facts.py",
+    "redzone/noggin/park_show.py",
+    "redzone/park_run.py"
    ],
    "owner": "unowned",
    "role": "PARK timing: where a game's feed time sits on a stick's picture, how sure that is, and each game's padding.",
@@ -10332,6 +10413,50 @@
    ],
    "owner": "unowned",
    "role": "The night, rolled up: what it showed, what it missed, what broke, what got fixed, and the error budget.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/park_run.py": {
+   "calls": [
+    "redzone/noggin/k_table.py:read_k_table",
+    "redzone/noggin/park_facts.py:FactsParams",
+    "redzone/noggin/park_show.py:FactsFeed",
+    "redzone/noggin/park_show.py:LiveNight",
+    "redzone/noggin/park_show.py:Show",
+    "redzone/noggin/park_show.py:ShowParams",
+    "redzone/noggin/park_show.py:ShowTiming",
+    "redzone/noggin/park_show.py:engine_setting",
+    "redzone/noggin/park_timing.py:GameTiming",
+    "redzone/noggin/park_timing.py:TimingParams",
+    "redzone/noggin/park_timing.py:k_for",
+    "redzone/showboard.py:Board"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models.py",
+    "redzone/noggin/k_table.py",
+    "redzone/noggin/park_core.py",
+    "redzone/noggin/park_facts.py",
+    "redzone/noggin/park_show.py",
+    "redzone/noggin/park_timing.py",
+    "redzone/showboard.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/engine.py"
+   ],
+   "owner": "unowned",
+   "role": "The engine's side of the PARK show (integration plan unit 8): with `park.enabled` on, the app runs the two-stick show itself.",
    "serves": [
     "untagged"
    ]
@@ -11546,6 +11671,36 @@
     "untagged"
    ]
   },
+  "redzone/showboard.py": {
+   "calls": [
+    "redzone/noggin/park_core.py:delivered"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": [
+     "events.jsonl",
+     "state.json"
+    ]
+   },
+   "inputs": [
+    "redzone/noggin/park_core.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/park_run.py"
+   ],
+   "owner": "unowned",
+   "role": "The show's state for the phone's Show tab: `state.json` (rewritten whole, by rename, about once a second) and `events.jsonl` (one line added per event), in t...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/sources/__init__.py": {
    "calls": [],
    "contracts": [],
@@ -11612,6 +11767,7 @@
     "redzone/noggin/factory.py",
     "redzone/noggin/features.py",
     "redzone/noggin/park_facts.py",
+    "redzone/noggin/park_show.py",
     "redzone/noggin/pick.py",
     "redzone/recorder.py",
     "redzone/sources/fastcast.py",
@@ -16945,6 +17101,62 @@
     "untagged"
    ]
   },
+  "scripts/park_replay.py": {
+   "calls": [
+    "redzone/config.py:default",
+    "redzone/grading.py:SwitchLog",
+    "redzone/grading.py:dead_at",
+    "redzone/lab/backtest.py:Replay",
+    "redzone/lab/cutgrade.py:after_bucket",
+    "redzone/lab/cutgrade.py:grade",
+    "redzone/lab/splits.py:archive_nights",
+    "redzone/lab/splits.py:nights_for",
+    "redzone/models.py:League",
+    "redzone/noggin/park_core.py:Night",
+    "redzone/noggin/park_core.py:run",
+    "redzone/noggin/park_core.py:summarize",
+    "redzone/noggin/park_facts.py:FactsParams",
+    "redzone/noggin/park_facts.py:stamps_of",
+    "redzone/noggin/park_plan.py:Plan",
+    "redzone/noggin/park_show.py:FactsFeed",
+    "redzone/noggin/park_show.py:LiveNight",
+    "redzone/noggin/park_show.py:Show",
+    "redzone/noggin/park_show.py:ShowParams",
+    "redzone/noggin/park_show.py:ShowTiming",
+    "redzone/noggin/park_show.py:engine_setting",
+    "redzone/noggin/park_show.py:peak",
+    "redzone/noggin/park_show.py:warrant_counts"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/config.py",
+    "redzone/grading.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/lab/splits.py",
+    "redzone/models.py",
+    "redzone/noggin/park_core.py",
+    "redzone/noggin/park_facts.py",
+    "redzone/noggin/park_plan.py",
+    "redzone/noggin/park_show.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "PARK replay: the app's own PARK controller on a recorded dev night, with fake sticks and a fake TV (no device).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/park_report.py": {
    "calls": [],
    "contracts": [],
@@ -19199,13 +19411,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2246,
+  "calls": 2303,
   "data_files": 207,
   "machines": 53,
-  "modules": 478,
+  "modules": 482,
   "orphans": 34,
-  "unowned": 276,
-  "untagged": 406
+  "unowned": 280,
+  "untagged": 410
  },
  "version": 2
 }
