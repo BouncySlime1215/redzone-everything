@@ -208,8 +208,10 @@ def test_watchdog_novel_is_read_without_importing_make_data(tmp_path):
 
 
 def test_ship_gate_needs_perfect_json_and_near_zero_unsafe_leaves():
-    assert evaluate.gate({"usable_json_pct": 100.0, "lock_acc": 95.0, "unsafe_leave_pct": 0.3}) == []
-    assert len(evaluate.gate({"usable_json_pct": 99.9, "lock_acc": 94.9, "unsafe_leave_pct": 2.0})) == 3
+    ok = {"usable_json_pct": 100.0, "lock_acc": 95.0, "unsafe_leave_pct": 0.3, "unsafe_leave_hi_pct": 0.0}
+    assert evaluate.gate(ok) == []
+    assert evaluate.gate(dict(ok, unsafe_leave_hi_pct=0.1)) == ["unsafe_leave_hi_pct=0.1 (needs <= 0.0)"]  # 3:15 rule: hard 0
+    assert len(evaluate.gate({"usable_json_pct": 99.9, "lock_acc": 94.9, "unsafe_leave_pct": 2.0, "unsafe_leave_hi_pct": 0})) == 3
     assert evaluate.gate({"usable_json_pct": 100.0, "lock_acc": 99.0, "unsafe_leave_pct": None})     # no leaves said: can't pass blind
 
 

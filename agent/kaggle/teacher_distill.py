@@ -42,16 +42,43 @@ import time
 
 # [V7] "full" by default: the whole teacher queue (V6 had answered 22k of 81k) with the tiered teacher, inside
 # one ~11.5 h session (Kaggle's cap is 12 h; ~13 GPU-h were left this week). Attach V6's output to resume.
-MODE = os.environ.get("RZ_MODE", "full")        # "full" or "students" (reuse attached teacher answers)
-SESSION_H = 11.5            # every phase's budget is cut to what is left of this
+# [V8-quick, overseer Nov 4 6:30 PM] PRESET "quick" = students only, the whole session capped at 2.25 h (this
+# week's ~2.5 GPU-h): game-reasoner 1 epoch, the watchdog's base-model answers reused from the attached V7
+# output (the base never changes, so it stays the compute-matched baseline), every test row still answered.
+# "full" = the normal round (set it back at the weekly reset).
+PRESET = os.environ.get("RZ_PRESET", "quick")
+MODE = os.environ.get("RZ_MODE", "students" if PRESET == "quick" else "full")   # "full" | "students"
+SESSION_H = float(os.environ.get("RZ_SESSION_H", "2.25" if PRESET == "quick" else "11.5"))   # every phase's budget is cut to what is left of this
 TEACHER_BUDGET_H = 2.25     # the 32B on the hardest + gold-adjacent head of the queue (~65/min)
 BIG_N = 8800                # how many open requests the 32B gets (2.25 h x ~65/min)
 FAST_BUDGET_H = 4.25        # then the 14B (~3x faster, ~195/min) on the easier tail: ~50k, the rest of the queue
 BUILD_BUDGET_H = 4.5        # stop downloading new games after this (on the CPUs, during the teacher)
 BLIND_BUDGET_H = 0.4        # teacher on the dev-test grading sample
-STUDENT_BUDGET_H = 3.75     # both students: train + answer the full test set (constrained JSON)
+STUDENT_BUDGET_H = float(os.environ.get("RZ_STUDENT_BUDGET_H", "1.8" if PRESET == "quick" else "3.75"))   # both students
 GRADE_RESERVE_H = 0.35      # grading + out.zip after the students
 ROUND = time.strftime("%Y%m%d-%H%M")
+
+
+def stamp() -> dict:
+    """What makes this round reproducible: seed, the hashes of the data the students saw, the recipe, the pack."""
+    import hashlib
+
+    def h(path):
+        if not os.path.exists(path):
+            return None
+        d = hashlib.sha256()
+        with open(path, "rb") as f:
+            for b in iter(lambda: f.read(1 << 20), b""):
+                d.update(b)
+        return d.hexdigest()[:16]
+    sd = os.path.join(WORK, "students", "data")
+    data = {os.path.relpath(p, sd): h(p) for p in sorted(glob.glob(f"{sd}/*/*.jsonl"))}
+    man = next(iter(glob.glob(f"{PACK}/**/manifest.json", recursive=True)), None)
+    return {"seed": 7, "data_sha256_16": data, "teacher_out_sha256_16": h(os.path.join(WORK, "teacher_out.jsonl")),
+            "recipe": {"preset": PRESET, "mode": MODE, "session_h": SESSION_H, "student_budget_h": STUDENT_BUDGET_H,
+                       "epochs": "1 (quick)" if PRESET == "quick" else "game-reasoner 2, watchdog 1"},
+            "code_pack": os.environ.get("RZ_CODE_PACK") or (json.load(open(man)).get("commit") if man else None)}
+
 KW = os.environ.get("RZ_KAGGLE_WORKING", "/kaggle/working")        # overridable for the CPU smoke test
 INP = os.environ.get("RZ_KAGGLE_INPUT", "/kaggle/input")
 WORK = f"{KW}/rz"
@@ -124,7 +151,7 @@ STUDENTS_ONLY = MODE == "students"
 if STUDENTS_ONLY:
     from agent.kaggle.run_teacher import load_done
     answers = load_done(PREV)                     # every attached teacher_out, one answer per id
-    if not answers:
+    if not answers and os.environ.get("RZ_JOBS", "") != "watchdog":   # the watchdog never reads teacher answers
         raise SystemExit('MODE="students" needs the previous version\'s output (with teacher_out.jsonl) attached')
     with open(os.path.join(WORK, "teacher_out.jsonl"), "w") as f:
         for v in answers.values():
@@ -174,8 +201,10 @@ def tail(path, n=20):
 
 # %%
 if not os.environ.get("RZ_SMOKE"):
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "vllm", "peft", "accelerate", "bitsandbytes",
-                    "huggingface_hub", "safetensors", "lightgbm", "httpx", "pyyaml"], check=False)
+    # [Colab V8] students-only needs no vLLM (and its install would replace the runtime's torch)
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", *([] if STUDENTS_ONLY else ["vllm"]), "peft",
+                    "accelerate", "bitsandbytes", "huggingface_hub", "safetensors", "lightgbm", "httpx", "pyyaml"],
+                   check=False)
     # Kaggle ships torchao 0.10; peft's LoRA needs torchao >= 0.16 or none at all (V3 died on it)
     subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "-q", "torchao"], check=False)
 
@@ -225,9 +254,12 @@ if queue and os.path.exists(f"{MOMENTS}/split_plan.json"):
             continue                  # round 2+ grades on the build's dev-test sample (phase 3)
         else:
             keep.append(q)
+    from agent.distill.teacher import balance_by_league
+    keep = balance_by_league(keep)            # every league gets answers before the budget runs out
     queue = f"{WORK}/teacher_requests_r2.jsonl"
     write_jsonl(queue, keep)
-    print("teacher queue after the time split:", len(keep))
+    print("teacher queue after the time split:", len(keep),
+          {k: sum(1 for q in keep if str(q.get("id", "")).split(":")[0] == k) for k in ("nfl", "cfb", "nba", "cbb", "nhl", "mlb")})
 if queue:
     tail_h = BLIND_BUDGET_H + STUDENT_BUDGET_H + GRADE_RESERVE_H        # what must still fit after the teacher
     run(["agent/kaggle/run_teacher.py", "--requests", queue, "--out", WORK,
@@ -248,7 +280,10 @@ student_args = ["--pack", PACK, "--teacher-out", os.path.join(WORK, "teacher_out
                 "--out", os.path.join(WORK, "students")]
 if os.path.exists(f"{MOMENTS}/DONE"):
     student_args += ["--moments", MOMENTS]
-run(["agent/kaggle/run_students.py", *student_args, "--prepare-only"])
+if os.path.exists(os.path.join(WORK, "students", "student_data.json")):     # [Colab V8] a resumed run: same data
+    print("student data already written (resumed run):", open(os.path.join(WORK, "students", "student_data.json")).read())
+else:
+    run(["agent/kaggle/run_students.py", *student_args, "--prepare-only"])
 
 # %%
 # Phase 3: the teacher answers the dev-test grading sample blind (graded exactly like the student)
@@ -266,7 +301,12 @@ if os.path.exists(gr) and not STUDENTS_ONLY:
 # Phase 4: students on both T4s, then mlx_lm adapters
 sb = min(STUDENT_BUDGET_H, left_h(GRADE_RESERVE_H))
 print(f"students: {sb:.2f} h budget ({left_h():.2f} h left in the session)", flush=True)
-run(["agent/kaggle/run_students.py", *student_args, "--prepared"], env={"RZ_STUDENT_BUDGET_S": str(int(sb * 3600))})
+prev_base = [p for p in glob.glob(f"{INP}/**/watchdog/test_out_base.jsonl", recursive=True) if not p.startswith(PACK)]
+quick_env = {"RZ_EPOCHS": "1", "RZ_ANSWER_RESERVE_S": str(60 * 60),
+             **({"RZ_REUSE_BASE": prev_base[0]} if prev_base else {})} if PRESET == "quick" else {}
+print("quick preset:", quick_env, flush=True)
+run(["agent/kaggle/run_students.py", *student_args, "--prepared"],
+    env={"RZ_STUDENT_BUDGET_S": str(int(sb * 3600)), **quick_env})
 
 # %%
 # Phase 5: grade, and the teacher's new watchdog wordings
@@ -312,7 +352,31 @@ for f in ("grade_rows.jsonl", "jump_rows.jsonl"):
     if os.path.exists(os.path.join(gdir, f)):
         os.makedirs(os.path.join(keep, "graded"), exist_ok=True)
         shutil.copy(os.path.join(gdir, f), os.path.join(keep, "graded", f))
-json.dump({"round": ROUND, "mode": MODE, "wall_h": round((time.time() - T0) / 3600, 2)}, open(os.path.join(keep, "round.json"), "w"))
+json.dump({"round": ROUND, "mode": MODE, "preset": PRESET, "wall_h": round((time.time() - T0) / 3600, 2), "stamp": stamp()},
+          open(os.path.join(keep, "round.json"), "w"))
+from agent.kaggle.grade import short_grades  # noqa: E402
+
+# grades.json at the output ROOT: the few numbers the overseer reads from Kaggle's Output tab (the log is cut)
+try:
+    rep = json.load(open(os.path.join(WORK, "report.json"))) if os.path.exists(os.path.join(WORK, "report.json")) else {}
+    g = short_grades(rep, ROUND, MODE, round((time.time() - T0) / 3600, 2))
+    g["stamp"] = stamp()                        # [Nick 6:40 PM rule 10] seed, data hash, recipe, code pack id
+    cov = {}
+    for job in ("game-reasoner", "watchdog"):  # [Colab V8] how much of each test set is answered, and resumes
+        try:
+            tr = json.load(open(os.path.join(WORK, "students", job, "train_report.json")))
+            cov[job] = {"complete": tr.get("complete"), "stopped_early": tr.get("stopped_early"),
+                        "ckpt_resumes": tr.get("ckpt_resumes"), "steps": tr.get("steps"),
+                        **{k: {m: v.get(m) for m in ("answered", "of", "reused")} for k, v in tr.get("answered", {}).items()}}
+        except (OSError, ValueError):
+            cov[job] = None
+    g["coverage"] = cov
+    ran = [j for j in os.environ.get("RZ_JOBS", "game-reasoner,watchdog").split(",") if j in cov]
+    g["complete"] = all(cov[j] and cov[j].get("complete") for j in ran)
+    json.dump(g, open(os.path.join(KW, "grades.json"), "w"), indent=1)
+    print("grades.json:", open(os.path.join(KW, "grades.json")).read())
+except Exception as e:  # noqa: BLE001 - the summary never fails the round
+    print("grades.json not written:", type(e).__name__, e)
 shutil.make_archive(f"{KW}/out", "zip", keep)
 # keep the version output small: the 3.4 GB dequantized base is rebuilt next session in ~2 min
 shutil.rmtree(os.path.join(WORK, "students", "base-deq"), ignore_errors=True)
