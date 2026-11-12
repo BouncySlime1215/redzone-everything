@@ -53,6 +53,22 @@ Then `park_facts.refusal` is asked once more before any key goes out. It refuses
 
 `ParkHands.jump` keeps the old picture if the flip does not land.
 
+## The game on the picture (`park.verify_game`, off)
+
+A game is mapped to a channel from the schedule (ESPN's broadcast field, or a guess such as Peacock to NBCSN), never
+from the picture. On Nov 11 the show called ESPN's picture CLE @ NY for 15 minutes after that game ended and ESPN
+moved on to GS @ HOU. With `park.verify_game` on, every tune (and the placing of the stream on screen) reads the words
+on the picture with the expected game's team names and every other live game's (`redzone/noggin/park_verify.py`):
+
+- **Verified**: the expected game's two teams are named and no other game's are. Its K (if any) is used.
+- **Wrong**: another live game's two teams are named and the expected game's are not. The tune fails, the stream's
+  place is dropped, the show stands down and re-picks without that game-and-channel pair for 30 minutes.
+- **Unknown**: nothing readable, a blank frame, or both games named. Its K is kept back (the wide padding) until a
+  later tune confirms it. A guessed channel counts as unknown the same way.
+
+YouTube TV's video is DRM-blank in a screenshot, but its overlay is not: the words come from the read gesture's own
+frame (no extra screenshot, no key, no added seconds). Prime Video: one screenshot and one local text read.
+
 ## The warrant on each jump
 
 Every jump gets a **warrant** before it is planned: why leave here and go there (`park_plan.py`, `warrant`

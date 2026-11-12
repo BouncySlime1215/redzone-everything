@@ -1348,7 +1348,12 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
                            # once per LEFT) before its commit, so the picture is not sent ~30 s back in front of the viewer, and
                            # a failed re-read never reloads the picture on screen. Off: as merged (commit 30 s back; a fresh tune
                            # if the read fails). RIGHT behind the live edge is unmeasured on the TV: the seek check catches it
-  steps:                 # each PARK device step as measured on the real sticks and TV on Nov 10 (ledger L13-L21, L41-L51)
+  verify_game: false       # [PARK-VERIFY-GAME] OFF. On: after every tune the words on the picture name the game (YouTube TV: the read
+                           # gesture's own overlay text, no extra screenshot; Prime: one screenshot + text read). Another live
+                           # game's two teams named = the WRONG game: that stream is refused and the show re-picked without the
+                           # pair for 30 min. Nothing readable = UNKNOWN: the game's K is kept back (wide padding) until its
+                           # picture confirms it; a guessed channel (Peacock -> NBCSN) is UNKNOWN the same way (noggin/park_verify.py)
+  steps:                # each PARK device step as measured on the real sticks and TV on Nov 10 (ledger L13-L21, L41-L51)
     min_real_pos_s: 60     # after a tune the media session says "playing" at position 0.0 for about 2 s: a position under this
                            # is never a stream's place
     live_lag_s: 20         # an unread stream's nominal place: its live edge this far behind YouTube's clock (19-27 s measured;

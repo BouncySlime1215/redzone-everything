@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**463 modules**, 395 untagged, 265 unowned, 36 orphans (no importer); 2279 call edges, 203 data files, 53 machines.
+**464 modules**, 396 untagged, 266 unowned, 36 orphans (no importer); 2283 call edges, 203 data files, 53 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -102,7 +102,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
 | `redzone/channels.py` | Where can you actually watch a game? | models -> autonomy, canary, control, decider.gate, demo.engine, discovery.providers +23 | untagged |
-| `redzone/control.py` | Turns decisions into TV actions. | autonomy, channels, config, contracts.switching, decider.tune_offset, fallback_ladder +22 -> autonomy, demo.engine, engine, lab.night.run, supervisor, scripts.fault_drill +4 | APP-04, BTN-05, Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), SAFE-08, STK-01, STK-02, STK-05, STK-06, STK-07, Switch time p95 (SmartThings input change), TV-04 |
+| `redzone/control.py` | Turns decisions into TV actions. | autonomy, channels, config, contracts.switching, decider.tune_offset, fallback_ladder +23 -> autonomy, demo.engine, engine, lab.night.run, supervisor, scripts.fault_drill +4 | APP-04, BTN-05, Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), SAFE-08, STK-01, STK-02, STK-05, STK-06, STK-07, Switch time p95 (SmartThings input change), TV-04 |
 | `redzone/discovery/__init__.py` (package) | Finding where things are watchable, by itself. | - -> - | untagged |
 | `redzone/discovery/lounge.py` | Ask the YouTube TV app on a stick which video id it is playing, over the network, no login. | - -> discovery.yttv, scripts.find_yttv_code | untagged |
 | `redzone/discovery/providers.py` | Provider candidates: installed apps, learned access failures, and per-game routes. | channels, models -> discovery.runtime, discovery.search, discovery.stickio, supervisor, tuners.prime_search, tuners.profiles +7 | untagged |
@@ -148,7 +148,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/screen/__init__.py` (package) | no docstring | - -> - | untagged |
 | `redzone/screen/audio.py` | Hear the TV to measure your stream delay automatically (optional, off by default). | - -> engine | untagged |
 | `redzone/screen/boundary.py` | Stream delay measured automatically from show changes (no taps, no mic, no camera). | - -> engine | untagged |
-| `redzone/screen/scorebug.py` | Stream delay measured from the broadcast's own score bug (no taps, no keys pressed). | decider.sync -> cheap_labels, control, engine, noggin.park_prime, screen.tap_bug, scripts.park_prime_accept | untagged |
+| `redzone/screen/scorebug.py` | Stream delay measured from the broadcast's own score bug (no taps, no keys pressed). | decider.sync -> cheap_labels, control, engine, noggin.park_prime, noggin.park_verify, screen.tap_bug +1 | untagged |
 | `redzone/screen/tap_bug.py` | [EXP-741 E, decider.entry.user_bug_gate] The Prime score bug's game clock as a tap's dead-ball signal. | screen.scorebug -> engine | untagged |
 | `redzone/screen_ocr.py` | Read local PNG menu text with Apple Vision; never capture or control a device. | governor -> control, engine, lab.night.house, lab.night.run, recorded, tuners.adb +7 | untagged |
 
@@ -251,7 +251,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval.py` (entry) | The scorecard every change is judged by. | config, lab.backtest, lab.cutgrade, lab.evaldata, lab.optimize, lab.oracle +2 -> - | untagged |
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 
-## unowned (265)
+## unowned (266)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -347,6 +347,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/noggin/park_prime.py` | PARK on Prime Video: which games the show may take from Prime, what a Prime tune costs, that Prime has no back route, and each Prime game's K from the hidden... | config, contracts.switching, decider.sync, screen.scorebug, sync_edge, uses:ConfigSwitchPaths -> control, park_run, scripts.park_prime_accept, scripts.park_replay | untagged |
 | `redzone/noggin/park_show.py` | PARK show: the in-app controller of the two-stick show, one second at a time (integration plan unit 8). | grading, models, noggin.park_core, noggin.park_facts, noggin.park_plan, noggin.park_timing +1 -> park_run, scripts.park_replay | untagged |
 | `redzone/noggin/park_timing.py` | PARK timing: where a game's feed time sits on a stick's picture, how sure that is, and each game's padding. | noggin.k_table -> noggin.park_facts, noggin.park_show, park_run, scripts.park_replay | untagged |
+| `redzone/noggin/park_verify.py` | [park.verify_game, OFF] Is the game on a stick's picture the game PARK thinks that channel carries? | screen.scorebug -> control, park_run | untagged |
 | `redzone/noggin/pick.py` | Noggin Reflex PICK v1: which game should be on screen, learned by imitating the hindsight oracle. | grading, models, models_rt.forest, noggin.features, noggin.timing, scoring.brain3 +1 -> decider.decider, scripts.eval_sports, scripts.noggin_selfplay, scripts.train_noggin_pick | untagged |
 | `redzone/noggin/predict.py` | Noggin Reflex Predict v1: P(a big play in the next 30 / 60 / 120 s of play) at a restart (numpy only). | models_rt.forest, noggin.features, noggin.timing -> noggin.live, noggin.predict_fit, scripts.train_noggin_predict | untagged |
 | `redzone/noggin/predict_fit.py` | Fit and grade Noggin Predict v1 (pandas + LightGBM; Kaggle CPU / cloud only, never the Mac). | noggin.features, noggin.predict, noggin.timing_fit, scoring.brain3 -> agent.kaggle.qwen_finetune, scripts.kaggle_gamevalue, scripts.train_noggin_predict | untagged |
@@ -360,7 +361,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/noggin/wide_features.py` | Feature factory for GameValue v5: 100,000+ named candidate columns from the plays at the feed head, and the kept few, computed online. | moments.detect, noggin.gamevalue -> noggin.gamevalue, noggin.value_shards, scripts.kaggle_gamevalue, scripts.kaggle_gamevalue_select | untagged |
 | `redzone/noggin/wire.py` | Noggin Priority -> decider wiring (flag `noggin.priority.enabled`, off by default). | noggin.priority -> decider.decider | untagged |
 | `redzone/observability.py` | The night, rolled up: what it showed, what it missed, what broke, what got fixed, and the error budget. | supervisor, trace -> supervisor | untagged |
-| `redzone/park_run.py` | The engine's side of the PARK show (integration plan unit 8): with `park.enabled` on, the app runs the two-stick show itself. | models, noggin.k_table, noggin.park_core, noggin.park_facts, noggin.park_prime, noggin.park_show +2 -> engine | untagged |
+| `redzone/park_run.py` | The engine's side of the PARK show (integration plan unit 8): with `park.enabled` on, the app runs the two-stick show itself. | models, noggin.k_table, noggin.park_core, noggin.park_facts, noggin.park_prime, noggin.park_show +3 -> engine | untagged |
 | `redzone/personal/__init__.py` (package) | no docstring | - -> - | untagged |
 | `redzone/personal/profile.py` | Summarize the personal store into simple signals: hours by service, sports watch counts by team and league, active hours. | personal.store -> scripts.personal_import | untagged |
 | `redzone/personal/store.py` | Local store for Nick's own phone metadata: one JSONL under data/personal/, allow-listed fields only. | - -> personal.profile, web.server, scripts.personal_import | untagged |
@@ -521,7 +522,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/wv_aux_label.py` (entry) | Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804). | - -> scripts.attention_labels | untagged |
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 
-## Untagged (395)
+## Untagged (396)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -694,6 +695,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/noggin/park_prime.py`
 - `redzone/noggin/park_show.py`
 - `redzone/noggin/park_timing.py`
+- `redzone/noggin/park_verify.py`
 - `redzone/noggin/pick.py`
 - `redzone/noggin/predict.py`
 - `redzone/noggin/predict_fit.py`
@@ -958,7 +960,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/lab/replaycheck.py`
 - `redzone/tuners/identity.py`
 
-## Most-called symbols (top 25 of 1183)
+## Most-called symbols (top 25 of 1187)
 
 | symbol | callers |
 |---|---:|

@@ -370,6 +370,7 @@ class LabelProbe:
         self.anchors: dict[str, LabelRead] = {}
         self.armed: dict[str, float] = {}       # stick -> its behind_live_s when armed (0 = at the live edge)
         self.held: dict[str, tuple[float, float]] = {}   # stick -> (behind_s, wall) from the last measured read
+        self.texts: dict[str, list[str]] = {}   # [park.verify_game] stick -> the words of its last frame (no frame is kept)
         # [timing.label_stamp_at_pause] stick -> (the anchor's pause event, its behind-live then); stick -> the tune's
         # position counter on YouTube's clock from the last stamped read. Empty with the flag off.
         self.anchor_stamps: dict[str, tuple] = {}
@@ -429,6 +430,7 @@ class LabelProbe:
         del png
         if obs is None or not deleted:
             return None, None
+        self.texts[self._key(stick)] = [o.text for o in obs]   # the overlay's words (title, times), for park_verify
         ov = yttv_seek.parse_overlay([{"text": o.text, "x": o.x, "y": o.y, "w": o.width, "h": o.height}
                                       for o in obs], focus)
         lab = parse_label(obs, wall, knob_offset_s=knob_offset_s, tz=self.tz)

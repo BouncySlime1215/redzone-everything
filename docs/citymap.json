@@ -5158,8 +5158,10 @@
     "redzone/noggin/park_prime.py:play_clock",
     "redzone/noggin/park_prime.py:play_over",
     "redzone/noggin/park_prime.py:prime_on",
+    "redzone/noggin/park_verify.py:verdict",
     "redzone/screen/scorebug.py:clock_seconds",
     "redzone/screen/scorebug.py:frame_kind",
+    "redzone/screen/scorebug.py:is_uniform",
     "redzone/screen/scorebug.py:parse_bug",
     "redzone/screen/scorebug.py:period_number",
     "redzone/screen_ocr.py:recognize",
@@ -5221,6 +5223,7 @@
     "redzone/noggin/gamequeue.py",
     "redzone/noggin/k_table.py",
     "redzone/noggin/park_prime.py",
+    "redzone/noggin/park_verify.py",
     "redzone/screen/scorebug.py",
     "redzone/screen_ocr.py",
     "redzone/sync_edge.py",
@@ -9822,6 +9825,35 @@
     "untagged"
    ]
   },
+  "redzone/noggin/park_verify.py": {
+   "calls": [
+    "redzone/screen/scorebug.py:_match",
+    "redzone/screen/scorebug.py:_tokens"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/screen/scorebug.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/control.py",
+    "redzone/park_run.py"
+   ],
+   "owner": "unowned",
+   "role": "[park.verify_game, OFF] Is the game on a stick's picture the game PARK thinks that channel carries?",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/noggin/pick.py": {
    "calls": [
     "redzone/grading.py:Lags",
@@ -10342,6 +10374,7 @@
     "redzone/noggin/park_prime.py",
     "redzone/noggin/park_show.py",
     "redzone/noggin/park_timing.py",
+    "redzone/noggin/park_verify.py",
     "redzone/showboard.py"
    ],
    "kind": "module",
@@ -11492,6 +11525,7 @@
     "redzone/control.py",
     "redzone/engine.py",
     "redzone/noggin/park_prime.py",
+    "redzone/noggin/park_verify.py",
     "redzone/screen/tap_bug.py",
     "scripts/park_prime_accept.py"
    ],
@@ -18837,13 +18871,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2279,
+  "calls": 2283,
   "data_files": 203,
   "machines": 53,
-  "modules": 463,
+  "modules": 464,
   "orphans": 36,
-  "unowned": 265,
-  "untagged": 395
+  "unowned": 266,
+  "untagged": 396
  },
  "version": 2
 }
