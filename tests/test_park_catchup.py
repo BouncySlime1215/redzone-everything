@@ -25,7 +25,7 @@ for _p in (ROOT.as_posix(), (ROOT / "scripts").as_posix()):
 import catchup_replay as cr  # noqa: E402
 import park_replay as pr  # noqa: E402
 from redzone.noggin import catchup_pack as cp  # noqa: E402
-from redzone.noggin.park_catchup import CatchupParams, CatchupShow, ShowSeen, plays_of  # noqa: E402
+from redzone.noggin.park_catchup import CatchupParams, CatchupShow, ShowSeen, TrackerSeen, plays_of  # noqa: E402
 
 needs_archive = pytest.mark.skipif(not (ROOT / "data/archive/nba").exists(), reason="pinned eval data not fetched (scripts/fetch_eval_data.py)")
 
@@ -62,7 +62,9 @@ def test_plays_of_reads_scores_lead_changes_ties_runs_and_each_plays_start():
 def test_the_seen_stub_answers_from_the_shows_own_seen_to():
     show = SimpleNamespace(seen_to=[-1, 812])
     seen = ShowSeen(show)
-    assert seen.missed_since(0) is None and seen.missed_since(1) == 812.0
+    assert seen.last_seen(0) is None and seen.last_seen(1) == 812.0
+    tracker = SimpleNamespace(g=[SimpleNamespace(last_p=None), SimpleNamespace(last_p=640)])   # seen.SeenTracker's shape
+    assert TrackerSeen(tracker).last_seen(0) is None and TrackerSeen(tracker).last_seen(1) == 640.0
 
 
 def test_params_come_from_park_catchup_keys_and_ship_off():

@@ -33,7 +33,7 @@ For the judge and the frozen grader a catch-up is **one cut**: the leave of the 
 ## Which plays
 
 `redzone/noggin/catchup_pack.py` (pure, unit-tested): plays whose result came after the last second the viewer saw
-(`seen.missed_since(game)`), worth = graded value (value2) + 2 x the grader's must-see weight + leverage x (lead change
+(`SeenLike.last_seen(game)`), worth = graded value (value2) + 2 x the grader's must-see weight + leverage x (lead change
 1, tie 0.5, the score that makes an 8-0 run 1). The most worth first, at most 5 plays, at most 120 s on screen (Prime
 Rapid Recap's cap), shown in story order. Close plays play straight through (no re-seek), up to 30 s.
 
@@ -89,8 +89,9 @@ PARK-TIMING-CONFIG claims on `redzone/default_config.yaml` to close.
 
 ## Seams
 
-- **Seen-state** (branch `seen-director`): `park_catchup.SeenLike.missed_since(game) -> grid second | None`.
-  `CatchupShow(seen=...)` takes the real tracker; the stub `ShowSeen` answers from the show's own `seen_to`.
+- **Seen-state** (merged, `redzone/noggin/seen.py`): `park_catchup.SeenLike.last_seen(game) -> grid second | None`.
+  With park.seen on, `TrackerSeen` reads the show's `seen_state` (`g[game].last_p`); otherwise `ShowSeen` reads `seen_to`.
+  While a replay is up the tracker is ticked with no picture for the catch-up's game, so the others go on getting stale.
 - **Director v1**: `CatchupShow.catchup_offer(t, game) -> (Package | None, why)` asks what a catch-up would play now,
   without starting it.
 - **Device**: one rig step, `cu_cue(k, game, frame, source, visible) -> (ok, seconds)`. For the real sticks: rewind =

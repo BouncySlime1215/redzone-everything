@@ -25,8 +25,9 @@ frame, source, visible) -> (ok, seconds)`: put stick k at grid second `frame` of
 moments), paused. Only the replay's fake rig has it (scripts/catchup_replay.py). The app's ControllerRig does not, so
 this class never starts a catch-up in the app (fail closed); `redzone/park_run.py` does not build it yet.
 
-The seen-state seam: `SeenLike.missed_since(game)` (branch seen-director builds the real tracker). Until it lands,
-`ShowSeen` answers from the show's own `seen_to` (the last second of each game that was on screen).
+The seen-state seam: `SeenLike.last_seen(game)`, the game's own grid second last on screen. With park.seen on the show
+has the real tracker (redzone/noggin/seen.py, `Show.seen_state`) and `TrackerSeen` answers from it; otherwise `ShowSeen`
+answers from the show's own `seen_to`.
 
 Pure apart from the rig: no clock or I/O of its own. Not imported by the app.
 """
@@ -73,9 +74,9 @@ class CatchupParams:
 
 
 class SeenLike(Protocol):
-    """The seen-tracker's one question here (branch seen-director, `seen.missed_since(game)`)."""
+    """The seen-state's one question here."""
 
-    def missed_since(self, game: int) -> float | None:
+    def last_seen(self, game: int) -> float | None:
         """The last grid second of `game` the viewer saw live; None = never seen."""
 
 
@@ -85,9 +86,20 @@ class ShowSeen:
     def __init__(self, show: Show):
         self.show = show
 
-    def missed_since(self, game: int) -> float | None:
+    def last_seen(self, game: int) -> float | None:
         s = self.show.seen_to[game]
         return None if s < 0 else float(s)
+
+
+class TrackerSeen:
+    """The real seen-tracker (redzone/noggin/seen.py, park.seen): the game's own second last on screen."""
+
+    def __init__(self, tracker):
+        self.tracker = tracker
+
+    def last_seen(self, game: int) -> float | None:
+        p = self.tracker.g[game].last_p
+        return None if p is None else float(p)
 
 
 def plays_of(show: Show, g: int, P: cp.PackParams) -> list[cp.Play]:
@@ -153,7 +165,8 @@ class CatchupShow(Show):
         super().__init__(*args, **kw)
         c = catchup or CatchupParams()
         self.cp = replace(c, pack=replace(c.pack, delay_s=float(self.P.show_delay)))
-        self.seen = seen if seen is not None else ShowSeen(self)
+        tracker = getattr(self, "seen_state", None)
+        self.seen = seen if seen is not None else TrackerSeen(tracker) if tracker is not None else ShowSeen(self)
         self.cu: dict | None = None                              # the catch-up under way
         self.cu_pkg: cp.Package | None = None
         self.cu_ok = bool(self.cp.enabled) and not self.rig.instant and callable(getattr(self.rig, "cu_cue", None))
@@ -190,7 +203,7 @@ class CatchupShow(Show):
         returned to it now with the hidden stick, or why not. Asks only; starts nothing."""
         if not self.cu_ok or self.S is None:
             return None, "park.catchup is off or the sticks cannot cue a clip"
-        why = self._cu_why_not(t, game, 1 - self.on, self.on, self.seen.missed_since(game))
+        why = self._cu_why_not(t, game, 1 - self.on, self.on, self.seen.last_seen(game))
         return (None, why) if why else (self.cu_pkg, "")
 
     # ---- before the leave --------------------------------------------------------------------------------------------
@@ -216,7 +229,7 @@ class CatchupShow(Show):
         h, v, g = 1 - self.on, self.on, S.hg
         if g < 0 or g == S.sg or rig.game[h] != g or not rig.paused[h] or t < S.h_ready:
             return
-        since = self.seen.missed_since(g)
+        since = self.seen.last_seen(g)
         if since is not None and t - since < C.min_gap_s:
             return
         key = (g, int(round(rig.frozen[h])))                     # this park (its frozen frame)
@@ -448,6 +461,8 @@ class CatchupShow(Show):
             self._eyes_judge()
         self._repad()
         self._trust()
+        if getattr(self, "seen_state", None) is not None:      # [SEEN] the replay is up: every other game goes on unseen
+            self.seen_state.tick(t, self.cu["game"], None, self.A)
         await self._cu_drive(t)
         if self.board is not None:
             self.board.write(self, t)
