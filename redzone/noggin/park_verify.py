@@ -16,6 +16,8 @@ picture is not blanked: one screenshot and one local text read (the score bug) a
 
 Team words are the score-bug reader's own (`screen.scorebug._tokens`: the abbreviation and the longer words of the
 name); a word both teams share names neither. Pure: no device, no clock.
+
+Why: the Nov 11 wrong-game finding (PARK-VERIFY-GAME, decisions.md 2026-11-11): only the picture proves which game a channel carries.
 """
 from __future__ import annotations
 
