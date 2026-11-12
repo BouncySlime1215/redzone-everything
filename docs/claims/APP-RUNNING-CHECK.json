@@ -1,0 +1,11 @@
+{
+  "card": "APP-RUNNING-CHECK",
+  "session": "test-prep-2026-11-11",
+  "branch": "fix-app-running-check",
+  "files": [
+    "scripts/park_hands_live.py",
+    "tests/test_park_hands_live*.py"
+  ],
+  "started": 1794444838,
+  "expires": 1794531238
+}
