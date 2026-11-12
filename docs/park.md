@@ -75,6 +75,10 @@ same moment. It belongs to one game on one night, and comes from the K file name
 - A game with a read tune and a known K gets about 3 s.
 - A game with no K tonight is **unknown**: it gets a wide prior, about 48 s, never zero.
 - `park_facts.GRID` trims a few more seconds because the planner works on a 1 s grid.
+- `park.pad_k` and the parts `park.timing.*` are settings. `park.timing.k_sd_min: 1.91` pads every game WITH a K at 8 s
+  on a read tune (NBA, college, football) and leaves games with no K as they are.
+- The per-tune read gesture reads where the stream sits on YouTube's clock (the "read" above). It is not K. A YouTube
+  TV game gets K only from the K file; a Prime game also from its own score-bug reads.
 
 ## Prime and football
 
@@ -162,8 +166,10 @@ Groups (numbers measured on the sticks or picked in replay; the YAML comments sa
 - `show.*`: `show_delay` 35, `bonus` 3.0, `min_look` 3.0, `warrant` need, `crunch` true, `stops` true, `land_wait` 20,
   `long_break` 90, `tune_stick` 1.0, `late_cap` 145, `jump_real` 3.0, `read` 10.5, and the tables `stop_max` and `stop_min`.
 
-Read in code but absent from the YAML (defaults in `park_facts.py`, `park_timing.py`): `pad_k`, `play_clock_s`,
-`snap_slack_s`, `timing.*` (error parts, `live_lag`).
+- `pad_k` 4 (config limit 4-20) and `timing.*` (the error parts and priors of `park_timing.TimingParams`, each the code's
+  own default; `timing.live_lag` null, so `steps.live_lag_s` decides).
+
+Read in code but absent from the YAML (defaults in `park_facts.py`): `play_clock_s`, `snap_slack_s`.
 
 ## Run the replay (no TV, no sticks)
 
