@@ -78,10 +78,13 @@ def test_rewind_floor_measured_watch_and_library():
     assert cp.rewind_floor(1000.0, s, replace(P, rewind_rule="library")) == -math.inf
 
 
-def test_never_three_minutes_late_is_nicks_hard_cap_by_default():
-    assert P.max_age_s == HARD_CAP_S == 180.0
+def test_one_play_keeps_the_three_minute_cap_and_two_or_more_have_none():
+    """Nick, Nov 11: "the catchup can be old as it wants (assuming its multiple clips) if we catching up from 1 play then
+    ideally we saw it within the 3 min cap"."""
+    assert P.max_age_s == HARD_CAP_S == 180.0 and cp.age_cap(1, P) == 180.0 and cp.age_cap(2, P) == math.inf
     assert cp.age_ok(lo=1000.0, air=1000.0 + 144.0, P=P)                    # 144 + 35 = 179 s behind live
-    assert not cp.age_ok(lo=1000.0, air=1000.0 + 145.0, P=P)                # 180 s: already too late
+    assert not cp.age_ok(lo=1000.0, air=1000.0 + 145.0, P=P)                # 180 s: already too late for one play
+    assert cp.age_ok(lo=1000.0, air=1000.0 + 3600.0, P=P, n_plays=2)        # a package: no age cap
 
 
 # ---------------------------------------------------------------------------------------------- the plan
@@ -109,13 +112,28 @@ def test_plan_schedules_clips_back_to_back_with_a_reseek_between():
     assert pkg.screen_s == pytest.approx(c1.air + c1.secs - c0.air)
 
 
-def test_library_what_if_reaches_the_whole_game_but_keeps_the_age_cap_unless_raised():
+def test_a_package_is_limited_only_by_the_rewinds_reach_but_one_play_keeps_the_cap():
     now = 1000.0
-    old = play(now - 400, value=3.0)
-    lib = replace(P, rewind_rule="library")
-    assert cp.plan([old], now, cp.Stick("yttv"), lib) is None               # in reach, but 3+ min late
-    pkg = cp.plan([old], now, cp.Stick("yttv"), replace(lib, max_age_s=900.0))
-    assert pkg is not None and pkg.sources == {"rewind": 1}
+    old, older = play(now - 400, value=3.0), play(now - 450, value=2.0)
+    assert cp.plan([old, older], now, cp.Stick("yttv"), P) is None         # 175 s rewind: out of reach
+    ten = replace(P, reach_s=600.0)
+    pkg = cp.plan([old, older], now, cp.Stick("yttv"), ten)
+    assert pkg is not None and len(pkg.plays) == 2 and pkg.sources == {"rewind": 2}
+    assert max(cp.age_s(c.lo, c.air, P) for c in pkg.clips) > 180.0     # older than 3 minutes: fine for a package
+    assert cp.plan([old], now, cp.Stick("yttv"), ten) is None               # in reach, but one play 3+ min old
+    assert cp.plan([old], now, cp.Stick("yttv"), replace(P, rewind_rule="library")) is None
+    pkg = cp.plan([old, older], now, cp.Stick("yttv"), replace(P, rewind_rule="library"))
+    assert pkg is not None and len(pkg.plays) == 2
+
+
+def test_a_package_that_falls_to_one_play_gets_the_three_minute_cap_back():
+    now = 1000.0
+    fresh, old = play(now - 30, value=0.4), play(now - 400, value=3.0)
+    ten = replace(P, reach_s=600.0, cap_s=25.0)                             # room for one clip only
+    two = cp.plan([fresh, old], now, cp.Stick("yttv"), replace(ten, min_value=0.3, cap_s=60.0))
+    assert two is not None and len(two.plays) == 2                          # both fit: a package, no age cap
+    # over the cap the least-worth play (the fresh one) goes; the old one alone is a one-play catch-up 3+ min old: none
+    assert cp.plan([fresh, old], now, cp.Stick("yttv"), replace(ten, min_value=0.3)) is None
 
 
 def test_sources_go_in_nicks_order_rewind_then_reel_then_moments():

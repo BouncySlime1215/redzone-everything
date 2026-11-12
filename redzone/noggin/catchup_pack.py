@@ -26,8 +26,11 @@ landing at a dead ball, under Rule #1 and the frozen grader (redzone/noggin/park
 Times are grid seconds of the PARK show (park_show.FactsFeed): grid second p is what a stream at the show's edge shows
 at wall second base + p; the live edge is `delay` (park.show.show_delay) ahead, so frame p first aired at grid p - delay.
 
-Never 3 minutes late: every clip second airs less than P.max_age_s after it first aired. Its default is
-catchup.HARD_CAP_S (Nick, Nov 9: "pls dont be 3 or more min late on the highlight"); a longer recap is a what-if only.
+How old a clip may be (Nick, Nov 11: "yes the catchup can be old as it wants (assuming its multiple clips) if we
+catching up from 1 play then ideally we saw it within the 3 min cap"): a package of 2 or more plays has no age cap
+(P.multi_max_age_s, inf); it is limited only by what its source can reach. A one-play catch-up keeps the 3-minute cap,
+P.max_age_s = catchup.HARD_CAP_S (Nick, Nov 9: "pls dont be 3 or more min late on the highlight"). Two close plays
+played through as one stretch count as two plays.
 
 UNKNOWN until measured on the TV (each is a field here, never a constant):
   * rewind reach: 175 s behind live measured (Nov 9: 5 seeks 25 s after a tune, one channel, docs/handoff-2026-11-09-
@@ -74,7 +77,8 @@ class PackParams:
     tie_w: float = 0.5              # a tie
     run_w: float = 1.0              # the score that makes a run of run_pts unanswered
     run_pts: int = 8
-    max_age_s: float = HARD_CAP_S   # every clip second airs less than this after it first aired (Nick, Nov 9)
+    max_age_s: float = HARD_CAP_S   # a ONE-play catch-up airs less than this after it first aired (Nick, Nov 9 and 11)
+    multi_max_age_s: float = math.inf   # 2+ plays: no age cap, only the source's reach (Nick, Nov 11)
     delay_s: float = 35.0           # the show's own delay behind live (park.show.show_delay)
     # (a) rewind on the hidden stick
     rewind_rule: str = "measured"   # measured | watch | library (see the docstring)
@@ -227,9 +231,19 @@ def rewind_floor(seek_at: float, s: Stick, P: PackParams) -> float:
     return measured
 
 
-def age_ok(lo: float, air: float, P: PackParams) -> bool:
-    """Never P.max_age_s late: the clip's first second (its oldest) airs less than that after it first aired."""
-    return air + P.delay_s - lo < P.max_age_s
+def age_cap(n_plays: int, P: PackParams) -> float:
+    """How late a clip of a package of n_plays may air (Nick, Nov 11): one play keeps the 3-minute cap, more have none."""
+    return P.max_age_s if n_plays < 2 else P.multi_max_age_s
+
+
+def age_s(lo: float, air: float, P: PackParams) -> float:
+    """How long after it first aired (at the live edge) a clip starting at grid second lo is on screen at grid `air`."""
+    return air + P.delay_s - lo
+
+
+def age_ok(lo: float, air: float, P: PackParams, n_plays: int = 1) -> bool:
+    """The clip's first second (its oldest) airs under the age cap of a package of n_plays (strictly: 180 s is late)."""
+    return age_s(lo, air, P) < age_cap(n_plays, P)
 
 
 def _can(src: str, p: Play, lo: float, seek_at: float, s: Stick, P: PackParams) -> bool:
@@ -260,7 +274,8 @@ def _prep(src: str, lo: float, now: float, P: PackParams) -> float:
     return P.reel_open_s if src == "reel" else P.moments_open_s
 
 
-def _schedule(segs: list[list[Play]], now: float, air0: float, s: Stick, P: PackParams) -> tuple[list[Clip], float, list]:
+def _schedule(segs: list[list[Play]], now: float, air0: float, s: Stick, P: PackParams,
+              n_plays: int = 1) -> tuple[list[Clip], float, list]:
     """Each group's source (first that works, in Nick's order), when it airs, and the hidden prep; (clips, prep, misses).
     A group no source can show on time is a miss (it is not scheduled; the caller drops its least-worth play)."""
     clips: list[Clip] = []
@@ -279,7 +294,7 @@ def _schedule(segs: list[list[Play]], now: float, air0: float, s: Stick, P: Pack
             gap = _gap(prev, src, P) if clips else 0.0
             seek_at = now if not clips else t         # the first is set up hidden, now; the rest on screen, in the gap
             air = t + gap
-            if _can(src, seg[0], lo, seek_at, s, P) and age_ok(lo, air, P):
+            if _can(src, seg[0], lo, seek_at, s, P) and age_ok(lo, air, P, n_plays):
                 chosen = (src, gap, air)
                 break
         if chosen is None and len(seg) > 1:
@@ -301,7 +316,8 @@ def plan(sel: Sequence[Play], now: float, s: Stick, P: PackParams, *, wait_s: fl
          game: int | None = None) -> Package | None:
     """The package for these selected plays, set up from grid second `now`: the first clip's prep runs hidden, the leave
     comes at most `wait_s` after it, and the flip to the replay takes `flip_s`. Plays that cannot be shown on time go,
-    least worth first, until the rest fit (P.cap_s, sources, never P.max_age_s late). None: nothing worth it is left."""
+    least worth first, until the rest fit (P.cap_s, sources, the age cap of the package's size). None: nothing worth it
+    is left."""
     keep = sorted(sel, key=lambda p: p.at)
     dropped: list = []
     while keep:
@@ -310,7 +326,7 @@ def plan(sel: Sequence[Play], now: float, s: Stick, P: PackParams, *, wait_s: fl
         first_lo = clip_span(segs[0][0], P)[0]
         src0 = next((x for x in CLIP_SOURCES if _can(x, segs[0][0], first_lo, now, s, P)), "rewind")
         air0 = now + _prep(src0, first_lo, now, P) + wait_s + flip_s
-        clips, prep, misses = _schedule(segs, now, air0, s, P)
+        clips, prep, misses = _schedule(segs, now, air0, s, P, len(keep))     # (one play left: the 3-minute cap again)
         if not clips and not misses:
             break
         screen = (clips[-1].air + clips[-1].secs - clips[0].air) if clips else 0.0

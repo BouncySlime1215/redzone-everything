@@ -111,7 +111,8 @@ def test_catchups_keep_rule_1_and_queue_every_clip_to_its_plays_start():
     assert len(recs) == m["done"] and all(r["warrant"]["ok"] for r in recs)
     for r in show.cu_log:
         assert 1 <= len(r["plays"]) <= cp.PackParams().max_plays
-        assert all(cp.age_ok(cl.lo, cl.air, c.pack) for cl in r["clips"])               # never 3 minutes late, as aired
+        assert all(cp.age_ok(cl.lo, cl.air, c.pack, r["n_planned"]) for cl in r["clips"])   # its age cap, as aired
+        assert all(r["n_planned"] >= 2 or cp.age_s(cl.lo, cl.air, c.pack) < 180.0 for cl in r["clips"])
 
 
 @needs_archive

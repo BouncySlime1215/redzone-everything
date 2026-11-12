@@ -14,13 +14,13 @@ TV, Rule #1 judged where the pictures truly were) with three classes swapped in 
     (live) and the live join of game X, with the replay between them. The replay is not a live picture.
 park_replay.py itself is not edited (claimed by PARK-UNIFY until its claim closes); this script wraps it.
 
+The age rule in every scenario is Nick's (Nov 11): 2+ plays have no age cap, one play keeps the 3-minute cap.
 The scenarios (catchup_pack's docstring has every unknown):
   off       the show as it is (park.catchup off)
-  proven    rewind reach 175 s (measured), never 3 min late (catchup.HARD_CAP_S), no reel, no Prime Key Moments
-  library   WHAT-IF: the hidden stick can rewind the whole game (Nick's call #3, games in the YouTube TV library)
-            and a recap may show plays up to 15 min old (outside Nick's 3-minute rule: his call)
-  reel      WHAT-IF: proven rewind, plus PR 382's Key plays reel (one read: 12 min lag) and Prime Key Moments (priors),
-            recaps up to 15 min old
+  proven    rewind reach 175 s behind live (measured Nov 9), no reel, no Prime Key Moments
+  rewind10  WHAT-IF: the hidden stick rewinds 10 minutes behind live
+  library   WHAT-IF: the hidden stick rewinds the whole game (Nick's call #3, games in the YouTube TV library)
+  reel      WHAT-IF: proven rewind, plus PR 382's Key plays reel (one read: 12 min lag) and Prime Key Moments (priors)
 
 Replayed with fake sticks is NOT measured on the TV. Dev nights only.
 
@@ -45,14 +45,14 @@ for _p in (ROOT.as_posix(), (ROOT / "scripts").as_posix()):
 
 import park_replay as pr  # noqa: E402
 from redzone.noggin import catchup_pack as cp  # noqa: E402
-from redzone.noggin.catchup import HARD_CAP_S  # noqa: E402
 from redzone.noggin.park_catchup import CatchupParams, CatchupShow  # noqa: E402
 
 SCENARIOS = {
     "off": None,
     "proven": {},
-    "library": {"rewind_rule": "library", "max_age_s": 900.0},
-    "reel": {"reel": True, "moments": True, "max_age_s": 900.0},
+    "rewind10": {"reach_s": 600.0},
+    "library": {"rewind_rule": "library"},
+    "reel": {"reel": True, "moments": True},
 }
 NIGHTS = ("20261023", "20261028", "20261021")
 # the NFL + Prime case of tests/test_park_nfl_lag.py (one NBA game, the NFL dev night on Prime, its feed 44 s late, parked deeper)
@@ -201,7 +201,7 @@ def metrics(show, c: CatchupParams | None) -> dict:
                 starts["event"] += 1
             else:
                 starts["mid"] += 1
-            late += int(clip.air + show.delay - clip.lo >= (c.pack.max_age_s if c else HARD_CAP_S))
+            late += int(clip.air + show.delay - clip.lo >= cp.age_cap(r.get("n_planned", len(r["plays"])), c.pack))
     out = {"minutes": row["minutes"], "jumps_per_min": row["jumps_per_min"], "behind_max_s": row["behind_max_s"],
            "grader_entries_mid_play": row["grader_entries_mid_play"], "grader_leaves_mid_play": row["grader_leaves_mid_play"],
            "grader_entries": row["grader_entries"], "mid_entry": row["mid_entry"], "mid_leave": row["mid_leave"], "hl_leave": row["hl_leave"],
@@ -218,7 +218,11 @@ def metrics(show, c: CatchupParams | None) -> dict:
             why[w] = why.get(w, 0) + 1
     for w, n in show.cu_aborts.items():
         why[w] = why.get(w, 0) + n
-    lengths = [r["screen_s"] for r in log]
+    lengths = sorted(r["screen_s"] for r in log)
+    oldest = sorted(max(cp.age_s(cl.lo, cl.air, c.pack) for cl in r["clips"]) for r in log if r["clips"])
+    hist: dict = {}
+    for r in log:
+        hist[len(r["plays"])] = hist.get(len(r["plays"]), 0) + 1
     plays = [len(r["plays"]) for r in log]
     src: dict = {}
     for r in log:
@@ -237,8 +241,14 @@ def metrics(show, c: CatchupParams | None) -> dict:
                cu_joins=len(cuts), cu_join_mid=card.entries_mid_play if card else 0,
                cu_join_mid_strict=card.entries_mid_play_strict if card else 0,
                cu_leave_mid=(card.leaves - card.leaves_in_dead - card.leaves_between_plays) if card else 0,
-               clip_starts=starts, clips_late=late, lines=[r["line"] for r in log])
+               clip_starts=starts, clips_late=late, lines=[r["line"] for r in log],
+               plays_hist=dict(sorted(hist.items())), len_med_s=_q(lengths, 0.5), len_p90_s=_q(lengths, 0.9),
+               oldest_med_s=_q(oldest, 0.5), oldest_max_s=round(oldest[-1]) if oldest else 0)
     return out
+
+
+def _q(xs: list, q: float) -> float:
+    return round(xs[min(len(xs) - 1, int(q * len(xs)))]) if xs else 0
 
 
 def describe(m: dict, head: str) -> str:
@@ -253,7 +263,9 @@ def describe(m: dict, head: str) -> str:
                   f"mean {m['mean_s']} s on screen (max {m['max_s']}), {m['plays_per']} plays each, prep {m['prep_s']} s, "
                   f"join wait {m['join_wait_s']} s, join at most {m['behind_join_s']} s behind live; sources {m['sources'] or '-'}",
                   f"  catch-up cuts, FROZEN grader: joins mid-play {m['cu_join_mid']} of {m['cu_joins']} (strict {m['cu_join_mid_strict']}), "
-                  f"leaves mid-play {m['cu_leave_mid']}; clip starts {m['clip_starts']}; clips 3+ min late {m['clips_late']}",
+                  f"leaves mid-play {m['cu_leave_mid']}; clip starts {m['clip_starts']}; clips over their age cap {m['clips_late']}",
+                  f"  packages by plays {m['plays_hist']}; length median {m['len_med_s']} s, p90 {m['len_p90_s']} s; "
+                  f"oldest clip median {m['oldest_med_s']} s, max {m['oldest_max_s']} s behind live",
                   "  why not: " + ("; ".join(f"{k} {v}" for k, v in sorted(m["why_not"].items(), key=lambda kv: -kv[1])) or "-")]
         if m["lines"]:
             lines.append("  e.g. " + " | ".join(m["lines"][:3]))
@@ -261,18 +273,19 @@ def describe(m: dict, head: str) -> str:
 
 
 def table(seed: int = 0, dump: str = "") -> str:
-    """The PR's table: the 3 NBA dev nights (4 games) and the NFL + Prime case, pinned and not, per scenario.
-    `dump`: also write each run's numbers as one JSON line to this file."""
+    """The PR's table: the 3 NBA dev nights (4 games) and the pinned NFL + Prime case; off, proven, and the two rewind
+    what-ifs (10 minutes; the whole game). `dump`: also write each run's numbers as one JSON line to this file."""
     import json
     cases = [(f"NBA {n}, 4 games", n, 4, {}) for n in NIGHTS]
-    cases += [("NFL on Prime + 1 NBA, pinned", "20261023", 1, {**NFL_PRIME, "pin": True}),
-              ("NFL on Prime + 1 NBA, not pinned", "20261023", 1, dict(NFL_PRIME))]
-    head = ("| case | scenario | fits / chances | mean s on screen | plays each | sources | missed big plays: via catch-up / never | "
-            "graded value seen: live + via catch-up | frozen grader: mid-play joins / leaves (catch-up joins) | jumps a min | worst behind live s |")
-    rows = [head, "|" + "---|" * 11]
+    cases += [("NFL on Prime + 1 NBA, pinned", "20261023", 1, {**NFL_PRIME, "pin": True})]
+    head = ("| case | rewind | fits / chances | packages by plays (1/2/3/4/5) | length median / p90 s | oldest clip median / max s "
+            "behind live | missed big plays: via catch-up / never | graded value seen: live + via catch-up | "
+            "frozen grader: mid-play joins / leaves (catch-up joins) | jumps a min |")
+    rows = [head, "|" + "---|" * 10]
     print(head, flush=True)
+    names = {"off": "off", "proven": "175 s (proven)", "rewind10": "10 min (what-if)", "library": "whole game (what-if)"}
     for label, night, games, kw in cases:
-        for sc in ("off", "proven", "library", "reel"):
+        for sc in ("off", "proven", "rewind10", "library"):
             show, c = run(night, games, sc, seed=seed, **kw)
             m = metrics(show, c)
             missed = m["big_n"] - m["big_live"]
@@ -280,11 +293,11 @@ def table(seed: int = 0, dump: str = "") -> str:
             if c is None:
                 cells = ["-", "-", "-", "-", f"{missed} missed: - / {m['big_never']}"]
             else:
-                cells = [f"{m['done']} / {m['chances']}", f"{m['mean_s']}", f"{m['plays_per']}",
-                         ", ".join(f"{k} {v}" for k, v in m["sources"].items()) or "-",
-                         f"{missed} missed: {m['big_via']} / {m['big_never']}"]
+                hist = "/".join(str(m["plays_hist"].get(k, 0)) for k in range(1, 6))
+                cells = [f"{m['done']} / {m['chances']}", hist, f"{m['len_med_s']} / {m['len_p90_s']}",
+                         f"{m['oldest_med_s']} / {m['oldest_max_s']}", f"{missed} missed: {m['big_via']} / {m['big_never']}"]
             fg = f"{m['grader_entries_mid_play']} / {m['grader_leaves_mid_play']}" + (f" ({m.get('cu_join_mid', 0)} of {m.get('cu_joins', 0)})" if c else "")
-            rows.append(f"| {label} | {sc} | " + " | ".join(cells) + f" | {seen} | {fg} | {m['jumps_per_min']} | {m['behind_max_s']} |")
+            rows.append(f"| {label} | {names[sc]} | " + " | ".join(cells) + f" | {seen} | {fg} | {m['jumps_per_min']} |")
             print(rows[-1], flush=True)
             if dump:
                 with open(dump, "a") as fh:

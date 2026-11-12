@@ -320,7 +320,8 @@ class CatchupShow(Show):
                 return                                           # a big play or high leverage is coming on screen: stay
         pkg = cu["pkg"]
         shift = (t + self.flip) - pkg.clips[0].air
-        clips = [c for c in pkg.clips if cp.age_ok(c.lo, c.air + shift, C.pack)]
+        n = len(pkg.plays)
+        clips = [c for c in pkg.clips if cp.age_ok(c.lo, c.air + shift, C.pack, n)]
         if not clips or clips[0] is not pkg.clips[0]:
             self._cu_abort("its first clip would air too late", t)
             return
@@ -384,7 +385,7 @@ class CatchupShow(Show):
             if k:
                 now = rig.clock.now()
                 floor = cp.rewind_floor(now, cp.Stick("yttv", self.on_since[h]), P)
-                if not cp.age_ok(c.lo, now + c.gap, P) or (c.source == "rewind" and c.lo < floor):
+                if not cp.age_ok(c.lo, now + c.gap, P, len(cu["pkg"].plays)) or (c.source == "rewind" and c.lo < floor):
                     cu["skipped"] = cu.get("skipped", 0) + 1     # it ran late: out of reach or too old now, skip it
                     continue
                 ok, _ = await rig.cu_cue(h, g, c.lo, c.source, True)
@@ -631,7 +632,7 @@ class CatchupShow(Show):
         self.cu_log.append({"game": g, "from": cu["g1"], "leave": cu["leave"], "join": t, "screen_s": cu["pkg_s"],
                             "prep_s": round(cu.get("prep_took", 0.0), 1), "plays": shown, "clips": list(cu["shown"]),
                             "sources": pkg.sources, "behind_s": behind, "join_wait_s": t - (cu["wait_from"] or t),
-                            "broke": cu.get("broke", ""), "line": pkg.line, "h": h, "rejoined": k == h, "i": cu["i"]})
+                            "broke": cu.get("broke", ""), "line": pkg.line, "h": h, "rejoined": k == h, "i": cu["i"], "n_planned": len(pkg.plays)})
         self.cu_last[g] = t
         self.cu = None
         self.say(f"CATCH-UP done: {len(shown)} plays of {self.names[g]} in {cu['pkg_s']} s, then live at a dead ball ({behind} s behind)")
