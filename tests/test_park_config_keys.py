@@ -44,6 +44,8 @@ def test_every_literal_park_key_in_the_code_is_in_the_yaml(cfg):
 
 
 def _same(a, b) -> bool:
+    if isinstance(a, float) and math.isinf(a) and b is None:
+        return True                                             # null in the YAML = the code's "no cap" (inf)
     if isinstance(a, float) and isinstance(b, (int, float)) and not isinstance(b, bool):
         return a == b or (math.isinf(a) and math.isinf(b))
     return a == b or (a == () and b in ([], ()))
@@ -80,6 +82,12 @@ def test_reading_the_shipped_config_gives_the_code_defaults(cfg, cls):
     skip = {"stop_max", "possession_cap_s", "late_row_s"} if cls is FactsParams else set()   # shipped on purpose
     assert {f.name: getattr(got, f.name) for f in fields(cls) if f.name not in skip} == \
            {f.name: getattr(want, f.name) for f in fields(cls) if f.name not in skip}
+
+
+def test_the_shipped_config_is_plain_json(cfg):
+    """The phone's settings view sends the whole config as JSON: no inf or nan anywhere (PR 438 CI)."""
+    import json
+    json.dumps(cfg.data, allow_nan=False)
 
 
 def test_the_new_features_stay_off(cfg):

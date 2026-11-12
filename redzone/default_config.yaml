@@ -1406,7 +1406,7 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
     run_w: 1.0             # catchup_pack.PackParams
     run_pts: 8             # catchup_pack.PackParams
     max_age_s: 180.0       # catchup_pack.PackParams
-    multi_max_age_s: .inf  # catchup_pack.PackParams
+    multi_max_age_s: null    # catchup_pack.PackParams: null = no cap (the code's inf; a JSON settings view cannot carry inf)
     delay_s: 35.0          # catchup_pack.PackParams
     rewind_rule: "measured"  # catchup_pack.PackParams
     reach_s: 175.0         # catchup_pack.PackParams
