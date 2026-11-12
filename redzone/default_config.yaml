@@ -1340,7 +1340,24 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
                            # onto it. 180 = the longest hold whose place was READ BACK after its resume (4 pauses of
                            # 20-180 s on one channel, ledger L74); nothing longer, no other channel, has been read
   late_cap_s: 145          # ...and so is one whose picture is more than this behind its stream's live edge (finding 5, ledger L45)
-  read_guard: false        # [PARK-UNIFY] OFF. On: the read gesture has the other overlay gestures' whole focus guard
+  pad_k: 4.0               # [PARK-TIMING-CONFIG] each game's padding = pad_k x the root of the summed squares of its error parts
+                           # (park.timing below; redzone/noggin/park_timing.py TimingParams). The code read this key before; the
+                           # config now accepts it. Every value here is the code's own default, so nothing changes until it is set
+  timing:                  # [PARK-TIMING-CONFIG] the error parts (sd, seconds) and the priors behind each game's padding
+    read_sd: 0.29          # the position read once per tune (a label read is a whole-second floor)
+    tune_sd: 1.5           # a tune that was not read: it lands 1.2-2.0 s (sd) off its nominal lag
+    k_sd_min: 0.5          # K is never trusted tighter than this (noggin/k_table.K_SD_MIN). Raising it widens ONLY games that have
+                           # a K: 1.91 gives 8 s on a read tune in every league (NBA, college, football); games with no K stay wide
+    stamp_sd_nba: 0.33     # ESPN NBA play stamps against the game clock
+    stamp_sd_college: 0.5  # college stat crews: looser
+    stamp_sd_football: 0.4  # football play stamp against the snap (one Prime replay, Nov 11): football padding about 3 s
+    key_sd: 0.13           # a key's landing
+    eyes_sd: 0.3           # an edge the clock watcher saw itself
+    prior_delay: 33.0      # no K: a feed stamp to a stick's live edge on the wall clock...
+    prior_sd: 12.0         # ...and its doubt: a game with no K is padded about 4 x 12 = 48 s
+    live_lag: null         # null: park.steps.live_lag_s decides; a number here wins over it (ParkHands._live_lag)
+    k_stale: 1800.0        # Eyes's K keeper calls a read older than this stale
+  read_guard: false       # [PARK-UNIFY] OFF. On: the read gesture has the other overlay gestures' whole focus guard
                            # (yttv_seek.front_and_playing before ANY key, #356: YouTube TV in front and playing; and no
                            # committing CENTER on a frame whose focus was never read). Off: only the commit is guarded, and
                            # only when a frame was read (as merged in PR 425)
@@ -1384,7 +1401,7 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
     input_reread_s: 0.7    # ...this far apart
   leagues: [nba, cbb]      # [PARK-CONTROLLER, unit 8] the leagues whose live games the PARK show takes. [PARK-NFL] nfl / cfb may be
                            # added: football facts are the grader's NFL dead time, never past the play clock unexplained
-                           # (park.play_clock_s 40 + park.snap_slack_s 5), padding about 8 s (park.timing.stamp_sd_football 2.0)
+                           # (park.play_clock_s 40 + park.snap_slack_s 5), padding about 3 s (park.timing.stamp_sd_football 0.4)
   session_min: 240         # one show plans on a grid this many minutes long; the engine starts the next one when it ends
   possession_cap_s: 30     # after a review's RULING the stoppage is over: silence after it (and the plays it re-logs) is dead only
                            # this long from the last row; the rest is UNKNOWN, never a place to cut. 24 s shot clock + 6 s
