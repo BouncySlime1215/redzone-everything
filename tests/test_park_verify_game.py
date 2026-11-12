@@ -156,11 +156,11 @@ async def test_an_unconfirmed_game_has_its_k_kept_back_until_its_picture_confirm
 
 
 def test_a_stale_channel_proof_expires(world, tmp_path):  # noqa: F811
-    from redzone.park_run import WRONG_HOLD_S, ParkRun
+    from redzone.park_run import ParkRun
     w = world
     eng, ids = _engine(w, tmp_path, ["youtubetv:tnt", "youtubetv:espn"], [Phase.LIVE] * 2)
     run_ = ParkRun(eng, now=w.clk.now, sleep=w.clk.sleep)
-    run_.wrong[(ids[1], "youtubetv:espn")] = w.clk.now() + WRONG_HOLD_S
+    run_.wrong[(ids[1], "youtubetv:espn")] = w.clk.now() + float(w.c.cfg.get("park.verify_hold_s"))
     assert run_.slate()[0] == []                               # one game left: no show
     run_.wrong[(ids[1], "youtubetv:espn")] = w.clk.now() - 1
     assert [gid for gid, _, _ in run_.slate()[0]] == ids

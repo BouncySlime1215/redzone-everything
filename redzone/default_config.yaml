@@ -1353,6 +1353,7 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
                            # game's two teams named = the WRONG game: that stream is refused and the show re-picked without the
                            # pair for 30 min. Nothing readable = UNKNOWN: the game's K is kept back (wide padding) until its
                            # picture confirms it; a guessed channel (Peacock -> NBCSN) is UNKNOWN the same way (noggin/park_verify.py)
+  verify_hold_s: 1800      # [PARK-VERIFY-GAME] a game whose channel's picture showed another game is not taken again for this long
   steps:                # each PARK device step as measured on the real sticks and TV on Nov 10 (ledger L13-L21, L41-L51)
     min_real_pos_s: 60     # after a tune the media session says "playing" at position 0.0 for about 2 s: a position under this
                            # is never a stream's place

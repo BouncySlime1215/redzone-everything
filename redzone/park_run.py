@@ -39,7 +39,6 @@ from redzone.noggin.park_timing import GameK, GameTiming, TimingParams, k_for
 from redzone.showboard import Board
 
 log = logging.getLogger(__name__)
-WRONG_HOLD_S = 1800.0              # [park.verify_game] a game whose channel showed another game is not taken again for this long
 SLATE_MAX = 6                     # the show's slate: at most this many games (the planner was run on 2 to 6)
 OTHER_OWNERS = ("user", "safe", "replay")
 
@@ -267,7 +266,7 @@ class ParkRun:
 
     def _verdicts(self, targets: list[str], gids: list[str]) -> str:
         """Act on the hands' game checks: a VERIFIED game gets the K kept back for it; a WRONG one is not taken again
-        for WRONG_HOLD_S (its channel carries another game) and the show is re-picked. Returns why, when re-picked."""
+        for park.verify_hold_s (its channel carries another game) and the show is re-picked. Returns why, when re-picked."""
         from redzone.noggin import park_verify
         hands = self.e.control.park_hands()
         for k, (target, gid) in enumerate(zip(targets, gids)):
@@ -278,7 +277,7 @@ class ParkRun:
             if v[0] == park_verify.VERIFIED and self.show is not None and self.held_k.get(k) is not None:
                 self.show.set_k(k, self.held_k.pop(k))
             elif v[0] == park_verify.WRONG:
-                self.wrong[(gid, target)] = self._now() + WRONG_HOLD_S
+                self.wrong[(gid, target)] = self._now() + float(self.e.cfg.get("park.verify_hold_s", 1800) or 1800)
                 hands.verdicts.pop(target, None)
                 return f"{exp[2]}: the picture on {target.split(':', 1)[-1]} shows {v[1]}"
         return ""
