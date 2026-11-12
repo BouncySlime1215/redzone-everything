@@ -227,7 +227,7 @@ class CatchupShow(Show):
         self.cu_chances[key] = ""
         c0 = pkg.clips[0]
         self.cu = {"phase": "prep", "game": g, "h": h, "v": v, "pkg": pkg, "t0": t, "since": since, "key": key,
-                   "task": asyncio.ensure_future(rig.cu_cue(h, g, c0.lo, c0.source, False))}
+                   "mode": self._cu_mode(v), "task": asyncio.ensure_future(rig.cu_cue(h, g, c0.lo, c0.source, False))}
         self.say(f"CATCH-UP: setting up {len(pkg.plays)} plays of {self.names[g]} ({pkg.line}); the screen stays put")
         self.emit({"ev": "catchup", "what": "prep", "tick": t, "game": g, "plays": len(pkg.plays), "screen_s": round(pkg.screen_s, 1),
                    "prep_s": round(pkg.prep_s, 1), "sources": pkg.sources})
@@ -235,8 +235,10 @@ class CatchupShow(Show):
     def _cu_why_not(self, t: int, g: int, h: int, v: int, since: float | None) -> str:
         """Why no catch-up of game g now ("" = go; the package is left in self.cu_pkg)."""
         C = self.cp
-        if self.keep is not None and self.keep in (h, v):
-            return "a pinned stick"                              # the kept stream is never re-tuned or sent back
+        if self.keep is not None and self.keep == h:
+            return "a pinned stick"                              # the kept stream is never sent back
+        if self._cu_mode(v) == "h_join" and g in self.no_back:
+            return "no way back to live"                         # H must join live itself, and this game's app cannot seek
         if self.anchor_now >= 0:
             return "crunch time"
         if t - self.cu_last.get(g, -10 ** 9) < C.cool_s:
@@ -261,6 +263,14 @@ class CatchupShow(Show):
                 return "no source can show it in time"
         self.cu_pkg = replace(pkg, line=cp.recap_line(pkg.plays, _since_label(self, g, since), C.pack))
         return ""
+
+    def _cu_mode(self, v: int) -> str:
+        """How the live join is made. "v_join": V (the stick on screen) is tuned to the game live, parked, then flipped
+        to. "h_join": V keeps its game (held at the leave, or playing on if it is the pinned stream), to be the hidden
+        stick on the way back, and H itself is re-cued to a fresh dead ball after the clips: used when V is pinned or
+        holds a Prime game (its tune takes about 100 s and it has no rewind)."""
+        S = self.S
+        return "h_join" if (self.keep is not None and self.keep == v) or (S is not None and S.sg in self.no_back) else "v_join"
 
     def _cu_exit_after(self, t: int, pkg: cp.Package) -> float | None:
         """Seconds from the prep's end to the first padded leave of the screen's game the feed already shows (a known
@@ -357,14 +367,18 @@ class CatchupShow(Show):
     # ---- the replay on screen, then the live join --------------------------------------------------------------------
     async def _cu_run(self, cu: dict) -> None:
         """The steps on the TV: flip to H (it resumes at the first clip's start), each clip in turn, re-cueing between
-        them. V's live tune starts as soon as the replay is up."""
+        them. In "v_join" V's live tune starts as soon as the replay is up; in "h_join" V is held at the leave (as a
+        jump holds the stream it leaves; a pinned stream plays on) and keeps its game."""
         rig, h, v, g = self.rig, cu["h"], cu["v"], cu["game"]
-        st, why = await rig.jump(h, True, None)
+        keeps = cu["mode"] == "h_join"
+        hold = v if keeps and not (self.keep == v and self.keep_live) else None
+        st, why = await rig.jump(h, True, hold)
         if st != "ok":
             cu["up"] = (st, why or "the flip did not land")
             return
         cu["up"] = ("ok", "")
-        cu["v_task"] = asyncio.ensure_future(rig.tune(v, g))
+        if not keeps:
+            cu["v_task"] = asyncio.ensure_future(rig.tune(v, g))
         P = self.cp.pack
         for k, c in enumerate(cu["clips"]):
             if k:
@@ -497,24 +511,28 @@ class CatchupShow(Show):
             if "behind live" in why:                             # held too long: play on to a later dead ball
                 cu["j"] = cu["spot"] = None
                 self._cu_resume(v)
-        if cu["wait_from"] is None or cu["p_task"] is not None or t - cu["wait_from"] <= C.join_wait_s:
+        if cu["wait_from"] is None or cu["p_task"] is not None:
+            return
+        waited = t - cu["wait_from"]
+        if cu["mode"] == "v_join" and waited <= C.join_wait_s:
             return
         if not cu.get("rejoin") and g not in self.no_back:
-            f = self._cu_fresh_spot(t, g, h)
-            if f is not None:                                    # V found no dead ball in time: H itself is sent to a fresh one
+            f = self._cu_fresh_spot(t, g, h, wide=waited > 3 * C.join_wait_s)
+            if f is not None:                                    # H itself is sent to a fresh dead ball: the live join
                 cu["rejoin"] = f
                 if cu["v_task"] is not None and not cu["v_task"].done():
                     cu["v_task"].cancel()
                 cu["p_task"], cu["p_kind"] = asyncio.ensure_future(self._cu_rejoin(float(f))), "rejoin"
                 return
-        if t - cu["wait_from"] > 3 * C.join_wait_s:
+        if waited > 6 * C.join_wait_s:
             self._cu_hand_back(t, "no safe live join in time")
 
-    def _cu_fresh_spot(self, t: int, g: int, k: int) -> int | None:
+    def _cu_fresh_spot(self, t: int, g: int, k: int, wide: bool = False) -> int | None:
         """The newest padded dead ball of game g the feed has confirmed, recent enough that stream k, sent there on
-        screen now (a re-cue, then play), lands well inside the lateness cap."""
+        screen now (a re-cue, then play), lands well inside the lateness cap. `wide` (the game has had no dead ball for
+        minutes): the newest one at all, still never mid-play, though late."""
         P = self.cp.pack
-        lo = int(math.ceil(t + P.seek_gap_s + 4 + 10 - self.s.late_cap))
+        lo = int(math.ceil(t - 600 if wide else t + P.seek_gap_s + 4 + 10 - self.s.late_cap))
         return next((f for f in range(int(t + self.know), lo, -1) if not self._cu_land_why(t, g, f, k)), None)
 
     async def _cu_rejoin(self, f: float) -> tuple:
@@ -571,17 +589,33 @@ class CatchupShow(Show):
             cu["spot"] = None
 
     def _cu_landed(self, t: int, k: int, j: int) -> None:
-        """The live join landed on stream k at second j: the planner takes over with game X on screen, nothing parked.
-        (k is V, or H itself when V found no dead ball in time and H was sent to a fresh one.)"""
+        """The live join landed on stream k at second j: the planner takes over with game X on screen. In "h_join" the
+        other stick still holds the game left (held at the leave, or the pinned stream playing on): it is the hidden
+        stick on the way back, as after a jump. Otherwise nothing is parked and it is tuned again."""
         cu, S, rig = self.cu, self.S, self.rig
         g, h, pkg = cu["game"], cu["h"], cu["pkg"]
         cu["j"] = j
         shown = [p for c in cu["shown"] for p in c.plays]
         self.on = k
+        other, g1 = 1 - k, cu["g1"]
         S.sg, S.sb, S.s_land, S.s_from, S.s_kind, S.black, S.s_live = g, S.se + rig.lag[k], t, j, "park", t, 0
-        S.hg, S.h_paused, S.h_ready = -1, False, t
-        self.retune, self.pl.next = True, -1
         self.since, self.look_live, self.parked_at, self.paused_since = t, 0, None, None
+        fut = rig.confirming(other) if hasattr(rig, "confirming") else None
+        if fut is not None and not fut.done():
+            fut.cancel()
+        if cu["mode"] == "h_join" and rig.game[other] == g1:
+            S.hg, S.h_kind, self.retune = g1, "pp", False
+            if self.keep == other and self.keep_live:
+                S.h_paused, S.hb, S.h_ready = False, S.he + rig.lag[other], t
+            elif rig.paused[other]:
+                self.paused_since = cu["leave"]                  # held since the leave (the park age cap counts from there)
+                self._paused_at(int(math.floor(rig.frozen[other] + rig.unseen_s)), t)
+            else:
+                S.hg, S.h_paused, S.h_ready, self.retune = -1, False, t, True
+        else:
+            S.hg, S.h_paused, S.h_ready = -1, False, t
+            self.retune = True
+        self.pl.next = -1
         self.jumps_done += 1
         self.jump_at.append(cu["leave"])
         wr = (True, float(pkg.worth), 0.0, 0, "catch-up: the plays missed, then live")

@@ -115,11 +115,18 @@ def test_catchups_keep_rule_1_and_queue_every_clip_to_its_plays_start():
 
 
 @needs_archive
-def test_a_pinned_stick_is_never_used_for_a_catchup():
-    show, c = cr.run("20261023", 1, "proven", minutes=40, pin=True, **cr.NFL_PRIME)
-    assert show.keep == 0 and show.cu_log == []
-    assert not any(x[0] == "cue" for x in show.rig.sent)
-    assert set(show.cu_chances.values()) <= {"a pinned stick"}
+def test_a_pinned_stick_is_never_sent_back_or_re_tuned_by_a_catchup():
+    """The pinned Prime football stream keeps its game through a catch-up (it plays on unseen, as when a jump leaves
+    it); the clips and the live join are all on the other stick ("h_join"); a catch-up never cues the pinned one."""
+    show, c = cr.run("20261023", 1, "proven", minutes=150, pin=True, **cr.NFL_PRIME)
+    off = pr.replay("20261023", 1, minutes=150, pin=True, **cr.NFL_PRIME)
+    assert show.keep == 0
+    assert not any(x[0] == "cue" and x[1] == 0 for x in show.rig.sent)
+    assert sum(1 for x in show.rig.sent if x[0] == "tune" and x[1] == 0) <= sum(1 for x in off.rig.sent if x[0] == "tune" and x[1] == 0)
+    assert all(r["h"] == 1 and r["rejoined"] for r in show.cu_log)
+    m = cr.metrics(show, c)
+    assert (m["grader_entries_mid_play"], m["grader_leaves_mid_play"], m["cu_join_mid"]) == (0, 0, 0)
+    assert m["behind_max_s"] <= 145 + 1
 
 
 @needs_archive

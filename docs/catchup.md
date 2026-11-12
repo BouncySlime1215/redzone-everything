@@ -23,6 +23,11 @@ that game for `min_gap_s` (120 s), the show may run a catch-up instead of a plai
    within `join_wait_s` (30 s), H itself is re-cued on screen to the newest confirmed padded dead ball, inside the
    lateness cap, and plays on from there: that is the live join, judged the same way.
 
+When V is the pinned stream, or holds a Prime game (a Prime tune takes about 100 s and Prime has no rewind), V keeps
+its game instead ("h_join"): it is held at the leave as a jump holds the stream it leaves (the pinned stream plays on
+unseen), H makes the live join itself by the re-cue above, and V is the hidden stick on the way back. A catch-up never
+re-tunes or cues the pinned stream.
+
 For the judge and the frozen grader a catch-up is **one cut**: the leave of the live game and the live join.
 
 ## Which plays
