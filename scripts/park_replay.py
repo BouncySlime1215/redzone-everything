@@ -487,11 +487,13 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
            params: ShowParams | None = None, stop_min: dict | None = None, board=None, rig_kw: dict | None = None,
            model=None, eyes=None, emit=None, any_shot: bool = False, grid: tuple | None = None, prime: int = 0,
            prime_k: str = "bug", prime_pad: int | None = None, walk: str = "any", nfl: int = -1, nfl_lag: float | None = None,
-           deep: bool = False, slider: float | None = None, pin: bool = False) -> Show:
+           deep: bool = False, slider: float | None = None, pin: bool = False, seen: bool = False, director: bool = False) -> Show:
     """The app's PARK controller on a recorded dev night: fake sticks, a fake TV, a clock that is not the wall.
     first = "read" (the first picture's place was read: the app's `Controller.park_start`, the local runner's start) or
     "live" (what happens WITHOUT that step: the stream on screen sits at its live edge, never read; the feed is never
-    far enough ahead of it for a padded leave, so the show almost never makes its first jump)."""
+    far enough ahead of it for a padded leave, so the show almost never makes its first jump).
+    seen / director: [SEEN] park.seen and [DIRECTOR] park.director_v1 for this run (Director v1's numbers and the league
+    weights from the default config); both off = the replay as before."""
     P = params or ShowParams.from_config(config.default)
     first = first or "read"
     rs, slate = loaded or load_replay(night_id, games, league)
@@ -554,7 +556,8 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
     show = Show(night, eng, tm, rig, feed, plan=Plan(jump_bonus=P.bonus), judge=judge, board=board, say=say or (lambda line: None),
                 names=[r.matchup or r.gid for r in rs], chans=[f"channel {k + 1}" for k in range(len(rs))], tune0=tune0,
                 params=P, model=model, eyes=eyes, emit=emit, no_back=set(primes) or None, depth=depth,
-                football_slider=slider, keep=0 if pin and any(r.league.base == League.NFL for r in rs) else None, keep_live=pin)
+                football_slider=slider, keep=0 if pin and any(r.league.base == League.NFL for r in rs) else None, keep_live=pin,
+                seen=seen, director=_director_params() if director else None)
     show.replays, show.base = rs, full.base                      # for the frozen grader (graded) and the stamp = snap judge
     S = show.begin(first_g, 0, a)
     S.sb = float(rig.lag[0])
@@ -690,6 +693,12 @@ class _Defaults:
     get = staticmethod(config.default)
 
 
+def _director_params():
+    """[DIRECTOR] Director v1's numbers and the league weights, as the default config has them."""
+    from redzone.noggin.director import DirectorParams
+    return DirectorParams.from_config(config.default)
+
+
 def prime_games(n: int, k: int) -> list[int]:
     """Which games of the slate are on Prime Video: the last k (k <= n)."""
     return list(range(max(0, n - max(0, k)), n))
@@ -777,6 +786,47 @@ def graded(show: Show) -> dict:
             "joins_in_shot_window": walk, "joins_after_miss": after_miss}
 
 
+def seen_card(show: Show) -> dict:
+    """[SEEN] The phase 2C scorecard, judged where the pictures truly were (the judge's own seconds on the whole recorded
+    night's facts), whatever the show believed:
+        big_seen_live / big_total   must-see plays (the grader's big plays, park_core.Arr.mom) in the replayed span that
+                                    were on screen with their lead-in as they happened (the judge's rule)
+        worst_unseen_s              the longest any game in progress went with no second of it on screen (the show's clock;
+                                    a game never on counts from its start or the show's)
+        mean_unseen_s               seconds since each game in progress was last on screen, averaged over every second and
+                                    every game in progress (the age of what the viewer knows of it; 0 for the one on screen)
+        worst_unseen_live_s         the most seconds of LIVE PLAY (at the show's edge) any game ran with none of it on
+                                    screen in between: the same stretch with halftimes, timeouts and dead balls left out
+        drivers                     with the director on: jumps carried out by the goal that drove each (a, b, c)"""
+    j = show.judge
+    a = show.night.span[0]
+    b = (show.last_t + 1) if show.last_t is not None else a
+    A = j.A
+    big = [(g, i) for g, x in enumerate(A) for i in x.mom if a <= i < b]
+    seen_big = sum(1 for k in big if k in j.shown)
+    last = [max(a, x.a0) for x in A]
+    worst, live, worst_live, total, n = [0] * len(A), [0] * len(A), [0] * len(A), 0, 0
+    for t in range(a, b):
+        on = j.tl.get(t)
+        for g, x in enumerate(A):
+            if not (x.a0 <= t <= x.a1):
+                continue
+            if on == g:
+                last[g], live[g] = t, 0
+            elif not x.dead[min(x.n - 1, t)]:
+                live[g] += 1
+                worst_live[g] = max(worst_live[g], live[g])
+            age = t - last[g]
+            worst[g] = max(worst[g], age)
+            total, n = total + age, n + 1
+    out = {"big_seen_live": seen_big, "big_total": len(big), "worst_unseen_s": max(worst, default=0),
+           "mean_unseen_s": round(total / n, 1) if n else 0.0, "worst_unseen_by_game_s": worst,
+           "worst_unseen_live_s": max(worst_live, default=0)}
+    if show.director is not None:
+        out["drivers"] = dict(show.drivers)
+    return out
+
+
 # ---------------------------------------------------------------------------------------------- the numbers
 def result(show: Show) -> dict:
     """The run as one row: park_core.summarize's own columns, judged where the pictures truly were."""
@@ -858,6 +908,8 @@ def main() -> int:
     ap.add_argument("--nfl-lag", type=float, default=None, help="[PARK-NFL] the football feed's lag in s (default: the show's 8 s)")
     ap.add_argument("--walk", choices=("any", "made", "none"), default="any",
                     help="walk-in points: after any shot (as before), MADE field goals only, or none (dead time only)")
+    ap.add_argument("--seen", action="store_true", help="[SEEN] track what the viewer has seen (park.seen) and print the phase 2C scorecard")
+    ap.add_argument("--director", action="store_true", help="[DIRECTOR] Director v1 on (park.director_v1); implies --seen")
     a = ap.parse_args()
     shown = [0]
 
@@ -869,7 +921,7 @@ def main() -> int:
     show = replay(a.night, a.games, case=a.case, hands=a.hands, first=a.first, minutes=a.minutes, seed=a.seed, league=a.league,
                   fail=fail, say=say, any_shot=a.what_if_any_shot, grid=tuple(a.what_if_grid) if a.what_if_grid else None,
                   prime=a.prime, prime_k=a.prime_k, prime_pad=a.prime_pad, walk=a.walk, nfl=a.nfl, nfl_lag=a.nfl_lag,
-                  deep=a.deep, slider=a.slider, pin=a.pin)
+                  deep=a.deep, slider=a.slider, pin=a.pin, seen=a.seen or a.director, director=a.director)
     _, text = summary(show, f"SUMMARY (replayed on recorded night {a.night} with FAKE sticks, not measured on the TV; {a.games} games, "
                             f"case {a.case}, hands {a.hands}, paddings {sorted(set(show.pad))} s, show delay {show.delay} s)"
                       + ("\n  WHAT-IF, OUTSIDE RULE #1: the any-shot rule is ON (cuts in the 4 s after any shot, made or missed)" if a.what_if_any_shot else ""))
@@ -878,6 +930,12 @@ def main() -> int:
         pic = picture_grade(show)
         print(f"  stamp = snap judge (football): joins mid-play {pic['football_joins_mid']}, leaves mid-play {pic['football_leaves_mid']} "
               f"of {pic['football_cuts']} football cuts; plays seen from the snap {snap_share(show, len(show.replays) - 1)}")
+    if a.seen or a.director:
+        sc = seen_card(show)
+        print(f"  [SEEN] big plays seen live {sc['big_seen_live']} of {sc['big_total']}; longest a game in progress went unseen "
+              f"{sc['worst_unseen_s'] / 60:.1f} min ({sc['worst_unseen_live_s'] / 60:.1f} min of it live play); mean age of what is "
+              f"known of a game {sc['mean_unseen_s'] / 60:.1f} min"
+              + (f"; jumps by goal: a {sc['drivers']['a']}, b {sc['drivers']['b']}, c {sc['drivers']['c']}" if "drivers" in sc else ""))
     return 0
 
 

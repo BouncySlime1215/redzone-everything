@@ -14,7 +14,11 @@
     "scripts/park_replay.py",
     "scripts/park_director_ab.py",
     "tests/test_seen*.py",
-    "tests/test_director*.py"
+    "tests/test_director*.py",
+    "tests/test_show_ui.py",
+    "redzone/web/static/app.css",
+    "redzone/web/static/rz-mock.js",
+    "redzone/web/static/index.html"
   ],
   "started": 1794450190,
   "expires": 1794579790
