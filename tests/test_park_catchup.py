@@ -50,13 +50,12 @@ def test_plays_of_reads_scores_lead_changes_ties_runs_and_each_plays_start():
     walls = [100.0, 110.0, 120.0, 125.0, 125.0, 140.0, 190.0, 200.0]
     got = plays_of(_fake_show(rows, walls), 0, cp.PackParams())
     by = {p.text: p for p in got}
-    assert list(by) == ["home 2", "away 3", "home 3", "home 3 again", "away and-one"]
+    assert list(by) == ["home 2", "away 3", "home 3", "away and-one"]    # "home 3 again": no row in the 36 s before it
     assert by["home 2"].lead_change and by["away 3"].lead_change and by["home 3"].lead_change
-    assert not by["home 3 again"].lead_change and by["away and-one"].tie
-    assert by["home 3 again"].run == 6 and by["away and-one"].run == 5
+    assert by["away and-one"].tie and by["away and-one"].run == 5
     assert by["away 3"].start == 120.0                                     # the rebound before it: where the play began
     assert by["home 3"].start == 125.0
-    assert by["home 3 again"].start == 190.0 - 24.0                        # at most a shot clock back
+    assert by["away and-one"].start == 190.0                               # the score before it: the inbound
     assert all(p.start <= p.at for p in got)
 
 

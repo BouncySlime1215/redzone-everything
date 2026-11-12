@@ -54,6 +54,7 @@ class CatchupParams:
     join_wait_s: int = 30           # clips done: V's live join within this (the replay plays on), else H itself is re-cued to live
     replay_dead_s: int = 12         # ...and the cut leaves the replay on its own dead ball when one comes within this
     look_ahead_s: int = 30          # never leave the screen's game with a big play or high leverage this close in the feed
+    hot_look_s: int = 300           # no catch-up (and no further clip) while another live game had a high-leverage play this recently
     plan_wait_s: float = 10.0       # the plan allows this for the leave after the prep (a later leave re-checks every clip)
     pack: cp.PackParams = cp.PackParams()
 
@@ -92,7 +93,8 @@ class ShowSeen:
 def plays_of(show: Show, g: int, P: cp.PackParams) -> list[cp.Play]:
     """Game g's plays as its feed has reported them so far, on the show's grid, with what the package weighs: points,
     lead changes, ties, runs (from the scores), the grader's big plays and graded value (the show's own arrays), and
-    each play's start: football the snap (the dead time before it ends), basketball the row before (at most a shot clock)."""
+    each play's start: football the snap (the dead time before it ends), basketball the row before it (the rebound, the
+    steal, the inbound). A basketball play with no row in the 36 s before it has no clean start and gets no clip."""
     fx, lg = show.feed.fx[g], show.leagues[g]
     football = is_football(lg)
     d, base, x = show.feed.shifts[g], show.night.base, show.A[g]
@@ -125,10 +127,11 @@ def plays_of(show: Show, g: int, P: cp.PackParams) -> list[cp.Play]:
                     j -= 1
                 start = float(j) if j > i - 20 and not x.dead[j] else s - P.snap_s
             else:
-                start = max(prev if prev is not None else s - P.possession_s, s - P.possession_s)
-            out.append(cp.Play(g, s, min(start, s), pts, bool(pts and after and after != before), bool(pts and not after and before),
-                               run if side else 0, big, val, float(x.lev[i]), str(p.get("text") or "")[:80],
-                               espn._int(espn._get(p, "period", "number")) or 0, str(espn._get(p, "clock", "displayValue") or "")))
+                start = prev if prev is not None and s - prev <= P.possession_s + P.lead_s + 10.0 else None
+            if start is not None:                                # no event in reach before it: no clean start, no clip
+                out.append(cp.Play(g, s, min(start, s), pts, bool(pts and after and after != before), bool(pts and not after and before),
+                                   run if side else 0, big, val, float(x.lev[i]), str(p.get("text") or "")[:80],
+                                   espn._int(espn._get(p, "period", "number")) or 0, str(espn._get(p, "clock", "displayValue") or "")))
         if hs is not None and as_ is not None:
             hs0, as0 = hs, as_
         last = s
@@ -241,6 +244,8 @@ class CatchupShow(Show):
             return "no way back to live"                         # H must join live itself, and this game's app cannot seek
         if self.anchor_now >= 0:
             return "crunch time"
+        if self._cu_hot(t, g):
+            return "a close game is late"
         if t - self.cu_last.get(g, -10 ** 9) < C.cool_s:
             return "caught up on it lately"
         if t < self.block.get(g, -1):
@@ -263,6 +268,18 @@ class CatchupShow(Show):
                 return "no source can show it in time"
         self.cu_pkg = replace(pkg, line=cp.recap_line(pkg.plays, _since_label(self, g, since), C.pack))
         return ""
+
+    def _cu_hot(self, t: int, g_out: int) -> bool:
+        """Is another live game close and late: a high-leverage play (the grader's own rule) in its feed's last
+        hot_look_s? A catch-up takes a minute or two of screen; it never takes them from such a game."""
+        for g in range(self.N):
+            x = self.A[g]
+            if g == g_out or not x.a0 <= t <= x.a1:
+                continue
+            e = min(x.n - 1, max(0, min(t + self.know, self.feed.edge(g))))
+            if x.hlc[e + 1] - x.hlc[max(0, e - self.cp.hot_look_s)] > 0:
+                return True
+        return False
 
     def _cu_mode(self, v: int) -> str:
         """How the live join is made. "v_join": V (the stick on screen) is tuned to the game live, parked, then flipped
@@ -300,7 +317,7 @@ class CatchupShow(Show):
 
     def _cu_leave(self, t: int) -> None:
         cu, S, C = self.cu, self.S, self.cp
-        if self.anchor_now >= 0:
+        if self.anchor_now >= 0 or self._cu_hot(t, cu["game"]):
             self._cu_abort("crunch time began", t)
             return
         if t - cu["ready"] > C.leave_wait_s:
@@ -382,6 +399,9 @@ class CatchupShow(Show):
             cu["v_task"] = asyncio.ensure_future(rig.tune(v, g))
         P = self.cp.pack
         for k, c in enumerate(cu["clips"]):
+            if k and self._cu_hot(int(rig.clock.now()), g):
+                cu["broke"] = "a close game went late"           # the rest of the clips can wait: back to live play
+                break
             if k:
                 now = rig.clock.now()
                 floor = cp.rewind_floor(now, cp.Stick("yttv", self.on_since[h]), P)
@@ -518,7 +538,7 @@ class CatchupShow(Show):
         if cu["mode"] == "v_join" and waited <= C.join_wait_s:
             return
         if not cu.get("rejoin") and g not in self.no_back:
-            f = self._cu_fresh_spot(t, g, h, wide=waited > 3 * C.join_wait_s)
+            f = self._cu_fresh_spot(t, g, h)
             if f is not None:                                    # H itself is sent to a fresh dead ball: the live join
                 cu["rejoin"] = f
                 if cu["v_task"] is not None and not cu["v_task"].done():
@@ -528,12 +548,11 @@ class CatchupShow(Show):
         if waited > 6 * C.join_wait_s:
             self._cu_hand_back(t, "no safe live join in time")
 
-    def _cu_fresh_spot(self, t: int, g: int, k: int, wide: bool = False) -> int | None:
+    def _cu_fresh_spot(self, t: int, g: int, k: int) -> int | None:
         """The newest padded dead ball of game g the feed has confirmed, recent enough that stream k, sent there on
-        screen now (a re-cue, then play), lands well inside the lateness cap. `wide` (the game has had no dead ball for
-        minutes): the newest one at all, still never mid-play, though late."""
+        screen now (a re-cue, then play), lands well inside the lateness cap. None: keep looking (the replay plays on)."""
         P = self.cp.pack
-        lo = int(math.ceil(t - 600 if wide else t + P.seek_gap_s + 4 + 10 - self.s.late_cap))
+        lo = int(math.ceil(t + P.seek_gap_s + 4 + 10 - self.s.late_cap))
         return next((f for f in range(int(t + self.know), lo, -1) if not self._cu_land_why(t, g, f, k)), None)
 
     async def _cu_rejoin(self, f: float) -> tuple:
