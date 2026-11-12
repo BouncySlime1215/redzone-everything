@@ -454,6 +454,14 @@ function rule1() {
     </div><p class="sh-foot">Joins only at a dead ball. Safety padding ${isNum(pad) ? `${pad.toFixed(1)} s` : "—"}.</p></div>`;
 }
 
+/* [SEEN] park.seen: "Seen 7 min ago · Last time: LAL 31-25, 1Q 0:30. Since: LAC 12-4 run" (a template from the feed's facts) */
+function seenText(g, on) {
+  if (on || !("last_seen_s" in g)) return "";
+  const s = g.last_seen_s;
+  const when = isNum(s) ? (s < 60 ? "Seen under a minute ago" : `Seen ${Math.floor(s / 60)} min ago`) : "Not seen yet";
+  return isStr(g.recap) ? `${when} · ${g.recap}` : when;
+}
+
 function gamesCard() {
   const games = arr(get(V.S, "games")).filter(isObj);
   const head = sec("Games", { key: "s-games", n: games.length || "" });
@@ -466,9 +474,11 @@ function gamesCard() {
       ? `<span class="tag">${isObj(p) && p.game === g.game && p.ready === true ? "Parked, ready" : "Parked"}</span>` : "";
     const meta = [isStr(g.score) ? g.score : "", [g.period, g.clock].filter(isStr).join(" "), STATE[g.state] ? STATE[g.state][1] : isStr(g.state) ? cap(g.state) : ""].filter(Boolean).join(" · ");
     const v = isNum(g.value) ? clamp(g.value, 0, 1) : null;
+    const seen = seenText(g, on);
     return `<div class="sh-g ${on ? "on" : ""}" data-key="g:${attr(g.game)}" style="--g:${colorOf(g.game)}">
       <div class="grow"><div class="sh-g-top"><b class="ell">${esc(g.game)}</b>${tag}</div>
-        <div class="sh-g-meta">${esc([isStr(g.league) ? g.league.toUpperCase() : "", isStr(g.channel) ? g.channel.toUpperCase() : ""].filter(Boolean).join(" · "), "")}${meta ? ` · ${esc(meta)}` : ""}</div></div>
+        <div class="sh-g-meta">${esc([isStr(g.league) ? g.league.toUpperCase() : "", isStr(g.channel) ? g.channel.toUpperCase() : ""].filter(Boolean).join(" · "), "")}${meta ? ` · ${esc(meta)}` : ""}</div>${seen ? `
+        <div class="sh-g-seen">${esc(seen)}</div>` : ""}</div>
       <div class="sh-worth" title="How much it is worth watching now"><span class="sh-worth-bar"><i style="--p:${v === null ? 0 : v * 100}"></i></span><small class="tnum">${v === null ? "—" : g.value.toFixed(2)}</small></div></div>`;
   }).join("");
   return `${head}<div class="card sh-games" data-key="sh-games" data-flip>${rows}</div>`;

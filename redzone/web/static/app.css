@@ -1434,6 +1434,7 @@ button.v2-held { width: 100%; text-align: left; font: inherit; font-size: 13px; 
 .sh-g-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sh-g-top b { font: 800 17px/1.1 var(--font-display); letter-spacing: .04em; }
 .sh-g-meta { margin-top: 3px; font-size: 12.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.sh-g-seen { margin-top: 3px; font-size: 12.5px; line-height: 1.35; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .sh-tag-on { background: color-mix(in srgb, var(--live) 16%, transparent); color: var(--live-ink); }
 .sh-worth { flex: none; width: 58px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .sh-worth small { font: 700 12px/1 var(--font-display); letter-spacing: .04em; color: var(--text-2); }

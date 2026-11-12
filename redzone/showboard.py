@@ -118,10 +118,12 @@ class Board:
             chans[show.chans[g] or f"game {g + 1}"] = {"k_s": tg.k.k if tg.k is not None else None, "k_spread_s": tg.k.spread if tg.k is not None else None,
                                                     "game": show.names[g], "padding_s": show.pad[g], "tune_offset_known": bool(show.read_now[g] and show.tm.reads(g))}
         games = []
+        seen = getattr(show, "seen_state", None)                # [SEEN] park.seen: None when off (no fields added)
         for g in range(show.N):
             e = at(min(t, show.feed.edge(g)) if show.feed.edge(g) < 10 ** 8 else t)
             games.append({"game": show.names[g], "league": show.leagues[g], "channel": show.chans[g], **show.feed.line(g, at(t + show.know)),
-                          "state": what(g, e), "value": round(float(A[g].lev[e]), 2), "on_screen": g == S.sg, "parked": g == S.hg})
+                          "state": what(g, e), "value": round(float(A[g].lev[e]), 2), "on_screen": g == S.sg, "parked": g == S.hg,
+                          **(seen.view(g, show.names[g]) if seen is not None else {})})
         sound = rig.sound() if hasattr(rig, "sound") else {}
         if j is not None:
             rule1 = {"mid_play_joins": j.mid_entry, "mid_play_leaves": j.mid_leave, "high_leverage_leaves": j.hl_leave, "judged": "replay"}
