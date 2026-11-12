@@ -507,7 +507,8 @@ class Show:
     def __init__(self, night, s: Setting, timing: ShowTiming, rig, feed, *, plan: Plan | None = None, names=None, chans=None,
                  leagues=None, keep=None, judge=None, eyes=None, model=None, board=None, say=print, emit=None, tune0=None,
                  prefs=None, params: ShowParams = SHOW, crunch: bool | None = None, clips: bool = False, warrant: str | None = None,
-                 no_back=None, depth=None, football_slider: float | None = None, keep_live: bool = False):
+                 no_back=None, depth=None, football_slider: float | None = None, keep_live: bool = False, seen: bool = False,
+                 director=None):
         P = self.P = params
         self.depth = dict(depth or {})                           # [PARK-NFL-LAG] game -> seconds deeper its stream is parked (its feed is late)
         if depth is not None:
@@ -586,6 +587,18 @@ class Show:
         self.drifted: set = set()                                # streams whose place moved after a resume: no cut on them until read again
         self.reread_at = 0
         self.holds = {"held": 0, "loose": 0, "drifted": 0, "unread": 0}
+        # [SEEN] park.seen: what the viewer has seen of each game (redzone/noggin/seen.py); [DIRECTOR] park.director_v1:
+        # `director` = its DirectorParams (redzone/noggin/director.py). Both None when off: nothing below runs, decisions unchanged.
+        self.director = self.seen_state = self.j_driver = None
+        self.drivers = {"a": 0, "b": 0, "c": 0}                  # jumps carried out, by the director's goal that drove each
+        if director is not None:
+            from redzone.noggin.director import Director
+            self.director = Director(self.leagues, director)
+        if seen or self.director is not None:
+            from redzone.noggin.seen import SeenTracker
+            fx = feed.fx
+            self.seen_state = SeenTracker(self.N, night.base, feed.shifts, lambda g: (fx[g].plays, fx[g].wall),
+                                          halves=[str(lg) == "cbb" for lg in self.leagues])
 
     def begin(self, first: int, on: int, a: int) -> State:
         """The state at the start: game `first` is on screen on stream `on`, nothing is held, second a."""
@@ -635,9 +648,26 @@ class Show:
         return of, self.fix[g] - self.tail[g], self.adv[g] - self.tail[g] - (self.last_t or 0)
 
     def pref(self, g: int) -> float:
-        return self.prefs[g]
+        if self.director is None:
+            return self.prefs[g]
+        return self.prefs[g] * self._weighed()[g].w             # [DIRECTOR] (a) big play x (b) freshness x (c) taste
+
+    def _weighed(self) -> list:
+        """[DIRECTOR] Every game's weights at this second (made once a second, at the first question)."""
+        d = self.director
+        if d.at != self.last_t or len(d.now) != self.N:
+            t = self.last_t if self.last_t is not None else 0
+            d.weigh(t, self.S.sg if self.S is not None else -1, self.A, [min(t + self.know, self.feed.edge(g)) for g in range(self.N)],
+                    self.seen_state)
+        return d.now
 
     def prospect(self, g: int) -> float:
+        base = self._prospect(g)
+        if self.director is None or base <= 0:
+            return base
+        return base * self._weighed()[g].w                       # [DIRECTOR] where the idle hidden stick waits, by the same weights
+
+    def _prospect(self, g: int) -> float:
         """How soon a landing can come on game g (a weight on where the hidden stream waits when the feed's reports
         hold nothing to land on): 0 in a long break (stopped for `long_break` at the feed's edge and no restart
         reported), less than 1 for a game with no K (only its longest stoppages can be joined), 1 for a game in play
@@ -830,6 +860,8 @@ class Show:
                     self.aired[S.sg].append(p)                   # a must-see play was on screen
                 if self.judge is not None:
                     self.judge.second(self.on, S.sg, t - S.sb + S.se, t)
+            if self.seen_state is not None:                      # [SEEN] what is on screen this second (nothing during a flip)
+                self.seen_state.tick(t, S.sg, min(self.night.n - 1, max(0, int(t - S.sb + S.se))) if t >= S.black else None, self.A)
             self._stayed(t)
         if self.board is not None:
             self.board.write(self, t)
@@ -1196,6 +1228,9 @@ class Show:
         hold = None if (self.keep == self.on and (self.keep_rolls or self.keep_live)) else self.on
         self.held_s = (t - self.paused_since) if (paused and self.paused_since is not None) else 0   # how long the landing was held
         self.relied = self._relied(t, g1, i, t > self.A[g1].a1 + S0["sb"], g2, j)   # what both ends of this cut rest on, as known NOW
+        if self.director is not None:                            # [DIRECTOR] the goal that drove it, by the weights it was planned on
+            self._weighed()
+            self.j_driver = self.director.why(g1, g2, str(wr[4]) if wr is not None else "")
         ctx = (snap, t, g1, i, g2, j, paused, self.on, tgt, wr)
         self.on = tgt
         if rig.instant:
@@ -1219,6 +1254,9 @@ class Show:
             self.jump_at.append(t0)
             self.since, self.look_live, self.parked_at = t0 + self.flip, 0, None
             wd = warrant_row(wr)
+            if self.director is not None and self.j_driver is not None:   # [DIRECTOR] the warrant names (a), (b) or (c)
+                wd = {**wd, **self.j_driver}
+                self.drivers[self.j_driver["driver"]] += 1
             self.warrants.append(wr)
             if not rig.instant and hasattr(rig, "look"):         # every look grades its own hold (see _hold_watch)
                 self._hold_end()
@@ -1230,7 +1268,8 @@ class Show:
                    "held_s": int(getattr(self, "held_s", 0)), **getattr(self, "relied", {})}
             self.records.append(rec)
             self.say(f"JUMP -> {self.names[g2]} on {self.chans[g2]} ({kind}, {left} on the game we left). Why: {wd['why']}"
-                     + (f" (worth {wd['there']} there, {wd['here']} here)" if wr is not None else ""))
+                     + (f" (worth {wd['there']} there, {wd['here']} here)" if wr is not None else "")
+                     + (f". Driver: {wd['director']}" if "director" in wd else ""))
             self.emit({"ev": "jump", "tick": t0, "from": g1, "to": g2, "leave": i, "land": j, "behind_s": rec["behind_s"],
                        "n": self.jumps_done, "look_s": look, "look_live_s": self.looks[-1][1], "warrant": wd,
                        "leave_on": rec.get("leave"), "join_on": rec.get("join"), "held_s": rec["held_s"]})

@@ -553,6 +553,21 @@ const SHOW = (() => {
   return { games, start, jumps, extra, grow };
 })();
 
+/* [SEEN] ?mock=1&show&seen: park.seen's fields (last_seen_s, stale, missed, recap), shaped like redzone/noggin/seen.py's. */
+function seenOf(g, T, onName) {
+  if (g.game === onName) return { last_seen_s: 0, stale: 0, missed: 0, recap: null };
+  const left = SHOW.jumps.filter((j) => j.t <= T && j.from === g.game).pop();
+  if (!left) return { last_seen_s: null, stale: 0, missed: 0, recap: null };
+  const k0 = Math.floor((left.t - SHOW.start) / g.every), k1 = Math.floor((T - SHOW.start) / g.every);
+  const [a, h] = [g.base[0] + Math.floor(k0 * 1.1), g.base[1] + k0];
+  const [aw, hm] = g.game.split(" @ ");
+  const then = a === h ? `tied ${a}-${h}` : a > h ? `${aw} ${a}-${h}` : `${hm} ${h}-${a}`;
+  const pa = Math.floor(k1 * 1.1) - Math.floor(k0 * 1.1), ph = k1 - k0, missed = Math.floor((T - left.t) / 400);
+  const since = pa === 0 && ph === 0 ? "no score" : pa - ph >= 8 ? `${aw} ${pa}-${ph} run` : ph - pa >= 8 ? `${hm} ${ph}-${pa} run` : pa === ph ? `even ${pa}-${ph}` : pa > ph ? `${aw} ${pa}-${ph}` : `${hm} ${ph}-${pa}`;
+  return { last_seen_s: T - left.t, stale: Math.round((T - left.t) * g.value), missed,
+    recap: `Last time: ${then}, ${g.per[0].replace(/\D/g, "")}Q 5:32. Since: ${since}${missed ? `, ${missed} big play${missed === 1 ? "" : "s"} missed` : ""}` };
+}
+
 function showAt(T) {
   SHOW.grow(T + 120);
   const done = SHOW.jumps.filter((j) => j.t <= T);
@@ -565,7 +580,7 @@ function showAt(T) {
     const score = `${g.base[0] + Math.floor(k * 1.1)}-${g.base[1] + k}`;
     const left = Math.max(0, 720 - ((T - SHOW.start) % 720));
     const st = g.game === onName ? (nextJ && nextJ.t - T < 8 ? "dead ball" : "live play") : ["live play", "dead ball", "break"][Math.floor(T / 37 + g.every) % 3];
-    return { game: g.game, league: g.league, channel: g.channel, period: g.per[(T - SHOW.start) > 1200 ? 1 : 0], clock: g.league === "nhl" ? `${Math.floor(left / 60) % 20}:${String(Math.floor(left % 60)).padStart(2, "0")}` : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")}`, score, state: st, value: g.value, on_screen: g.game === onName, parked: !!parkEv && parkEv.game === g.game && g.game !== onName };
+    return { game: g.game, league: g.league, channel: g.channel, period: g.per[(T - SHOW.start) > 1200 ? 1 : 0], clock: g.league === "nhl" ? `${Math.floor(left / 60) % 20}:${String(Math.floor(left % 60)).padStart(2, "0")}` : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")}`, score, state: st, value: g.value, on_screen: g.game === onName, parked: !!parkEv && parkEv.game === g.game && g.game !== onName, ...(Q.has("seen") ? seenOf(g, T, onName) : {}) };
   });
   const cur = rows.find((r) => r.on_screen);
   const win = {};

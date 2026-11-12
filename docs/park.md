@@ -186,3 +186,14 @@ It reports Rule #1 counts, jumps a minute and the warranted share, judged where 
 - Prime football timing, football K and the play-clock gate rest on one replay and priors.
 - Pace is a replay result with fake sticks: the app's own controller on 3 recorded NBA nights with 4 games made about 0.52 jumps a minute at 3 s padding and 0.39 at 8 s, with the frozen grader at 0 / 0 / 0. The real TV will use 8 s until enough measured whistles exist. Live results are unmeasured.
 - The Mac runs `42e2ee8f`, which lacks this code.
+
+## The picture grader (flag `park.picture_grade.enabled`, off)
+
+Every jump judged on what YouTube TV showed, not on the feed. With the flag on and `park.picture_grade.tool` naming the
+Eyes program (`redzone-agents/tools/eyes/picture_grade.py`, outside this repo), `Engine._picture_loop` starts it while
+a show runs, at `nice -n 15`, and stops it at the stand-down (`redzone/picture_sidecar.py`). It uses Eyes' own windowless, muted Chrome
+and signed-in profile, follows the channel on screen, and on each jump reads the score bug on paused frames at the
+leave (from its buffer) and at the landing (it switches channel at once). It writes `picture_report.jsonl` and
+`picture.json` into the show's state folder; `state.json` then carries `picture` ("picture: clean n / mid-play n /
+unknown n"). Off, nothing starts and the state is unchanged. The live check (`park.picture_check.live`) is off and not
+wired to any decision yet.
