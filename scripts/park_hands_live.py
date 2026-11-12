@@ -36,13 +36,27 @@ FLAGS = {"mode": {"dry_run": False}, "park": {"enabled": True},
          "sound_guard": {"enabled": True, "must_be_silent": True}}
 
 
+SERVICE_LABEL = "com.redzone.everything"   # the login service (deploy/com.redzone.everything.plist.template)
+# The app's command lines: `python -m redzone` by hand, and the login service, which runs scripts/service_runtime.py
+# through `python -c` (runpy), so its command line never says `-m redzone`.
+APP_PATTERNS = ("[Pp]ython[^ ]* (.* )?-m redzone( |$)", r"service_runtime\.py")
+
+
 def app_running() -> bool:
+    """Is any copy of the app running, by hand or as the login service? Unsure counts as yes."""
     try:
-        out = subprocess.run(["pgrep", "-f", "[Pp]ython[^ ]* (.* )?-m redzone( |$)"], capture_output=True, text=True,
-                             timeout=5).stdout.split()
-        return bool(out)
+        for pat in APP_PATTERNS:
+            if subprocess.run(["pgrep", "-f", pat], capture_output=True, text=True, timeout=5).stdout.split():
+                return True
     except Exception:
         return True
+    try:
+        r = subprocess.run(["launchctl", "list", SERVICE_LABEL], capture_output=True, text=True, timeout=5)
+    except FileNotFoundError:
+        return False   # no launchd here (CI): pgrep above is the whole answer
+    except Exception:
+        return True
+    return r.returncode == 0 and '"PID" =' in r.stdout   # loaded and its process is up (a stopped job has no PID)
 
 
 async def run(args) -> int:
