@@ -6,8 +6,8 @@ show left a game, and when it landed on the next one? It is a separate program (
 reads the show's state folder and writes two files there, `picture_report.jsonl` (one line per jump) and
 `picture.json` (the summary "picture: clean n / mid-play n / unknown n"). It never touches the TV or the sticks.
 
-With `park.picture_grade.enabled` on and `park.picture_grade.tool` naming that program, `ParkRun` starts it when a
-show starts (at background priority, `nice -n 15`) and stops it when the show stands down. Off, nothing here runs and
+With `park.picture_grade.enabled` on and `park.picture_grade.tool` naming that program, `Engine._picture_loop` starts
+it while a show runs (at background priority, `nice -n 15`) and stops it when the show stands down. Off, nothing here runs and
 no park.picture_* key changes a decision: the show's state gains a `picture` field only when the summary file exists.
 
 [park.picture_check.live] The live check (off, and not wired to a decision yet): the same picture question asked

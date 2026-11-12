@@ -147,8 +147,8 @@ It reports Rule #1 counts, jumps a minute and the warranted share, judged where 
 ## The picture grader (flag `park.picture_grade.enabled`, off)
 
 Every jump judged on what YouTube TV showed, not on the feed. With the flag on and `park.picture_grade.tool` naming the
-Eyes program (`redzone-agents/tools/eyes/picture_grade.py`, outside this repo), `ParkRun` starts it with each show at
-`nice -n 15` and stops it at the stand-down (`redzone/picture_sidecar.py`). It uses Eyes' own windowless, muted Chrome
+Eyes program (`redzone-agents/tools/eyes/picture_grade.py`, outside this repo), `Engine._picture_loop` starts it while
+a show runs, at `nice -n 15`, and stops it at the stand-down (`redzone/picture_sidecar.py`). It uses Eyes' own windowless, muted Chrome
 and signed-in profile, follows the channel on screen, and on each jump reads the score bug on paused frames at the
 leave (from its buffer) and at the landing (it switches channel at once). It writes `picture_report.jsonl` and
 `picture.json` into the show's state folder; `state.json` then carries `picture` ("picture: clean n / mid-play n /
