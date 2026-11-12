@@ -1348,6 +1348,14 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
                            # once per LEFT) before its commit, so the picture is not sent ~30 s back in front of the viewer, and
                            # a failed re-read never reloads the picture on screen. Off: as merged (commit 30 s back; a fresh tune
                            # if the read fails). RIGHT behind the live edge is unmeasured on the TV: the seek check catches it
+  fast_steps: false        # [PARK-SPEED] OFF. On: fewer seconds on the critical path, every check kept (docs/park.md "Fast
+                           # steps"). A jump returns once the new picture is up, playing, on the new input and silence is read
+                           # back after the switch (the TV's own after-switch read is used instead of a second read queued
+                           # behind it; the new stick's playing report and the left stick's pause are read during the flip);
+                           # the stick left's BACK and read-back run after the jump, and a later step on that stick waits for
+                           # them (or ends them before their next key: a new tune, finish). Reads poll every steps.fast_poll_s;
+                           # a read-back reads the stick and its foreground app at once; the TV's mute, volume, power and input
+                           # are read in one round. Off: every step as before (replay decision-identical)
   steps:                 # each PARK device step as measured on the real sticks and TV on Nov 10 (ledger L13-L21, L41-L51)
     min_real_pos_s: 60     # after a tune the media session says "playing" at position 0.0 for about 2 s: a position under this
                            # is never a stream's place
@@ -1355,6 +1363,7 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
                            # park.timing.live_lag wins when set). A read replaces it
     first_report_s: 8      # ...a tune with no real position within this long is a failed tune
     poll_s: 0.25           # the media session is read this often while a step waits on it (the runner read 4 times a second)
+    fast_poll_s: 0.1       # [park.fast_steps] ...this often with it on (one read takes about 0.2 s, so reads run back to back)
     tune_timeout_s: 90     # one way of tuning (direct code, local search, search) gets at most this long
     read_steps: 2          # the read gesture's LEFT presses (CENTER, LEFT x this, read the label, CENTER); 0 = no read
     left_step_s: 15        # one committed LEFT is exactly this far back (69 of 69). [PARK-UNIFY] its ONE home: the show's
