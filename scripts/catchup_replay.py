@@ -273,19 +273,19 @@ def describe(m: dict, head: str) -> str:
 
 
 def table(seed: int = 0, dump: str = "") -> str:
-    """The PR's table: the 3 NBA dev nights (4 games) and the pinned NFL + Prime case; off, proven, and the two rewind
-    what-ifs (10 minutes; the whole game). `dump`: also write each run's numbers as one JSON line to this file."""
+    """The PR's table: the 3 NBA dev nights (4 games) and the pinned NFL + Prime case; off, proven, and the 10-minute
+    rewind what-if. `dump`: also write each run's numbers as one JSON line to this file."""
     import json
     cases = [(f"NBA {n}, 4 games", n, 4, {}) for n in NIGHTS]
     cases += [("NFL on Prime + 1 NBA, pinned", "20261023", 1, {**NFL_PRIME, "pin": True})]
     head = ("| case | rewind | fits / chances | packages by plays (1/2/3/4/5) | length median / p90 s | oldest clip median / max s "
             "behind live | missed big plays: via catch-up / never | graded value seen: live + via catch-up | "
-            "frozen grader: mid-play joins / leaves (catch-up joins) | jumps a min |")
-    rows = [head, "|" + "---|" * 10]
+            "frozen grader: mid-play joins / leaves (catch-up joins) | jumps a min | worst behind live s |")
+    rows = [head, "|" + "---|" * 11]
     print(head, flush=True)
     names = {"off": "off", "proven": "175 s (proven)", "rewind10": "10 min (what-if)", "library": "whole game (what-if)"}
     for label, night, games, kw in cases:
-        for sc in ("off", "proven", "rewind10", "library"):
+        for sc in ("off", "proven", "rewind10"):
             show, c = run(night, games, sc, seed=seed, **kw)
             m = metrics(show, c)
             missed = m["big_n"] - m["big_live"]
@@ -297,7 +297,7 @@ def table(seed: int = 0, dump: str = "") -> str:
                 cells = [f"{m['done']} / {m['chances']}", hist, f"{m['len_med_s']} / {m['len_p90_s']}",
                          f"{m['oldest_med_s']} / {m['oldest_max_s']}", f"{missed} missed: {m['big_via']} / {m['big_never']}"]
             fg = f"{m['grader_entries_mid_play']} / {m['grader_leaves_mid_play']}" + (f" ({m.get('cu_join_mid', 0)} of {m.get('cu_joins', 0)})" if c else "")
-            rows.append(f"| {label} | {names[sc]} | " + " | ".join(cells) + f" | {seen} | {fg} | {m['jumps_per_min']} |")
+            rows.append(f"| {label} | {names[sc]} | " + " | ".join(cells) + f" | {seen} | {fg} | {m['jumps_per_min']} | {m['behind_max_s']} |")
             print(rows[-1], flush=True)
             if dump:
                 with open(dump, "a") as fh:

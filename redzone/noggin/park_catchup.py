@@ -244,8 +244,8 @@ class CatchupShow(Show):
             return "no way back to live"                         # H must join live itself, and this game's app cannot seek
         if self.anchor_now >= 0:
             return "crunch time"
-        if self._cu_hot(t, g):
-            return "a close game is late"
+        if self._cu_alarm(t) is not None:
+            return "a big moment is on or coming"
         if t - self.cu_last.get(g, -10 ** 9) < C.cool_s:
             return "caught up on it lately"
         if t < self.block.get(g, -1):
@@ -269,17 +269,21 @@ class CatchupShow(Show):
         self.cu_pkg = replace(pkg, line=cp.recap_line(pkg.plays, _since_label(self, g, since), C.pack))
         return ""
 
-    def _cu_hot(self, t: int, g_out: int) -> bool:
-        """Is another live game close and late: a high-leverage play (the grader's own rule) in its feed's last
-        hot_look_s? A catch-up takes a minute or two of screen; it never takes them from such a game."""
+    def _cu_alarm(self, t: int) -> int | None:
+        """The game that needs the screen now, or None (Nick's first rule: never miss a big play). A live game is
+        alarming when a high-leverage play (the grader's own close-and-late rule) is in its feed's last hot_look_s, or
+        when the feed has reported a must-see that has not reached the show's edge yet (it is coming on screen). Of
+        several, the one with the most leverage. No catch-up starts while one is; one under way is cut for it."""
+        best, top = None, -1.0
         for g in range(self.N):
             x = self.A[g]
-            if g == g_out or not x.a0 <= t <= x.a1:
+            if not x.a0 <= t <= x.a1:
                 continue
             e = min(x.n - 1, max(0, min(t + self.know, self.feed.edge(g))))
-            if x.hlc[e + 1] - x.hlc[max(0, e - self.cp.hot_look_s)] > 0:
-                return True
-        return False
+            hot = x.hlc[e + 1] - x.hlc[max(0, e - self.cp.hot_look_s)] > 0
+            if (hot or any(t < m <= e for m in x.mom)) and x.lev[e] > top:
+                best, top = g, x.lev[e]
+        return best
 
     def _cu_mode(self, v: int) -> str:
         """How the live join is made. "v_join": V (the stick on screen) is tuned to the game live, parked, then flipped
@@ -317,8 +321,8 @@ class CatchupShow(Show):
 
     def _cu_leave(self, t: int) -> None:
         cu, S, C = self.cu, self.S, self.cp
-        if self.anchor_now >= 0 or self._cu_hot(t, cu["game"]):
-            self._cu_abort("crunch time began", t)
+        if self.anchor_now >= 0 or self._cu_alarm(t) is not None:
+            self._cu_abort("a big moment began or is coming", t)
             return
         if t - cu["ready"] > C.leave_wait_s:
             self._cu_abort("no safe exit in time", t)
@@ -348,7 +352,7 @@ class CatchupShow(Show):
         self._hold_end()
         look = t - (self.since if self.since is not None else t)
         self.looks.append((look, self.look_live))
-        cu.update(phase="clips", leave=t, g1=g1, i=i, clips=clips, pkg_s=0, shown=[], k=-1, up=None, done=None,
+        cu.update(phase="clips", leave=t, g1=g1, i=i, clips=clips, pkg_s=0, shown=[], k=-1, up=None, done=None, target=cu["game"],
                   end=t + self.flip + sum(c.gap + c.secs for c in clips),
                   v_task=None, v_tuned=None, spot=None, p_task=None, p_kind="", j=None, join=None, tries=0, wait_from=None)
         self.on = cu["h"]
@@ -399,8 +403,8 @@ class CatchupShow(Show):
             cu["v_task"] = asyncio.ensure_future(rig.tune(v, g))
         P = self.cp.pack
         for k, c in enumerate(cu["clips"]):
-            if k and self._cu_hot(int(rig.clock.now()), g):
-                cu["broke"] = "a close game went late"           # the rest of the clips can wait: back to live play
+            if k and cu.get("cut"):
+                cu["broke"] = "cut for live play"                # the rest of the clips can wait (a later catch-up)
                 break
             if k:
                 now = rig.clock.now()
@@ -457,6 +461,13 @@ class CatchupShow(Show):
             self._cu_flip_failed(t)
             return
         cu["pkg_s"] += 1
+        if cu["join"] is None:
+            c = self._cu_alarm(t)                                # ABORT-TO-LIVE: a big moment on or coming somewhere
+            if c is not None:
+                cu["cut"] = True                                 # the package ends with the clip on screen
+                if c != cu["target"] and cu.get("redirects", 0) < 2:
+                    self._cu_redirect(t, c)                      # ...and the live join goes to that game
+        g = cu["target"]                                         # the game the live join is for (the catch-up's, or redirected)
         if cu["done"] and cu["wait_from"] is None:
             cu["wait_from"] = t
         # the live stick: tuned to the game, then parked on a padded dead ball near the clips' end
@@ -519,7 +530,7 @@ class CatchupShow(Show):
                 self.no_jump_until = t + self.P.cool
             return
         if cu["done"] and cu["j"] is not None and cu["p_task"] is None and t >= self.no_jump_until:
-            x, hf = self.A[g], int(t - rig.lag[h])
+            x, hf = self.A[cu["game"]], int(t - rig.lag[h])
             if 0 <= hf < x.n and not x.dead[hf] and t - cu["wait_from"] < C.replay_dead_s:
                 return                                           # the replay runs on to its own dead ball: a clean cut
             why = self.guard(t, g, cu["j"], True, g, cu["j"], h, v)
@@ -537,7 +548,7 @@ class CatchupShow(Show):
         waited = t - cu["wait_from"]
         if cu["mode"] == "v_join" and waited <= C.join_wait_s:
             return
-        if not cu.get("rejoin") and g not in self.no_back:
+        if not cu.get("rejoin") and g == cu["game"] and g not in self.no_back:
             f = self._cu_fresh_spot(t, g, h)
             if f is not None:                                    # H itself is sent to a fresh dead ball: the live join
                 cu["rejoin"] = f
@@ -545,8 +556,53 @@ class CatchupShow(Show):
                     cu["v_task"].cancel()
                 cu["p_task"], cu["p_kind"] = asyncio.ensure_future(self._cu_rejoin(float(f))), "rejoin"
                 return
+        if waited > 2 * C.join_wait_s and cu["mode"] == "v_join" and cu.get("alt_from") != g:
+            alt = self._cu_alt(t, g)                             # no dead ball in time here: abandon this join, go live elsewhere
+            if alt is not None:
+                cu["alt_from"] = g
+                self._cu_redirect(t, alt)
+                cu["wait_from"] = t
+                return
         if waited > 6 * C.join_wait_s:
             self._cu_hand_back(t, "no safe live join in time")
+
+    def _cu_redirect(self, t: int, c: int) -> None:
+        """The live join goes to game c instead (a big moment there, or no dead ball in time where it was going).
+        "v_join": V drops what it was doing and is tuned to c, then parked as before. "h_join": V holds the game it
+        left; only that one can be joined through it (anything else waits for the planner after the join)."""
+        cu, rig = self.cu, self.rig
+        v = cu["v"]
+        if cu["mode"] == "h_join":
+            if c != cu["g1"]:
+                return
+            cu["target"], cu["v_tuned"], cu["spot"], cu["j"] = c, cu["v_tuned"] or t, None, None
+            if rig.paused[v]:
+                j = int(math.floor(rig.frozen[v] + rig.unseen_s))
+                cu["j"] = None if self._cu_land_why(t, c, j, v) else j
+        else:
+            for k in ("v_task", "p_task"):
+                if cu.get(k) is not None and not cu[k].done():
+                    cu[k].cancel()
+            cu.update(target=c, j=None, spot=None, v_tuned=None, tries=0, no_cue=None, p_task=None, rejoin=None)
+            if rig.game[v] == c and not rig.paused[v]:
+                cu["v_tuned"] = t
+            else:
+                cu["v_task"] = asyncio.ensure_future(rig.tune(v, c))
+        cu["redirects"] = cu.get("redirects", 0) + 1
+        self.emit({"ev": "catchup", "what": "redirect", "tick": t, "game": cu["game"], "to": c})
+
+    def _cu_alt(self, t: int, g_out: int) -> int | None:
+        """Another live game to join instead: the one whose feed shows the most padded dead balls a fresh stream could
+        land on in the seconds it has confirmed."""
+        best, most = None, 0
+        for g in range(self.N):
+            x = self.A[g]
+            if g == g_out or not x.a0 <= t <= x.a1:
+                continue
+            n = sum(1 for f in range(int(t), int(t + self.know)) if not self._cu_land_why(t, g, f, self.cu["v"]))
+            if n > most:
+                best, most = g, n
+        return best
 
     def _cu_fresh_spot(self, t: int, g: int, k: int) -> int | None:
         """The newest padded dead ball of game g the feed has confirmed, recent enough that stream k, sent there on
@@ -579,7 +635,7 @@ class CatchupShow(Show):
         little ahead of a stream at the show's edge, so a later one may never come in time), sending the pause key when
         its frame comes round, as Show._drive does. Held too long, the join's guard sends it on to a later one."""
         cu, rig, P = self.cu, self.rig, self.cp.pack
-        g, v = cu["game"], cu["v"]
+        g, v = cu["target"], cu["v"]
         if cu["p_task"] is not None or rig.paused[v]:
             return
         x = self.A[g]
@@ -613,7 +669,7 @@ class CatchupShow(Show):
         other stick still holds the game left (held at the leave, or the pinned stream playing on): it is the hidden
         stick on the way back, as after a jump. Otherwise nothing is parked and it is tuned again."""
         cu, S, rig = self.cu, self.S, self.rig
-        g, h, pkg = cu["game"], cu["h"], cu["pkg"]
+        g, h, pkg = cu["target"], cu["h"], cu["pkg"]
         cu["j"] = j
         shown = [p for c in cu["shown"] for p in c.plays]
         self.on = k
@@ -648,11 +704,12 @@ class CatchupShow(Show):
         self.records.append(rec)
         if self.judge is not None and hasattr(self.judge, "catchup_cut") and "true_i" in cu:
             self.judge.catchup_cut(t, cu["g1"], cu["true_i"], k, g, cu["j"], True)
-        self.cu_log.append({"game": g, "from": cu["g1"], "leave": cu["leave"], "join": t, "screen_s": cu["pkg_s"],
+        self.cu_log.append({"game": cu["game"], "joined": g, "cut": bool(cu.get("cut")), "from": cu["g1"], "leave": cu["leave"], "join": t, "screen_s": cu["pkg_s"],
                             "prep_s": round(cu.get("prep_took", 0.0), 1), "plays": shown, "clips": list(cu["shown"]),
                             "sources": pkg.sources, "behind_s": behind, "join_wait_s": t - (cu["wait_from"] or t),
                             "broke": cu.get("broke", ""), "line": pkg.line, "h": h, "rejoined": k == h, "i": cu["i"], "n_planned": len(pkg.plays)})
-        self.cu_last[g] = t
+        if not cu.get("cut"):
+            self.cu_last[cu["game"]] = t                         # a cut package's other plays may come in a later one
         self.cu = None
         self.say(f"CATCH-UP done: {len(shown)} plays of {self.names[g]} in {cu['pkg_s']} s, then live at a dead ball ({behind} s behind)")
         self.emit({"ev": "catchup", "what": "live", "tick": t, "game": g, "plays": len(shown), "screen_s": cu["pkg_s"], "behind_s": behind})
