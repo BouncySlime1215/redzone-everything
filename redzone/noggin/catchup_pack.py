@@ -124,8 +124,8 @@ class Play:
     lead_change: bool = False
     tie: bool = False
     run: int = 0               # unanswered points of the run this play is part of (0 = none)
-    big: float = 0.0           # the grader's must-see weight (park_core Arr.mom)
-    value: float = 0.0         # the grader's graded value (value2, park_core Arr.v2)
+    big: float = 0.0           # the grader's must-see weight (the show's Arr.mom)
+    value: float = 0.0         # the grader's graded value (value2, the show's Arr.v2)
     lev: float = 1.0           # leverage at the play
     text: str = ""
     period: int = 0
