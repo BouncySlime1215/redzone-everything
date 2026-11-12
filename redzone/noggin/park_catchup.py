@@ -51,7 +51,7 @@ class CatchupParams:
     min_gap_s: int = 120            # "after a while": a game unseen this long gets a catch-up when the show returns
     cool_s: int = 300               # no second catch-up of one game within this
     leave_wait_s: int = 20          # prep done: a guarded leave within this, or the catch-up is dropped
-    join_wait_s: int = 90           # clips done: the live join within this (the replay plays on), or the planner takes over
+    join_wait_s: int = 30           # clips done: V's live join within this (the replay plays on), else H itself is re-cued to live
     replay_dead_s: int = 12         # ...and the cut leaves the replay on its own dead ball when one comes within this
     look_ahead_s: int = 30          # never leave the screen's game with a big play or high leverage this close in the feed
     plan_wait_s: float = 10.0       # the plan allows this for the leave after the prep (a later leave re-checks every clip)
@@ -252,7 +252,7 @@ class CatchupShow(Show):
         pkg = cp.plan(sel, float(t), stick, C.pack, wait_s=C.plan_wait_s, flip_s=float(self.flip), game=g)
         if pkg is None:
             return "no source can show it in time"
-        wait = self._cu_exit_after(t, pkg.prep_s + 1.0)
+        wait = self._cu_exit_after(t, pkg)
         if wait is None:
             return "no exit known after the prep"                # the feed shows no safe leave once H could be ready
         if wait > C.plan_wait_s:
@@ -262,7 +262,7 @@ class CatchupShow(Show):
         self.cu_pkg = replace(pkg, line=cp.recap_line(pkg.plays, _since_label(self, g, since), C.pack))
         return ""
 
-    def _cu_exit_after(self, t: int, prep: float) -> float | None:
+    def _cu_exit_after(self, t: int, pkg: cp.Package) -> float | None:
         """Seconds from the prep's end to the first padded leave of the screen's game the feed already shows (a known
         dead ball, calm), within leave_wait_s; None when there is none. The leave itself is still guarded when it comes:
         this only keeps a prep from being thrown away (a dropped prep costs the planner its park)."""
@@ -271,12 +271,22 @@ class CatchupShow(Show):
         x = self.A[g1]
         if t > x.a1 + S.sb:
             return 0.0                                           # the game on screen is over: any second will do
-        i = int(t - S.sb + S.se) + int(math.ceil(prep))
+        i = int(t - S.sb + S.se) + int(math.ceil(pkg.prep_s + 1.0))
         if not 0 <= i < x.n:
             return None
         w = x.leave_in(self.pad0 + self.extra_of(self.on, g1), False)[i]
         known = min(self.feed.edge(g1) - self.P.open_hold, t + self.know)
-        return float(w) if w <= self.cp.leave_wait_s and i + w + self.pad0 <= known else None
+        if w > self.cp.leave_wait_s or i + w + self.pad0 > known or not self._cu_break_ok(g1, min(x.n - 1, i + w), pkg):
+            return None
+        return float(w)
+
+    def _cu_break_ok(self, g1: int, i: int, pkg: cp.Package) -> bool:
+        """Football comes first (CLAUDE.md league order): a football game is left for a catch-up only in a break that
+        covers the clips, never between the plays of a drive. Basketball is left at any guarded dead ball."""
+        if not self.football[g1]:
+            return True
+        x = self.A[g1]
+        return bool(x.brk[i]) and x.left[i] >= min(pkg.screen_s + self.cp.join_wait_s, 150.0)
 
     def _cu_leave(self, t: int) -> None:
         cu, S, C = self.cu, self.S, self.cp
@@ -293,7 +303,7 @@ class CatchupShow(Show):
         if t < self.no_jump_until:
             return                                               # a step failed lately: no flip yet
         if not over:
-            if t - S.s_land < self.s.min_stay or self._cu_leave_why(t, g1, i):
+            if t - S.s_land < self.s.min_stay or self._cu_leave_why(t, g1, i) or not self._cu_break_ok(g1, i, cu["pkg"]):
                 return
             hi = min(x.n - 1, i + C.look_ahead_s)
             if x.hlc[hi + 1] - x.hlc[max(0, i)] or any(m in x.mom for m in range(i + 1, hi + 1)):
@@ -432,6 +442,16 @@ class CatchupShow(Show):
         if cu["v_tuned"] is not None and cu["j"] is None:
             self._cu_park(t)
         pt = cu["p_task"]
+        if pt is not None and pt.done() and cu["p_kind"] == "rejoin":
+            cu["p_task"] = None
+            ok, val = _result(pt)
+            if ok and val is not None:
+                if self.judge is not None:
+                    self.judge.tuned(h, g, True)                 # its place after the cue was read
+                self._cu_landed(t, h, int(val))
+            else:
+                self._cu_hand_back(t, "the replay stick could not be sent back to live")
+            return
         if pt is not None and pt.done():
             cu["p_task"] = None
             ok, val = _result(pt)
@@ -453,7 +473,7 @@ class CatchupShow(Show):
                 st, why = _result(jt, ("stop", "the jump step broke"))
                 cu["join"] = None
                 if st == "ok":
-                    self._cu_landed(t)
+                    self._cu_landed(t, v, cu["j"])
                     return
                 if st == "stop":
                     self.stop = why
@@ -477,8 +497,33 @@ class CatchupShow(Show):
             if "behind live" in why:                             # held too long: play on to a later dead ball
                 cu["j"] = cu["spot"] = None
                 self._cu_resume(v)
-        if cu["wait_from"] is not None and t - cu["wait_from"] > C.join_wait_s:
+        if cu["wait_from"] is None or cu["p_task"] is not None or t - cu["wait_from"] <= C.join_wait_s:
+            return
+        if not cu.get("rejoin") and g not in self.no_back:
+            f = self._cu_fresh_spot(t, g, h)
+            if f is not None:                                    # V found no dead ball in time: H itself is sent to a fresh one
+                cu["rejoin"] = f
+                if cu["v_task"] is not None and not cu["v_task"].done():
+                    cu["v_task"].cancel()
+                cu["p_task"], cu["p_kind"] = asyncio.ensure_future(self._cu_rejoin(float(f))), "rejoin"
+                return
+        if t - cu["wait_from"] > 3 * C.join_wait_s:
             self._cu_hand_back(t, "no safe live join in time")
+
+    def _cu_fresh_spot(self, t: int, g: int, k: int) -> int | None:
+        """The newest padded dead ball of game g the feed has confirmed, recent enough that stream k, sent there on
+        screen now (a re-cue, then play), lands well inside the lateness cap."""
+        P = self.cp.pack
+        lo = int(math.ceil(t + P.seek_gap_s + 4 + 10 - self.s.late_cap))
+        return next((f for f in range(int(t + self.know), lo, -1) if not self._cu_land_why(t, g, f, k)), None)
+
+    async def _cu_rejoin(self, f: float) -> tuple:
+        cu, rig = self.cu, self.rig
+        ok, _ = await rig.cu_cue(cu["h"], cu["game"], f, "rewind", True)
+        if not ok:
+            return False, None
+        ok, _ = await rig.resume(cu["h"])
+        return ok, f
 
     def _cu_resume(self, v: int) -> None:
         self.cu["p_task"], self.cu["p_kind"] = asyncio.ensure_future(self.rig.resume(v)), "resume"
@@ -525,13 +570,15 @@ class CatchupShow(Show):
         elif at < t - 0.5:
             cu["spot"] = None
 
-    def _cu_landed(self, t: int) -> None:
-        """The live join landed: the planner takes over with game X on screen and nothing parked."""
+    def _cu_landed(self, t: int, k: int, j: int) -> None:
+        """The live join landed on stream k at second j: the planner takes over with game X on screen, nothing parked.
+        (k is V, or H itself when V found no dead ball in time and H was sent to a fresh one.)"""
         cu, S, rig = self.cu, self.S, self.rig
-        g, h, v, pkg = cu["game"], cu["h"], cu["v"], cu["pkg"]
+        g, h, pkg = cu["game"], cu["h"], cu["pkg"]
+        cu["j"] = j
         shown = [p for c in cu["shown"] for p in c.plays]
-        self.on = v
-        S.sg, S.sb, S.s_land, S.s_from, S.s_kind, S.black, S.s_live = g, S.se + rig.lag[v], t, cu["j"], "park", t, 0
+        self.on = k
+        S.sg, S.sb, S.s_land, S.s_from, S.s_kind, S.black, S.s_live = g, S.se + rig.lag[k], t, j, "park", t, 0
         S.hg, S.h_paused, S.h_ready = -1, False, t
         self.retune, self.pl.next = True, -1
         self.since, self.look_live, self.parked_at, self.paused_since = t, 0, None, None
@@ -546,11 +593,11 @@ class CatchupShow(Show):
                "catchup": {"plays": len(shown), "screen_s": cu["pkg_s"], "sources": pkg.sources, "line": pkg.line}}
         self.records.append(rec)
         if self.judge is not None and hasattr(self.judge, "catchup_cut") and "true_i" in cu:
-            self.judge.catchup_cut(t, cu["g1"], cu["true_i"], v, g, cu["j"], True)
+            self.judge.catchup_cut(t, cu["g1"], cu["true_i"], k, g, cu["j"], True)
         self.cu_log.append({"game": g, "from": cu["g1"], "leave": cu["leave"], "join": t, "screen_s": cu["pkg_s"],
                             "prep_s": round(cu.get("prep_took", 0.0), 1), "plays": shown, "clips": list(cu["shown"]),
                             "sources": pkg.sources, "behind_s": behind, "join_wait_s": t - (cu["wait_from"] or t),
-                            "broke": cu.get("broke", ""), "line": pkg.line, "h": h})
+                            "broke": cu.get("broke", ""), "line": pkg.line, "h": h, "rejoined": k == h, "i": cu["i"]})
         self.cu_last[g] = t
         self.cu = None
         self.say(f"CATCH-UP done: {len(shown)} plays of {self.names[g]} in {cu['pkg_s']} s, then live at a dead ball ({behind} s behind)")

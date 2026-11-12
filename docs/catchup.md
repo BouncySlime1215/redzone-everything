@@ -13,12 +13,15 @@ that game for `min_gap_s` (120 s), the show may run a catch-up instead of a plai
 1. **Prep (hidden).** H is sent back to the first clip's start and paused there ("queue it to the snap"). The screen
    keeps its game. Started only when the feed already shows a safe leave once H is ready.
 2. **Leave.** At a padded dead ball of the screen's game (the jump guard's own leave test, `park_facts.refusal`), never
-   with a big play or high leverage in the feed's next 30 s, never in crunch time: the TV flips to H.
+   with a big play or high leverage in the feed's next 30 s, never in crunch time: the TV flips to H. Football comes
+   first: a football game is left only in a break long enough to cover the clips, never between the plays of a drive.
 3. **Clips.** H plays each clip; between two it is re-cued to the next start (on screen). Meanwhile the other stick (V)
    is tuned to the game live and parked on a padded dead ball (forward, or sent back to one that has just gone by).
 4. **Live join.** When the clips end (and the replay is at its own dead ball), the hard guard checks the landing again
    (padded dead ball, lateness cap), then V is resumed and the TV flips to it. Rule #1 and the frozen grader judge this
-   join like any jump. The replay is not a live picture, so leaving it is not a Rule #1 leave.
+   join like any jump. The replay is not a live picture, so leaving it is not a Rule #1 leave. If V has no dead ball
+   within `join_wait_s` (30 s), H itself is re-cued on screen to the newest confirmed padded dead ball, inside the
+   lateness cap, and plays on from there: that is the live join, judged the same way.
 
 For the judge and the frozen grader a catch-up is **one cut**: the leave of the live game and the live join.
 
@@ -68,7 +71,7 @@ own tune), `library` (whole game). The planner tunes the hidden stick shortly be
 
 ## Keys (`park.catchup.*`, read with code defaults; not yet in `default_config.yaml`)
 
-`enabled` (false), `min_gap_s` 120, `cool_s` 300, `leave_wait_s` 20, `join_wait_s` 90, `replay_dead_s` 12,
+`enabled` (false), `min_gap_s` 120, `cool_s` 300, `leave_wait_s` 20, `join_wait_s` 30, `replay_dead_s` 12,
 `look_ahead_s` 30, `plan_wait_s` 10, and the package's own (`catchup_pack.PackParams`): `max_plays` 5, `cap_s` 120,
 `min_worth` 0.3, `min_value` 0.8, `lead_s` 2, `tail_s` 3, `max_age_s` 180, `rewind_rule` measured, `reach_s` 175,
 `reel` false, `moments` false, and the source timings above. The YAML block waits for the PARK-UNIFY and

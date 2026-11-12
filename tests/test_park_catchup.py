@@ -120,3 +120,18 @@ def test_a_pinned_stick_is_never_used_for_a_catchup():
     assert show.keep == 0 and show.cu_log == []
     assert not any(x[0] == "cue" for x in show.rig.sent)
     assert set(show.cu_chances.values()) <= {"a pinned stick"}
+
+
+@needs_archive
+def test_football_is_left_for_a_catchup_only_in_a_break_that_covers_it():
+    """Football first: the NBA game's catch-up never takes the screen from football between the plays of a drive."""
+    show, c = cr.run("20261023", 1, "library", minutes=80, **cr.NFL_PRIME)
+    off = pr.replay("20261023", 1, minutes=80, **cr.NFL_PRIME)
+    fb = next(g for g, f in enumerate(show.football) if f)
+    left_fb = [r for r in show.cu_log if r["from"] == fb]
+    assert left_fb
+    for r in left_fb:
+        assert show.A[fb].brk[r["i"]]
+    m, m0 = cr.metrics(show, c), cr.metrics(off, None)
+    assert m["big_n"] - m["big_live"] - m["big_via"] <= m0["big_n"] - m0["big_live"]
+    assert (m["grader_entries_mid_play"], m["grader_leaves_mid_play"], m["cu_join_mid"]) == (0, 0, 0)
