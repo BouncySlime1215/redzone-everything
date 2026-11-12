@@ -5,7 +5,7 @@
 - the [compressed 4-day plan](../../plans/2026-11-05-compressed-4day.md);
 - Nick's 8:05 PM sweep and 8:10 PM "go wide".
 
-**Queue:** [docs/experiments.md](../../experiments.md).
+**Queue:** [docs/experiments.md](../../../experiments.md).
 - Pre-register before running.
 - Use your lane's id block.
 - Before starting an id, check for a `claude/exp-<id>` branch: the overseer runs up to 20 go-wide experiments in

@@ -17,7 +17,7 @@ No arbitrary rate, dwell, gap or switch-count freeze is active. Each baseline an
 | NHL | 95 games | 99.5% | 23.1% | 58.6% | 30.5% |
 | MLB | 40 games | 67.2% | 25.7% | 60.1% | 28.0% |
 
-Full results, including crunch coverage and separate modeled tuning blackout, are in [scorecards-2026-11-02.json](scorecards-2026-11-02.json). NFL baseline modeled tuning blackout is 4.8%; this is separate from 7.4% modeled stoppage/dead time and uses a different denominator.
+Full results, including crunch coverage and separate modeled tuning blackout, are in [../scorecards-2026-11-02.json](../scorecards-2026-11-02.json). NFL baseline modeled tuning blackout is 4.8%; this is separate from 7.4% modeled stoppage/dead time and uses a different denominator.
 
 Baseline commands: `scripts/eval.py` and `scripts/eval_sports.py SPORT --nights 999`, run with `.venv/bin/python`. Combined-fault flags: `--true-delay 41 --sigma 5 --lag-jitter --drop --late-plays --no-wallclock` (seed 0). This uses 3–25 second delivery jitter, intermittent 60–120 second feed gaps, 15% late/out-of-order events and 50% missing wallclocks. One seed is coverage, not an exhaustive stress proof.
 
@@ -33,6 +33,6 @@ Baseline commands: `scripts/eval.py` and `scripts/eval_sports.py SPORT --nights 
 
 Recovered persistent ADB, standby planning, optional Fastcast, provider discovery and autonomy from the original Claude project/worktrees in an isolated checkout. Added checks for partial-write ambiguity, command cancellation, stale stream success, failed seek, verified input changes, unknown power, payment/account screens, channel-map verification, deferred commits, precise calibration, timestamp uncertainty, event ordering, whole exit windows, actual target latency, replay completion and service shutdown.
 
-At the time of this recovery baseline, physical setup was pending and no device operations or real playback benchmark had been performed. Later November 2 device observations are documented separately in [the initial device trial](device-trial-2026-11-02.md); they do not retroactively validate these modeled results. A monitor without supported input readback uses single-stick mode. Vega is unsupported by the current ADB controller.
+At the time of this recovery baseline, physical setup was pending and no device operations or real playback benchmark had been performed. Later November 2 device observations are documented separately in [the initial device trial](../device-trial-2026-11-02.md); they do not retroactively validate these modeled results. A monitor without supported input readback uses single-stick mode. Vega is unsupported by the current ADB controller.
 
 The default dry-run preview was exercised through HTTP and the phone UI. Live provider feeds returned data; that does not validate device playback or account access. Fastcast remains disabled by default pending current major-league validation.

@@ -25,7 +25,7 @@ so no RSS or latency here is measured on this Mac.
 
 1. The cheapest and strongest signal is already in the repo: the score bug. Its presence, its game
    clock running or stopped (`redzone/screen/tap_bug.py`) and its disappearance are free of new RAM.
-   Add a "bug gone" state; the 11-03 research already flags it ([01-inputs-and-sources.md](../2026-11-03/01-inputs-and-sources.md), row D2).
+   Add a "bug gone" state; the 11-03 research already flags it ([01-inputs-and-sources.md](../../archive/research/2026-11-03/01-inputs-and-sources.md), row D2).
 2. Next best per MB: the mic (already opened by `redzone/screen/audio.py`). Replace "one loudness
    number per 0.25 s" with YAMNet class scores (3.7M weights; classes Whistle, Cheering, Crowd,
    Applause, Roar, Buzzer, Air horn exist) as extra features, not as truth.

@@ -1,7 +1,7 @@
 # Cycle 02 plan (Start Planner), Wed Nov 4, ~10:00 to 13:30 UTC
 
 **From:** [cycle 01 review](../01/review.md) (integration/next b41986c), the [idea bank](../idea-bank.md)
-(#1 clairvoyance, #2 oracle, #13, #17, #18, #19), [playbooks](../../playbooks.md),
+(#1 clairvoyance, #2 oracle, #13, #17, #18, #19), [playbooks](../../../playbooks.md),
 [backlog](../backlog.md). Usage is ~+4.5 over the line, so the doc is lean, research is skipped this
 cycle, lane ⑤ waits until 13:00 UTC, and workers run only the scorecards they touch.
 

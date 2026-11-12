@@ -4,7 +4,7 @@
 - integration/next 777323f;
 - the handoff on codex/resume-redzone (99131b3, 21:26);
 - go-wide PRs #216-#231;
-- the [compressed 4-day plan](../../plans/2026-11-05-compressed-4day.md).
+- the [compressed 4-day plan](../../archive/plans/2026-11-05-compressed-4day.md).
 
 **Rules:**
 - Pre-register in [experiments.md](../../experiments.md) using your lane's id block.

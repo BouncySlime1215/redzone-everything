@@ -7,9 +7,9 @@
 
 **Official direction** (Nick, 6:10 PM):
 - The [Noggin master plan](../../plans/2026-11-04-noggin-master-plan.md) and the
-  [watch science playbook](../../research/watch-science-playbook.md) are now the direction. Both are on
+  [watch science playbook](../../../research/watch-science-playbook.md) are now the direction. Both are on
   `codex/resume-redzone` at 51908ba.
-- All ~100 ideas are now ONE ranked queue: **[docs/experiments.md](../../experiments.md)** (82 rows, with a
+- All ~100 ideas are now ONE ranked queue: **[docs/experiments.md](../../../experiments.md)** (82 rows, with a
   coverage check).
 - Phase 0 starts now.
 

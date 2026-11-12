@@ -1,6 +1,6 @@
 # Cycle 08 review (End Planner / Integrator), Thu Nov 5, 23:55 to 01:15 UTC
 
-**Plan:** [#183](../../experiments.md) and the compressed 4-day plan (#200).
+**Plan:** [#183](../../../experiments.md) and the compressed 4-day plan (#200).
 
 **Scored at:** the train on integration/next (ac0db65 tree), with `scripts/northstar.py --split both --profile candidate
 --oracle`, on eval-data-v1, pinned. Locked was read once and not used to tune anything.

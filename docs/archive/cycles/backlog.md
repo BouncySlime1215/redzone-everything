@@ -7,8 +7,8 @@ re-ranks these lists at the start of each cycle; the cycle plan's task always co
 
 Same rules as always: gates on unseen (locked) nights, flags OFF until they pass, full-set grading,
 every PR shows its North Star delta (dev + locked, live + candidate columns) and a RAM/CPU line.
-Sources: [idea-bank.md](idea-bank.md) (#1-#20), [playbooks.md](../playbooks.md) (entry ids),
-[roadmap.md](../roadmap.md), the sync plan.
+Sources: [idea-bank.md](idea-bank.md) (#1-#20), [playbooks.md](../../playbooks.md) (entry ids),
+[roadmap.md](../../roadmap.md), the sync plan.
 
 ## Overseer queue (Nick, Nov 4 3:05 PM ET): next after each lane's current item, in this order
 Usual gates: graded on locked unseen nights, flags OFF until they pass, North Star delta (dev + locked,

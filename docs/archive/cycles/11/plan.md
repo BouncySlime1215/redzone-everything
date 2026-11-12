@@ -6,7 +6,7 @@
 - the [compressed 4-day plan](../../plans/2026-11-05-compressed-4day.md).
 
 **Rules:**
-- Pre-register in [experiments.md](../../experiments.md) using your lane's id block.
+- Pre-register in [experiments.md](../../../experiments.md) using your lane's id block.
 - Before you start an id, check for a `claude/exp-<id>` go-wide branch.
 - Grader v5 is coming (`--real-seek`, decide-step 1 s, commercial-within-30 s, ping-pong, worth line). Report v4
   and v5 side by side until it is frozen.

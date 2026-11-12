@@ -3,7 +3,7 @@
 **From:** the [cycle 07 review](../07/review.md) (f91e318), the Cycle 08 plan (#183), and lane 2's four
 pre-registered runs this cycle.
 
-**Queue:** [docs/experiments.md](../../experiments.md). Every PR names its EXP id and pre-registers its
+**Queue:** [docs/experiments.md](../../../experiments.md). Every PR names its EXP id and pre-registers its
 `success bar` and `nights needed` before the first run (grading rule 2, #191). Rules as always: bar (B) on
 locked, flags off until they pass, no training signal from Nick, `docs/citymap.md` first, and the playbook's
 line (§5) is binding.

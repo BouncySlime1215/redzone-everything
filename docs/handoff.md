@@ -126,7 +126,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 - **Kaggle round 2:** ready on branch `kaggle-inputs` (millions of moments built from ESPN inside
   Kaggle). It starts after V2 finishes and needs the notebook fix for the auto-extracted `code/`.
 - **Usage:** 44% weekly (Nov 3, 4 PM). The cap pauses the project at 88%.
-- **Waiting on Nick tonight (about 30 min):** `docs/tonight-checklist.md`: wall power for the
+- **Waiting on Nick tonight (about 30 min):** `docs/archive/tonight-checklist.md`: wall power for the
   sticks, quit Tailscale, TV settings (Anynet+, IP Remote), the deploy command, `tv_setup.py`
   (press Allow), the Multiview probe.
 <!-- STATUS:END -->

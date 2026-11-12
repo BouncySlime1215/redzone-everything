@@ -1,13 +1,13 @@
 # After the state machines: plan checked against the research (2026-11-08)
 
-> **Superseded by [docs/PLAN.md](../PLAN.md)**, the only plan. Kept as history and input.
+> **Superseded by [docs/PLAN.md](../../PLAN.md)**, the only plan. Kept as history and input.
 
 Done before this plan: inventory of implicit state machines, `redzone/fsm.py` + tests, every machine
 converted (52 specs in `redzone/machines/`, `GET /api/machines`, `docs/state-machines.md` generated and
 checked in CI).
 
-Sources: [R-A] [agent-coordination-and-rationale.md](../research/agent-coordination-and-rationale.md)
-(42 sources), [R-B] [opus-5-5-harness-and-time.md](../research/opus-5-5-harness-and-time.md) (43 sources).
+Sources: [R-A] [agent-coordination-and-rationale.md](../../research/agent-coordination-and-rationale.md)
+(42 sources), [R-B] [opus-5-5-harness-and-time.md](../../research/opus-5-5-harness-and-time.md) (43 sources).
 
 ## Did the research agree with the original next steps?
 

@@ -18,10 +18,10 @@
   | 12:05 AM | the Data Division |
   | 12:30 AM | G |
 
-  The org chart is [data division](../../plans/2026-11-05-data-division.md). The G/H additions are in #252.
+  The org chart is [data division](../../../plans/2026-11-05-data-division.md). The G/H additions are in #252.
 - The first PRs from the new crews (below).
 
-**Queue:** [docs/experiments.md](../../experiments.md). Pre-register a row before running it. Each unit uses its own
+**Queue:** [docs/experiments.md](../../../experiments.md). Pre-register a row before running it. Each unit uses its own
 id block:
 
 | Unit | Ids |

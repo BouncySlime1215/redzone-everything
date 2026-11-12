@@ -1,4 +1,4 @@
-"""The switch-path audit's findings, each pinned (docs/audits/2026-11-08-switch-path.md, -devices.md)."""
+"""The switch-path audit's findings, each pinned (docs/archive/audits/2026-11-08-switch-path.md, -devices.md)."""
 import asyncio
 import dataclasses
 import json

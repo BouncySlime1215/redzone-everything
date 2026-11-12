@@ -44,7 +44,7 @@ separate diagnostic, not a claim that every simulated switch used the device cal
 
 Keep the app in **dry-run**. Both selected sticks were authorized and reached on November 2.
 The initial provider selections and metadata captures are documented in
-[the device trial](device-trial-2026-11-02.md). Physical switching latency and visible play
+[the device trial](../device-trial-2026-11-02.md). Physical switching latency and visible play
 boundaries remain unmeasured. Do not scan unrelated devices or assume an unverified monitor
 can switch inputs.
 

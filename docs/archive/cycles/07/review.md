@@ -6,7 +6,7 @@
 `scripts/northstar.py --split both --profile candidate --oracle`, on eval-data-v1, pinned. Locked was read once for this
 review and not used to tune anything.
 
-**Experiment ids** are from [experiments.md](../../experiments.md) (#183).
+**Experiment ids** are from [experiments.md](../../../experiments.md) (#183).
 
 ## Verdicts
 
@@ -18,7 +18,7 @@ review and not used to tune anything.
 | ④ | #193 citymap tag rename | none (ops) | **keep (merged, acd213b)** | The nightly table renamed the mid-play line, which broke `test_citymap` on the RC6 cut. Docs only. RC6.1 is cut from here. |
 | ② | #172 stakes into WV, #174 crunch_block_tail | EXP-001 (WV input), bar (c) | **keep (merged, 6a66f24)** | #174 lifts locked NHL candidate crunch from 76.2 to 79.2. It also lifts locked your-team big ≤3 min from 73.5 to 82.4 (live moved the other way, 82.4 → 73.5, under #132's seek model). |
 | ④ | #137 night report | none (ops) | **keep (merged, 6a66f24)** | It turns `report.nightly` on. It was held until RC6 was cut, so it doesn't ride RC6. |
-| Int | #191 grading rules + `graders` CI job | rules 1-2 | **open** | Nick's 14 rules are in [grading.md](../../grading.md). G1 adds the grader freeze, G2 pre-registration, G3 no moved goalposts. It re-freezes after the train lands. |
+| Int | #191 grading rules + `graders` CI job | rules 1-2 | **open** | Nick's 14 rules are in [grading.md](../../../grading.md). G1 adds the grader freeze, G2 pre-registration, G3 no moved goalposts. It re-freezes after the train lands. |
 | ② | #184 decide-step 1 s | none yet | **integrator takes it over** | It's grader code, so under rule 1 it belongs to the integrator. Moving the review protocol from 10 s to 1 s for both profiles is a grader change. It gets pre-registered, then both tables are shown side by side in cycle 08. It isn't switched mid-review. |
 
 **Self-taught check:** nothing merged this cycle reads Nick's taps, votes or overrides.

@@ -1,4 +1,4 @@
-"""Device audit 2026-11-08 (docs/audits/2026-11-08-devices.md), card C: TV and stick fixes, one test each.
+"""Device audit 2026-11-08 (docs/archive/audits/2026-11-08-devices.md), card C: TV and stick fixes, one test each.
 Repro for each is in the test's docstring; none touches a real TV, stick or SmartThings."""
 import asyncio
 import threading

@@ -1,6 +1,6 @@
 # Compressed plan: master plan v2, Phases 0-2 by Sun Nov 8
 
-> **Superseded by [docs/PLAN.md](../PLAN.md)**, the only plan. Kept as history and input.
+> **Superseded by [docs/PLAN.md](../../PLAN.md)**, the only plan. Kept as history and input.
 
 **Source:** Nick, 7:30 PM ET Nov 4. Colab Pro+ is bought (~$50/mo, ~500 compute units (CU), A100/L4, background
 runs). "GO HARD, get this done within the next few days." This plan compresses
@@ -13,8 +13,8 @@ Phases 0-2 into ~4 days.
 - The overseer launches every notebook in Nick's browser.
 
 **Binding:**
-- [grading.md](../grading.md) holds: fast, not sloppy.
-  - Every run is pre-registered in [experiments.md](../experiments.md) (success bar + nights needed) before it starts.
+- [grading.md](../../grading.md) holds: fast, not sloppy.
+  - Every run is pre-registered in [experiments.md](../../experiments.md) (success bar + nights needed) before it starts.
   - The integrator freezes the graders.
   - Locked is read once per release.
 - The playbook's line (§5) and the self-taught rule hold.

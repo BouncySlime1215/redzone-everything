@@ -132,10 +132,10 @@ Newest first. "Affects" = repo files a follow-up would touch (from each note's o
 
 | Doc | Topic | Top finding | Affects | Open |
 |---|---|---|---|---|
-| [00-PLAN](2026-11-03/00-PLAN.md) | merged queue | live app has about 0 s data lead; backtests assumed `feed_lag=8` | `scripts/eval.py`, `eval_sports.py` | rerun with measured lags |
-| [01-inputs](2026-11-03/01-inputs-and-sources.md) | inputs | ESPN plays carry wallclock in all 6 leagues | `redzone/sources/*` | marked UNVERIFIED rows |
-| [02-capabilities](2026-11-03/02-capabilities-and-tasks.md) | model tasks | timing = GBM+rules; LLM = words only | `redzone/reasoner/*` | distill branches |
-| [03-switch-timing](2026-11-03/03-switch-timing.md) | timing | data lead decides everything | `decider/*`, `lab/*` | per-league numbers from 1 week |
+| [00-PLAN](../archive/research/2026-11-03/00-PLAN.md) | merged queue | live app has about 0 s data lead; backtests assumed `feed_lag=8` | `scripts/eval.py`, `eval_sports.py` | rerun with measured lags |
+| [01-inputs](../archive/research/2026-11-03/01-inputs-and-sources.md) | inputs | ESPN plays carry wallclock in all 6 leagues | `redzone/sources/*` | marked UNVERIFIED rows |
+| [02-capabilities](../archive/research/2026-11-03/02-capabilities-and-tasks.md) | model tasks | timing = GBM+rules; LLM = words only | `redzone/reasoner/*` | distill branches |
+| [03-switch-timing](../archive/research/2026-11-03/03-switch-timing.md) | timing | data lead decides everything | `decider/*`, `lab/*` | per-league numbers from 1 week |
 | [04-architecture](2026-11-03/04-architecture-distillation.md) | distill | 1.5-2 GB total on the M2 | `agent/distill/*` | estimates to confirm |
 | [05-eval](2026-11-03/05-eval-and-learning-loop.md) | eval | pooled point-estimate gates flicker; add CIs | `scripts/release_gate.py` | NHL 97.8% lower bound 93.7% |
 | [watch-science-playbook](watch-science-playbook.md) | attention | care x suspense; replay on surprise | scoring, `lab/worth.py` | Solow 2024 UNVERIFIED |
