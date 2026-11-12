@@ -112,6 +112,48 @@ Football's value is multiplied by 16 to the power of (slider minus 50) over 50, 
 are weights, not locks: at 100 other games still backfill football's long breaks. 50 leaves value in charge, and is
 the same as no slider.
 
+## Fast steps (`park.fast_steps`, off)
+
+The Nov 11 real-TV hands test measured each step (`data/hands_2026-11-11.log`, n=20): tune 16.0 s, park 4.2 s,
+jump 6.9 s. A jump, the re-tune of the stick it left and a park are the cycle before the next jump. With
+`park.fast_steps` on, the same keys go out in the same order and every check still happens; fewer seconds sit in
+front of the next step. `scripts/park_step_bench.py` measures each step on fake sticks and a fake TV whose calls take
+real time (set so the flag-off steps match the TV test within 0.2 s). It is a model, not the TV.
+
+| Step | Flag off: where the seconds go (bench) | Flag on |
+|---|---|---|
+| jump 6.9 s | resume lead 0.3, flip 2.0-2.4 (TV command and its input read-back), silence read twice 1.4 (the TV's own after-switch read, then a second read queued behind it), new stick playing 0.2, then the stick left: its pause read 0.2, BACK 0.25, 1.6 s wait, read-back 0.9 | 2.7 s: one silence read 0.35 (the after-switch read is used; mute, volume, power and input in one round); the playing report and the left stick's pause are read during the flip; the left stick's BACK and read-back run after the jump |
+| park 3.9 s from its key | key 0.25, paused seen 0.6, BACK 0.25, 1.6 s wait, session read 0.2 then foreground app read 0.65 | 3.4 s: the two read-back reads at once; reads poll every 0.1 s, the first one when the frame can have frozen |
+| tune 16.0 s | tuner, 2 s of position 0, the read gesture (4 keys, label read 3.3 s, its fixed waits 6.2 s) | 15.8 s: reads poll every 0.1 s |
+
+The checks and where they now happen:
+
+- **Silence around every switch.** The sound guard still refuses a switch while an incident is open, and its
+  after-switch check (started by the switch once the TV reported the new input) is the jump's read-back. If that
+  check is missing, unreadable or anything but silent, the jump reads again exactly as with the flag off. A sound
+  stop sends nothing more: no hold is started, `_key` refuses every key.
+- **Input confirmation.** Unchanged: the TV's own read-back inside `set_input`, then the input from the silence read.
+- **The new picture playing.** Read during the flip; waited for before the jump returns (and once more if late).
+- **The stick left (focus guard: YouTube TV in front).** Its pause is seen before the jump returns. Its BACK and
+  read-back (still paused, YouTube TV in front) run after it, as `ParkHands.pending`. Until they end: the show holds
+  that stream as not ready (`ControllerRig.confirming`), a jump onto it is refused with nothing sent, a park or resume
+  waits for them, and a new tune or `finish` ends them before their next key (the stick's place is then dropped:
+  never believed parked without its read-back). A read-back that fails clears the standby record.
+- **Rule #1** is untouched: the planner, the guard and the leave timing are the same; nothing waits in front of a
+  jump's resume key.
+
+The TV's input path: PARK's flip uses `park.steps.flip_methods` ([smartthings]) only, so the local path costs nothing
+on a jump. (The ordinary two-stick switch is local-first through `SamsungTV.paths()`; on Nov 11 two local tries
+took 4.2 and 9.1 s and did not confirm. That path is not PARK's and is not changed here.)
+
+Replay with the step costs priced from the TV test (`--steps off`) and with the flag's savings (`--steps on`):
+`scripts/park_replay.py --night <id> --games 4 --steps on`. `--steps model` (default) is the replay as before.
+On the 3 NBA dev nights (20261021/23/28, 4 games, 5 seeds each, Nov 11): 0.464 -> 0.481 jumps a minute (on faster in
+11 of 15 runs), best 5 minutes 6.2 -> 6.6 jumps, graded value seen 54% -> 52% (paired run-to-run swings of -17 to +13
+points: noise at this sample), frozen grader 0 joins and 0 leaves mid-play of 1080 and 1114 cuts. The replay's pace
+is held mostly by safe places to join, not by the sticks; the bench's jump-to-jump time (27.2 -> 22.6 s back to back)
+is the ceiling the flag lifts.
+
 ## Config keys (`park.*`, defaults in `redzone/default_config.yaml`)
 
 Top level:
@@ -119,6 +161,7 @@ Top level:
 | Key | Default | Meaning |
 |---|---|---|
 | `enabled` | false | master switch |
+| `fast_steps` | false | the step mechanics with fewer seconds on the critical path, every check kept (see "Fast steps") |
 | `leagues` | [nba, cbb] | leagues the show takes; add nfl, cfb for football |
 | `max_park_s` | 180 | a stick parked longer is stale and never jumped onto |
 | `late_cap_s` | 145 | nothing shown further behind live than this |

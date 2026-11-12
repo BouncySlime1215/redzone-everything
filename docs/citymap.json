@@ -130,7 +130,8 @@
   "ch.json": {
    "readers": [],
    "users": [
-    "scripts/fault_drill.py"
+    "scripts/fault_drill.py",
+    "scripts/park_step_bench.py"
    ],
    "writers": []
   },
@@ -178,6 +179,7 @@
     "redzone/governor.py",
     "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
+    "scripts/park_step_bench.py",
     "scripts/plan_tonight.py",
     "scripts/preflight.py",
     "scripts/queue_replay.py",
@@ -1313,6 +1315,13 @@
    "readers": [],
    "users": [
     "redzone/lab/night/run.py"
+   ],
+   "writers": []
+  },
+  "sound_incident.json": {
+   "readers": [],
+   "users": [
+    "scripts/park_step_bench.py"
    ],
    "writers": []
   },
@@ -4101,6 +4110,7 @@
     "scripts/find_yttv_code.py",
     "scripts/park_hands_live.py",
     "scripts/park_prime_accept.py",
+    "scripts/park_step_bench.py",
     "scripts/plan_tonight.py",
     "scripts/queue_replay.py",
     "scripts/queue_trace.py",
@@ -4239,6 +4249,7 @@
     "scripts/park_hands_live.py",
     "scripts/park_prime_accept.py",
     "scripts/park_replay.py",
+    "scripts/park_step_bench.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
     "scripts/queue_replay.py",
@@ -5274,6 +5285,7 @@
     "scripts/fault_drill.py",
     "scripts/park_hands_live.py",
     "scripts/park_prime_accept.py",
+    "scripts/park_step_bench.py",
     "scripts/rz.py",
     "scripts/tv_practice.py"
    ],
@@ -10860,7 +10872,8 @@
    "outputs": [
     "redzone/tv.py",
     "scripts/park_hands_live.py",
-    "scripts/park_prime_accept.py"
+    "scripts/park_prime_accept.py",
+    "scripts/park_step_bench.py"
    ],
    "owner": "PLATFORM",
    "role": "Sound guard: the TV stays muted at volume 0, proven by reading it back (sound_guard.*, all off by default).",
@@ -12472,6 +12485,7 @@
     "scripts/edge_probe_try.py",
     "scripts/find_yttv_code.py",
     "scripts/park_prime_accept.py",
+    "scripts/park_step_bench.py",
     "scripts/prime_multiview_probe.py",
     "scripts/providers_check.py",
     "scripts/replay_park_try.py",
@@ -12987,6 +13001,7 @@
     "redzone/tuners/providers.py",
     "redzone/tuners/yttv_search.py",
     "scripts/edge_probe_try.py",
+    "scripts/park_step_bench.py",
     "scripts/prime_multiview_probe.py",
     "scripts/providers_check.py",
     "scripts/rz.py",
@@ -13071,6 +13086,7 @@
     "redzone/engine.py",
     "redzone/tuners/yttv_edge_probe.py",
     "redzone/tuners/yttv_nerds.py",
+    "scripts/park_step_bench.py",
     "scripts/replay_park_try.py",
     "scripts/watchdog_try.py",
     "scripts/yttv_scrub_try.py"
@@ -13241,7 +13257,8 @@
     "redzone/sync_probe.py",
     "redzone/tuners/yttv_label.py",
     "redzone/tuners/yttv_seek.py",
-    "scripts/park_prime_accept.py"
+    "scripts/park_prime_accept.py",
+    "scripts/park_step_bench.py"
    ],
    "owner": "SWITCHING",
    "role": "[POSITION-FIX] Which content second a YouTube TV stick shows: the Nov 10 timing findings as small, flagged helpers.",
@@ -13288,7 +13305,8 @@
     "redzone/lab/night/run.py",
     "redzone/platform/sound_guard.py",
     "redzone/tvsetup.py",
-    "scripts/fault_drill.py"
+    "scripts/fault_drill.py",
+    "scripts/park_step_bench.py"
    ],
    "owner": "SWITCHING",
    "role": "Samsung TV: switch HDMI inputs (two-stick mode) and duck the volume (announcer).",
@@ -17023,6 +17041,50 @@
     "untagged"
    ]
   },
+  "scripts/park_step_bench.py": {
+   "calls": [
+    "redzone/channels.py:ChannelMap",
+    "redzone/config.py:Config",
+    "redzone/control.py:Controller",
+    "redzone/control.py:ParkHands",
+    "redzone/control.py:TUNERS",
+    "redzone/platform/sound_guard.py:SoundGuard",
+    "redzone/tuners/tuners.py:TuneResult",
+    "redzone/tuners/yttv_label.py:LabelRead"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [
+     "ch.json",
+     "config.yaml",
+     "sound_incident.json"
+    ],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/config.py",
+    "redzone/control.py",
+    "redzone/platform/sound_guard.py",
+    "redzone/tuners/adb.py",
+    "redzone/tuners/tuners.py",
+    "redzone/tuners/yttv_label.py",
+    "redzone/tuners/yttv_timing.py",
+    "redzone/tv.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "PARK step bench: the app's own PARK steps (`Controller.park_tune`, `park_pause`, `park_jump`) on fake sticks and a fake TV whose every call takes the time a...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/park_table.py": {
    "calls": [
     "redzone/models_rt/forest.py:Nodes",
@@ -18991,13 +19053,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2291,
-  "data_files": 204,
+  "calls": 2299,
+  "data_files": 205,
   "machines": 53,
-  "modules": 468,
+  "modules": 469,
   "orphans": 36,
-  "unowned": 270,
-  "untagged": 400
+  "unowned": 271,
+  "untagged": 401
  },
  "version": 2
 }
