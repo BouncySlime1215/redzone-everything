@@ -163,7 +163,29 @@ class ControllerRig:
         return "kept", out.why or "the jump was refused"          # the picture that was up is still up
 
     def confirming(self, k: int):
-        return None                                               # park_jump reads the stick left back before it returns
+        """The stick left's read-back still running after the jump returned, as a future of (ok, the frozen second), or
+        None. Flag off: always None (park_jump reads the stick left back before it returns). [park.fast_steps] its BACK
+        and read-back run after the jump (ParkHands.pending): the show holds the stream as not ready until this ends.
+        Cancelling it never cancels the read-back itself; a new step on that stick ends it (ParkHands._settle)."""
+        if not self.hands.pending:
+            return None
+        t = self.hands.pending.get(self.ctl.sticks[k].host)
+        if t is None or t.done():
+            self.sync()                                           # (a read-back that already ended: the stream as it left it)
+            return None
+        return asyncio.ensure_future(self._held(k, t))
+
+    async def _held(self, k: int, t) -> tuple:
+        try:
+            ok = bool(await asyncio.shield(t))
+        except asyncio.CancelledError:
+            if not t.done():
+                raise
+            ok = False
+        except Exception:
+            ok = False
+        self.sync()
+        return (True, self.frozen[k]) if ok and self.paused[k] else (False, None)
 
     async def look(self, k: int) -> dict | None:
         """Where stream k, the one ON SCREEN, is now by one media-session read (Controller.park_look: no key): its lag

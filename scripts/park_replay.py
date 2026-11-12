@@ -55,6 +55,21 @@ FEED_LEAD = {"tonight": 13.0, "nok": 25.0}      # replay: FEED LEAD (not a K; pa
 #                                                 delay less the feed's 8 s; no K: the 33 s prior less 8 s)
 READ_BACK = (0.4, 1.6, 0.6)                     # BACK after a pause key; the read-back after BACK; the TV's read-back after a flip
 RESUME_REPORT = 0.69                            # a resume key to its "playing" report
+# [park.fast_steps] `--steps`: what each device step costs, beyond the model's own numbers above. "model" is the replay as it
+# was. "off" is the app's steps with park.fast_steps OFF as tonight's real-TV hands test measured them (Nov 11, n=20:
+# tune 16.0 s, park 4.2 s with 0.3 s of it waiting for its frame, jump 6.9 s: resume lead 0.3, flip 2.4, 1.6 s to the
+# picture read back, then 2.85 s holding the stick left INSIDE the jump). "on" is the same steps with the flag on, each
+# moved by what scripts/park_step_bench.py measured between off and on (its flag-off steps match the TV's within 0.2 s;
+# 40 moves back to back): the picture read back 0.35 s after the flip instead of 1.65 s, the stick left's BACK and
+# read-back after the jump (the show waits on them through `confirming`, as the model already did), the park 0.35 s
+# shorter from its key (3.72 -> 3.37 s), the tune 0.15 s shorter (15.92 -> 15.79 s).
+STEP_COSTS = {
+    "model": {},
+    "off": {"tune_add": 1.7, "back": 0.65, "confirm": 2.62, "readback": 1.65, "hold_in_jump": True,
+            "hold_back": 0.45, "hold_confirm": 2.4},
+    "on": {"tune_add": 1.55, "back": 0.5, "confirm": 2.42, "readback": 0.35, "hold_in_jump": False,
+           "hold_back": 0.25, "hold_confirm": 2.25},
+}
 SESSION_ZERO = 2.0                              # after a tune the media session says position 0.0 this long (finding 2)
 
 
@@ -209,8 +224,11 @@ class FakeRig:
 
     def __init__(self, clock=None, *, instant: bool = True, seed: int = 0, tune_s: dict | None = None, delay: int = 0, steps: int = 0,
                  reads=None, tune_range: tuple | None = None, latency: float = 0.0, bad_place: float = 0.0, read0: bool = True,
-                 hands: str = "runner", params: ShowParams = SHOW, tune_sd: float = 1.5, drift: float = 0.0, drift_n: int = 10 ** 9):
+                 hands: str = "runner", params: ShowParams = SHOW, tune_sd: float = 1.5, drift: float = 0.0, drift_n: int = 10 ** 9,
+                 costs: dict | None = None):
         P = self.P = params
+        self.cost = {"tune_add": 0.0, "back": READ_BACK[0], "confirm": READ_BACK[1], "readback": READ_BACK[2],
+                     "hold_in_jump": False, "hold_back": None, "hold_confirm": None, **(costs or {})}   # [park.fast_steps] --steps
         self.clock, self.instant, self.rng, self.tune_sd = clock, instant, random.Random(seed), tune_sd
         self.unseen_s, self.pause_lead, self.hold_off = P.unseen, (0.70, 0.60), P.hold_off
         self.join_playing, self.deep = hands != "app", hands != "app"
@@ -255,6 +273,8 @@ class FakeRig:
             + ((P.read + min(6.0, self.rng.expovariate(1 / 1.5))) if steps else 0.0) + 0.6 * max(0, steps - max(1, self.steps))
         if self.tune_range:
             took = self.rng.uniform(*self.tune_range)
+        if self.cost["tune_add"]:
+            took += self.cost["tune_add"]
         self.game[k], self.note[k] = None, {"way": "code", "why": ""}
         await self._wait(max(took, SESSION_ZERO))                # (the session's position-0 seconds are inside every tune)
         if self._fails("tune"):
@@ -291,10 +311,11 @@ class FakeRig:
         await self._wait(self.pause_lead[k] + self.rng.gauss(0.0, 0.07))
         self.paused[k], self.frozen[k] = True, self._now() - self.lag[k]
 
-    async def _confirm(self, k: int) -> tuple:
-        await self._wait(READ_BACK[0])
+    async def _confirm(self, k: int, hold: bool = False) -> tuple:
+        c = self.cost
+        await self._wait(c["hold_back"] if hold and c["hold_back"] is not None else c["back"])
         self.sent.append(("key", k, "KEYCODE_BACK"))
-        await self._wait(READ_BACK[1])
+        await self._wait(c["hold_confirm"] if hold and c["hold_confirm"] is not None else c["confirm"])
         return True, self.frozen[k]
 
     async def pause(self, k: int, at: float | None) -> tuple:
@@ -379,7 +400,7 @@ class FakeRig:
         if resume and not self._fails("resume"):
             self._play(k, at)
         self.sent.append(("tv", "state", None))
-        await self._wait(READ_BACK[2])
+        await self._wait(self.cost["readback"])
         self.sound_at = self._now()
         why = "the TV could not be read back" if self._fails("readback") else ""
         if not why and (not self.silent or self._fails("sound")):          # not muted at volume 0, or unreadable twice: an incident
@@ -395,7 +416,10 @@ class FakeRig:
         if self.paused[k]:
             return "stop", "the new picture did not start playing"
         if held and not self.instant:
-            self._conf[hold] = asyncio.ensure_future(self._confirm(hold))
+            if self.cost["hold_in_jump"]:                        # (--steps off: the app's jump holds the stick left before it returns)
+                await self._confirm(hold, True)
+            else:
+                self._conf[hold] = asyncio.ensure_future(self._confirm(hold, True))
         return "ok", ""
 
     async def finish(self) -> None:
@@ -487,7 +511,7 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
            params: ShowParams | None = None, stop_min: dict | None = None, board=None, rig_kw: dict | None = None,
            model=None, eyes=None, emit=None, any_shot: bool = False, grid: tuple | None = None, prime: int = 0,
            prime_k: str = "bug", prime_pad: int | None = None, walk: str = "any", nfl: int = -1, nfl_lag: float | None = None,
-           deep: bool = False, slider: float | None = None, pin: bool = False) -> Show:
+           deep: bool = False, slider: float | None = None, pin: bool = False, step_costs: str = "model") -> Show:
     """The app's PARK controller on a recorded dev night: fake sticks, a fake TV, a clock that is not the wall.
     first = "read" (the first picture's place was read: the app's `Controller.park_start`, the local runner's start) or
     "live" (what happens WITHOUT that step: the stream on screen sits at its live edge, never read; the feed is never
@@ -533,6 +557,8 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
         rk["tune_s"] = {**dict(rk.get("tune_s") or {}), **{g: cost - (P.read if steps else 0.0) for g in primes}}
         rig_kw = rk
         tune0.update({g: cost for g in primes})
+    if STEP_COSTS.get(step_costs):                               # [park.fast_steps] --steps off|on: the step costs measured on the TV
+        rig_kw = {**dict(rig_kw or {}), "costs": {**STEP_COSTS[step_costs], **dict((rig_kw or {}).get("costs") or {})}}
     rig = FakeRig(clock, instant=False, seed=seed, delay=P.show_delay, steps=steps, reads=tm.reads, hands=hands, params=P,
                   tune_sd=tm.p.tune_sd, **(rig_kw or {}))
     rig.fail.update(fail or {})
@@ -856,6 +882,9 @@ def main() -> int:
     ap.add_argument("--slider", type=float, default=None, help="[football slider] 0 = more everything else ... 100 = more football")
     ap.add_argument("--deep", action="store_true", help="[PARK-NFL-LAG] park the late-feed game (lag - 8 s) deeper")
     ap.add_argument("--nfl-lag", type=float, default=None, help="[PARK-NFL] the football feed's lag in s (default: the show's 8 s)")
+    ap.add_argument("--steps", choices=tuple(STEP_COSTS), default="model",
+                    help="[park.fast_steps] step costs: model (as before), off / on (the app's steps with park.fast_steps off / on, "
+                         "priced from the Nov 11 TV test and scripts/park_step_bench.py)")
     ap.add_argument("--walk", choices=("any", "made", "none"), default="any",
                     help="walk-in points: after any shot (as before), MADE field goals only, or none (dead time only)")
     a = ap.parse_args()
@@ -869,7 +898,7 @@ def main() -> int:
     show = replay(a.night, a.games, case=a.case, hands=a.hands, first=a.first, minutes=a.minutes, seed=a.seed, league=a.league,
                   fail=fail, say=say, any_shot=a.what_if_any_shot, grid=tuple(a.what_if_grid) if a.what_if_grid else None,
                   prime=a.prime, prime_k=a.prime_k, prime_pad=a.prime_pad, walk=a.walk, nfl=a.nfl, nfl_lag=a.nfl_lag,
-                  deep=a.deep, slider=a.slider, pin=a.pin)
+                  deep=a.deep, slider=a.slider, pin=a.pin, step_costs=a.steps)
     _, text = summary(show, f"SUMMARY (replayed on recorded night {a.night} with FAKE sticks, not measured on the TV; {a.games} games, "
                             f"case {a.case}, hands {a.hands}, paddings {sorted(set(show.pad))} s, show delay {show.delay} s)"
                       + ("\n  WHAT-IF, OUTSIDE RULE #1: the any-shot rule is ON (cuts in the 4 s after any shot, made or missed)" if a.what_if_any_shot else ""))
