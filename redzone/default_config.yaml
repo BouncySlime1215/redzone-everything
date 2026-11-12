@@ -1365,6 +1365,12 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
                            # once per LEFT) before its commit, so the picture is not sent ~30 s back in front of the viewer, and
                            # a failed re-read never reloads the picture on screen. Off: as merged (commit 30 s back; a fresh tune
                            # if the read fails). RIGHT behind the live edge is unmeasured on the TV: the seek check catches it
+  verify_game: false       # [PARK-VERIFY-GAME] OFF. On: after every tune the words on the picture name the game (YouTube TV: the read
+                           # gesture's own overlay text, no extra screenshot; Prime: one screenshot + text read). Another live
+                           # game's two teams named = the WRONG game: that stream is refused and the show re-picked without the
+                           # pair for 30 min. Nothing readable = UNKNOWN: the game's K is kept back (wide padding) until its
+                           # picture confirms it; a guessed channel (Peacock -> NBCSN) is UNKNOWN the same way (noggin/park_verify.py)
+  verify_hold_s: 1800      # [PARK-VERIFY-GAME] a game whose channel's picture showed another game is not taken again for this long
   fast_steps: false        # [PARK-SPEED] OFF. On: fewer seconds on the critical path, every check kept (docs/park.md "Fast
                            # steps"). A jump returns once the new picture is up, playing, on the new input and silence is read
                            # back after the switch (the TV's own after-switch read is used instead of a second read queued

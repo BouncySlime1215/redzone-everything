@@ -5176,8 +5176,10 @@
     "redzone/noggin/park_prime.py:play_clock",
     "redzone/noggin/park_prime.py:play_over",
     "redzone/noggin/park_prime.py:prime_on",
+    "redzone/noggin/park_verify.py:verdict",
     "redzone/screen/scorebug.py:clock_seconds",
     "redzone/screen/scorebug.py:frame_kind",
+    "redzone/screen/scorebug.py:is_uniform",
     "redzone/screen/scorebug.py:parse_bug",
     "redzone/screen/scorebug.py:period_number",
     "redzone/screen_ocr.py:recognize",
@@ -5239,6 +5241,7 @@
     "redzone/noggin/gamequeue.py",
     "redzone/noggin/k_table.py",
     "redzone/noggin/park_prime.py",
+    "redzone/noggin/park_verify.py",
     "redzone/screen/scorebug.py",
     "redzone/screen_ocr.py",
     "redzone/sync_edge.py",
@@ -6958,6 +6961,7 @@
     "redzone/noggin/park_show.py",
     "redzone/noggin/pick.py",
     "scripts/bucket_join_measure.py",
+    "scripts/catchup_replay.py",
     "scripts/park_ceiling.py",
     "scripts/park_facts_check.py",
     "scripts/park_replay.py",
@@ -7330,6 +7334,7 @@
     "redzone/lab/oracle.py",
     "redzone/lab/sportsgrade.py",
     "scripts/buffer_shadow_grade.py",
+    "scripts/catchup_replay.py",
     "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/measure_break_lengths.py",
@@ -8813,6 +8818,7 @@
     "redzone/noggin/factory.py",
     "redzone/noggin/features.py",
     "redzone/noggin/live.py",
+    "redzone/noggin/park_catchup.py",
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_show.py",
     "redzone/noggin/pick.py",
@@ -9321,10 +9327,37 @@
    },
    "outputs": [
     "redzone/decider/decider.py",
+    "redzone/noggin/catchup_pack.py",
     "scripts/veto_audit.py"
    ],
    "owner": "unowned",
    "role": "The catch-up route (arbiter.catchup_route, off): a must-see that aired unseen airs late on the hidden stick, in the screen's dead time.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/noggin/catchup_pack.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/noggin/catchup.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/noggin/park_catchup.py",
+    "scripts/catchup_replay.py"
+   ],
+   "owner": "unowned",
+   "role": "Catch-up packages (park.catchup, off): the 3-5 plays a viewer missed on a game, each from its start, then live.",
    "serves": [
     "untagged"
    ]
@@ -9623,6 +9656,48 @@
     "SAFE-02"
    ]
   },
+  "redzone/noggin/park_catchup.py": {
+   "calls": [
+    "redzone/models.py:League",
+    "redzone/noggin/catchup_pack.py:PackParams",
+    "redzone/noggin/catchup_pack.py:Play",
+    "redzone/noggin/catchup_pack.py:Stick",
+    "redzone/noggin/catchup_pack.py:age_ok",
+    "redzone/noggin/catchup_pack.py:plan",
+    "redzone/noggin/catchup_pack.py:recap_line",
+    "redzone/noggin/catchup_pack.py:rewind_floor",
+    "redzone/noggin/catchup_pack.py:select",
+    "redzone/noggin/park_show.py:_result",
+    "redzone/noggin/park_show.py:refusal",
+    "redzone/sources/espn.py:_get",
+    "redzone/sources/espn.py:_int"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models.py",
+    "redzone/noggin/catchup_pack.py",
+    "redzone/noggin/park_show.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/catchup_replay.py"
+   ],
+   "owner": "unowned",
+   "role": "Catch-up on game X: the PARK show's third move beside stay and jump (flag park.catchup.enabled, off).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/noggin/park_core.py": {
    "calls": [],
    "contracts": [],
@@ -9833,6 +9908,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/noggin/park_catchup.py",
     "redzone/park_run.py",
     "scripts/park_replay.py"
    ],
@@ -9868,6 +9944,35 @@
    ],
    "owner": "unowned",
    "role": "PARK timing: where a game's feed time sits on a stick's picture, how sure that is, and each game's padding.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/noggin/park_verify.py": {
+   "calls": [
+    "redzone/screen/scorebug.py:_match",
+    "redzone/screen/scorebug.py:_tokens"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/screen/scorebug.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/control.py",
+    "redzone/park_run.py"
+   ],
+   "owner": "unowned",
+   "role": "[park.verify_game, OFF] Is the game on a stick's picture the game PARK thinks that channel carries?",
    "serves": [
     "untagged"
    ]
@@ -10422,6 +10527,7 @@
     "redzone/noggin/park_prime.py",
     "redzone/noggin/park_show.py",
     "redzone/noggin/park_timing.py",
+    "redzone/noggin/park_verify.py",
     "redzone/showboard.py"
    ],
    "kind": "module",
@@ -11599,6 +11705,7 @@
     "redzone/control.py",
     "redzone/engine.py",
     "redzone/noggin/park_prime.py",
+    "redzone/noggin/park_verify.py",
     "redzone/screen/tap_bug.py",
     "scripts/park_prime_accept.py"
    ],
@@ -11770,6 +11877,7 @@
     "redzone/lab/sportsgrade.py",
     "redzone/noggin/factory.py",
     "redzone/noggin/features.py",
+    "redzone/noggin/park_catchup.py",
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_show.py",
     "redzone/noggin/pick.py",
@@ -14092,6 +14200,40 @@
    "outputs": [],
    "owner": "unowned",
    "role": "[time to see, Nick Nov 5 2026 12:28 AM ET] The catch-up window ratchet (docs/catchup_ratchet.json).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/catchup_replay.py": {
+   "calls": [
+    "redzone/grading.py:SwitchLog",
+    "redzone/grading.py:dead_at",
+    "redzone/lab/cutgrade.py:grade",
+    "redzone/noggin/catchup_pack.py:PackParams",
+    "redzone/noggin/catchup_pack.py:age_cap",
+    "redzone/noggin/catchup_pack.py:age_s",
+    "redzone/noggin/park_catchup.py:CatchupParams"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/grading.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/noggin/catchup_pack.py",
+    "redzone/noggin/park_catchup.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Catch-up replay: the PARK show with the catch-up move (park.catchup) on recorded dev nights, fake sticks, no device.",
    "serves": [
     "untagged"
    ]
@@ -19019,13 +19161,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2295,
+  "calls": 2319,
   "data_files": 205,
   "machines": 53,
-  "modules": 468,
+  "modules": 472,
   "orphans": 36,
-  "unowned": 270,
-  "untagged": 400
+  "unowned": 274,
+  "untagged": 404
  },
  "version": 2
 }

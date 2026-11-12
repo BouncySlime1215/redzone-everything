@@ -39,7 +39,7 @@ from redzone.noggin.park_timing import GameK, GameTiming, TimingParams, k_for
 from redzone.showboard import Board
 
 log = logging.getLogger(__name__)
-SLATE_MAX = 6                      # the show's slate: at most this many games (the planner was run on 2 to 6)
+SLATE_MAX = 6                     # the show's slate: at most this many games (the planner was run on 2 to 6)
 OTHER_OWNERS = ("user", "safe", "replay")
 
 
@@ -278,6 +278,40 @@ class ParkRun:
         self.gids: list[str] = []
         self.seen: dict[str, int] = {}
         self.end, self.retry_at, self.shows, self.told, self.starting = 0, 0.0, 0, 0, False
+        self.wrong: dict[tuple, float] = {}       # [park.verify_game] (game id, target) -> until when the pair is not taken
+        self.held_k: dict[int, object] = {}       # [park.verify_game] game -> its K, kept back until its picture confirms it
+
+    # ---- [park.verify_game] the game on the picture (redzone/noggin/park_verify.py) ----------------------------------
+    def verify_on(self) -> bool:
+        return self.e.cfg.get("park.verify_game", False) is True
+
+    @staticmethod
+    def _label(g) -> str:
+        return f"{g.away.abbr} @ {g.home.abbr}"
+
+    def _tell_names(self, games: list) -> None:
+        """What the hands check each tune against: the slate's game per target, and every live game tonight."""
+        hands = self.e.control.park_hands()
+        hands.expect = {target: (g.home, g.away, self._label(g)) for _, g, target in games}
+        hands.live_names = {self._label(g): (g.home, g.away) for g in self.e.merger.games.values() if g.phase == Phase.LIVE}
+
+    def _verdicts(self, targets: list[str], gids: list[str]) -> str:
+        """Act on the hands' game checks: a VERIFIED game gets the K kept back for it; a WRONG one is not taken again
+        for park.verify_hold_s (its channel carries another game) and the show is re-picked. Returns why, when re-picked."""
+        from redzone.noggin import park_verify
+        hands = self.e.control.park_hands()
+        for k, (target, gid) in enumerate(zip(targets, gids)):
+            exp = hands.expect.get(target)
+            v = hands.verdicts.get(target)
+            if exp is None or v is None or v[2] != exp[2]:
+                continue
+            if v[0] == park_verify.VERIFIED and self.show is not None and self.held_k.get(k) is not None:
+                self.show.set_k(k, self.held_k.pop(k))
+            elif v[0] == park_verify.WRONG:
+                self.wrong[(gid, target)] = self._now() + float(self.e.cfg.get("park.verify_hold_s", 1800) or 1800)
+                hands.verdicts.pop(target, None)
+                return f"{exp[2]}: the picture on {target.split(':', 1)[-1]} shows {v[1]}"
+        return ""
 
     # ---- what others ask ---------------------------------------------------------------------------------------------
     def on(self) -> bool:
@@ -357,6 +391,13 @@ class ParkRun:
             await self.stand_down("the TV input changed outside the show")
             return
         self.rig.sync()
+        if self.verify_on():                                     # [park.verify_game] act on each tune's game check
+            hands = self.e.control.park_hands()
+            hands.live_names = {self._label(g): (g.home, g.away) for g in self.e.merger.games.values() if g.phase == Phase.LIVE}
+            wrong = self._verdicts(self.rig.targets, self.gids)
+            if wrong:
+                await self.stand_down(f"re-picking: {wrong}")
+                return
         self.offer(t)
         if park_prime.prime_on(self.e.cfg.get):
             self._prime_k()
@@ -435,6 +476,10 @@ class ParkRun:
             # running long, a game moved to an overflow channel), so the show takes neither
             return [], f"{' and '.join(claims[on])} both claim the channel on screen"
         out = [x for x in out if len(claims.get(x[2], ())) == 1]
+        if self.wrong:                                           # [park.verify_game] a channel seen carrying another game
+            now = self._now()
+            self.wrong = {pair: until for pair, until in self.wrong.items() if until > now}
+            out = [x for x in out if (x[0], x[2]) not in self.wrong]
         first = [x for x in out if x[2] == on]
         if not first:
             return [], "the game on screen is not a live game the show can take"
@@ -457,6 +502,17 @@ class ParkRun:
         tgs = [GameTiming(g.league.value, k_for(table, channel=target.split(":", 1)[1], league=g.league.value, game_id=gid,
                                                teams=(g.home.abbr, g.away.abbr), today=today, params=tp), tp)
                for gid, g, target in games]
+        self.held_k = {}
+        if self.verify_on():
+            # [park.verify_game] a channel's game is UNKNOWN until its picture confirms it: no K (the wide padding) till then
+            from redzone.noggin import park_verify
+            self._tell_names(games)
+            hands = ctl.park_hands()
+            for k, (_, g, target) in enumerate(games):
+                v = hands.verdicts.get(target)
+                if tgs[k].known and not (v and v[0] == park_verify.VERIFIED and v[2] == self._label(g)):
+                    self.held_k[k] = tgs[k].k
+                    tgs[k] = GameTiming(tgs[k].league, None, tp)
         tm = ShowTiming(tgs, delay=P.show_delay, read=steps > 0, eyes=self.watcher is not None, params=tp)
         shifts = [tm.feed_delay(k) + tm.delay for k in range(len(games))]
         lags = feed_lags(cfg, [g.league.value for _, g, _ in games], P.feed_lag)     # [PARK-NFL-LAG] off: P.feed_lag for every game
@@ -477,6 +533,10 @@ class ParkRun:
             finally:
                 self.starting = False
             rig.sync()
+            wrong = self._verdicts(targets, [gid for gid, _, _ in games]) if self.verify_on() else ""
+            if wrong:                                            # [park.verify_game] the screen shows another game: re-pick
+                self._set("waiting", wrong)
+                return
             if not out.ok or rig.game[on] != 0:
                 self.retry_at = self._now() + float(cfg.get("park.start_retry_s", 30) or 30)
                 self._set("waiting", f"the stream on screen could not be placed ({out.why or out.outcome})")

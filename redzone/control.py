@@ -4411,6 +4411,8 @@ class Controller:
             if reread:
                 hands._drop(vis, "its place drifted: read again")
             out = await hands.tune(vis, target, in_place=reread and hands.reread_in_place_on())
+            if out.ok and hands.verify_on():
+                out = await hands.check_game(vis, target, out)
             out.step = "start"
             return out
 
@@ -4446,6 +4448,8 @@ class Controller:
         hands, hid = self.park_hands(), self.hidden
         async with self._lock:
             out = await hands.tune(hid, target, fresh=fresh)
+            if out.ok and hands.verify_on():
+                out = await hands.check_game(hid, target, out)
             if out.ok and self.hidden is hid:
                 self._set_hidden(target, False, state="park_held", why=f"PARK: {out.way}", payload=hands.place_of(hid))
             elif self.hidden is hid and self.hidden_target == target:
@@ -5671,10 +5675,15 @@ class ParkHands:
 
     def __init__(self, ctl: "Controller", *, now: Callable[[], float] = time.time, sleep=asyncio.sleep,
                  label_reader: Callable[[Stick], Any] | None = None, bug_reader: Callable[..., Any] | None = None,
-                 play_clock_reader: Callable[..., Any] | None = None):
+                 play_clock_reader: Callable[..., Any] | None = None, text_reader: Callable[..., Any] | None = None):
         from redzone.decider.tune_offset import TuneOffsets
         self.ctl, self.now, self.sleep = ctl, now, sleep
         self.label_reader = label_reader or self._repo_label
+        # [park.verify_game] (OFF) the game on the picture, after every tune (redzone/noggin/park_verify.py)
+        self.text_reader = text_reader or self._repo_texts    # (stick, target) -> the words on its picture, or None
+        self.expect: dict[str, tuple] = {}                    # target -> (home, away, label): the game PARK thinks it carries
+        self.live_names: dict[str, tuple] = {}                # label -> (home, away): every live game tonight
+        self.verdicts: dict[str, tuple] = {}                  # target -> (verified | wrong | unknown, shown, label checked)
         self.m = MachineMap(PARK_STICK, clock=now)
         self.places: dict[str, ParkPlace] = {}               # stick host -> its place (never shown: hosts are addresses)
         self.offsets = TuneOffsets()                          # the same read, for decider/tune_offset (S8)
@@ -5867,6 +5876,56 @@ class ParkHands:
             out.append(("search", f"search:{key}"))
         return out
 
+    # --- [park.verify_game] the game on the picture -------------------------------------------------------------
+    def verify_on(self) -> bool:
+        return self.ctl.cfg.get("park.verify_game", False) is True
+
+    def _forget_texts(self, stick: Stick) -> None:
+        """A tune starts: words read before it never count for it."""
+        if self._probe is not None:
+            self._probe.texts.pop(self._probe._key(stick), None)
+
+    async def _repo_texts(self, stick: Stick, target: str):
+        """The words on `stick`'s picture, or None. YouTube TV: the words of this tune's read-gesture frame (the label
+        reader's own full-frame text read: no new screenshot, no key; the video is DRM-blank, the overlay title is not).
+        Prime Video: one screenshot and one local text read (its picture, score bug included, is not blanked)."""
+        if not self._is_prime(target):
+            return self._probe.texts.pop(self._probe._key(stick), None) if self._probe is not None else None
+        from redzone.screen import scorebug
+        from redzone.tuners import yttv_label
+        png = await stick.screencap(timeout=15)
+        if not png or scorebug.is_uniform(png):
+            return None
+        obs, _focus, _deleted, _err = await asyncio.to_thread(yttv_label._ocr_frame, png, None)
+        return [o.text for o in obs] if obs else None
+
+    async def check_game(self, stick: Stick, target: str, st: ParkStep) -> ParkStep:
+        """After a tune that worked: is the expected game on the picture? WRONG (another live game's two teams named,
+        the expected game's not) drops the stream's place and fails the step, so nothing is planned or jumped on it;
+        VERIFIED or UNKNOWN keep the step as it was (the PARK run keeps an unknown game's K back: wide padding)."""
+        from redzone.noggin import park_verify
+        exp = self.expect.get(target)
+        t0 = self.now()
+        texts = None
+        if exp is not None:
+            try:
+                texts = await asyncio.wait_for(self.text_reader(stick, target), self.step_s("label_timeout_s"))
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                texts = None
+        label = exp[2] if exp is not None else ""
+        others = {k: v for k, v in self.live_names.items() if k != label}
+        state, shown = park_verify.verdict(texts, exp[:2], others) if exp is not None else (park_verify.UNKNOWN, "")
+        self.verdicts[target] = (state, shown, label)
+        st.numbers["check_s"] = round(self.now() - t0, 2)
+        st.way = f"{st.way}; game {state}".lstrip("; ")
+        if state == park_verify.WRONG:
+            self._drop(stick, f"the picture shows {shown}, not {label}")
+            st.outcome, st.why = "failed", f"wrong game: the picture shows {shown}, not {label}"
+        log.info("park game check on %s: %s %s%s", self.label(stick), target, state, f" ({shown})" if shown else "")
+        return st
+
     async def _repo_label(self, stick: Stick):
         """The repo's label reader on the overlay that is up (numbers only; it deletes its frame)."""
         from redzone.tuners import yttv_label
@@ -5891,6 +5950,7 @@ class ParkHands:
         if self.pending:
             await self._settle(stick, end=True)               # [park.fast_steps] a hold still running on it ends first
         self.guard_why.pop(stick.host, None)
+        self._forget_texts(stick)
         if self._is_prime(target):
             return await self._tune_prime(stick, target, fresh, st, t0)
         self.apps.pop(stick.host, None)
