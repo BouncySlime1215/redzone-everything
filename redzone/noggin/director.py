@@ -11,7 +11,7 @@ goals, as plain multipliers on what the planner already values (`Show.pref`, and
       on the slate, so a one-league night is unchanged. His teams (park.show.my_pref) and the football slider stay as
       they were; the frozen grader is read and changed nowhere.
 It never cuts by itself: the planner still plans, every jump still needs its warrant, and Rule #1 stays the hard guard
-(`park_facts.refusal`, the padding, the lateness cap), all unchanged. Each jump's warrant names the goal that drove it
+(the show's `refusal`, the padding, the lateness cap), all unchanged. Each jump's warrant names the goal that drove it
 (`driver`): "a", "b" or "c".
 
 Behind `park.director_v1` (default OFF). Off, the show never builds a Director: every decision is as before.
@@ -97,7 +97,7 @@ def freshness(stale: float, p: DirectorParams = DIRECTOR) -> float:
 
 
 def pending(x, t: int, edge: int, look: int) -> bool:
-    """(a): is a high-leverage moment pending in game x (park_core.Arr) at show second t? It is in progress and the
+    """(a): is a high-leverage moment pending in game x (the PARK core's Arr) at show second t? It is in progress and the
     feed's last `look` seconds up to its edge hold a high-leverage play (the same test as `Show.anchor`)."""
     e = min(x.n - 1, max(0, edge))
     return x.a0 <= t <= x.a1 and x.hlc[e + 1] - x.hlc[max(0, e - look)] > 0

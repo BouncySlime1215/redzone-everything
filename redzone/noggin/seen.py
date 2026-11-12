@@ -28,7 +28,6 @@ import bisect
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
-from redzone.noggin.park_core import PARK_PARAMS
 from redzone.sources import espn
 
 
@@ -38,8 +37,9 @@ class SeenParams:
     run_min: int = 8              # one side outscoring the other by this many points or more over a stretch is a run
     dead_w: float = 0.25          # an unseen dead-ball second adds this times the game's leverage to its staleness...
     break_w: float = 0.0          # ...an unseen break second (timeout, period break, halftime) this times
-    lead_in: int = PARK_PARAMS.seen_lead_s   # a big play counts as seen only with this many seconds before it on screen
-    #                                          (the replay judge's own rule, park_core.ParkParams.seen_lead_s)
+    lead_in: int = 7              # a big play counts as seen only with this many seconds before it on screen: the replay
+    #                               judge's own rule, ParkParams.seen_lead_s (tests/test_seen.py keeps the two equal; the
+    #                               PARK core and facts are read only by the show's own modules)
     rejoin: int = 2               # a picture this close after the last second shown of a game continues the same look
     text_max: int = 80            # a play's text is cut to this many characters
 
@@ -75,7 +75,7 @@ class Missed:
     at: int                       # its second on the show's grid (the game's own time: what a stream at the show's edge
     #                               showed at wall time base + at)
     stamp: float                  # its feed stamp (the feed row's own time, epoch seconds)
-    value: float                  # its must-see weight (park_facts.value_of: 5 a score, 3 a turnover or red-zone trip, 1 other)
+    value: float                  # its must-see weight (the facts' value_of: 5 a score, 3 a turnover or red-zone trip, 1 other)
     leverage: float               # the game's leverage at that second (value2: about 1, up to 3 close and late)
     period: int | None = None
     clock: str | None = None
@@ -251,7 +251,7 @@ class SeenTracker:
     """The show's seen-state, game by game. `tick` each second of the show; the rest are questions about it.
 
     base: the grid's base (epoch seconds); shifts[g]: game g's grid second = its feed stamp + shifts[g] - base;
-    rows(g) -> (rows, stamps): game g's feed rows so far with the stamps the show uses (park_facts.GameFacts plays, wall);
+    rows(g) -> (rows, stamps): game g's feed rows so far with the stamps the show uses (GameFacts plays, wall);
     halves[g]: game g plays halves (college basketball)."""
 
     def __init__(self, n: int, base: int, shifts: Sequence[float], rows: Callable[[int], tuple], *,
@@ -269,7 +269,7 @@ class SeenTracker:
 
     def tick(self, t: int, on: int, p: int | None, arrs: list) -> None:
         """Show second t: game `on` is on screen at its own second p (None: no picture this second, a flip). arrs = the
-        show's per-game arrays (park_core.Arr: the live span a0..a1, dead, brk, lev), as the feed has filled them."""
+        show's per-game arrays (the PARK core's Arr: the live span a0..a1, dead, brk, lev), as the feed has filled them."""
         self.t, self.arrs = t, arrs
         if self.t0 is None:
             self.t0 = t

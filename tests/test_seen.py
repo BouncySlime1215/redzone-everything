@@ -61,6 +61,12 @@ def test_the_best_run_is_the_largest_stretch_for_one_side_and_starts_with_its_ow
     assert sn.best_run([]) is None
 
 
+def test_a_big_play_is_seen_with_the_replay_judges_own_lead_in():
+    from redzone.noggin.park_core import PARK_PARAMS
+    assert sn.SEEN.lead_in == PARK_PARAMS.seen_lead_s
+    assert sn.seen_at(20, [[10, 30]], 7) and not sn.seen_at(15, [[10, 30]], 7) and not sn.seen_at(31, [[10, 30]], 7)
+
+
 def test_staleness_grows_with_leverage_a_dead_ball_adds_a_quarter_and_a_break_nothing():
     assert sn.stale_step(True, False, 1.0) == 1.0
     assert sn.stale_step(True, False, 3.0) == 3.0              # close and late: three times as fast

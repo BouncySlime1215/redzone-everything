@@ -9620,7 +9620,6 @@
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_plan.py",
     "redzone/noggin/park_show.py",
-    "redzone/noggin/seen.py",
     "redzone/park_run.py",
     "redzone/showboard.py",
     "scripts/park_compare.py",
@@ -10037,7 +10036,6 @@
     "writes": []
    },
    "inputs": [
-    "redzone/noggin/park_core.py",
     "redzone/sources/espn.py"
    ],
    "kind": "module",
