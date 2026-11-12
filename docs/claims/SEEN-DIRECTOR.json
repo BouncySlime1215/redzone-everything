@@ -1,0 +1,25 @@
+{
+  "card": "SEEN-DIRECTOR",
+  "session": "seen-director-builder",
+  "branch": "seen-director",
+  "files": [
+    "redzone/noggin/seen.py",
+    "redzone/noggin/director.py",
+    "redzone/noggin/park_show.py",
+    "redzone/park_run.py",
+    "redzone/showboard.py",
+    "redzone/default_config.yaml",
+    "redzone/web/show.py",
+    "redzone/web/static/rz-show.js",
+    "scripts/park_replay.py",
+    "scripts/park_director_ab.py",
+    "tests/test_seen*.py",
+    "tests/test_director*.py",
+    "tests/test_show_ui.py",
+    "redzone/web/static/app.css",
+    "redzone/web/static/rz-mock.js",
+    "redzone/web/static/index.html"
+  ],
+  "started": 1794450190,
+  "expires": 1794579790
+}
