@@ -17,6 +17,12 @@ It never cuts by itself: the planner still plans, every jump still needs its war
 Behind `park.director_v1` (default OFF). Off, the show never builds a Director: every decision is as before.
 Pure: no clock, no device, no file.
 
+What the replay found (fake sticks, scripts/park_director_ab.py; for whoever builds the AI director): the numbers were
+picked among five on tuning nights 20261024-26. Pushing freshness harder (fresh_w 2 or 3) made the games STALER there
+(mean age of what is known of a game 4.3 -> 5.0 min): a multiplier on value cannot buy freshness that the hidden stick's
+tunes and the dead-ball windows do not offer. The longest unseen stretches are mostly a halftime plus another game's crunch
+time, which the crunch anchor holds on purpose.
+
 Why: Nick, Nov 11: the show's goal becomes three things at once (never miss a big play, keep every game fresh, his
 taste), and a rule-based director is built first as the baseline the AI director must beat on nights it never saw.
 """
