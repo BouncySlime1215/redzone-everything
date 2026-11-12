@@ -9308,6 +9308,31 @@
     "untagged"
    ]
   },
+  "redzone/noggin/director.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/noggin/park_show.py",
+    "redzone/park_run.py",
+    "scripts/park_replay.py"
+   ],
+   "owner": "unowned",
+   "role": "Director v1: the rule-based show director, the baseline a later AI director must beat (phase 2C, item 2).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/noggin/factory.py": {
    "calls": [
     "redzone/models.py:League",
@@ -9743,6 +9768,7 @@
     "redzone/grading.py:is_action",
     "redzone/grading.py:raw_type",
     "redzone/models.py:League",
+    "redzone/noggin/director.py:Director",
     "redzone/noggin/park_core.py:Arr",
     "redzone/noggin/park_core.py:Setting",
     "redzone/noggin/park_core.py:State",
@@ -9759,6 +9785,7 @@
     "redzone/noggin/park_timing.py:ErrorParts",
     "redzone/noggin/park_timing.py:GameK",
     "redzone/noggin/park_timing.py:GameTiming",
+    "redzone/noggin/seen.py:SeenTracker",
     "redzone/sources/espn.py:_get",
     "redzone/sources/espn.py:_int"
    ],
@@ -9771,10 +9798,12 @@
    "inputs": [
     "redzone/grading.py",
     "redzone/models.py",
+    "redzone/noggin/director.py",
     "redzone/noggin/park_core.py",
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_plan.py",
     "redzone/noggin/park_timing.py",
+    "redzone/noggin/seen.py",
     "redzone/sources/espn.py"
    ],
    "kind": "module",
@@ -9993,6 +10022,34 @@
    "role": "Noggin profiles: one named set of flags, scored TOGETHER (planner, Nov 4 2:45 AM).",
    "serves": [
     "GAME-04"
+   ]
+  },
+  "redzone/noggin/seen.py": {
+   "calls": [
+    "redzone/sources/espn.py:_get",
+    "redzone/sources/espn.py:_int"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/noggin/park_show.py"
+   ],
+   "owner": "unowned",
+   "role": "Seen-state: what the viewer has seen of each game in the PARK show, and what the feed has reported since.",
+   "serves": [
+    "untagged"
    ]
   },
   "redzone/noggin/show.py": {
@@ -10307,6 +10364,7 @@
   },
   "redzone/park_run.py": {
    "calls": [
+    "redzone/noggin/director.py:DirectorParams",
     "redzone/noggin/k_table.py:read_k_table",
     "redzone/noggin/park_facts.py:FactsParams",
     "redzone/noggin/park_prime.py:app_of",
@@ -10336,6 +10394,7 @@
    },
    "inputs": [
     "redzone/models.py",
+    "redzone/noggin/director.py",
     "redzone/noggin/k_table.py",
     "redzone/noggin/park_core.py",
     "redzone/noggin/park_facts.py",
@@ -11664,6 +11723,7 @@
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_show.py",
     "redzone/noggin/pick.py",
+    "redzone/noggin/seen.py",
     "redzone/recorder.py",
     "redzone/sources/fastcast.py",
     "redzone/sources/fastfeeds.py",
@@ -16585,6 +16645,27 @@
     "untagged"
    ]
   },
+  "scripts/park_director_ab.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Director v1 off against on: the phase 2C scorecard on recorded dev nights, with fake sticks (no device).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/park_facts_check.py": {
    "calls": [
     "redzone/grading.py:dead_at",
@@ -16767,6 +16848,7 @@
     "redzone/lab/splits.py:archive_nights",
     "redzone/lab/splits.py:nights_for",
     "redzone/models.py:League",
+    "redzone/noggin/director.py:DirectorParams",
     "redzone/noggin/park_core.py:Night",
     "redzone/noggin/park_core.py:run",
     "redzone/noggin/park_core.py:summarize",
@@ -16800,6 +16882,7 @@
     "redzone/lab/cutgrade.py",
     "redzone/lab/splits.py",
     "redzone/models.py",
+    "redzone/noggin/director.py",
     "redzone/noggin/park_core.py",
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_plan.py",
@@ -18837,13 +18920,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2279,
+  "calls": 2285,
   "data_files": 203,
   "machines": 53,
-  "modules": 463,
+  "modules": 466,
   "orphans": 36,
-  "unowned": 265,
-  "untagged": 395
+  "unowned": 268,
+  "untagged": 398
  },
  "version": 2
 }

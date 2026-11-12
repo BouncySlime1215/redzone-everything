@@ -205,6 +205,15 @@ def football_slider(cfg) -> float | None:
     return min(100.0, max(0.0, float(v)))
 
 
+def director_params(cfg):
+    """[DIRECTOR] Director v1's numbers when park.director_v1 is on (redzone/noggin/director.py), else None: off, the show
+    builds no director and decides as before."""
+    if cfg.get("park.director_v1", False) is not True:
+        return None
+    from redzone.noggin.director import DirectorParams
+    return DirectorParams.from_config(cfg.get)
+
+
 def feed_lags(cfg, leagues: list, base: float) -> list:
     """[PARK-NFL-LAG] Each game's feed lag to start from: with park.feed_lag.enabled, a listed league's quantile
     (park.feed_lag.prior_q) from redzone/lab/feed_lag_profile.json; every other game (and every game with it off): `base`."""
@@ -339,6 +348,8 @@ class ParkRun:
         if show.stop:
             self.final = show.stop
             await self.stand_down(f"stopped: {show.stop}")
+        elif over := self.ended():
+            await self.stand_down(f"{', '.join(over)} ended: its channel may now carry another game")
         elif t >= self.end or not self.still_live():
             await self.stand_down("the session ended")
 
@@ -367,6 +378,14 @@ class ParkRun:
         games = self.e.merger.games
         return sum(1 for gid in self.gids if gid in games and games[gid].phase == Phase.LIVE) >= 2
 
+    def ended(self) -> list[str]:
+        """[PARK-GAME-OVER] The show's games the scoreboard calls finished, as "AWAY @ HOME". A finished game's channel
+        airs whatever comes next (Nov 11: ESPN's CLE @ NY, then GS @ HOU) and the engine stops polling its summary, so
+        its facts freeze before the end: the show must not keep that game's name and facts on the stream."""
+        games = self.e.merger.games
+        return [f"{games[gid].away.abbr} @ {games[gid].home.abbr}" for gid in self.gids
+                if gid in games and games[gid].phase == Phase.POST]
+
     def offer(self, t: int) -> None:
         """Hand the feed every summary the engine has polled since the last second."""
         for g, gid in enumerate(self.gids):
@@ -381,12 +400,19 @@ class ParkRun:
         first. ([], why) when there are fewer than two or the screen's game is not among them."""
         e, dec = self.e, self.e.decider
         leagues = {str(x).lower() for x in (e.cfg.get("park.leagues", None) or [])}
-        out = []
+        out, claims = [], {}
         for gid, g in e.merger.games.items():
             target = dec.target_of(gid) or ""
+            if g.phase == Phase.LIVE and target:
+                claims.setdefault(target, []).append(f"{g.away.abbr} @ {g.home.abbr}")
             if g.phase == Phase.LIVE and g.league.value in leagues and park_prime.takes(target, e.cfg.get) and gid in e.summaries:
                 out.append((gid, g, target))
         on = e.control.on_target
+        if len(claims.get(on, ())) > 1:
+            # [PARK-GAME-OVER] one channel, one game: which of them the picture shows is not known (a doubleheader
+            # running long, a game moved to an overflow channel), so the show takes neither
+            return [], f"{' and '.join(claims[on])} both claim the channel on screen"
+        out = [x for x in out if len(claims.get(x[2], ())) == 1]
         first = [x for x in out if x[2] == on]
         if not first:
             return [], "the game on screen is not a live game the show can take"
@@ -461,7 +487,8 @@ class ParkRun:
                          no_back={k for k, t in enumerate(targets) if not park_prime.rewinds(t, cfg.get)} if prime else None,
                          depth=({k: max(0.0, lags[k] - P.feed_lag) for k in range(len(games)) if lags[k] > P.feed_lag}
                                 if cfg.get("park.feed_lag.enabled", False) is True else None),
-                         football_slider=football_slider(cfg), keep=keep, keep_live=keep is not None)
+                         football_slider=football_slider(cfg), keep=keep, keep_live=keep is not None,
+                         seen=cfg.get("park.seen", False) is True, director=director_params(cfg))
         self.show.begin(0, on, a)
         self.rig, self.clock, self.gids, self.seen, self.told = rig, clock, [gid for gid, _, _ in games], {}, 0
         self.shows += 1

@@ -23,7 +23,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-SCRIPT_TAG = '<script type="module" src="/static/rz-show.js?v=6"></script>'
+SCRIPT_TAG = '<script type="module" src="/static/rz-show.js?v=7"></script>'
 STATE_MAX_BYTES = 1_000_000      # a state file bigger than this is not the show's
 EVENTS_TAIL_BYTES = 2_000_000    # only the end of a long events file is read
 EVENTS_MAX = 500                 # newest events per answer
@@ -69,7 +69,9 @@ STATE_SPEC = {
     "stay_reasons": _map(NUM),
     "health": {"tv": TEXT, "feed": TEXT, "sticks": _map(TEXT), "eyes": TEXT, "last_error": TEXT},
     "games": _list({"game": TEXT, "league": TEXT, "channel": TEXT, "period": TEXT, "clock": TEXT, "score": TEXT,
-                    "state": TEXT, "value": NUM, "on_screen": BOOL, "parked": BOOL}),
+                    "state": TEXT, "value": NUM, "on_screen": BOOL, "parked": BOOL,
+                    # [SEEN] park.seen: seconds since it was on screen, its staleness, big plays missed, the templated recap
+                    "last_seen_s": NUM, "stale": NUM, "missed": NUM, "recap": TEXT}),
 }
 EYES_SPEC = {
     "updated": NUM, "status": TEXT, "why": TEXT, "channel": TEXT, "league": TEXT, "frame_y": NUM, "period": NUM, "clock_s": NUM,
