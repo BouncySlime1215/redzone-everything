@@ -636,7 +636,7 @@ class Engine:
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
                              self._boundary_loop(), self._scorebug_loop(), self._league_fast_loop(), self.tonight.run(),
                              self.supervisor.run(), self.network.run(), self.governor.run(),
-                             self.sync_probe.run(), self.fast_feeds.run(), self._park_loop())
+                             self.sync_probe.run(), self.fast_feeds.run(), self._park_loop(), self._picture_loop())
 
     async def _park_loop(self) -> None:
         """[park.enabled] The PARK show: the app runs the two-stick show itself (redzone/park_run.py, unit 8). With the
@@ -647,6 +647,19 @@ class Engine:
         self.park = ParkRun(self)
         self.decider.park_show = self.park.owns   # the decider's owner `park`: the other deciders' switches become stays
         await self.park.loop()
+
+    async def _picture_loop(self) -> None:
+        """[park.picture_grade] The picture grader rides along with every PARK show (redzone/picture_sidecar.py): started
+        while a show runs, stopped when it stands down. Off (the default) this loop only sleeps and starts nothing."""
+        from redzone.picture_sidecar import PictureSidecar
+        sidecar = PictureSidecar(self.cfg.get)
+        while True:
+            await asyncio.sleep(float(self.cfg.get("park.idle_poll_s", 5.0) or 5.0))
+            running = self.park is not None and getattr(self.park, "state", "") == "running"
+            if sidecar.enabled() and running:
+                sidecar.start(self.cfg.get("show.state_dir", "") or "data/show")
+            elif sidecar.running():
+                sidecar.stop()
 
     def _delay_estimate(self, target: str) -> tuple[float, float]:
         d = self.delays.get(target)

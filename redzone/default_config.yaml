@@ -1405,7 +1405,20 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
                            # Football's value x 16^((s-50)/50) (1/16 .. 16); the ends are weights, not anchors, so at 100 the
                            # other games still backfill football's long breaks when a whole look fits. 50 = value decides,
                            # unchanged. Shown in Settings only with park.enabled and a football game live
-  feed_lag:                # [PARK-NFL-LAG] a late feed's game is parked deeper so its dead time is known before it is shown
+  seen: false              # [SEEN] OFF. On: the show tracks what you have seen of each game (redzone/noggin/seen.py): when it was
+                           # last on screen, the score then, what the feed reported since, a staleness score, the big plays
+                           # missed; the Show tab says "seen 7 min ago" and a templated recap ("Last time: LAL 31-25, 1Q 0:30.
+                           # Since: LAC 12-4 run"; no AI text). Decisions are unchanged
+  director_v1: false       # [DIRECTOR] OFF. On: Director v1 (redzone/noggin/director.py) weighs every game at each choice by
+                           # (a) a big moment pending, (b) how long it has gone unseen, (c) score.league_weight; turns park.seen
+                           # on. Rule #1, the padding and the warrant are unchanged; each jump's warrant names its goal (a/b/c)
+  director:                # [DIRECTOR] Director v1's numbers (picked in replay on 3 recorded NBA nights; not measured on the TV)
+    big_w: 3.0             # (a) a game with a close-and-late or overtime play in the feed's last big_look seconds: x this
+    big_look: 90           # ...seconds (park.show.crunch_look)
+    fresh_w: 1.0           # (b) a game unseen is weighted up to x (1 + this)...
+    stale_ref: 600         # ...at this many staleness points (a second of play unseen adds its leverage: ~10 min of ordinary play)
+    taste: true            # (c) each game x its league's score.league_weight over the best league on the slate
+  feed_lag:              # [PARK-NFL-LAG] a late feed's game is parked deeper so its dead time is known before it is shown
     enabled: false         # OFF. On: each game of a listed league starts from its league's feed lag in redzone/lab/feed_lag_profile.json
                            # (Nov 2-3: nfl median 44 s, q90 62.5 s; n=150) instead of park.show.feed_lag (8 s), and is parked
                            # (lag - 8 s) deeper: Prime by a longer pause hold, YouTube TV by more LEFT presses. The lag is then

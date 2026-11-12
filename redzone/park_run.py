@@ -205,6 +205,15 @@ def football_slider(cfg) -> float | None:
     return min(100.0, max(0.0, float(v)))
 
 
+def director_params(cfg):
+    """[DIRECTOR] Director v1's numbers when park.director_v1 is on (redzone/noggin/director.py), else None: off, the show
+    builds no director and decides as before."""
+    if cfg.get("park.director_v1", False) is not True:
+        return None
+    from redzone.noggin.director import DirectorParams
+    return DirectorParams.from_config(cfg.get)
+
+
 def feed_lags(cfg, leagues: list, base: float) -> list:
     """[PARK-NFL-LAG] Each game's feed lag to start from: with park.feed_lag.enabled, a listed league's quantile
     (park.feed_lag.prior_q) from redzone/lab/feed_lag_profile.json; every other game (and every game with it off): `base`."""
@@ -538,7 +547,8 @@ class ParkRun:
                          no_back={k for k, t in enumerate(targets) if not park_prime.rewinds(t, cfg.get)} if prime else None,
                          depth=({k: max(0.0, lags[k] - P.feed_lag) for k in range(len(games)) if lags[k] > P.feed_lag}
                                 if cfg.get("park.feed_lag.enabled", False) is True else None),
-                         football_slider=football_slider(cfg), keep=keep, keep_live=keep is not None)
+                         football_slider=football_slider(cfg), keep=keep, keep_live=keep is not None,
+                         seen=cfg.get("park.seen", False) is True, director=director_params(cfg))
         self.show.begin(0, on, a)
         self.rig, self.clock, self.gids, self.seen, self.told = rig, clock, [gid for gid, _, _ in games], {}, 0
         self.shows += 1
