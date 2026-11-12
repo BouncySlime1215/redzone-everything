@@ -237,7 +237,7 @@ class SmartThingsAuth:
 
     def load(self) -> dict:
         """The saved tokens, re-read whenever the file changed on disk. Another process (tv_setup.py,
-        tv_local_probe.py) may refresh, and SmartThings rotates the refresh token on every refresh:
+        scripts/archive/tv_local_probe.py) may refresh, and SmartThings rotates the refresh token on every refresh:
         a copy cached here would then hold a dead refresh token and the app would lose the TV at
         its next renewal."""
         try:
