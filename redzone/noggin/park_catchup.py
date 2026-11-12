@@ -6,7 +6,7 @@ and then we'll go back and join live" (phase 2 plan, 2C item 3). This is the dir
 The move, on the two sticks PARK already has (H = the hidden stick, parked on game X by the planner; V = the stick on screen):
   1. PREP (H hidden): H is sent back to the first clip's start ("queue it to the snap"), paused there. The screen keeps
      its game; the planner runs on, but H is the catch-up's (no jump, no step on it).
-  2. LEAVE: at a padded dead ball of the screen's game, the same guard as a jump's leave (`park_facts.refusal`), and
+  2. LEAVE: at a padded dead ball of the screen's game, the same guard as a jump's leave (Show.guard's `refusal`), and
      never with a big play or high leverage in the feed's next look_ahead_s: the TV flips to H. The replay plays.
   3. CLIPS: H plays each clip; between two it is sent to the next one's start (on screen: a re-seek). Meanwhile V,
      free now, is tuned to game X LIVE and parked on a padded dead ball, as the planner parks any stream.
@@ -40,8 +40,8 @@ from dataclasses import dataclass, fields, replace
 from typing import Protocol
 
 from redzone.noggin import catchup_pack as cp
-from redzone.noggin.park_facts import is_football, refusal
-from redzone.noggin.park_show import Show, _result
+from redzone.models import League
+from redzone.noggin.park_show import Show, _result, refusal
 from redzone.sources import espn
 
 
@@ -108,7 +108,7 @@ def plays_of(show: Show, g: int, P: cp.PackParams) -> list[cp.Play]:
     each play's start: football the snap (the dead time before it ends), basketball the row before it (the rebound, the
     steal, the inbound). A basketball play with no row in the 36 s before it has no clean start and gets no clip."""
     fx, lg = show.feed.fx[g], show.leagues[g]
-    football = is_football(lg)
+    football = League(lg).base == League.NFL
     d, base, x = show.feed.shifts[g], show.night.base, show.A[g]
     n = x.n
     out: list[cp.Play] = []
