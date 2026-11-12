@@ -30,6 +30,8 @@ LIMITS: dict[str, tuple[float, float]] = {
     "server.port": (1024, 65535),
     "legal.leave_wait_s": (1, 180),
     "park.football_slider": (0, 100),
+    "park.pad_k": (4, 20),         # [PARK-TIMING-CONFIG] never tighter than the shipped 4 from a config file (Rule #1)
+    "park.timing": (0, 3600),      # error parts and priors in seconds (TimingParams keeps its default for a negative)
     "noggin.priority.prefs.bets_weight": (0, 2),
     "noggin.priority.prefs.rivalry_points": (0, 15),
     "noggin.priority.prefs.nhl_pp_ot_boost": (0, 2),

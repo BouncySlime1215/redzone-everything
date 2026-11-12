@@ -13,6 +13,7 @@ Not in this worktree (untracked in the main checkout, not listed): `docs/club/`,
 
 - [../README.md](../README.md) - what RedZone is today, how to run it (dry run, replay), the hard rules
 - [park.md](park.md) - the two-stick PARK show (flag `park.enabled`, off): guard, warrant, padding, Prime and football, config, replay, what is unproven
+- [catchup.md](catchup.md) - catch-up packages in the PARK show (flag `park.catchup.enabled`, off): the missed plays from their start, then a live join at a dead ball; sources, unknowns, replay table
 - [../CLAUDE.md](../CLAUDE.md) - hard rules, North Star, branches, commands (read first)
 - [handoff.md](handoff.md) - live handoff and "Verify first" commands
 - [northstar.md](northstar.md) - [GEN] where we are vs perfect (measured, 2026-11-06)
