@@ -144,4 +144,10 @@ class Board:
                        "sticks": {names[k]: ("ok" if rig.game[k] is not None else "not on a game") for k in (0, 1)},
                        "eyes": show.eyes.health() if (show.eyes is not None and hasattr(show.eyes, "health")) else "off",
                        "last_error": self.last_error},
-            "games": games}
+            "games": games, **self._picture()}
+
+    def _picture(self) -> dict:
+        """[park.picture_grade] The picture grader's summary, only when its file is in this folder (never otherwise)."""
+        from redzone.picture_sidecar import picture_summary
+        got = picture_summary(self.dir)
+        return {"picture": got} if got is not None else {}

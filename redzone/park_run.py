@@ -36,6 +36,7 @@ from redzone.noggin.park_core import PARK_PARAMS
 from redzone.noggin.park_facts import FactsParams
 from redzone.noggin.park_show import FactsFeed, LiveNight, Show, ShowParams, ShowTiming, engine_setting
 from redzone.noggin.park_timing import GameK, GameTiming, TimingParams, k_for
+from redzone.picture_sidecar import PictureSidecar
 from redzone.showboard import Board
 
 log = logging.getLogger(__name__)
@@ -247,6 +248,7 @@ class ParkRun:
         self.gids: list[str] = []
         self.seen: dict[str, int] = {}
         self.end, self.retry_at, self.shows, self.told, self.starting = 0, 0.0, 0, 0, False
+        self.picture = PictureSidecar(engine.cfg.get)            # [park.picture_grade] off: never starts anything
 
     # ---- what others ask ---------------------------------------------------------------------------------------------
     def on(self) -> bool:
@@ -466,6 +468,7 @@ class ParkRun:
         self.rig, self.clock, self.gids, self.seen, self.told = rig, clock, [gid for gid, _, _ in games], {}, 0
         self.shows += 1
         self.board.start(self.show, "live", minutes)
+        self.picture.start(folder)                               # [park.picture_grade] off: returns at once
         self._set("running", f"{len(games)} games")
 
     def keep_plays(self, show: Show | None = None) -> int:
@@ -543,4 +546,5 @@ class ParkRun:
             except Exception:
                 log.exception("park show: close")
         self.rig = self.clock = None
+        self.picture.stop()                                      # [park.picture_grade] nothing to stop when off
         self._set("stopped" if self.final else "waiting", why)
