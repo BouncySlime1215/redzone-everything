@@ -1371,6 +1371,58 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
                            # pair for 30 min. Nothing readable = UNKNOWN: the game's K is kept back (wide padding) until its
                            # picture confirms it; a guessed channel (Peacock -> NBCSN) is UNKNOWN the same way (noggin/park_verify.py)
   verify_hold_s: 1800      # [PARK-VERIFY-GAME] a game whose channel's picture showed another game is not taken again for this long
+  picture_grade:          # [PARK-CONFIG-KEYS] the picture grader sidecar (redzone/picture_sidecar.py, PR 432): OFF; the code's defaults
+    enabled: false         # OFF
+    tool: ""               # the grader program's path (empty: no sidecar)
+    python: ""             # the Python that runs it (empty: the app's own)
+    args: []               # extra arguments
+  picture_check:          # [PARK-CONFIG-KEYS] the live picture check (picture_sidecar.LIVE_CHECK_KEY): OFF, nothing calls it yet
+    live: false            # OFF
+  catchup:                # [PARK-CONFIG-KEYS] the catch-up move and its packages (noggin/park_catchup.py, catchup_pack.py, PR 434): OFF.
+                          # Keys only: no caller in the show yet (only scripts/catchup_replay.py and tests). Each is the code's default
+    enabled: false         # park_catchup.CatchupParams
+    min_gap_s: 120         # park_catchup.CatchupParams
+    cool_s: 300            # park_catchup.CatchupParams
+    leave_wait_s: 20       # park_catchup.CatchupParams
+    join_wait_s: 30        # park_catchup.CatchupParams
+    replay_dead_s: 12      # park_catchup.CatchupParams
+    look_ahead_s: 30       # park_catchup.CatchupParams
+    hot_look_s: 300        # park_catchup.CatchupParams
+    plan_wait_s: 10.0      # park_catchup.CatchupParams
+    max_plays: 5           # catchup_pack.PackParams
+    min_plays: 1           # catchup_pack.PackParams
+    cap_s: 120.0           # catchup_pack.PackParams
+    min_worth: 0.3         # catchup_pack.PackParams
+    min_value: 0.8         # catchup_pack.PackParams
+    lead_s: 2.0            # catchup_pack.PackParams
+    tail_s: 3.0            # catchup_pack.PackParams
+    possession_s: 24.0     # catchup_pack.PackParams
+    snap_s: 7.0            # catchup_pack.PackParams
+    merge_s: 12.0          # catchup_pack.PackParams
+    seg_max_s: 30.0        # catchup_pack.PackParams
+    big_w: 2.0             # catchup_pack.PackParams
+    lead_w: 1.0            # catchup_pack.PackParams
+    tie_w: 0.5             # catchup_pack.PackParams
+    run_w: 1.0             # catchup_pack.PackParams
+    run_pts: 8             # catchup_pack.PackParams
+    max_age_s: 180.0       # catchup_pack.PackParams
+    multi_max_age_s: null    # catchup_pack.PackParams: null = no cap (the code's inf; a JSON settings view cannot carry inf)
+    delay_s: 35.0          # catchup_pack.PackParams
+    rewind_rule: "measured"  # catchup_pack.PackParams
+    reach_s: 175.0         # catchup_pack.PackParams
+    seek_base_s: 12.0      # catchup_pack.PackParams
+    seek_per_s: 0.079      # catchup_pack.PackParams
+    seek_gap_s: 8.0        # catchup_pack.PackParams
+    reel: false            # catchup_pack.PackParams
+    reel_lag_s: 720.0      # catchup_pack.PackParams
+    reel_play_s: 10.0      # catchup_pack.PackParams
+    reel_open_s: 20.0      # catchup_pack.PackParams
+    reel_gap_s: 8.0        # catchup_pack.PackParams
+    moments: false         # catchup_pack.PackParams
+    moments_lag_s: 60.0    # catchup_pack.PackParams
+    moments_play_s: 12.0   # catchup_pack.PackParams
+    moments_open_s: 20.0   # catchup_pack.PackParams
+    moments_gap_s: 6.0     # catchup_pack.PackParams
   fast_steps: false        # [PARK-SPEED] OFF. On: fewer seconds on the critical path, every check kept (docs/park.md "Fast
                            # steps"). A jump returns once the new picture is up, playing, on the new input and silence is read
                            # back after the switch (the TV's own after-switch read is used instead of a second read queued
@@ -1425,6 +1477,16 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
   late_row_s: 60           # a feed row stamped more than this after a row that FOLLOWS it in the feed's order is a late edit (a
                            # substitution re-stamped half an hour on; 30 such rows in four games on Nov 10): it takes the stamp
                            # of the row before it instead of dragging every later row up to its own (live run 4, flip 4)
+  # [PARK-CONFIG-KEYS] the PARK facts' numbers (noggin/park_facts.FactsParams), read as park.<name>: the code's defaults
+  high_play_s: 7.0         # park_facts.FactsParams
+  shot_window_s: 4.0       # park_facts.FactsParams
+  ghost_s: 60.0            # park_facts.FactsParams
+  open_lead_s: -1.0        # park_facts.FactsParams
+  football_lead_s: 15.0    # park_facts.FactsParams
+  play_clock_s: 40.0       # park_facts.FactsParams
+  snap_slack_s: 5.0        # park_facts.FactsParams
+  play_after_s: 12.0       # park_facts.FactsParams
+  play_after_special_s: 15.0  # park_facts.FactsParams
   idle_poll_s: 5           # with park.enabled off the engine's park loop only sleeps, and looks at the flag this often
   start_retry_s: 30        # the stream on screen could not be placed (no read, no fresh tune): try again after this long
   football_slider: 50      # [football slider] football nights (Nick, Nov 11): 0 = "More everything else" ... 100 = "More football".
@@ -1490,6 +1552,37 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
                            # (ShowParams.flip_times: flip, unseen, hold-off), used by the app's rig and the replay's
     read: 10.5             # the per-tune read gesture, first key to playing again (a tune with it took 13-19 s). Where the
                            # read leaves a stream: ONE formula, ShowParams.read_back (LEFT steps x left_step_s + read_sat)
+    # [PARK-CONFIG-KEYS] the rest of park_show.ShowParams, each the code's default (step, resume_lead: park.steps.*)
+    unseen: 1.7            # park_show.ShowParams
+    dead_w: 0.0            # park_show.ShowParams
+    stale: 99999           # park_show.ShowParams
+    back_spots: 2          # park_show.ShowParams
+    roll_same: true        # park_show.ShowParams
+    wide_pad: 10           # park_show.ShowParams
+    wide_prospect: 0.3     # park_show.ShowParams
+    confirm: 2             # park_show.ShowParams
+    hold_off: 4            # park_show.ShowParams
+    read_sat: 8.0          # park_show.ShowParams
+    jump_slack: 1          # park_show.ShowParams
+    pause_reach: 180.0     # park_show.ShowParams
+    hold_ok: 1.0           # park_show.ShowParams
+    hold_drift: 2.0        # park_show.ShowParams
+    lag_sane: 60           # park_show.ShowParams
+    lag_read_max: 300.0    # park_show.ShowParams
+    lag_early: 10.0        # park_show.ShowParams
+    refresh: 15            # park_show.ShowParams
+    cool: 10               # park_show.ShowParams
+    tune_retry: 20         # park_show.ShowParams
+    keep_margin: 5         # park_show.ShowParams
+    stay_say: 15           # park_show.ShowParams
+    clip_reach: 150        # park_show.ShowParams
+    clip_steps_max: 9      # park_show.ShowParams
+    crunch_look: 90        # park_show.ShowParams
+    feed_lag: 8.0          # park_show.ShowParams
+    poll: 2.5              # park_show.ShowParams
+    tune0_code: 3.5        # park_show.ShowParams
+    tune0_search: 19.5     # park_show.ShowParams
+    my_pref: 1.25          # park_show.ShowParams
     stop_max:              # the sanity gate: the longest an OPEN stoppage of each kind can plausibly last (s). "No row since"
                            # means "still stopped" only this long; after it the feed has gone quiet or lost a row, and the rest
                            # is unknown (never a place to cut). Plain caps set above the longest real stretch of each kind on

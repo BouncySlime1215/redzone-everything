@@ -1,0 +1,11 @@
+{
+  "card": "PARK-CONFIG-KEYS",
+  "session": "test-prep-2026-11-11",
+  "branch": "park-config-keys",
+  "files": [
+    "redzone/default_config.yaml",
+    "tests/test_park_config_keys*.py"
+  ],
+  "started": 1794467790,
+  "expires": 1794554190
+}
