@@ -481,17 +481,33 @@ class SamsungTV:
             return None
 
     async def sound_state(self, input_timeout_s: float = 10.0) -> dict:
-        """Power, mute, volume and input read back from the TV (SmartThings). None = could not be read."""
+        """Power, mute, volume and input read back from the TV (SmartThings). None = could not be read.
+        [park.fast_steps] on: the input is read in the same round as the other three (one round trip, not two)."""
         if not self.st_device or not self.has_readback:
             return {"power": None, "mute": None, "volume": None, "input": None}
+
+        async def read_input():
+            try:
+                return await asyncio.wait_for(self.input_status(), input_timeout_s)
+            except Exception:
+                return None
+        if self._fast_reads():
+            power, mute, volume, inp = await asyncio.gather(self._st_value("switch", "switch"),
+                                                            self._st_value("audioMute", "mute"),
+                                                            self._st_value("audioVolume", "volume"), read_input())
+            return {"power": power, "mute": mute, "volume": volume, "input": inp}
         power, mute, volume = await asyncio.gather(self._st_value("switch", "switch"),
                                                    self._st_value("audioMute", "mute"),
                                                    self._st_value("audioVolume", "volume"))
-        try:
-            inp = await asyncio.wait_for(self.input_status(), input_timeout_s)
-        except Exception:
-            inp = None
+        inp = await read_input()
         return {"power": power, "mute": mute, "volume": volume, "input": inp}
+
+    def _fast_reads(self) -> bool:
+        """[park.fast_steps] read through the same settings reader as the sound guard; unreadable = off."""
+        try:
+            return self.sound_settings("park.fast_steps", False) is True
+        except Exception:
+            return False
 
     # --- which paths can switch right now ------------------------------------------------
 

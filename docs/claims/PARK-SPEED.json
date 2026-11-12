@@ -1,0 +1,18 @@
+{
+  "card": "PARK-SPEED",
+  "session": "park-speed-builder",
+  "branch": "park-speed",
+  "files": [
+    "redzone/control.py",
+    "redzone/park_run.py",
+    "redzone/tv.py",
+    "redzone/platform/sound_guard.py",
+    "redzone/default_config.yaml",
+    "scripts/park_replay.py",
+    "scripts/park_step_bench.py",
+    "tests/test_park_fast_steps.py",
+    "docs/park.md"
+  ],
+  "started": 1794455425,
+  "expires": 1794541825
+}

@@ -238,6 +238,11 @@ class SoundGuard:
         except RuntimeError:
             await self._safe_check("after switch")
 
+    def after_check(self) -> asyncio.Task | None:
+        """The latest after-switch check (None: none was started). [park.fast_steps] a caller that just switched compares
+        it with the one before its switch: a new one was started by THAT switch, so its result is the read-back of it."""
+        return self._after
+
     async def settle(self) -> None:
         """Wait for a pending after-switch check (tests, shutdown)."""
         if self._after is not None:
