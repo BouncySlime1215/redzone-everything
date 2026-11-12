@@ -161,12 +161,12 @@ def _since_label(show: Show, g: int, since: float | None) -> str:
 class CatchupShow(Show):
     """The PARK show with the catch-up move (park.catchup.enabled). Off, or on a rig without `cu_cue`, it is the show."""
 
-    def __init__(self, *args, catchup: CatchupParams | None = None, seen: SeenLike | None = None, **kw):
+    def __init__(self, *args, catchup: CatchupParams | None = None, cu_seen: SeenLike | None = None, **kw):
         super().__init__(*args, **kw)
         c = catchup or CatchupParams()
         self.cp = replace(c, pack=replace(c.pack, delay_s=float(self.P.show_delay)))
         tracker = getattr(self, "seen_state", None)
-        self.seen = seen if seen is not None else TrackerSeen(tracker) if tracker is not None else ShowSeen(self)
+        self.cu_seen = cu_seen if cu_seen is not None else TrackerSeen(tracker) if tracker is not None else ShowSeen(self)
         self.cu: dict | None = None                              # the catch-up under way
         self.cu_pkg: cp.Package | None = None
         self.cu_ok = bool(self.cp.enabled) and not self.rig.instant and callable(getattr(self.rig, "cu_cue", None))
@@ -203,7 +203,7 @@ class CatchupShow(Show):
         returned to it now with the hidden stick, or why not. Asks only; starts nothing."""
         if not self.cu_ok or self.S is None:
             return None, "park.catchup is off or the sticks cannot cue a clip"
-        why = self._cu_why_not(t, game, 1 - self.on, self.on, self.seen.last_seen(game))
+        why = self._cu_why_not(t, game, 1 - self.on, self.on, self.cu_seen.last_seen(game))
         return (None, why) if why else (self.cu_pkg, "")
 
     # ---- before the leave --------------------------------------------------------------------------------------------
@@ -229,7 +229,7 @@ class CatchupShow(Show):
         h, v, g = 1 - self.on, self.on, S.hg
         if g < 0 or g == S.sg or rig.game[h] != g or not rig.paused[h] or t < S.h_ready:
             return
-        since = self.seen.last_seen(g)
+        since = self.cu_seen.last_seen(g)
         if since is not None and t - since < C.min_gap_s:
             return
         key = (g, int(round(rig.frozen[h])))                     # this park (its frozen frame)
