@@ -107,7 +107,48 @@ scores a catch-up as one cut. Scenarios: `off`; `proven` (175 s rewind, the 3-mi
 `library` (what-if: whole-game rewind, recaps up to 15 min old); `reel` (what-if: proven rewind plus the reel at its
 measured 12-minute lag and Prime Key Moments at priors, recaps up to 15 min old).
 
-RESULTS
+Results (Nov 11, whole dev nights, seed 0, fake sticks; "chances" = a return to a game unseen 2+ min with its stick
+parked there; on-screen seconds include the wait for the live join; big plays = the grader's must-sees, of which a
+4-game NBA night has 0-1 missed even with catch-ups off):
+
+| case | scenario | fits / chances | mean s on screen | plays each | sources | missed big plays: via catch-up / never | graded value seen: live + via catch-up | frozen grader: mid-play joins / leaves (catch-up joins) | jumps a min | worst behind live s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| NBA 20261023, 4 games | off | - | - | - | - | 1 missed: - / 1 | 61% | 0 / 0 | 0.502 | 142.0 |
+| NBA 20261023, 4 games | proven | 8 / 46 | 51.2 | 1.88 | rewind 15 | 0 missed: 0 / 0 | 59% + 7% | 0 / 0 (0 of 8) | 0.43 | 136.0 |
+| NBA 20261023, 4 games | library | 16 / 50 | 64.6 | 3.06 | rewind 49 | 0 missed: 0 / 0 | 56% + 14% | 0 / 0 (0 of 16) | 0.352 | 281.9 |
+| NBA 20261023, 4 games | reel | 11 / 47 | 47.8 | 2.09 | rewind 22, reel 1 | 0 missed: 0 / 0 | 55% + 9% | 0 / 0 (0 of 11) | 0.424 | 126.4 |
+| NBA 20261028, 4 games | off | - | - | - | - | 0 missed: - / 0 | 50% | 0 / 0 | 0.522 | 144.0 |
+| NBA 20261028, 4 games | proven | 9 / 47 | 59.3 | 2.22 | rewind 20 | 0 missed: 0 / 0 | 51% + 7% | 0 / 0 (0 of 9) | 0.467 | 141.0 |
+| NBA 20261028, 4 games | library | 10 / 51 | 88.9 | 3.9 | rewind 39 | 1 missed: 0 / 1 | 39% + 21% | 0 / 0 (0 of 10) | 0.405 | 143.0 |
+| NBA 20261028, 4 games | reel | 11 / 47 | 81.6 | 2.64 | rewind 27, reel 2 | 0 missed: 0 / 0 | 39% + 19% | 0 / 0 (0 of 11) | 0.467 | 290.9 |
+| NBA 20261021, 4 games | off | - | - | - | - | 0 missed: - / 0 | 44% | 0 / 0 | 0.53 | 140.6 |
+| NBA 20261021, 4 games | proven | 8 / 53 | 51.1 | 1.88 | rewind 15 | 0 missed: 0 / 0 | 49% + 8% | 0 / 0 (0 of 8) | 0.435 | 137.6 |
+| NBA 20261021, 4 games | library | 9 / 53 | 73.6 | 2.56 | rewind 23 | 0 missed: 0 / 0 | 43% + 11% | 0 / 0 (0 of 9) | 0.416 | 288.8 |
+| NBA 20261021, 4 games | reel | 13 / 50 | 55.1 | 2.15 | reel 8, rewind 20 | 0 missed: 0 / 0 | 39% + 12% | 0 / 0 (0 of 13) | 0.385 | 136.1 |
+| NFL on Prime + 1 NBA, pinned | off | - | - | - | - | 4 missed: - / 4 | 86% | 0 / 0 | 0.204 | 142.0 |
+| NFL on Prime + 1 NBA, pinned | proven | 2 / 30 | 32.5 | 1.0 | rewind 2 | 3 missed: 0 / 3 | 89% + 0% | 0 / 0 (0 of 2) | 0.19 | 139.0 |
+| NFL on Prime + 1 NBA, pinned | library | 2 / 26 | 40.0 | 2.5 | rewind 5 | 7 missed: 0 / 7 | 83% + 1% | 0 / 0 (0 of 2) | 0.163 | 143.0 |
+| NFL on Prime + 1 NBA, pinned | reel | 2 / 30 | 32.5 | 1.0 | rewind 2 | 3 missed: 0 / 3 | 89% + 0% | 0 / 0 (0 of 2) | 0.19 | 139.0 |
+| NFL on Prime + 1 NBA, not pinned | off | - | - | - | - | 4 missed: - / 4 | 93% | 0 / 0 | 0.224 | 140.9 |
+| NFL on Prime + 1 NBA, not pinned | proven | 2 / 38 | 58.0 | 1.0 | rewind 2 | 4 missed: 0 / 4 | 86% + 1% | 0 / 0 (0 of 2) | 0.197 | 144.0 |
+| NFL on Prime + 1 NBA, not pinned | library | 2 / 38 | 58.0 | 1.0 | rewind 2 | 4 missed: 0 / 4 | 86% + 1% | 0 / 0 (0 of 2) | 0.197 | 144.0 |
+| NFL on Prime + 1 NBA, not pinned | reel | 2 / 30 | 107.0 | 1.0 | rewind 1, moments 1 | 4 missed: 1 / 3 | 84% + 1% | 0 / 0 (0 of 2) | 0.19 | 217.3 |
+
+What it says:
+
+- **Rule #1 holds**: 0 mid-play joins and 0 mid-play leaves by the frozen grader in every run; 0 of 107 catch-up joins
+  mid-play; every clip starts at a dead ball or at the feed event before its play (0 mid-play starts); no clip 3+ min late.
+- **Proven setting** (175 s rewind, 3-minute rule): about 1 return in 6 gets a package, about 2 plays and 50-60 s each
+  (prep 17-19 s hidden, join wait about 22 s). Graded value seen goes up 5-8 points net (live drops 0-2, recaps add 7-8);
+  jumps a minute drop by about 0.06-0.10, since a catch-up takes a minute of screen. The usual reasons for no package:
+  nothing missed worth a clip (81), nothing in reach in time (57), crunch time (16).
+- **The rewind is the bottleneck.** The library what-if (whole-game rewind, recaps up to 15 min old) gives 3-4 plays a
+  package and +11-21 points of recap value, at a cost in live value. Its worst-behind can pass the 145 s cap: when the
+  game has had no padded dead ball for minutes, the live join takes the newest dead ball at all rather than join mid-play.
+- **The Key plays reel adds little**: at its one measured 12-minute lag, 1-8 plays a night, and never under the 3-minute rule.
+- **NFL + Prime**: the pinned football stick is never cued or re-tuned; the NBA game gets 2 catch-ups a night; football's
+  missed must-sees stay 3-4 (Prime has no rewind, so a missed football play cannot be shown; Key Moments, a what-if
+  here, showed 1).
 
 ## What is NOT proven
 
