@@ -144,3 +144,18 @@ def test_football_is_left_for_a_catchup_only_in_a_break_that_covers_it():
     m, m0 = cr.metrics(show, c), cr.metrics(off, None)
     assert m["big_n"] - m["big_live"] - m["big_via"] <= m0["big_n"] - m0["big_live"]
     assert (m["grader_entries_mid_play"], m["grader_leaves_mid_play"], m["cu_join_mid"]) == (0, 0, 0)
+
+
+@needs_archive
+def test_no_must_see_anywhere_airs_unseen_while_a_package_is_up():
+    """Nick's first rule: a catch-up never costs a live must-see. While a package is on screen (leave to live join) no
+    must-see of any game airs unseen: a big moment on or coming cuts the package and takes the live join there."""
+    show, c = cr.run("20261028", 4, "rewind10", minutes=100)
+    j = show.judge
+    assert show.cu_log
+    for r in show.cu_log:
+        for g, x in enumerate(j.A):
+            for m in x.mom:
+                if r["leave"] < m <= r["join"]:
+                    assert (g, m) in j.shown, (g, m, r["leave"], r["join"])
+    assert cr.metrics(show, c)["behind_max_s"] <= 145 + 1
