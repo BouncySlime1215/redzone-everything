@@ -34,7 +34,7 @@ from redzone.platform.sound_guard import MARKER, SoundGuard  # noqa: E402
 
 FLAGS = {"mode": {"dry_run": False}, "park": {"enabled": True},
          "sound_guard": {"enabled": True, "must_be_silent": True}}
-
+PERMISSION = ROOT / "data" / ".agent_hw_ok"   # Nick creates it for a live test (CLAUDE.md)
 
 SERVICE_LABEL = "com.redzone.everything"   # the login service (deploy/com.redzone.everything.plist.template)
 # The app's command lines: `python -m redzone` by hand, and the login service, which runs scripts/service_runtime.py
@@ -60,6 +60,10 @@ def app_running() -> bool:
 
 
 async def run(args) -> int:
+    if not PERMISSION.exists():
+        # Like park_prime_accept: guard.py G3's pattern does not name this script, so the script asks for itself.
+        print("Refused: no data/.agent_hw_ok (Nick creates it for a live test). Nothing was sent.")
+        return 2
     if MARKER.exists():
         print("Refused: a sound incident is open (data/sound_guard/incident.json). Nothing was sent.")
         return 4

@@ -1,15 +1,19 @@
-"""park_hands_live.app_running (also used by park_prime_accept): the live tests refuse while ANY copy of the app runs.
+"""park_hands_live's refusals: while ANY copy of the app runs (app_running, also used by park_prime_accept), and
+without Nick's data/.agent_hw_ok.
 
 The login service (com.redzone.everything) runs the app through `python -c ... scripts/service_runtime.py`, so its
 command line never says `-m redzone`; the old check matched only `-m redzone` and called the service "not running".
+guard.py G3's pattern does not name park_hands_live.py, and the script did not ask for the permission file itself.
 No device, no real pgrep or launchctl: subprocess.run is replaced.
 """
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import re
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -79,3 +83,16 @@ def test_unsure_counts_as_running(phl, monkeypatch):
         raise subprocess.TimeoutExpired(cmd, 5)
     monkeypatch.setattr(phl.subprocess, "run", boom)
     assert phl.app_running()
+
+
+def test_no_permission_file_refuses_before_anything(phl, monkeypatch, tmp_path, capsys):
+    """Without data/.agent_hw_ok nothing is read or sent: no process check, no config, no controller."""
+    monkeypatch.setattr(phl, "PERMISSION", tmp_path / ".agent_hw_ok")
+
+    def never(*a, **k):
+        raise AssertionError("reached past the permission check")
+    monkeypatch.setattr(phl.subprocess, "run", never)
+    monkeypatch.setattr(phl, "Config", never)
+    monkeypatch.setattr(phl.ctl, "Controller", never)
+    assert asyncio.run(phl.run(SimpleNamespace(channels="espn", moves=1, look=1.0, out=str(tmp_path / "o.jsonl")))) == 2
+    assert "agent_hw_ok" in capsys.readouterr().out
