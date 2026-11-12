@@ -1,6 +1,6 @@
 # Deploy
 
-Full detail: the docstring of `scripts/deploy.py` and [tonight-checklist.md](../../tonight-checklist.md).
+Full detail: the docstring of `scripts/deploy.py` and [tonight-checklist.md](../../archive/tonight-checklist.md).
 
 0. **What applies today (Nick, Nov 7 12:08 PM ET: "You can deploy whatever"; 22:35: do the work yourself).** Nick authorized agents to deploy, including while games are live. So: (a) the busy() live-game gate may be bypassed (`--if-paused`, or the overseer's wrapper in handoff §9) but **never skip the 10-minute health watch and auto-rollback**; (b) **never run a disruptive TV or stick test, or restart the app, while Nick is watching** (CLAUDE.md); a restart during a watch counts as a crash; (c) the branch the Mac runs is whatever the last deploy put there (check `scripts/deploy.py status`; at Nov 7 22:32 it was the unmerged `claude/buffered-jump`), not necessarily `codex/resume-redzone`. This authorization is Nick's words in decisions.md, not a general rule: if he says stop, stop.
 1. Default (no authorization needed): deploy when no game is live and Nick isn't watching. Mac on wall power, Tailscale quit.

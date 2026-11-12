@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**484 modules**, 412 untagged, 282 unowned, 34 orphans (no importer); 2352 call edges, 208 data files, 53 machines.
+**463 modules**, 395 untagged, 265 unowned, 36 orphans (no importer); 2279 call edges, 203 data files, 53 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -16,10 +16,10 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
 | `redzone/bets.py` | How much is a bet sweating right now? | models -> engine | untagged |
-| `redzone/decider/core.py` | The decision core: ONE expected-value function that every action is chosen by. | models -> contracts, contracts.guard, contracts.legacy, contracts.switching, contracts.views, decider.decider +1 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
+| `redzone/decider/core.py` | The decision core: ONE expected-value function that every action is chosen by. | models -> contracts, contracts.guard, contracts.legacy, contracts.switching, contracts.views, decider.decider | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/cuts.py` | Cut timing: WHEN to leave a game and WHEN to come into one. | models, sources.espn -> decider.buffered, decider.decider, decider.gate, decider.screen, noggin.features, scripts.buffered_jump_sim +1 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/decider.py` | The switch decider: a producer that never cuts you off mid-play. | config, contracts.brain, contracts.switching, decider.break_tail, decider.buffered, decider.core +23 -> buffer_shadow, contracts.legacy, decider.gate, demo.engine, engine, lab.backtest +10 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), GAME-01, GAME-04, GAME-05, GAME-09, Landings in dead time, Mid-play entries (per 100 landings), SAFE-01, SAFE-09, Your-team crunch live |
-| `redzone/decider/screen.py` | What's on your screen right now, estimated from the data and the stream delay. | config, decider.cuts, decider.delaymodel, decider.sync, fsm, machines.decider +2 -> decider.decider, decider.gate, demo.engine, engine, grading, lab.backtest +9 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
+| `redzone/decider/screen.py` | What's on your screen right now, estimated from the data and the stream delay. | config, decider.cuts, decider.delaymodel, decider.sync, fsm, machines.decider +2 -> decider.decider, decider.gate, demo.engine, engine, grading, lab.backtest +8 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/fantasy.py` | ESPN Fantasy Football: boost games where your (or your opponent's) starters are about to score. | models, tv -> engine | untagged |
 | `redzone/plan.py` | Tonight's plan: every game on today's slate, where it will be watched, and whether that was checked on the hidden stick before it started. | channels, models -> engine, lab.night.run, scripts.plan_tonight | League order respected (no lower-league non-crunch over a higher-league crunch) |
 | `redzone/reel.py` | Catch-up reel: 5+ plays you missed, back to back, in 30-60 s (RedZone's "here's what you missed"). | governor -> decider.gate, engine, lab.night.run, moments.fill | Big plays live or replayed within 2 min (stretch), Big plays live or replayed within 3 min |
@@ -34,9 +34,9 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/lab/brainfit.py` | Train and grade the brain's per-league models (``scripts/train_brain.py`` is the CLI). | config, lab.datasets, models, scoring.brain, scoring.breaks, scoring.engine +1 -> lab.brain3fit, lab.breakblend, scripts.eval_brain, scripts.train_brain | untagged |
-| `redzone/scoring/brain.py` | The learned brain: per-game break / key-moment / game-flow predictions from trained models. | models, models_rt.forest, scoring.brain3, scoring.gameflow -> lab.brain3cal, lab.brain3fit, lab.brainfit, lab.breakblend, reasoner.head, scoring.brain3 +5 | Big plays seen live, NBA, Big plays seen live, NFL, Big plays seen live, NHL, Your-team big plays seen (live or within 3 min) |
-| `redzone/scoring/breaks.py` | Break predictor: will this game go to a commercial in about the next minute of STREAM time, and for how long? | models -> engine, lab.brain3fit, lab.brainfit, lab.breakblend, scoring.brain3, scoring.drive | Dead air (commercials/breaks on screen) |
+| `redzone/lab/brainfit.py` | Train and grade the brain's per-league models (``scripts/train_brain.py`` is the CLI). | config, lab.datasets, models, scoring.brain, scoring.breaks, scoring.engine +1 -> lab.breakblend, scripts.eval_brain, scripts.train_brain | untagged |
+| `redzone/scoring/brain.py` | The learned brain: per-game break / key-moment / game-flow predictions from trained models. | models, models_rt.forest, scoring.brain3, scoring.gameflow -> lab.brain3cal, lab.brainfit, lab.breakblend, reasoner.head, scoring.brain3, scoring.engine +3 | Big plays seen live, NBA, Big plays seen live, NFL, Big plays seen live, NHL, Your-team big plays seen (live or within 3 min) |
+| `redzone/scoring/breaks.py` | Break predictor: will this game go to a commercial in about the next minute of STREAM time, and for how long? | models -> engine, lab.brainfit, lab.breakblend, scoring.brain3, scoring.drive | Dead air (commercials/breaks on screen) |
 | `scripts/build_training.py` (entry) | Download free play-by-play data and build labeled training snapshots. | lab.datasets, lab.sportsdata -> - | untagged |
 | `scripts/eval_brain.py` (entry) | Brain vs the hand-written heuristics, through the live code path, on our own recorded ESPN games (data/archive: after every training game). | lab.brainfit, scoring.brain -> - | untagged |
 | `scripts/train_brain.py` (entry) | Train the brain's per-league models and print their held-out scorecard. | lab.brainfit, lab.datasets, scoring.brain -> - | untagged |
@@ -97,12 +97,12 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `agent/train/peft_to_mlx.py` | Turn a PEFT LoRA adapter (agent/train/train_peft.py) into mlx_lm's adapter format, the one the Mac loads: adapters.safetensors + adapter_config.json. | - -> agent.kaggle.qwen_finetune, agent.kaggle.run_students | untagged |
 | `agent/watchdog.py` | RedZone watchdog: a separate, always-on process that keeps the app healthy without a person. | agent.llm, agent.policy, governor, memory, platform.autofix -> lab.night.run | untagged |
 
-## SWITCHING (42)
+## SWITCHING (39)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/channels.py` | Where can you actually watch a game? | models -> autonomy, canary, control, decider.gate, demo.engine, discovery.providers +26 | untagged |
-| `redzone/control.py` | Turns decisions into TV actions. | autonomy, channels, config, contracts.switching, decider.tune_offset, fallback_ladder +22 -> autonomy, demo.engine, engine, lab.night.run, supervisor, scripts.fault_drill +5 | APP-04, BTN-05, Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), SAFE-08, STK-01, STK-02, STK-05, STK-06, STK-07, Switch time p95 (SmartThings input change), TV-04 |
+| `redzone/channels.py` | Where can you actually watch a game? | models -> autonomy, canary, control, decider.gate, demo.engine, discovery.providers +23 | untagged |
+| `redzone/control.py` | Turns decisions into TV actions. | autonomy, channels, config, contracts.switching, decider.tune_offset, fallback_ladder +22 -> autonomy, demo.engine, engine, lab.night.run, supervisor, scripts.fault_drill +4 | APP-04, BTN-05, Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), SAFE-08, STK-01, STK-02, STK-05, STK-06, STK-07, Switch time p95 (SmartThings input change), TV-04 |
 | `redzone/discovery/__init__.py` (package) | Finding where things are watchable, by itself. | - -> - | untagged |
 | `redzone/discovery/lounge.py` | Ask the YouTube TV app on a stick which video id it is playing, over the network, no login. | - -> discovery.yttv, scripts.find_yttv_code | untagged |
 | `redzone/discovery/providers.py` | Provider candidates: installed apps, learned access failures, and per-game routes. | channels, models -> discovery.runtime, discovery.search, discovery.stickio, supervisor, tuners.prime_search, tuners.profiles +7 | untagged |
@@ -112,32 +112,29 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/discovery/yttv.py` | YouTube TV channel codes with zero pasting: a researched default table, self-verification on a Fire TV stick, and an in-app search fallback. | channels, discovery.lounge, discovery.search, discovery.stickio, sources.eventlinks, tuners.adb -> autonomy, discovery.search, lab.night.run, tuners.tuners, tuners.yttv_search, scripts.find_yttv_code | untagged |
 | `redzone/standby.py` | Hot standby: what the hidden stick should be playing, so the next switch is a 1-2s input flip. | config, crunch, models -> demo.engine, engine, lab.backtest, scripts.holdset_public, scripts.kaggle_gamevalue_holdset, scripts.queue_replay +1 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-05, STK-06 |
 | `redzone/tuners/__init__.py` (package) | no docstring | - -> - | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tuners/adb.py` | Talk to a Fire TV stick over the network with the adb command-line tool. | config, machines.control, platform.breaker, screen_ocr -> autonomy, canary, control, discovery.stickio, discovery.yttv, lab.night.house +31 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04, STK-05 |
+| `redzone/tuners/adb.py` | Talk to a Fire TV stick over the network with the adb command-line tool. | config, machines.control, platform.breaker, screen_ocr -> autonomy, canary, control, discovery.stickio, discovery.yttv, lab.night.house +25 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04, STK-05 |
 | `redzone/tuners/identity.py` | Conservative matchup evidence from fresh provider metadata. | - -> - | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tuners/join.py` | [Join API] Put a HIDDEN stick a chosen time behind live, say where it should land, measure where it did, log both. | config, tuners.join_calib, tuners.join_watchdog, tuners.prime_pause, tuners.yttv_seek -> canary, control, tuners.join_calib, tuners.join_watchdog, scripts.join_try, scripts.watchdog_try | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
+| `redzone/tuners/join.py` | [Join API] Put a HIDDEN stick a chosen time behind live, say where it should land, measure where it did, log both. | config, tuners.join_calib, tuners.join_watchdog, tuners.prime_pause, tuners.yttv_seek -> canary, control, tuners.join_calib, tuners.join_watchdog, scripts.watchdog_try | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/join_calib.py` | [Join self-calibration, Nick's Nov 7 order item 5] Per channel and stick: join-error and delay stats, and a bias that updates itself from data/joins.jsonl, i... | config, tuners.join -> canary, tuners.join | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/join_watchdog.py` | [Join watchdog + drift monitor] Nick's Nov 7 sync order, items (1) and (3). | tuners.join -> control, tuners.join, scripts.watchdog_try | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tuners/multiview.py` | YouTube TV multiview as a switch path (SWITCHING). | decider.core -> scripts.multiview_probe | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/prime_multiview.py` | Prime Video NBA multiview as a switch path (SWITCHING). | - -> control, engine, lab.prime_mv_fake, tuners.tuners, scripts.prime_multiview_grade, scripts.prime_multiview_probe | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tuners/prime_pause.py` | [Prime buffer] Put a HIDDEN Prime Video stick a set time behind live by pausing it. | screen_ocr, tuners.yttv_seek -> control, tuners.join, scripts.prime_pause_try | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tuners/prime_search.py` | Bounded Prime replay-search proof, separate from the live switching engine. | discovery.providers, tuners.adb, tuners.profiles -> recorded, tuners.tuners, tuners.yttv_search, scripts.find_yttv_code, scripts.prime_search_trial | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
+| `redzone/tuners/prime_pause.py` | [Prime buffer] Put a HIDDEN Prime Video stick a set time behind live by pausing it. | screen_ocr, tuners.yttv_seek -> control, tuners.join | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
+| `redzone/tuners/prime_search.py` | Bounded Prime replay-search proof, separate from the live switching engine. | discovery.providers, tuners.adb, tuners.profiles -> recorded, tuners.tuners, tuners.yttv_search, scripts.find_yttv_code | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/profiles.py` | Select an explicitly configured profile using readable focus evidence only. | discovery.providers -> discovery.stickio, tuners.prime_search, tuners.providers, tuners.screen_prompts, tuners.tuners, tuners.yttv_search | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/providers.py` | Tuners for the other streaming apps: Fubo, Paramount+, HBO Max, Netflix, NFL, NBA, Apple TV and DAZN. | config, discovery.providers, tuners.adb, tuners.profiles, tuners.tuners -> discovery.runtime, supervisor, scripts.providers_check | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/replay_park.py` | [replay on the scrub, Nick Nov 7 1:02 PM ET] Park a HIDDEN YouTube TV stick just before a big play's snap. | tuners.yttv_seek -> control, scripts.replay_park_try | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/screen_prompts.py` | Clear YouTube TV's own prompts from a screenshot: "Who's watching?" and "Still watching?". | discovery.providers, screen_ocr, tuners.adb, tuners.profiles -> lab.night.run, supervisor, tuners.session_guard, tuners.tuners | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/session_guard.py` | [sync hardening, item 4] Session safety: what is this stick's session doing, is its buffer still true, and what is the ONE safe thing to do about it. | discovery.providers, tuners.adb, tuners.screen_prompts -> control, scripts.session_drill | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tuners/tuners.py` | Tuners: one class per streaming app. | channels, discovery.providers, discovery.yttv, fsm, machines.control, screen_ocr +6 -> autonomy, canary, control, discovery.runtime, platform.faults, tuners.providers +9 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
+| `redzone/tuners/tuners.py` | Tuners: one class per streaming app. | channels, discovery.providers, discovery.yttv, fsm, machines.control, screen_ocr +6 -> autonomy, canary, control, discovery.runtime, platform.faults, tuners.providers +6 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_edge_probe.py` | [edge prior, Nick Nov 7] Measure YouTube TV's live-edge delay on the HIDDEN stick, numbers only. | config, tuners.yttv_label -> engine, scripts.edge_probe_try | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_label.py` | [YTTV scrub buffer, item 2] Read YouTube TV's overlay time label -> numbers only. | screen_ocr, tuners.adb, tuners.yttv_seek, tuners.yttv_timing -> canary, control, engine, tuners.yttv_edge_probe, tuners.yttv_nerds, scripts.replay_park_try +2 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_nerds.py` | [POSITION-FIX item 5] YouTube TV's "Stats for nerds" panel on the hidden stick -> Live Latency as this tune's offset. | config, tuners.yttv_label -> decider.tune_offset | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_search.py` | Bounded YouTube TV library inspection using observed menu geometry. | discovery.providers, discovery.stickio, discovery.yttv, machines.control, screen_ocr, tuners.adb +3 -> tuners.tuners, scripts.find_yttv_code | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_seek.py` | [YTTV scrub buffer, item 1] Put a YouTube TV stick a set time behind live by scrubbing the player overlay. | screen_ocr, tuners.yttv_timing -> control, tuners.join, tuners.prime_pause, tuners.replay_park, tuners.yttv_label, scripts.session_drill +1 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_timing.py` | [POSITION-FIX] Which content second a YouTube TV stick shows: the Nov 10 timing findings as small, flagged helpers. | config, sync_edge, tuners.adb -> control, decider.tune_offset, sync_probe, tuners.yttv_label, tuners.yttv_seek, scripts.park_prime_accept | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tv.py` | Samsung TV: switch HDMI inputs (two-stick mode) and duck the volume (announcer). | config, machines.control, platform.breaker, platform.sound_guard -> control, fantasy, lab.night.run, platform.sound_guard, tvsetup, scripts.fault_drill +1 | Switch time p95 (SmartThings input change), TV-01, TV-02 |
+| `redzone/tv.py` | Samsung TV: switch HDMI inputs (two-stick mode) and duck the volume (announcer). | config, machines.control, platform.breaker, platform.sound_guard -> control, fantasy, lab.night.run, platform.sound_guard, tvsetup, scripts.fault_drill | Switch time p95 (SmartThings input change), TV-01, TV-02 |
 | `redzone/tvsetup.py` | One-time TV setup for instant switching (scripts/tv_setup.py is the command; this is the logic, with every network/device touch in one `Home` object that tes... | autonomy, network, tuners.adb, tv -> scripts.stick_cec, scripts.tv_setup | untagged |
 | `scripts/find_yttv_code.py` (entry) | Find the YouTube TV watch code (tv.youtube.com/watch/<code>) of a channel we lack, on a SPARE stick. | channels, config, discovery.lounge, discovery.yttv, recorded, screen_ocr +3 -> - | untagged |
-| `scripts/prime_flip_probe.py` (entry) | Prime flip probe (~15 min, needs you home with a live Prime game and the service PAUSED). | tuners.adb, tuners.tuners -> - | untagged |
-| `scripts/prime_search_trial.py` (entry) | Explicit, supervised Prime replay navigation trial on one authorized stick. | screen_ocr, tuners.adb, tuners.prime_search -> - | untagged |
 | `scripts/providers_check.py` (entry) | Check every streaming app on your Fire TV sticks, then (optionally) tune one for real. | discovery.providers, sources.eventlinks, tuners.adb, tuners.providers, tuners.tuners -> - | untagged |
 | `scripts/screen_lab.py` (entry) | Screen Lab: compare device reports with supervised labels, including yesterday's DVR. | tuners.adb -> - | untagged |
 | `scripts/stick_cec.py` (entry) | HDMI-CEC on the Fire TV sticks: read it, or turn it off / on, over adb. | tvsetup -> - | untagged |
@@ -153,7 +150,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/screen/boundary.py` | Stream delay measured automatically from show changes (no taps, no mic, no camera). | - -> engine | untagged |
 | `redzone/screen/scorebug.py` | Stream delay measured from the broadcast's own score bug (no taps, no keys pressed). | decider.sync -> cheap_labels, control, engine, noggin.park_prime, screen.tap_bug, scripts.park_prime_accept | untagged |
 | `redzone/screen/tap_bug.py` | [EXP-741 E, decider.entry.user_bug_gate] The Prime score bug's game clock as a tap's dead-ball signal. | screen.scorebug -> engine | untagged |
-| `redzone/screen_ocr.py` | Read local PNG menu text with Apple Vision; never capture or control a device. | governor -> control, engine, lab.night.house, lab.night.run, recorded, tuners.adb +9 | untagged |
+| `redzone/screen_ocr.py` | Read local PNG menu text with Apple Vision; never capture or control a device. | governor -> control, engine, lab.night.house, lab.night.run, recorded, tuners.adb +7 | untagged |
 
 ## EXPERIENCE (8)
 
@@ -164,7 +161,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/decision_records.py` | Decision records for the Teacher's nightly review (backlog lane 5 item 2, E23 under the self-taught rule). | config -> web.phone_v2, scripts.export_decision_records | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL), Landings in dead time, Mid-play entries (per 100 landings) |
 | `redzone/lab/prime_mv_fake.py` | A simulated Prime Video NBA player with multiview, for rehearsing scripts/prime_multiview_probe.py without a stick (`--fake`) and for its tests. | tuners.prime_multiview -> scripts.prime_multiview_probe | Flips PLAYING within 3 s, STK-03, STK-04 |
 | `redzone/web/ledger.py` | Data ledger + NFM status (lane 5, Start Planner item 3; cycle 06 "Data ledger" standing section). | - -> web.phone_v2, scripts.data_ledger | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL) |
-| `redzone/web/phone_v2.py` | Phone page v2 (flag `phone.v2`, default OFF): why each switch happened, rate it, "I missed that", and the Noggin Priority L2 sliders. | config, crunch, fsm, lab.decision_records, machines.platform, models +4 -> web.server, scripts.also_close_line, scripts.orient_line | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL), Big plays live or replayed within 3 min, STK-06, STK-07, Your-team big plays seen (live or within 3 min) |
+| `redzone/web/phone_v2.py` | Phone page v2 (flag `phone.v2`, default OFF): why each switch happened, rate it, "I missed that", and the Noggin Priority L2 sliders. | config, crunch, fsm, lab.decision_records, machines.platform, models +4 -> web.server | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL), Big plays live or replayed within 3 min, STK-06, STK-07, Your-team big plays seen (live or within 3 min) |
 | `scripts/data_ledger.py` (entry) | Data ledger: fold a factory manifest into docs/data-ledger.json and print the cycle plan's table. | web.ledger -> - | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL) |
 | `scripts/export_decision_records.py` (entry) | Export one night's decision records as JSONL for the Teacher's nightly review (schema in redzone/lab/decision_records.py and docs/decision-records.md). | lab.decision_records, supervisor -> - | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL) |
 | `scripts/prime_multiview_grade.py` (entry) | Grade a live Prime NBA multiview night against the turn-on gate (redzone/tuners/prime_multiview.py). | tuners.prime_multiview -> - | Landings in dead time, Mid-play entries (per 100 landings), STK-03 |
@@ -189,7 +186,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/recorded.py` | Explicit recorded-game navigation, isolated from live decisions and calibration. | machines.platform, screen_ocr, tuners.adb, tuners.prime_search -> engine, scripts.find_yttv_code | untagged |
 | `redzone/recorder.py` | Flight recorder: the real-world numbers the simulator needs. | models, sources.espn, sources.leagues -> engine, lab.night.run | untagged |
 | `redzone/sources/__init__.py` (package) | no docstring | - -> - | untagged |
-| `redzone/sources/espn.py` | ESPN's free site API: the backbone for all four leagues. | models, scoring.postseason -> agent.distill.jump, contracts.events, decider.cuts, demo.engine, engine, grading +44 | untagged |
+| `redzone/sources/espn.py` | ESPN's free site API: the backbone for all four leagues. | models, scoring.postseason -> agent.distill.jump, contracts.events, decider.cuts, demo.engine, engine, grading +43 | untagged |
 | `redzone/sources/eventlinks.py` | Per-game streaming deep links (Prime Video GTIs, ESPN+/ESPN watch ids) with no login. | - -> discovery.yttv, engine, scripts.plan_tonight, scripts.providers_check | untagged |
 | `redzone/sources/fastcast.py` | ESPN Fastcast: the push feed behind espn.com's live gamecasts. | machines.platform, models, sources.espn, views -> engine | untagged |
 | `redzone/sources/fastcast_check.py` | [fastcast live check] Is ESPN's push feed faster than polling, and does it say the same thing? | - -> engine, scripts.fastcast_check | untagged |
@@ -212,11 +209,11 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/service.py` (entry) | Prepare/manage the per-user launchd job; check/render never contact devices. | config -> scripts.service_runtime | untagged |
 | `scripts/service_runtime.py` (entry) | launchd entry point. | __main__, config, scripts.service -> - | untagged |
 
-## INTEGRATION (38)
+## INTEGRATION (37)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, buffer_rc8, control, crunch +60 | untagged |
+| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, buffer_rc8, control, crunch +56 | untagged |
 | `redzone/contracts/__init__.py` (package) | Interfaces every thread codes against. | contracts.brain, contracts.breaks, contracts.budget, contracts.clock, contracts.events, contracts.feeds +62 -> - | untagged |
 | `redzone/contracts/brain.py` | Brain contract: the typed input and output of the brain, and `valid()`. | - -> agent.kaggle.qwen_common, agent.kaggle.qwen_eval, contracts, decider.decider, noggin.arbiter, noggin.legal +1 | untagged |
 | `redzone/contracts/breaks.py` | BreakModel contract: when a stoppage starts, what kind it is, how long it runs, when play restarts. | models -> contracts, contracts.legacy, contracts.views, contracts.world, scoring.brain3 | untagged |
@@ -241,21 +238,20 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/demo/download.py` | Fetch one day's finished games (scoreboard + play-by-play) into data/demo/<day>/<league>/. | - -> demo.__main__ | untagged |
 | `redzone/demo/engine.py` | The real Engine, replaying a past day on a simulated clock. | channels, config, control, crunch, decider.decider, decider.screen +10 -> demo.__main__ | untagged |
 | `redzone/engine.py` | The producer loop: poll every feed -> merge -> score -> decide -> act -> tell the phone. | bets, buffer_rc8, buffer_shadow, calibration, channels, cheap_labels +64 -> __main__, demo.engine, lab.night.run, web.server, scripts.fault_drill, scripts.perf_probe +1 | BTN-04, BTN-05, FEED-01, SAFE-01, SAFE-03, STK-06 |
-| `redzone/lab/backtest.py` | Replay a real slate of past games through the scorer and decider, then grade it. | channels, config, contracts.switching, decider.decider, decider.screen, decider.whistle +16 -> agent.kaggle.build_moments_kaggle, demo.engine, lab.cutgrade, lab.night.run, lab.optimize, lab.oracle +31 | untagged |
+| `redzone/lab/backtest.py` | Replay a real slate of past games through the scorer and decider, then grade it. | channels, config, contracts.switching, decider.decider, decider.screen, decider.whistle +16 -> agent.kaggle.build_moments_kaggle, demo.engine, lab.cutgrade, lab.night.run, lab.optimize, lab.oracle +30 | untagged |
 | `redzone/lab/cutgrade.py` | Cut-timing scorecard: WHERE in each game we left, and WHERE we landed. | decider.screen, grading, lab.backtest, models, sources.espn -> lab.backtest, lab.oracle, lab.sportsgrade, scripts.buffer_shadow_grade, scripts.entry_autopsy, scripts.eval +5 | untagged |
 | `redzone/lab/datasets.py` | Training datasets: per-league game-state snapshots with break / key-moment / hotness labels. | - -> lab.brain3data, lab.brainfit, lab.breakblend, lab.sportsdata, scripts.build_training, scripts.train_brain | untagged |
 | `redzone/lab/optimize.py` | Training lab: search decider settings against real past slates. | config, lab.backtest, models -> lab.tune, scripts.eval | untagged |
-| `redzone/lab/replaycheck.py` | Exact-date replay diagnostics. | config, decider.screen, lab.backtest, lab.sportsgrade, models, sources.espn -> scripts.replay_check | untagged |
+| `redzone/lab/replaycheck.py` | Exact-date replay diagnostics. | config, decider.screen, lab.backtest, lab.sportsgrade, models, sources.espn -> - | untagged |
 | `redzone/lab/sportsdata.py` | Turn free public play-by-play releases into labeled game-state snapshots. | lab.datasets, models, scoring.gameflow, sources.espn -> agent.distill.jump, lab.brain3data, scripts.build_training | untagged |
 | `redzone/lab/sportsgrade.py` | League-aware report card for backtests (NFL, NBA, NHL, MLB). | decider.screen, grading, lab.backtest, lab.cutgrade, lab.leverage, models +1 -> agent.kaggle.build_moments_kaggle, lab.oracle, lab.oracle_v2, lab.reactgrade, lab.reasoner_data, lab.replaycheck +9 | untagged |
 | `redzone/lab/tune.py` | Auto-tune the decider's hand-picked knobs against the scorecards (CMA-ES, numpy only). | config, decider.decider, lab.backtest, lab.optimize, lab.splits, lab.sportsgrade +1 -> scripts.tune | untagged |
-| `redzone/models.py` | Source-agnostic game model. | - -> agent.distill.jump, agent.kaggle.build_moments_kaggle, autonomy, bets, channels, context.buzz +104 | untagged |
+| `redzone/models.py` | Source-agnostic game model. | - -> agent.distill.jump, agent.kaggle.build_moments_kaggle, autonomy, bets, channels, context.buzz +101 | untagged |
 | `scripts/backtest.py` (entry) | Replay a past NFL Sunday through the app and print the report card. | config, lab.backtest, models -> - | untagged |
 | `scripts/eval.py` (entry) | The scorecard every change is judged by. | config, lab.backtest, lab.cutgrade, lab.evaldata, lab.optimize, lab.oracle +2 -> - | untagged |
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
-| `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (282)
+## unowned (265)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -289,10 +285,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/grading.py` | [one brain, step 3] The play-by-play predicates the live app and the grader share (docs/onebrain-migration.md). | crunch, decider.screen, models, sources.espn -> engine, lab.backtest, lab.cutgrade, lab.oracle, lab.oracle_window, lab.reactgrade +11 | untagged |
 | `redzone/jsonfind.py` | One parser for a model's JSON answer (the reasoner and the watchdog both use it). | - -> agent.policy, reasoner.reasoner | untagged |
 | `redzone/lab/__init__.py` (package) | no docstring | - -> - | untagged |
-| `redzone/lab/also_close.py` | [EXP-039] Grade the "Also close" line: does showing other late, close games as text cut the curiosity switches (manual switches) without costing big plays? | lab.night_ab -> scripts.also_close_line | Big plays live or replayed within 3 min |
-| `redzone/lab/brain3cal.py` | Calibrate Brain v3's cautious restart bound (the decision core's break budget) per stoppage type. | lab.brain3data, scoring.brain, scoring.brain3 -> scripts.calibrate_brain3 | untagged |
-| `redzone/lab/brain3data.py` | Brain v3 training tables: one row per logged event, with the v3 sequence features and labels. | lab.datasets, lab.splits, lab.sportsdata, scoring.brain3 -> lab.brain3cal, lab.brain3fit, scripts.build_training3 | untagged |
-| `redzone/lab/brain3fit.py` | Train and grade Brain v3 (``scripts/train_brain3.py`` is the CLI). | lab.brain3data, lab.brainfit, models, scoring.brain, scoring.brain3, scoring.breaks +1 -> scripts.train_brain3 | untagged |
+| `redzone/lab/brain3cal.py` | Calibrate Brain v3's cautious restart bound (the decision core's break budget) per stoppage type. | lab.brain3data, scoring.brain, scoring.brain3 -> - | untagged |
+| `redzone/lab/brain3data.py` | Brain v3 training tables: one row per logged event, with the v3 sequence features and labels. | lab.datasets, lab.splits, lab.sportsdata, scoring.brain3 -> lab.brain3cal, scripts.build_training3 | untagged |
 | `redzone/lab/breakblend.py` | Fit and grade how the break forecast mixes the rules with the brain (``breaks.blend``). | config, lab.brainfit, lab.datasets, lab.splits, models, scoring.brain +2 -> scripts.eval_break_blend | untagged |
 | `redzone/lab/delaygrade.py` | [EXP-803] Delay precision grader, matching EXP-803's pre-registration exactly (#296, rescoped Cycle 19 #295). | lab.reactgrade -> scripts.delay_grade | untagged |
 | `redzone/lab/evaldata.py` | One pinned eval dataset, so every thread, CI and the Mac grade on byte-identical nights. | config, contracts.switching, uses:ConfigSwitchPaths -> demo.__main__, lab.backtest, lab.splits, scripts.backfill_eval_v2, scripts.bucket_join_measure, scripts.build_eval_data +12 | untagged |
@@ -305,12 +299,10 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/night/run.py` | Run a whole replayed night through the real system, on a virtual clock. | agent.watchdog, autonomy, channels, config, control, decider.decider +19 -> lab.night.__main__, scripts.leak_check | SAFE-01, SAFE-08, TV-02, TV-03, TV-04 |
 | `redzone/lab/night/smartthings.py` | [switch timing] The e2e night's TV with the SmartThings input change, at the latency measured on the user's TV (live lab Nov 4 2026: 64 of 64 confirmed, 0 re... | - -> lab.night.run | untagged |
 | `redzone/lab/night/vclock.py` | Virtual time for the end-to-end night: hours of a real night run in minutes. | - -> lab.night.__main__, lab.night.run | untagged |
-| `redzone/lab/night_ab.py` | Whole-night A/B for display experiments (lane 5): one number per night on each side, a bootstrap interval on mean(on) - mean(off), and a PASS / FAIL / PENDIN... | - -> lab.also_close | untagged |
 | `redzone/lab/offpolicy.py` | [EXP-005] Off-policy grading: how a NEW decider would have done on nights the live one already ran, from the live decisions' logged option sets and propensit... | lab.worth -> scripts.offpolicy_score | untagged |
-| `redzone/lab/oracle.py` | Hindsight oracle: the best schedule anyone could have run on an archived night (offline only). | grading, lab.backtest, lab.cutgrade, lab.sportsgrade, models, sources.espn -> lab.oracle_v2, lab.oracle_window, lab.reactgrade, scripts.buffer_sweep, scripts.eval, scripts.eval_sports +4 | untagged |
+| `redzone/lab/oracle.py` | Hindsight oracle: the best schedule anyone could have run on an archived night (offline only). | grading, lab.backtest, lab.cutgrade, lab.sportsgrade, models, sources.espn -> lab.oracle_v2, lab.oracle_window, lab.reactgrade, scripts.eval, scripts.eval_sports, scripts.exp1722_read +2 | untagged |
 | `redzone/lab/oracle_v2.py` | NBA hindsight oracle v2 (EXP-1722 PASS, Nov 6 2026; prereg docs/prereg/exp-1722.md, read docs/prereg/v3-reads/). | lab.oracle, lab.sportsgrade -> scripts.exp1722_read | untagged |
-| `redzone/lab/oracle_window.py` | [time-shift buffer] The windowed-hindsight oracle (Nick 9:10 AM Nov 5): exact DP over only what the buffer reveals, past-only value beyond the window. | grading, lab.backtest, lab.oracle -> scripts.buffer_sweep, scripts.eval_sports | untagged |
-| `redzone/lab/orient.py` | [EXP-038] Grade the orientation beat: do overrides right after an automatic switch drop when the phone shows a 2-3 s "who, score, clock, one fact" beat? | config -> scripts.also_close_line, scripts.orient_line | untagged |
+| `redzone/lab/oracle_window.py` | [time-shift buffer] The windowed-hindsight oracle (Nick 9:10 AM Nov 5): exact DP over only what the buffer reveals, past-only value beyond the window. | grading, lab.backtest, lab.oracle -> scripts.eval_sports | untagged |
 | `redzone/lab/outcome_label.py` | [EXP-302] The lock label from REAL outcomes, not from our own clock/crunch rule (Nick, Nov 5 1:50 AM ET). | lab.leverage, models, sources.espn -> lab.reasoner_data | untagged |
 | `redzone/lab/primegrade.py` | [EXP-800 Prime] Grade the diamond plan's Prime tests (docs/sync/2026-11-05-diamond-plan.md, 7f32aaa6) on the sticks' own media_session rows. | lab.syncgrade -> scripts.park_prime_accept, scripts.sync_grade | untagged |
 | `redzone/lab/reactgrade.py` | [EXP-301] Grader for the delay-and-react test (Nick, Nov 5 12:25 AM and 12:28 AM ET). | grading, lab.backtest, lab.oracle, lab.sportsgrade -> lab.delaygrade, scripts.reactgrade | untagged |
@@ -355,7 +347,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/noggin/park_prime.py` | PARK on Prime Video: which games the show may take from Prime, what a Prime tune costs, that Prime has no back route, and each Prime game's K from the hidden... | config, contracts.switching, decider.sync, screen.scorebug, sync_edge, uses:ConfigSwitchPaths -> control, park_run, scripts.park_prime_accept, scripts.park_replay | untagged |
 | `redzone/noggin/park_show.py` | PARK show: the in-app controller of the two-stick show, one second at a time (integration plan unit 8). | grading, models, noggin.park_core, noggin.park_facts, noggin.park_plan, noggin.park_timing +1 -> park_run, scripts.park_replay | untagged |
 | `redzone/noggin/park_timing.py` | PARK timing: where a game's feed time sits on a stick's picture, how sure that is, and each game's padding. | noggin.k_table -> noggin.park_facts, noggin.park_show, park_run, scripts.park_replay | untagged |
-| `redzone/noggin/pick.py` | Noggin Reflex PICK v1: which game should be on screen, learned by imitating the hindsight oracle. | grading, models, models_rt.forest, noggin.features, noggin.timing, scoring.brain3 +1 -> decider.decider, scripts.buffer_sweep, scripts.eval_sports, scripts.noggin_selfplay, scripts.train_noggin_pick, scripts.train_noggin_pick_dagger | untagged |
+| `redzone/noggin/pick.py` | Noggin Reflex PICK v1: which game should be on screen, learned by imitating the hindsight oracle. | grading, models, models_rt.forest, noggin.features, noggin.timing, scoring.brain3 +1 -> decider.decider, scripts.eval_sports, scripts.noggin_selfplay, scripts.train_noggin_pick | untagged |
 | `redzone/noggin/predict.py` | Noggin Reflex Predict v1: P(a big play in the next 30 / 60 / 120 s of play) at a restart (numpy only). | models_rt.forest, noggin.features, noggin.timing -> noggin.live, noggin.predict_fit, scripts.train_noggin_predict | untagged |
 | `redzone/noggin/predict_fit.py` | Fit and grade Noggin Predict v1 (pandas + LightGBM; Kaggle CPU / cloud only, never the Mac). | noggin.features, noggin.predict, noggin.timing_fit, scoring.brain3 -> agent.kaggle.qwen_finetune, scripts.kaggle_gamevalue, scripts.train_noggin_predict | untagged |
 | `redzone/noggin/priority.py` | Noggin Priority: which game deserves the TV, in four layers applied in order (docs/noggin.md § Priority). | models -> decider.decider, noggin.wire, web.phone_v2 | untagged |
@@ -377,7 +369,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/reasoner/head.py` | The reasoner's fast head: lock_in odds from the brief's numbers (numpy only, < 1 ms). | models_rt.forest, reasoner.brief, scoring.brain -> reasoner.reasoner, scripts.eval_reasoner, scripts.train_reasoner | untagged |
 | `redzone/reasoner/reasoner.py` | The live game reasoner at runtime: one reading per live game, rebuilt on each new play. | jsonfind, models, reasoner.brief, reasoner.head -> engine, scoring.engine, scripts.eval_reasoner, scripts.export_reasoner_llm | untagged |
 | `redzone/scoring/__init__.py` (package) | no docstring | - -> - | untagged |
-| `redzone/scoring/brain3.py` | Brain v3: one compact model per league, numpy only at runtime. | contracts.breaks, contracts.legacy, contracts.moment, models, models_rt.forest, scoring.brain +9 -> lab.brain3cal, lab.brain3data, lab.brain3fit, noggin.pick, noggin.predict_fit, noggin.timing +3 | Big plays seen live, NBA, Big plays seen live, NFL, Big plays seen live, NHL, Your-team big plays seen (live or within 3 min) |
+| `redzone/scoring/brain3.py` | Brain v3: one compact model per league, numpy only at runtime. | contracts.breaks, contracts.legacy, contracts.moment, models, models_rt.forest, scoring.brain +9 -> lab.brain3cal, lab.brain3data, noggin.pick, noggin.predict_fit, noggin.timing, scoring.brain +2 | Big plays seen live, NBA, Big plays seen live, NFL, Big plays seen live, NHL, Your-team big plays seen (live or within 3 min) |
 | `redzone/scoring/dead_left.py` | One dead-ball predictor: how much of a stoppage is still surely to come, from the measured break lengths. | models, scoring.dead_left_lite -> decider.break_tail, decider.screen, scripts.measure_dead_left, scripts.veto_audit | untagged |
 | `redzone/scoring/dead_left_lite.py` | [timing.dead_v2, off] The dead-time-left reader: seconds of an open stoppage surely still to come, from its break class and the time it has already run. | - -> scoring.dead_left, scripts.dead_left_coverage | untagged |
 | `redzone/scoring/postseason.py` | Postseason stakes: elimination games, deciders and how close a game is to the title (default OFF). | models -> scoring.engine, sources.espn | untagged |
@@ -385,21 +377,18 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/sync_edge.py` | [SYNC program A, EXP-800/801] Where each stick is against its stream's live edge, read every second. | channels -> control, engine, noggin.park_prime, sync_probe, tuners.yttv_timing, scripts.park_prime_accept | untagged |
 | `redzone/sync_probe.py` | [SYNC probe] What the sticks expose for auto-anchors and network features: read-only, automatic. | config, decider.sync, sync_edge, tuners.adb, tuners.yttv_timing -> engine, scripts.burst_align, scripts.sync_fit | untagged |
 | `redzone/trace.py` | One trace per switch: decision -> command -> picture confirmed, with the time each step took. | contracts.trace, store, supervisor, uses:MemoryTrace, uses:Stage, uses:TraceEvent +1 -> engine, observability, supervisor, web.phone_v2 | untagged |
-| `scripts/also_close_line.py` (entry) | [EXP-039] Print the "Also close" line: manual-switch share on nights with phone.also_close on vs off. | lab.also_close, lab.orient, web.phone_v2 -> - | Big plays live or replayed within 3 min |
 | `scripts/attention_labels.py` (entry) | Data G: per-play human-attention labels for Watch Value (EXP-1704), plus the WP-only drama baseline. | scripts.wv_aux_label -> - | untagged |
 | `scripts/attention_pull.py` (entry) | Data Division G: attention at scale. | - -> - | untagged |
 | `scripts/autofix_guard.py` (entry) | Guard for Claude's auto-fix changes (.github/workflows/auto-fix.yml), run on the diff before any commit is pushed. | - -> - | untagged |
 | `scripts/backfill_eval_v2.py` (entry) | Backfill the archive for eval-data-v2 (cycle 01 plan, task 4 / EVAL2): at least 8 LOCKED nights in every league, and more your-team nights in the dev (train... | lab.evaldata, lab.splits -> - | untagged |
 | `scripts/bucket_join_measure.py` (entry) | [NBA-BUCKET] What a join right after a made basket gets, on --split fit nights, with the flag off and on. | config, decider.decider, decider.gate, grading, lab.backtest, lab.evaldata +5 -> - | untagged |
 | `scripts/buffer_shadow_grade.py` (entry) | Time-shift buffer shadow log: schema + Rule #1 (test writers, Cycle 24). | lab.backtest, lab.cutgrade, models -> - | untagged |
-| `scripts/buffer_sweep.py` (entry) | [time-shift buffer] Oracle side of the buffer sweep (Nick 9:10 AM Nov 5, parts B + C). | lab.backtest, lab.oracle, lab.oracle_window, models, noggin.pick -> - | untagged |
 | `scripts/buffered_jump_sim.py` (entry) | [buffered jump] Jumps per minute, plays shown and Rule #1 on recorded NFL slates (data/archive, ESPN wallclocks). | decider.buffered, decider.cuts, lab.leverage, lab.splits, models, moments.detect +4 -> scripts.show_scorecard | untagged |
 | `scripts/buffered_jump_try.py` (entry) | Buffered jumps on the real TV (both YouTube TV sticks scrubbed ~75 s behind live, cuts planned from the play-by-play). | models, sources.espn -> - | untagged |
 | `scripts/build_eval_data.py` (entry) | Build the pinned eval snapshot from a data/ folder that has the archive (the Mac, or a session that copied it). | lab.evaldata -> - | untagged |
 | `scripts/build_reasoner_data.py` (entry) | Build the live game reasoner's training rows from data/archive (not in git, see README). | config, lab.reasoner_data, models -> - | untagged |
 | `scripts/build_training3.py` (entry) | Build the Brain v3 training tables (run in the cloud, never on the Mac: ~6M events, a few GB RAM). | lab.brain3data -> - | untagged |
 | `scripts/burst_align.py` (entry) | [burst anchor] Do YouTube TV's MediaSession bursts line up with the feed's TV timeouts? | lab.timing, sync_probe -> - | untagged |
-| `scripts/calibrate_brain3.py` (entry) | Calibrate Brain v3's cautious restart bound per break type (redzone/lab/brain3cal.py). | lab.brain3cal -> - | untagged |
 | `scripts/canary.py` (entry) | [Canary, item 8] Daily pre-game self-test of the HIDDEN stick. | canary, config -> - | untagged |
 | `scripts/catchup_ratchet.py` (entry) | [time to see, Nick Nov 5 2026 12:28 AM ET] The catch-up window ratchet (docs/catchup_ratchet.json). | - -> - | untagged |
 | `scripts/check_memory.py` (entry) | Keep the AI memory honest. | - -> - | untagged |
@@ -418,7 +407,6 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/data_landing_grade.py` (entry) | Data landing grader (PROPOSAL, test writers, Nov 5 2026; EXP-705). | lab.evaldata, lab.splits -> - | untagged |
 | `scripts/dead_left_coverage.py` (entry) | [timing.dead_v2] Coverage of the dead-time-left table on recorded dev nights: how often the real stoppage outlasted the bound. | models, scoring.dead_left_lite -> - | untagged |
 | `scripts/delay_grade.py` (entry) | [EXP-803] Grade delay-precision arms against the base arm (redzone/lab/delaygrade.py). | lab.delaygrade -> - | untagged |
-| `scripts/delay_report.py` (entry) | How well each channel's stream delay is predicted, from the delay samples the app has stored. | config, decider.screen -> - | untagged |
 | `scripts/disk_guard.py` (entry) | Disk guard for the Mac (~5 GB free): what is using space in this checkout, and a safe cleanup of the transfer folders that cloud build threads leave behind. | governor -> - | untagged |
 | `scripts/distill.py` (entry) | Big teacher -> small student, end to end. | agent.distill.evaluate, agent.distill.student, agent.distill.teacher -> - | untagged |
 | `scripts/doc_index.py` (entry) | Generate docs/agents/INDEX.md from report front matter, and check the organization standard (docs/STANDARD.md). | - -> - | untagged |
@@ -443,10 +431,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/gi_v3_nba.py` (entry) | GI v3 NBA (WV loop cycle 1, prereg /mnt/project-files/wv-loop/prereg-gi-v3-nba.md). | - -> - | untagged |
 | `scripts/grading_check.py` (entry) | Grading rules in CI (docs/grading.md; Nick, Nov 4 2026 6:40 PM ET: "grading even SHARPER"). | - -> - | untagged |
 | `scripts/green_summaries.py` (entry) | [EXP-102] Green moment source: nflverse NFL and NBA.com cdn NBA play-by-play -> ESPN-summary-shaped archives, so the reasoner moment builder (agent/kaggle/bu... | noggin.factory, sources.espn -> - | untagged |
-| `scripts/hold_left_probe.py` (entry) | [STK-07 rig check] Hold the left game, then go back to it: does it play on from the dead ball we left? | channels, config, control -> - | STK-07 |
 | `scripts/holdset.py` (entry) | How much of the hold-set choice can any model win? | scripts.coverage_audit -> agent.kaggle.qwen_eval, scripts.holdset_public, scripts.kaggle_gamevalue, scripts.kaggle_gamevalue_holdset, scripts.value_leak_check | untagged |
 | `scripts/holdset_public.py` (entry) | The bar the brain must beat: the hold-set measurement with the REAL standby.Planner, and on public seasons. | config, decider.decider, lab.backtest, lab.evaldata, models, noggin.factory +5 -> agent.kaggle.qwen_eval, scripts.kaggle_gamevalue, scripts.kaggle_gamevalue_holdset, scripts.kaggle_value_shards, scripts.value_leak_check | untagged |
-| `scripts/join_try.py` (entry) | Run one join (redzone/tuners/join.py) on the HIDDEN stick and print its row (also appended to data/joins.jsonl). | tuners.adb, tuners.join -> - | untagged |
 | `scripts/jump_try.py` (entry) | Jump mode on the real TV: turn it on / off through the running app's settings API (undoable), and watch what it does from data/jumps.jsonl (one row per jump:... | - -> - | untagged |
 | `scripts/kaggle_gamevalue.py` (entry) | Train GameValue v0 (state table) and v1 (LightGBM) on Kaggle CPU and export both for the numpy runtime. | models_rt.forest, noggin.gamevalue, noggin.predict_fit, noggin.timing_fit, noggin.value_shards, noggin.wide_features +5 -> agent.kaggle.qwen_finetune, scripts.kaggle_gamevalue_select | untagged |
 | `scripts/kaggle_gamevalue_holdset.py` (entry) | Grade an exported GameValue model on scripts/holdset.py's own test nights, against the real Planner on those nights. | decider.decider, decider.screen, lab.backtest, lab.evaldata, lab.timing, models +7 -> agent.kaggle.qwen_eval, scripts.kaggle_gamevalue | untagged |
@@ -465,7 +451,6 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/media_pull.py` (entry) | Media metadata workers (Data Division, type C): which plays got clipped, and how much people watched. | - -> - | untagged |
 | `scripts/module_headers.py` (entry) | Check that every module says what it is and why it exists, ratcheted so only new gaps fail. | - -> - | untagged |
 | `scripts/moment_rates.py` (entry) | Measured must-see rates per league from the archive, compared with the planner's table (read only). | lab.splits, moments, moments.detect, moments.tiers -> - | untagged |
-| `scripts/multiview_probe.py` (entry) | At home, ~5 minutes, before the games: measure YouTube TV multiview on a real stick. | channels, screen_ocr, tuners.adb, tuners.multiview, tuners.tuners -> - | untagged |
 | `scripts/nba_cdn_plays.py` (entry) | NBA.com's own action log (cdn liveData, packaged by shufinskiy/nba_data) -> hoopR-schema play rows (plan A NBA). | - -> - | untagged |
 | `scripts/nhl_apiweb.py` (entry) | NHL api-web play-by-play + shift charts -> the factory's compact ESPN-shaped game records (NFM tokens). | noggin.factory -> - | untagged |
 | `scripts/night_report.py` (entry) | Night health report: one page per night, written every morning to docs/nights/YYYY-MM-DD.md (cycle 04 build (a), lane 4). | config -> - | STK-06 |
@@ -474,7 +459,6 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/noggin_tokens.py` (entry) | Noggin Foundation Model (NFM) event tokens: every play of every game as a short token group, per season. | models, noggin.factory, sources.espn -> - | untagged |
 | `scripts/northstar.py` (entry) | The North Star table: where we are against "perfect", in one place, with honest error bars. | lab.cutgrade, noggin.profile -> - | STK-06 |
 | `scripts/offpolicy_score.py` (entry) | [EXP-005] Score a candidate decider off-policy on logged nights (redzone/lab/offpolicy.py). | lab.offpolicy -> - | untagged |
-| `scripts/orient_line.py` (entry) | [EXP-038] Print the orientation-beat line: override rates on nights with phone.orient on vs off. | lab.orient, web.phone_v2 -> - | untagged |
 | `scripts/pack_factory_code.py` (entry) | Pack the code the Kaggle factory notebook needs into rz_factory_code.tar.gz (no data, no secrets). | - -> - | untagged |
 | `scripts/park_ceiling.py` (entry) | PARK step 0: the supply ceiling. | grading, lab.backtest, lab.leverage, lab.splits, models, moments.detect +3 -> - | untagged |
 | `scripts/park_compare.py` (entry) | One table per slate and timing error: live-edge physics, the last sweep's best pick, the planner, the greedy ceiling. | noggin.park_core, noggin.park_plan -> - | untagged |
@@ -493,7 +477,6 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/playbook_coverage.py` (entry) | Playbook coverage (docs/playbooks.md): which entries have a night-lab / unit test that RAN and passed. | - -> - | SAFE-01 |
 | `scripts/preflight.py` (entry) | Preflight: a read-only go/no-go for the Mac before a TV session. | governor -> - | untagged |
 | `scripts/press_probe.py` (entry) | [press-to-TV, real hardware] Press GO NOW on the running app the way the phone does, and time each press from the tap to the game playing on the TV. | - -> - | BTN-01 |
-| `scripts/prime_pause_try.py` (entry) | Run prime_pause.enter_buffer_pause once on the HIDDEN Prime stick and print the result row. | tuners.adb, tuners.prime_pause -> - | untagged |
 | `scripts/publish_live_nights.py` (entry) | Publish live-night summaries into the repo so the North Star workflow grades real nights (cycle 04, lane 4: "live nights into northstar"). | - -> - | STK-06 |
 | `scripts/queue_replay.py` (entry) | Replay queue decisions from a scenario file, offline, and time them for a 32-game slate. | channels, config, lab.backtest, lab.evaldata, lab.splits, models +3 -> - | untagged |
 | `scripts/queue_trace.py` (entry) | Trace WHY the queue beats the planner in the night replay, and say whether the queue should own planner-rung ticks. | channels, config, lab.backtest, lab.evaldata, lab.splits, models +3 -> - | untagged |
@@ -522,14 +505,11 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/thread_replay.py` (entry) | Replay dev nights for the thread ledger: how many threads open, how many the show saw the answer to, and what it cost. | grading, lab.backtest, lab.splits, lab.sportsgrade, moments.arrival, moments.threads +2 -> - | untagged |
 | `scripts/timing_replay.py` (entry) | [timing, Nov 9] How well do we know where a stick is? | decider.sync -> - | untagged |
 | `scripts/timing_report.py` (entry) | [switch timing] Dead-ball detection lag per source and league, and the on-screen lead it leaves. | lab.timing -> - | untagged |
-| `scripts/train_brain3.py` (entry) | Train Brain v3 (one compact model per league) and print its test-night scorecard. | lab.brain3fit, scoring.brain -> - | untagged |
 | `scripts/train_noggin_pick.py` (entry) | Train Noggin Reflex PICK v1 by imitating the hindsight oracle on whole factory nights (offline, cloud). | lab.backtest, lab.oracle, lab.sportsgrade, models, noggin.factory, noggin.pick +1 -> - | untagged |
-| `scripts/train_noggin_pick_dagger.py` (entry) | DAgger for the possession policy: label the states the PICK-cue policy ITSELF visits with the oracle. | lab.oracle, noggin.pick -> - | untagged |
 | `scripts/train_noggin_predict.py` (entry) | Train Noggin Predict v1 for one league from the data factory's table (Kaggle CPU / cloud only). | noggin.predict, noggin.predict_fit -> - | untagged |
 | `scripts/train_noggin_timing.py` (entry) | Train Noggin Timing v1 for one league from the data factory's table (Kaggle CPU / GitHub Actions only). | decider.cuts, models, noggin.timing, noggin.timing_fit -> - | untagged |
 | `scripts/train_reasoner.py` (entry) | Train the reasoner's fast head (lock_in odds) per league, cross-fitted by night. | lab.reasoner_data, reasoner.brief, reasoner.head, scoring.brain -> - | untagged |
 | `scripts/tune.py` (entry) | Auto-tune the decider against the scorecards (see redzone/lab/tune.py). | lab.tune -> - | untagged |
-| `scripts/tv_local_probe.py` (entry) | Time the TV's local input keys against SmartThings, on Nick's TV (~1 minute, Nick at the TV). | tv -> - | untagged |
 | `scripts/tv_test_runner.py` (entry) | TV test runner: walks docs/test-queue.md and the Wave T1 hidden-stick measurements, one at a time. | - -> - | untagged |
 | `scripts/value2_report.py` (entry) | Value v2 against value v1 on archived dev games: what each one calls a big moment. | moments.detect, moments.value2, noggin.value_shards, scripts.coverage_audit -> - | untagged |
 | `scripts/value_leak_check.py` (entry) | Leak check for GameValue shards: exit 1 if any row is from a locked or fresh night or reads past its decision. | moments.detect, noggin.factory, scripts.coverage_audit, scripts.holdset, scripts.holdset_public -> agent.kaggle.qwen_finetune, scripts.kaggle_gamevalue, scripts.kaggle_value_shards | untagged |
@@ -540,9 +520,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
 | `scripts/wv_aux_label.py` (entry) | Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804). | - -> scripts.attention_labels | untagged |
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
-| `scripts/yttv_search_tune_try.py` (entry) | Tune the LOCAL stations by YouTube TV search on the HIDDEN stick, through the app's own routing and tuner as if tuners.yttv_local_search were on (ChannelMap.... | channels, tuners.adb, tuners.tuners -> - | untagged |
 
-## Untagged (412)
+## Untagged (395)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -652,7 +631,6 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/lab/backtest.py`
 - `redzone/lab/brain3cal.py`
 - `redzone/lab/brain3data.py`
-- `redzone/lab/brain3fit.py`
 - `redzone/lab/brainfit.py`
 - `redzone/lab/breakblend.py`
 - `redzone/lab/cutgrade.py`
@@ -664,13 +642,11 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/lab/night/__main__.py`
 - `redzone/lab/night/smartthings.py`
 - `redzone/lab/night/vclock.py`
-- `redzone/lab/night_ab.py`
 - `redzone/lab/offpolicy.py`
 - `redzone/lab/optimize.py`
 - `redzone/lab/oracle.py`
 - `redzone/lab/oracle_v2.py`
 - `redzone/lab/oracle_window.py`
-- `redzone/lab/orient.py`
 - `redzone/lab/outcome_label.py`
 - `redzone/lab/primegrade.py`
 - `redzone/lab/reactgrade.py`
@@ -792,7 +768,6 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/backtest.py`
 - `scripts/bucket_join_measure.py`
 - `scripts/buffer_shadow_grade.py`
-- `scripts/buffer_sweep.py`
 - `scripts/buffered_jump_sim.py`
 - `scripts/buffered_jump_try.py`
 - `scripts/build_eval_data.py`
@@ -800,7 +775,6 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/build_training.py`
 - `scripts/build_training3.py`
 - `scripts/burst_align.py`
-- `scripts/calibrate_brain3.py`
 - `scripts/canary.py`
 - `scripts/catchup_ratchet.py`
 - `scripts/check_memory.py`
@@ -818,7 +792,6 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/data_landing_grade.py`
 - `scripts/dead_left_coverage.py`
 - `scripts/delay_grade.py`
-- `scripts/delay_report.py`
 - `scripts/deploy.py`
 - `scripts/disk_guard.py`
 - `scripts/distill.py`
@@ -853,7 +826,6 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/green_summaries.py`
 - `scripts/holdset.py`
 - `scripts/holdset_public.py`
-- `scripts/join_try.py`
 - `scripts/jump_try.py`
 - `scripts/kaggle_gamevalue.py`
 - `scripts/kaggle_gamevalue_holdset.py`
@@ -872,14 +844,12 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/media_pull.py`
 - `scripts/module_headers.py`
 - `scripts/moment_rates.py`
-- `scripts/multiview_probe.py`
 - `scripts/nba_cdn_plays.py`
 - `scripts/nhl_apiweb.py`
 - `scripts/noggin_factory.py`
 - `scripts/noggin_selfplay.py`
 - `scripts/noggin_tokens.py`
 - `scripts/offpolicy_score.py`
-- `scripts/orient_line.py`
 - `scripts/pack_factory_code.py`
 - `scripts/park_ceiling.py`
 - `scripts/park_compare.py`
@@ -897,9 +867,6 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/plan_check.py`
 - `scripts/plan_tonight.py`
 - `scripts/preflight.py`
-- `scripts/prime_flip_probe.py`
-- `scripts/prime_pause_try.py`
-- `scripts/prime_search_trial.py`
 - `scripts/providers_check.py`
 - `scripts/queue_replay.py`
 - `scripts/queue_trace.py`
@@ -909,7 +876,6 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/reactgrade.py`
 - `scripts/redzone_reconstruct.py`
 - `scripts/release_gate.py`
-- `scripts/replay_check.py`
 - `scripts/replay_park_try.py`
 - `scripts/results_ledger.py`
 - `scripts/retrosheet_plays.py`
@@ -935,14 +901,11 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/timing_replay.py`
 - `scripts/timing_report.py`
 - `scripts/train_brain.py`
-- `scripts/train_brain3.py`
 - `scripts/train_noggin_pick.py`
-- `scripts/train_noggin_pick_dagger.py`
 - `scripts/train_noggin_predict.py`
 - `scripts/train_noggin_timing.py`
 - `scripts/train_reasoner.py`
 - `scripts/tune.py`
-- `scripts/tv_local_probe.py`
 - `scripts/tv_practice.py`
 - `scripts/tv_setup.py`
 - `scripts/tv_test_runner.py`
@@ -955,9 +918,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/worth_line.py`
 - `scripts/wv_aux_label.py`
 - `scripts/yttv_scrub_try.py`
-- `scripts/yttv_search_tune_try.py`
 
-## Orphans (no importer) (34)
+## Orphans (no importer) (36)
 
 - `agent/install.py`
 - `agent/kaggle/build_moments_kaggle.py`
@@ -991,27 +953,29 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/context/buzz.py`
 - `redzone/context/nba.py`
 - `redzone/context/schedules.py`
+- `redzone/lab/brain3cal.py`
 - `redzone/lab/night/presses.py`
+- `redzone/lab/replaycheck.py`
 - `redzone/tuners/identity.py`
 
-## Most-called symbols (top 25 of 1208)
+## Most-called symbols (top 25 of 1183)
 
 | symbol | callers |
 |---|---:|
-| `redzone/models.py:League` | 44 |
-| `redzone/config.py:Config` | 37 |
+| `redzone/models.py:League` | 41 |
+| `redzone/config.py:Config` | 34 |
 | `redzone/sources/espn.py:_get` | 25 |
-| `redzone/tuners/adb.py:Stick` | 23 |
 | `redzone/lab/backtest.py:Replay` | 22 |
-| `redzone/channels.py:ChannelMap` | 21 |
-| `redzone/config.py:default` | 21 |
+| `redzone/config.py:default` | 20 |
+| `redzone/channels.py:ChannelMap` | 18 |
 | `redzone/sources/espn.py:_ts` | 18 |
+| `redzone/tuners/adb.py:Stick` | 17 |
 | `redzone/lab/splits.py:archive_nights` | 16 |
 | `redzone/sources/espn.py:_int` | 16 |
 | `redzone/sources/espn.py:stoppage_for` | 16 |
 | `agent/kaggle/data_fetch.py:SourceSpec` | 12 |
 | `redzone/lab/splits.py:nights_for` | 12 |
-| `redzone/sources/espn.py:flatten_plays` | 12 |
+| `redzone/sources/espn.py:flatten_plays` | 11 |
 | `agent/kaggle/data_fetch.py:cli` | 10 |
 | `redzone/lab/splits.py:league_split` | 10 |
 | `redzone/sources/espn.py:_clock_s` | 10 |
@@ -1021,10 +985,10 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/grading.py:dead_at` | 9 |
 | `redzone/lab/backtest.py:run` | 9 |
 | `redzone/models.py:pro_period` | 9 |
-| `redzone/control.py:Controller` | 8 |
 | `redzone/lab/evaldata.py:window_end` | 8 |
+| `redzone/lab/sportsgrade.py:grade` | 8 |
 
-## Shared data files (84 of 208)
+## Shared data files (84 of 203)
 
 Files two or more modules name (the rest are in the JSON). Best effort from string literals: w = writes, r = reads, u = named but unclassified.
 
@@ -1044,13 +1008,13 @@ Files two or more modules name (the rest are in the JSON). Best effort from stri
 | `data/buffer.jsonl` | - | web.phone_v2, scripts.buffered_jump_try | - |
 | `data/canary.jsonl` | - | - | canary, scripts.canary |
 | `data/channels.json` | channels | channels | scripts.coverage_audit, scripts.park_hands_live, scripts.park_prime_accept |
-| `data/config.yaml` | config, scripts.deploy, scripts.service | agent.watchdog, config, demo.engine, scripts.deploy, scripts.jump_try, scripts.service | agent.kaggle.build_moments_kaggle, engine, lab.optimize, lab.tune, platform.autofix, scripts.backtest +4 |
-| `data/devices.json` | autonomy, tvsetup, scripts.doctor | autonomy, control, discovery.yttv, tvsetup, scripts.doctor, scripts.multiview_probe +4 | network |
+| `data/config.yaml` | config, scripts.deploy, scripts.service | agent.watchdog, config, demo.engine, scripts.deploy, scripts.jump_try, scripts.service | agent.kaggle.build_moments_kaggle, engine, lab.optimize, lab.tune, platform.autofix, scripts.backtest +3 |
+| `data/devices.json` | autonomy, tvsetup, scripts.doctor | autonomy, control, discovery.yttv, tvsetup, scripts.doctor, scripts.prime_multiview_probe +3 | network |
 | `data/eval_config.yaml` | - | - | agent.kaggle.build_moments_kaggle, agent.kaggle.pack_data, demo.__main__, lab.tune, scripts.bucket_join_measure, scripts.build_eval_data +3 |
 | `data/footprint.jsonl` | - | scripts.preflight | governor |
 | `data/grade_ids.json` | - | agent.kaggle.grade, agent.kaggle.student_data | - |
 | `data/joins.jsonl` | - | tuners.join_calib | canary |
-| `data/redzone.db` | store | - | scripts.also_close_line, scripts.delay_report, scripts.disk_guard, scripts.export_decision_records, scripts.orient_line, scripts.press_probe +2 |
+| `data/redzone.db` | store | - | scripts.disk_guard, scripts.export_decision_records, scripts.press_probe, scripts.screen_lab, scripts.timing_report |
 | `data/smartthings_oauth.json` | - | - | tv, scripts.service |
 | `data/state.json` | - | agent.watchdog, web.phone_v2 | - |
 | `data/transitions.jsonl` | __main__ | web.server | - |
@@ -1077,11 +1041,11 @@ Files two or more modules name (the rest are in the JSON). Best effort from stri
 | `jumps.jsonl` | - | scripts.why | engine |
 | `ledger.json` | scripts.attention_pull, scripts.media_pull | - | - |
 | `lock_gold.jsonl` | - | agent.kaggle.student_data | agent.kaggle.pack_data |
-| `manifest.json` | agent.kaggle.pack_data, noggin.value_shards, scripts.build_training, scripts.build_training3, scripts.kaggle_gamevalue, scripts.kaggle_pbp_crew +2 | lab.datasets, noggin.value_shards, scripts.build_training3, scripts.noggin_factory | agent.kaggle.teacher_distill, scripts.kaggle_noggin_factory |
+| `manifest.json` | agent.kaggle.pack_data, noggin.value_shards, scripts.build_training, scripts.build_training3, scripts.kaggle_gamevalue, scripts.kaggle_pbp_crew +1 | lab.datasets, noggin.value_shards, scripts.build_training3, scripts.noggin_factory | agent.kaggle.teacher_distill, scripts.kaggle_noggin_factory |
 | `metrics.json` | scripts.eval_brain, scripts.train_brain | scripts.eval_brain, scripts.train_brain | - |
 | `optimize.json` | lab.optimize | web.server | - |
 | `plays.jsonl` | recorder | recorder, scripts.fast_feed_race, scripts.fastcast_check | - |
-| `probe.json` | scripts.multiview_probe, scripts.prime_multiview_probe | - | scripts.scout_probe |
+| `probe.json` | scripts.prime_multiview_probe | - | scripts.scout_probe |
 | `providers.json` | - | - | discovery.runtime, scripts.plan_tonight |
 | `qwen_model.json` | agent.kaggle.qwen_finetune | agent.kaggle.qwen_eval | - |
 | `redzone.db` | lab.night.run, scripts.fault_drill | - | platform.autofix, scripts.collect_live_test, scripts.prime_multiview_grade |
@@ -1093,7 +1057,7 @@ Files two or more modules name (the rest are in the JSON). Best effort from stri
 | `split_plan.json` | agent.kaggle.build_moments_kaggle | agent.kaggle.student_data | agent.kaggle.teacher_distill |
 | `splits.json` | noggin.value_shards | agent.kaggle.qwen_finetune, noggin.value_shards, scripts.kaggle_gamevalue, scripts.kaggle_gamevalue_select, scripts.value_leak_check | - |
 | `state.json` | agent.kaggle.data_fetch, agent.kaggle.qwen_finetune, showboard | agent.kaggle.data_fetch, agent.kaggle.qwen_finetune, web.show, scripts.deploy | agent.kaggle.fetch_sports_mlb |
-| `summary.json` | scripts.buffer_sweep, scripts.collect_live_test, scripts.publish_live_nights, scripts.redzone_reconstruct | web.phone_v2, scripts.night_report | supervisor |
+| `summary.json` | scripts.collect_live_test, scripts.publish_live_nights, scripts.redzone_reconstruct | web.phone_v2, scripts.night_report | supervisor |
 | `supervisor.jsonl` | supervisor | observability, platform.autofix, platform.night_ops, supervisor, scripts.collect_live_test, scripts.fault_drill | - |
 | `supervisor_cuts.jsonl` | supervisor | observability, scripts.collect_live_test | lab.decision_records, scripts.prime_multiview_grade |
 | `supervisor_moments.jsonl` | supervisor | observability, supervisor, scripts.collect_live_test | lab.decision_records |

@@ -493,7 +493,7 @@ Nick's crunch_now decision (possession-start entry), with the AI deciding when t
 - **Tried, no gain (factory test, 377 nights, big / crunch at the calib margin):**
   - cue-replay features (`--cue-feats`, the plays the cued rewind would replay): 91.6 / 92.2;
   - DAgger, 2 rounds. Oracle value-to-go labels (`oracle.value_to_go_cue`, the backward form of solve_cue, tested
-    equal to it) on the states the policy itself visits, 43M aggregate rows (`scripts/train_noggin_pick_dagger.py`):
+    equal to it) on the states the policy itself visits, 43M aggregate rows (`scripts/archive/train_noggin_pick_dagger.py`):
     92.0 / 92.0 at margin 0.05 (calib picks 0.0: 91.6 / 91.5).
 
   Against plain PICK-cue's 91.7 / 92.2, imitation has plateaued at about 94 % of the clairvoyant oracle. What's

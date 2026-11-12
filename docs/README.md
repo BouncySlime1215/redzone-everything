@@ -18,17 +18,14 @@ Not in this worktree (untracked in the main checkout, not listed): `docs/club/`,
 - [northstar.md](northstar.md) - [GEN] where we are vs perfect (measured, 2026-11-06)
 - [roadmap.md](roadmap.md) - [GEN] what next, ranked from roadmap.json
 - [research/README.md](research/README.md) - research index: findings, affected files, open questions
-- [plans/2026-11-08-fix-plan.md](plans/2026-11-08-fix-plan.md) - what to fix first (from the Nov 8 audits) and next steps, immediate and long term
 - [coordination.md](coordination.md) - how agents work together: roles, claims, hard rules and what enforces them, merge path
 - [system-map.md](system-map.md) - how the parts connect; `citymap.py --focus/--impact`, `/api/machines`, `scripts/why.py`
-- [audits/](audits/) - the six Nov 8 reviews: [decider](audits/2026-11-08-decider.md), [switch path](audits/2026-11-08-switch-path.md), [devices](audits/2026-11-08-devices.md), [feeds and scoring](audits/2026-11-08-feeds-scoring.md), [platform](audits/2026-11-08-platform.md), [rules and config](audits/2026-11-08-rules-and-config.md)
 
 ## Live status
 
 - [status.md](status.md) - board and queue **[STALE]** last update Nov 4 05:45 UTC; prefer handoff.md section 5
 - [integration.md](integration.md) - integration train: how PRs merge one at a time
 - [ci.md](ci.md) - what GitHub Actions runs
-- [tonight-checklist.md](tonight-checklist.md) - at-home setup checklist (Nov 3) **[STALE]** still linked by runbooks
 - [service-operation.md](service-operation.md) - run the app without Codex (launchd, logs)
 - [live-nights/README.md](live-nights/README.md) - real nights on Nick's TV: summary.json per night
 - [nights/2026-11-04.md](nights/2026-11-04.md) - night health report
@@ -36,7 +33,7 @@ Not in this worktree (untracked in the main checkout, not listed): `docs/club/`,
 - [nights/2026-11-06.md](nights/2026-11-06.md) - night health report
 - [nights/2026-11-07.md](nights/2026-11-07.md) - night health report
 - [nights/2026-11-10.md](nights/2026-11-10.md) - night health report
-- Data (not .md): `northstar-history.jsonl`, `roadmap.json`, `releases.json`, `catchup_ratchet.json`, `gate_baseline.json`, `grader_freeze.json`, `contract_baseline.json`, `families.json`, `scorecards-2026-11-02.json`, `tonight-risk-findings.json`, `label_checks/*.json`
+- Data (not .md): `northstar-history.jsonl`, `roadmap.json`, `releases.json`, `catchup_ratchet.json`, `gate_baseline.json`, `grader_freeze.json`, `contract_baseline.json`, `families.json`, `scorecards-2026-11-02.json`, `archive/tonight-risk-findings.json`, `label_checks/*.json`
 
 ## Architecture & contracts
 
@@ -50,23 +47,16 @@ Not in this worktree (untracked in the main checkout, not listed): `docs/club/`,
 - [noggin.md](noggin.md) - the Noggin: one brain, three layers
 - [noggin-foundation-model.md](noggin-foundation-model.md) - foundation model (NFM) design
 - [onebrain-migration.md](onebrain-migration.md) - folding every scorer into the Noggin
-- [brain3/REPORT.md](brain3/REPORT.md) - Brain v3 per-league models and gaps (Nov 3; STATUS.md and calibration PNGs beside it)
-- [brain3/STATUS.md](brain3/STATUS.md) - Brain v3 status note
 - [reasoner.md](reasoner.md) - live game reasoner status (stopped early, Nov 3)
 - [distill.md](distill.md) - big teacher, small students on Kaggle
-- [decision-core-next.md](decision-core-next.md) - decision core findings (Nov 3): stoppage lengths by type
 - [decision-records.md](decision-records.md) - Teacher nightly decision-record JSONL format
 **Switching and timing**
 - [timing.md](timing.md) - measured switch timing: feed lag, landing offsets (largest timing doc)
 - [instant-switching.md](instant-switching.md) - TV changes input while sticks keep playing (HDMI)
-- [provider-routing-readiness.md](provider-routing-readiness.md) - provider routing and navigation evidence
-- [prime-multiview-calibration.md](prime-multiview-calibration.md) - Prime NBA multiview live calibration plan (flag off)
 - [device-trial-2026-11-02.md](device-trial-2026-11-02.md) - first supervised device trial (ADB keys) **[STALE]**
 **Eval, grading, testing**
 - [eval-data.md](eval-data.md) - pinned eval dataset (eval-data-v1) and how to fetch
 - [grading.md](grading.md) - training and grading rules ("grading even sharper")
-- [replay-testing.md](replay-testing.md) - testing when no live games: replay vs archived feed
-- [verification-2026-11-02.md](verification-2026-11-02.md) - software verification, archived-event sims **[STALE]**
 **Data sources** (folder `datasources/`; also .json ledgers `datasources/scout.json`, `datasources/pbp-ledger.json`, `datasources/terms.json`)
 - [data-sources.md](data-sources.md) - license, terms and rate limits (summary)
 - [datasources/sources-catalog.md](datasources/sources-catalog.md) - Data sources catalog (Noggin world model)
@@ -102,7 +92,6 @@ Not in this worktree (untracked in the main checkout, not listed): `docs/club/`,
 ## State machines
 
 - [state-machines.md](state-machines.md) - [GEN] all 52 machines: states, edges, owners (`scripts/state_machines.py`; live `GET /api/machines`)
-- [plans/2026-11-08-after-state-machines.md](plans/2026-11-08-after-state-machines.md) - next steps after fsm conversion, checked against research (graph map, why-codes, time machine)
 
 ## Memory (decisions, lessons, runbooks)
 
@@ -153,34 +142,23 @@ Full index with findings, files affected, open questions: [research/README.md](r
 - [research/2026-11-08/viewer-experience.md](research/2026-11-08/viewer-experience.md) - Nov 8; UX of auto-switching. Interrupt only at boundaries, cheap landings, small user control; no published RedZone switch-rate data.
 - [research/2026-11-08/home-reliability.md](research/2026-11-08/home-reliability.md) - Nov 8; 8 GB Mac. Governor reads RSS (misleading under swap); add footprint, leak telemetry, restart intensity limit.
 **Earlier research (Nov 3-4)**
-- [research/2026-11-03/00-PLAN.md](research/2026-11-03/00-PLAN.md) - Nov 3; merged queue. Live app has about 0 s data lead; backtests assumed 35 s.
-- [research/2026-11-03/01-inputs-and-sources.md](research/2026-11-03/01-inputs-and-sources.md) - Nov 3; model inputs. ESPN plays carry wallclock in all six leagues.
-- [research/2026-11-03/02-capabilities-and-tasks.md](research/2026-11-03/02-capabilities-and-tasks.md) - Nov 3; what models should do. Timing is GBM + rules; the 1.7B LLM writes words only.
-- [research/2026-11-03/03-switch-timing.md](research/2026-11-03/03-switch-timing.md) - Nov 3; cut only in dead time. Data lead decides everything.
 - [research/2026-11-03/04-architecture-distillation.md](research/2026-11-03/04-architecture-distillation.md) - Nov 3; train on Kaggle, run in about 1.5-2 GB.
 - [research/2026-11-03/05-eval-and-learning-loop.md](research/2026-11-03/05-eval-and-learning-loop.md) - Nov 3; gates are pooled point estimates; use confidence intervals.
 - [research/watch-science-playbook.md](research/watch-science-playbook.md) - Nov 4; rank on suspense, replay on surprise, care multiplies suspense.
 - [research/arenaswap-compare.md](research/arenaswap-compare.md) - Nov 4; ArenaSwap comparison, ideas only, no code copied.
-- Scripts (not .md): `research/2026-11-03/analysis/dead_windows.py`
+- Scripts (not .md): `archive/research/2026-11-03/analysis/dead_windows.py`
 
 ## Plans
 
 - [plans/2026-11-09-anchor-mode.md](plans/2026-11-09-anchor-mode.md) - anchor mode (the crunch-time anchor in the PARK show)
 - [plans/2026-11-09-value-v2.md](plans/2026-11-09-value-v2.md) - value v2: graded moments (`redzone/moments/value2.py`)
-- [plans/2026-11-04-noggin-master-plan.md](plans/2026-11-04-noggin-master-plan.md) - The Noggin master plan: becoming THE sports AI
-- [plans/2026-11-05-brain-engines.md](plans/2026-11-05-brain-engines.md) - Two 24/7 brain engines: the context and hype data engine, and the test factory
-- [plans/2026-11-05-compressed-4day.md](plans/2026-11-05-compressed-4day.md) - Compressed plan: master plan v2, Phases 0-2 by Sun Nov 8
 - [plans/2026-11-05-data-division.md](plans/2026-11-05-data-division.md) - Data Division: org chart, id blocks, first sources and pacing
 - [plans/2026-11-05-rc8-buffer-gate.md](plans/2026-11-05-rc8-buffer-gate.md) - RC8 gate: the time-shift buffer ON per league (pre-registered before tonight's s
 - [plans/2026-11-05-test-factory.md](plans/2026-11-05-test-factory.md) - Test Factory (engine 2): plan
-- [plans/2026-11-07-world-model-100m.md](plans/2026-11-07-world-model-100m.md) - Saturday world model (~100M params), plan B data
 - [experiments.md](experiments.md) - ranked experiment queue (150 KB)
-- [cycles/backlog.md](cycles/backlog.md) - ranked backlogs
-- [cycles/idea-bank.md](cycles/idea-bank.md) - idea bank: "100x better"
 
 ## Reports & gate history
 
-- [gate-report-rc5.md](gate-report-rc5.md) - RC5 candidate gate triage (latest gate report)
 **Pre-registrations** (`prereg/`; scripts/json beside them)
 - [prereg/exp-609.md](prereg/exp-609.md), [prereg/exp-610.md](prereg/exp-610.md) - newest pre-registrations
 - [prereg/exp-023.md](prereg/exp-023.md) - EXP-023 pre-registration: belief tracker
@@ -202,70 +180,108 @@ Full index with findings, files affected, open questions: [research/README.md](r
 - [prereg/exp-608.md](prereg/exp-608.md) - EXP-608: Prime buffered by pause on the hidden stick (Nov 7, 2026)
 - [prereg/v3-reads/README.md](prereg/v3-reads/README.md) - first-pass reads on eval-data-v3 NBA nights (json beside)
 - [prereg/v3-reads/your_team_crunch_misses.md](prereg/v3-reads/your_team_crunch_misses.md) - your-team crunch misses, personal use
-- [replay-results-20261101.md](replay-results-20261101.md) - Nov 1 replay results (+ .json) **[STALE]**
 
 ## Archive / dated notes
 
-**Old gate reports (superseded by gate-report-rc5.md and northstar.md)**
-- [gate-report-rc1.md](gate-report-rc1.md) - RC1 gate **[STALE]** superseded by RC2/RC5
-- [gate-report-rc2.md](gate-report-rc2.md) - RC2 gate **[STALE]** superseded by RC5
-- [gate-report-rc3.md](gate-report-rc3.md) - RC3 gate **[STALE]** deploy-fix only, no app change
 **Dated build notes**
 - [build-plan-2026-11-03.md](build-plan-2026-11-03.md) - Nov 3 build plan **[STALE]** day is over
-- [morning-report-2026-11-03.md](morning-report-2026-11-03.md) - Nov 3 morning report **[STALE]**
 - [live-test-wed.md](live-test-wed.md) - Wed Nov 4 live-test script **[STALE]** one-off
-- [cloud-build-prompts.md](cloud-build-prompts.md) - cloud session prompts **[STALE]** Nov 3-4
-- [cloud-training-prompt.md](cloud-training-prompt.md) - cloud training prompt **[STALE]** Nov 3
 **Planner cycles (Nov 4-5; plan/review per cycle, gate-locked-*.md = copied gate tables)**
-- [cycles/01/plan.md](cycles/01/plan.md) - Cycle 01 plan (Start Planner), Wed Nov 4, 3:00 AM ET (08:00 UTC)
-- [cycles/01/review.md](cycles/01/review.md) - Cycle 01 review (End Planner / Integrator), Wed Nov 4, 08:00 to 09:50 UTC
-- [cycles/02/plan.md](cycles/02/plan.md) - Cycle 02 plan (Start Planner), Wed Nov 4, ~10:00 to 13:30 UTC
-- [cycles/02/review.md](cycles/02/review.md) - Cycle 02 review (Integrator), Wed Nov 4, 10:00 to 12:20 UTC (lean: usage brake)
-- [cycles/03/plan.md](cycles/03/plan.md) - Cycle 03 plan (Start Planner), Wed Nov 4, ~12:15 to 15:30 UTC
-- [cycles/03/review.md](cycles/03/review.md) - Cycle 03 review (End Planner / Integrator), Wed Nov 4, 12:15 to 15:30 UTC
-- [cycles/04/gate-locked-candidate.md](cycles/04/gate-locked-candidate.md) - gate-locked-candidate.md
-- [cycles/04/gate-locked-live.md](cycles/04/gate-locked-live.md) - gate-locked-live.md
-- [cycles/04/plan.md](cycles/04/plan.md) - Cycle 04 plan (Start Planner), Wed Nov 4, ~15:30 to 19:00 UTC (before tonight's 
-- [cycles/04/review.md](cycles/04/review.md) - Cycle 04 review (End Planner / Integrator), Wed Nov 4, 15:30 to 19:45 UTC
-- [cycles/05/gate-locked-candidate.md](cycles/05/gate-locked-candidate.md) - gate-locked-candidate.md
-- [cycles/05/gate-locked-live.md](cycles/05/gate-locked-live.md) - gate-locked-live.md
-- [cycles/05/plan.md](cycles/05/plan.md) - Cycle 05 plan (Start Planner), Wed Nov 4, 19:55 to 21:25 UTC (90-min clock)
-- [cycles/05/review.md](cycles/05/review.md) - Cycle 05 review (End Planner / Integrator), Wed Nov 4, 19:55 to 21:25 UTC
-- [cycles/06/gate-locked-candidate.md](cycles/06/gate-locked-candidate.md) - gate-locked-candidate.md
-- [cycles/06/gate-locked-live.md](cycles/06/gate-locked-live.md) - gate-locked-live.md
-- [cycles/06/plan.md](cycles/06/plan.md) - Cycle 06 plan (Start Planner), Wed Nov 4, ~21:00 to 22:00 UTC (60-min rhythm)
-- [cycles/06/review.md](cycles/06/review.md) - Cycle 06 review (End Planner / Integrator), Wed Nov 4, 21:25 to 22:35 UTC
-- [cycles/07/gate-locked-candidate.md](cycles/07/gate-locked-candidate.md) - gate-locked-candidate.md
-- [cycles/07/gate-locked-live.md](cycles/07/gate-locked-live.md) - gate-locked-live.md
-- [cycles/07/plan.md](cycles/07/plan.md) - Cycle 07 plan (Start Planner), Wed Nov 4, ~22:35 to 23:35 UTC (60-min rhythm)
-- [cycles/07/review.md](cycles/07/review.md) - Cycle 07 review (End Planner / Integrator), Wed Nov 4, 22:35 to 23:55 UTC
-- [cycles/08/plan.md](cycles/08/plan.md) - Cycle 08 plan (Start Planner), Wed Nov 4, ~23:15 to 00:15 UTC (60-min rhythm)
-- [cycles/08/review.md](cycles/08/review.md) - Cycle 08 review (End Planner / Integrator), Thu Nov 5, 23:55 to 01:15 UTC
-- [cycles/09/plan.md](cycles/09/plan.md) - Cycle 09 plan (Start Planner), Thu Nov 5, ~00:15 to 01:15 UTC (60-min rhythm, a 
-- [cycles/10/plan.md](cycles/10/plan.md) - Cycle 10 plan (Start Planner), Thu Nov 5, ~01:05 to 02:05 UTC (60-min rhythm)
-- [cycles/11/plan.md](cycles/11/plan.md) - Cycle 11 plan (Start Planner), Thu Nov 5, ~02:00 to 03:00 UTC (60-min rhythm)
 - [cycles/12/plan.md](cycles/12/plan.md) - Cycle 12 plan (Start Planner; corrected 03:05 UTC), Thu Nov 5, ~03:00 to 04:00 U
-- [cycles/13/plan.md](cycles/13/plan.md) - Cycle 13 plan (Start Planner), Thu Nov 5, ~04:00 to 05:00 UTC (60-min rhythm, ov
-- [cycles/14/plan.md](cycles/14/plan.md) - Cycle 14 plan (Start Planner), Thu Nov 5, ~05:00 to 06:00 UTC (60-min rhythm, ov
-- [cycles/14/review.md](cycles/14/review.md) - Cycles 09-15 review (integrator), Wed Nov 4 9:30 PM to Thu Nov 5 1:30 AM ET
-- [cycles/16/plan.md](cycles/16/plan.md) - Cycle 16 plan (Start Planner), Thu Nov 5, ~07:00 to 08:00 UTC: NBA first, then N
-- [cycles/17/plan.md](cycles/17/plan.md) - Cycle 17 plan (Start Planner), Thu Nov 5, ~08:00 to 09:00 UTC: sync #1, then NBA
-- [cycles/18/plan.md](cycles/18/plan.md) - Cycle 18 plan (Start Planner), Thu Nov 5, ~09:00 to 10:00 UTC: sync, then NBA, t
 - [cycles/19/plan.md](cycles/19/plan.md) - Cycle 19 plan (Start Planner), Thu Nov 5, ~10:00 to 11:00 UTC: sync, then NBA, t
-- [cycles/24/plan.md](cycles/24/plan.md) - Cycle 24 plan (Start Planner), Thu Nov 5, ~14:15 UTC: the time-shift buffer beco
 
-## Cleanup candidates (suggested, nothing done)
+## Archived (`docs/archive/`, moved Nov 11)
+
+Kept for history, not current; no code or CI reads them. What lives there and how to restore a file: [archive/README.md](archive/README.md). Grouped by the section each one used to sit in.
+
+- [archive/README.md](archive/README.md) - what lives in docs/archive/ and how to restore a doc
+**Repo root**
+- [archive/RESUME.md](archive/RESUME.md) - Nov 2 resume checkpoint (Home-screen switching era) **[STALE]**
+**Start here**
+- [archive/plans/2026-11-08-fix-plan.md](archive/plans/2026-11-08-fix-plan.md) - what to fix first (from the Nov 8 audits) and next steps, immediate and long term
+- [archive/audits/](archive/audits/) - the six Nov 8 reviews: [decider](archive/audits/2026-11-08-decider.md), [switch path](archive/audits/2026-11-08-switch-path.md), [devices](archive/audits/2026-11-08-devices.md), [feeds and scoring](archive/audits/2026-11-08-feeds-scoring.md), [platform](archive/audits/2026-11-08-platform.md), [rules and config](archive/audits/2026-11-08-rules-and-config.md)
+**Live status**
+- [archive/tonight-checklist.md](archive/tonight-checklist.md) - at-home setup checklist (Nov 3) **[STALE]** still linked by runbooks
+**Architecture & contracts**
+- [archive/brain3/REPORT.md](archive/brain3/REPORT.md) - Brain v3 per-league models and gaps (Nov 3; STATUS.md and calibration PNGs beside it)
+- [archive/brain3/STATUS.md](archive/brain3/STATUS.md) - Brain v3 status note
+- [archive/decision-core-next.md](archive/decision-core-next.md) - decision core findings (Nov 3): stoppage lengths by type
+- [archive/provider-routing-readiness.md](archive/provider-routing-readiness.md) - provider routing and navigation evidence
+- [archive/prime-multiview-calibration.md](archive/prime-multiview-calibration.md) - Prime NBA multiview live calibration plan (flag off)
+- [archive/replay-testing.md](archive/replay-testing.md) - testing when no live games: replay vs archived feed
+- [archive/verification-2026-11-02.md](archive/verification-2026-11-02.md) - software verification, archived-event sims **[STALE]**
+**State machines**
+- [archive/plans/2026-11-08-after-state-machines.md](archive/plans/2026-11-08-after-state-machines.md) - next steps after fsm conversion, checked against research (graph map, why-codes, time machine)
+**Research**
+- [archive/research/2026-11-03/00-PLAN.md](archive/research/2026-11-03/00-PLAN.md) - Nov 3; merged queue. Live app has about 0 s data lead; backtests assumed 35 s.
+- [archive/research/2026-11-03/01-inputs-and-sources.md](archive/research/2026-11-03/01-inputs-and-sources.md) - Nov 3; model inputs. ESPN plays carry wallclock in all six leagues.
+- [archive/research/2026-11-03/02-capabilities-and-tasks.md](archive/research/2026-11-03/02-capabilities-and-tasks.md) - Nov 3; what models should do. Timing is GBM + rules; the 1.7B LLM writes words only.
+- [archive/research/2026-11-03/03-switch-timing.md](archive/research/2026-11-03/03-switch-timing.md) - Nov 3; cut only in dead time. Data lead decides everything.
+**Plans**
+- [archive/plans/2026-11-04-noggin-master-plan.md](archive/plans/2026-11-04-noggin-master-plan.md) - The Noggin master plan: becoming THE sports AI
+- [archive/plans/2026-11-05-brain-engines.md](archive/plans/2026-11-05-brain-engines.md) - Two 24/7 brain engines: the context and hype data engine, and the test factory
+- [archive/plans/2026-11-05-compressed-4day.md](archive/plans/2026-11-05-compressed-4day.md) - Compressed plan: master plan v2, Phases 0-2 by Sun Nov 8
+- [archive/plans/2026-11-07-world-model-100m.md](archive/plans/2026-11-07-world-model-100m.md) - Saturday world model (~100M params), plan B data
+- [archive/cycles/backlog.md](archive/cycles/backlog.md) - ranked backlogs
+- [archive/cycles/idea-bank.md](archive/cycles/idea-bank.md) - idea bank: "100x better"
+**Reports & gate history**
+- [archive/gate-report-rc5.md](archive/gate-report-rc5.md) - RC5 candidate gate triage (latest gate report)
+- [archive/replay-results-20261101.md](archive/replay-results-20261101.md) - Nov 1 replay results (+ .json) **[STALE]**
+**Old gate reports (superseded by gate-report-rc5.md and northstar.md)**
+- [archive/gate-report-rc1.md](archive/gate-report-rc1.md) - RC1 gate **[STALE]** superseded by RC2/RC5
+- [archive/gate-report-rc2.md](archive/gate-report-rc2.md) - RC2 gate **[STALE]** superseded by RC5
+- [archive/gate-report-rc3.md](archive/gate-report-rc3.md) - RC3 gate **[STALE]** deploy-fix only, no app change
+**Dated build notes**
+- [archive/morning-report-2026-11-03.md](archive/morning-report-2026-11-03.md) - Nov 3 morning report **[STALE]**
+- [archive/cloud-build-prompts.md](archive/cloud-build-prompts.md) - cloud session prompts **[STALE]** Nov 3-4
+- [archive/cloud-training-prompt.md](archive/cloud-training-prompt.md) - cloud training prompt **[STALE]** Nov 3
+- [archive/cycles/01/plan.md](archive/cycles/01/plan.md) - Cycle 01 plan (Start Planner), Wed Nov 4, 3:00 AM ET (08:00 UTC)
+- [archive/cycles/01/review.md](archive/cycles/01/review.md) - Cycle 01 review (End Planner / Integrator), Wed Nov 4, 08:00 to 09:50 UTC
+- [archive/cycles/02/plan.md](archive/cycles/02/plan.md) - Cycle 02 plan (Start Planner), Wed Nov 4, ~10:00 to 13:30 UTC
+- [archive/cycles/02/review.md](archive/cycles/02/review.md) - Cycle 02 review (Integrator), Wed Nov 4, 10:00 to 12:20 UTC (lean: usage brake)
+- [archive/cycles/03/plan.md](archive/cycles/03/plan.md) - Cycle 03 plan (Start Planner), Wed Nov 4, ~12:15 to 15:30 UTC
+- [archive/cycles/03/review.md](archive/cycles/03/review.md) - Cycle 03 review (End Planner / Integrator), Wed Nov 4, 12:15 to 15:30 UTC
+- [archive/cycles/04/gate-locked-candidate.md](archive/cycles/04/gate-locked-candidate.md) - gate-locked-candidate.md
+- [archive/cycles/04/gate-locked-live.md](archive/cycles/04/gate-locked-live.md) - gate-locked-live.md
+- [archive/cycles/04/plan.md](archive/cycles/04/plan.md) - Cycle 04 plan (Start Planner), Wed Nov 4, ~15:30 to 19:00 UTC (before tonight's 
+- [archive/cycles/04/review.md](archive/cycles/04/review.md) - Cycle 04 review (End Planner / Integrator), Wed Nov 4, 15:30 to 19:45 UTC
+- [archive/cycles/05/gate-locked-candidate.md](archive/cycles/05/gate-locked-candidate.md) - gate-locked-candidate.md
+- [archive/cycles/05/gate-locked-live.md](archive/cycles/05/gate-locked-live.md) - gate-locked-live.md
+- [archive/cycles/05/plan.md](archive/cycles/05/plan.md) - Cycle 05 plan (Start Planner), Wed Nov 4, 19:55 to 21:25 UTC (90-min clock)
+- [archive/cycles/05/review.md](archive/cycles/05/review.md) - Cycle 05 review (End Planner / Integrator), Wed Nov 4, 19:55 to 21:25 UTC
+- [archive/cycles/06/gate-locked-candidate.md](archive/cycles/06/gate-locked-candidate.md) - gate-locked-candidate.md
+- [archive/cycles/06/gate-locked-live.md](archive/cycles/06/gate-locked-live.md) - gate-locked-live.md
+- [archive/cycles/06/plan.md](archive/cycles/06/plan.md) - Cycle 06 plan (Start Planner), Wed Nov 4, ~21:00 to 22:00 UTC (60-min rhythm)
+- [archive/cycles/06/review.md](archive/cycles/06/review.md) - Cycle 06 review (End Planner / Integrator), Wed Nov 4, 21:25 to 22:35 UTC
+- [archive/cycles/07/gate-locked-candidate.md](archive/cycles/07/gate-locked-candidate.md) - gate-locked-candidate.md
+- [archive/cycles/07/gate-locked-live.md](archive/cycles/07/gate-locked-live.md) - gate-locked-live.md
+- [archive/cycles/07/plan.md](archive/cycles/07/plan.md) - Cycle 07 plan (Start Planner), Wed Nov 4, ~22:35 to 23:35 UTC (60-min rhythm)
+- [archive/cycles/07/review.md](archive/cycles/07/review.md) - Cycle 07 review (End Planner / Integrator), Wed Nov 4, 22:35 to 23:55 UTC
+- [archive/cycles/08/plan.md](archive/cycles/08/plan.md) - Cycle 08 plan (Start Planner), Wed Nov 4, ~23:15 to 00:15 UTC (60-min rhythm)
+- [archive/cycles/08/review.md](archive/cycles/08/review.md) - Cycle 08 review (End Planner / Integrator), Thu Nov 5, 23:55 to 01:15 UTC
+- [archive/cycles/09/plan.md](archive/cycles/09/plan.md) - Cycle 09 plan (Start Planner), Thu Nov 5, ~00:15 to 01:15 UTC (60-min rhythm, a 
+- [archive/cycles/10/plan.md](archive/cycles/10/plan.md) - Cycle 10 plan (Start Planner), Thu Nov 5, ~01:05 to 02:05 UTC (60-min rhythm)
+- [archive/cycles/11/plan.md](archive/cycles/11/plan.md) - Cycle 11 plan (Start Planner), Thu Nov 5, ~02:00 to 03:00 UTC (60-min rhythm)
+- [archive/cycles/13/plan.md](archive/cycles/13/plan.md) - Cycle 13 plan (Start Planner), Thu Nov 5, ~04:00 to 05:00 UTC (60-min rhythm, ov
+- [archive/cycles/14/plan.md](archive/cycles/14/plan.md) - Cycle 14 plan (Start Planner), Thu Nov 5, ~05:00 to 06:00 UTC (60-min rhythm, ov
+- [archive/cycles/14/review.md](archive/cycles/14/review.md) - Cycles 09-15 review (integrator), Wed Nov 4 9:30 PM to Thu Nov 5 1:30 AM ET
+- [archive/cycles/16/plan.md](archive/cycles/16/plan.md) - Cycle 16 plan (Start Planner), Thu Nov 5, ~07:00 to 08:00 UTC: NBA first, then N
+- [archive/cycles/17/plan.md](archive/cycles/17/plan.md) - Cycle 17 plan (Start Planner), Thu Nov 5, ~08:00 to 09:00 UTC: sync #1, then NBA
+- [archive/cycles/18/plan.md](archive/cycles/18/plan.md) - Cycle 18 plan (Start Planner), Thu Nov 5, ~09:00 to 10:00 UTC: sync, then NBA, t
+- [archive/cycles/24/plan.md](archive/cycles/24/plan.md) - Cycle 24 plan (Start Planner), Thu Nov 5, ~14:15 UTC: the time-shift buffer beco
+
+## Cleanup candidates (suggested; the Nov 11 archive pass did the parts marked done)
 
 1. `status.md` vs `handoff.md` section 5 vs `integration.md`: three status boards, status.md is 4 days old. Action: fold status.md into handoff.md or regenerate it; add a banner to status.md.
-2. `gate-report-rc1/rc2/rc3.md` plus `cycles/0[4-7]/gate-locked-*.md`: `gate-locked-live.md` is byte-identical in 3 of 4 cycles (04-07); `gate-locked-candidate.md` is identical in 2 of 3 (05-07). Action: keep one copy plus a pointer, or move all to `docs/archive/` (needs link fix in CI first).
+2. `gate-report-rc1/rc2/rc3.md` plus `cycles/0[4-7]/gate-locked-*.md`: `gate-locked-live.md` is byte-identical in 3 of 4 cycles (04-07); `gate-locked-candidate.md` is identical in 2 of 3 (05-07). Action: keep one copy plus a pointer, or move all to `docs/archive/` (needs link fix in CI first). Done Nov 11: all moved to `docs/archive/`, links fixed.
 3. `nights/2026-11-04..06.md`: tiny generated stubs (about 286 bytes each). Action: keep generated, or collapse into one table.
-4. `noggin.md` (37 KB) vs `noggin-foundation-model.md` vs `onebrain-migration.md` vs `plans/2026-11-04-noggin-master-plan.md` (v2 untracked in main): overlapping Noggin design. Action: one canonical doc, others marked superseded.
-5. `plans/2026-11-05-compressed-4day.md` vs `plans/2026-11-04-noggin-master-plan.md` vs `plans/2026-11-07-world-model-100m.md`: stacked plans. Action: add status line to each.
+4. `noggin.md` (37 KB) vs `noggin-foundation-model.md` vs `onebrain-migration.md` vs `archive/plans/2026-11-04-noggin-master-plan.md` (v2 untracked in main): overlapping Noggin design. Action: one canonical doc, others marked superseded.
+5. `plans/2026-11-05-compressed-4day.md` vs `plans/2026-11-04-noggin-master-plan.md` vs `plans/2026-11-07-world-model-100m.md`: stacked plans. Action: add status line to each. Done Nov 11: all three in `docs/archive/plans/`.
 6. `data-sources.md` vs `datasources/sources-catalog.md` vs `datasources/scout-ledger.md` vs `datasources/data-ledger.md`: same sources, four views. Action: data-sources.md becomes a 10-line pointer.
-7. `instant-switching.md` vs `memory/runbooks/tv-setup.md` vs `tonight-checklist.md`: TV setup in three places. Action: runbook links only to instant-switching.
-8. `cloud-build-prompts.md` vs `cloud-training-prompt.md`: both one-off cloud prompts. Action: merge or archive.
+7. `instant-switching.md` vs `memory/runbooks/tv-setup.md` vs `archive/tonight-checklist.md`: TV setup in three places. Action: runbook links only to instant-switching.
+8. `cloud-build-prompts.md` vs `cloud-training-prompt.md`: both one-off cloud prompts. Action: merge or archive. Done Nov 11: both in `docs/archive/`.
 9. `memory/decisions.md` (154 KB) and `experiments.md` (150 KB): too big to skim. Action: split by month, keep an index on top (check_memory.py and CI link to decisions.md, so keep the path).
 10. `context/claude-memory/*` duplicates Nick's global Claude memory. Action: confirm still the source of truth, else delete.
-11. `research/2026-11-03/03-switch-timing.md` vs `research/2026-11-08/live-data-feeds.md` and `stream-delay-sync.md`: same feed-lag topic, newer docs refine older numbers. Action: add "see also" lines.
-12. Non-doc clutter in docs: `sync/yttv_tests/work/dry1/*.log` (50 logs of 37 bytes), `replay-results-20261101.json`. Action: git-ignore or move out of docs/.
+11. `archive/research/2026-11-03/03-switch-timing.md` vs `research/2026-11-08/live-data-feeds.md` and `stream-delay-sync.md`: same feed-lag topic, newer docs refine older numbers. Action: add "see also" lines.
+12. Non-doc clutter in docs: `sync/yttv_tests/work/dry1/*.log` (50 logs of 37 bytes), `replay-results-20261101.json`. Action: git-ignore or move out of docs/. Done Nov 11 for the json (`docs/archive/`).
 

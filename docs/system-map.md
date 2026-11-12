@@ -46,7 +46,7 @@ reason to `data/transitions.jsonl` (survives restarts).
 3. `control.py` flips only to a ready standby (`control.standby` state `ready` / `snap_parked`).
 4. `lab/leverage.py` and the scorecards grade it afterwards; CI counters gate PRs.
 
-Known gaps from the 2026-11-08 audits ([audits](audits/)): college leagues and MLB are not covered by the
+Known gaps from the 2026-11-08 audits ([audits](archive/audits/)): college leagues and MLB are not covered by the
 leverage grader or several entry rules; user taps can skip the leave check. See the fix plan.
 
 ## Who owns what

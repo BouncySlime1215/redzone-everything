@@ -303,7 +303,6 @@
     "redzone/platform/autofix.py",
     "scripts/backtest.py",
     "scripts/build_reasoner_data.py",
-    "scripts/delay_report.py",
     "scripts/eval.py",
     "scripts/eval_sports.py"
    ],
@@ -341,7 +340,6 @@
     "redzone/discovery/yttv.py",
     "redzone/tvsetup.py",
     "scripts/doctor.py",
-    "scripts/multiview_probe.py",
     "scripts/prime_multiview_probe.py",
     "scripts/providers_check.py",
     "scripts/rz.py",
@@ -469,11 +467,8 @@
   "data/redzone.db": {
    "readers": [],
    "users": [
-    "scripts/also_close_line.py",
-    "scripts/delay_report.py",
     "scripts/disk_guard.py",
     "scripts/export_decision_records.py",
-    "scripts/orient_line.py",
     "scripts/press_probe.py",
     "scripts/screen_lab.py",
     "scripts/timing_report.py"
@@ -563,13 +558,6 @@
    "users": [
     "redzone/tv.py",
     "scripts/northstar.py"
-   ],
-   "writers": []
-  },
-  "data/tv_local_probe.json": {
-   "readers": [],
-   "users": [
-    "scripts/tv_local_probe.py"
    ],
    "writers": []
   },
@@ -773,13 +761,6 @@
     "redzone/tuners/yttv_edge_probe.py"
    ],
    "writers": []
-  },
-  "entry_cal.json": {
-   "readers": [],
-   "users": [],
-   "writers": [
-    "scripts/calibrate_brain3.py"
-   ]
   },
   "entry_cal_v3.json": {
    "readers": [
@@ -1082,8 +1063,7 @@
     "scripts/build_training3.py",
     "scripts/kaggle_gamevalue.py",
     "scripts/kaggle_pbp_crew.py",
-    "scripts/noggin_factory.py",
-    "scripts/replay_check.py"
+    "scripts/noggin_factory.py"
    ]
   },
   "manifest_augment.json": {
@@ -1098,13 +1078,6 @@
    "users": [],
    "writers": [
     "scripts/synth_build.py"
-   ]
-  },
-  "manual_replay_cues.json": {
-   "readers": [],
-   "users": [],
-   "writers": [
-    "scripts/replay_check.py"
    ]
   },
   "meta.jsonl": {
@@ -1123,15 +1096,6 @@
    "writers": [
     "scripts/eval_brain.py",
     "scripts/train_brain.py"
-   ]
-  },
-  "metrics_v3.json": {
-   "readers": [
-    "scripts/train_brain3.py"
-   ],
-   "users": [],
-   "writers": [
-    "scripts/train_brain3.py"
    ]
   },
   "moved.json": {
@@ -1197,7 +1161,6 @@
     "scripts/scout_probe.py"
    ],
    "writers": [
-    "scripts/multiview_probe.py",
     "scripts/prime_multiview_probe.py"
    ]
   },
@@ -1432,7 +1395,6 @@
     "redzone/supervisor.py"
    ],
    "writers": [
-    "scripts/buffer_sweep.py",
     "scripts/collect_live_test.py",
     "scripts/publish_live_nights.py",
     "scripts/redzone_reconstruct.py"
@@ -1710,13 +1672,6 @@
    ],
    "users": [
     "redzone/lab/night/run.py"
-   ],
-   "writers": []
-  },
-  "unused_default_config.yaml": {
-   "readers": [],
-   "users": [
-    "scripts/replay_check.py"
    ],
    "writers": []
   },
@@ -4137,8 +4092,6 @@
     "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
-    "scripts/hold_left_probe.py",
-    "scripts/multiview_probe.py",
     "scripts/park_hands_live.py",
     "scripts/park_prime_accept.py",
     "scripts/plan_tonight.py",
@@ -4146,8 +4099,7 @@
     "scripts/queue_trace.py",
     "scripts/rz.py",
     "scripts/tv_practice.py",
-    "scripts/watchdog_try.py",
-    "scripts/yttv_search_tune_try.py"
+    "scripts/watchdog_try.py"
    ],
    "owner": "SWITCHING",
    "role": "Where can you actually watch a game?",
@@ -4247,7 +4199,6 @@
     "redzone/lab/evaldata.py",
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
-    "redzone/lab/orient.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/tune.py",
@@ -4270,14 +4221,12 @@
     "scripts/bucket_join_measure.py",
     "scripts/build_reasoner_data.py",
     "scripts/canary.py",
-    "scripts/delay_report.py",
     "scripts/eval.py",
     "scripts/eval_reasoner.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
-    "scripts/hold_left_probe.py",
     "scripts/holdset_public.py",
     "scripts/night_report.py",
     "scripts/park_hands_live.py",
@@ -4289,7 +4238,6 @@
     "scripts/queue_trace.py",
     "scripts/rc8_flip.py",
     "scripts/rc8_gate_report.py",
-    "scripts/replay_check.py",
     "scripts/rz.py",
     "scripts/service.py",
     "scripts/service_runtime.py",
@@ -5314,7 +5262,6 @@
     "redzone/lab/night/run.py",
     "redzone/supervisor.py",
     "scripts/fault_drill.py",
-    "scripts/hold_left_probe.py",
     "scripts/park_hands_live.py",
     "scripts/park_prime_accept.py",
     "scripts/rz.py",
@@ -5487,8 +5434,7 @@
     "redzone/contracts/legacy.py",
     "redzone/contracts/switching.py",
     "redzone/contracts/views.py",
-    "redzone/decider/decider.py",
-    "redzone/tuners/multiview.py"
+    "redzone/decider/decider.py"
    ],
    "owner": "DECISION",
    "role": "The decision core: ONE expected-value function that every action is chosen by.",
@@ -5968,7 +5914,6 @@
     "redzone/lab/syncsim.py",
     "redzone/noggin/belief.py",
     "redzone/supervisor.py",
-    "scripts/delay_report.py",
     "scripts/kaggle_gamevalue_holdset.py",
     "scripts/veto_audit.py"
    ],
@@ -7049,33 +6994,6 @@
     "untagged"
    ]
   },
-  "redzone/lab/also_close.py": {
-   "calls": [
-    "redzone/lab/night_ab.py:compare"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/lab/night_ab.py"
-   ],
-   "kind": "module",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [
-    "scripts/also_close_line.py"
-   ],
-   "owner": "unowned",
-   "role": "[EXP-039] Grade the \"Also close\" line: does showing other late, close games as text cut the curiosity switches (manual switches) without costing big plays?",
-   "serves": [
-    "Big plays live or replayed within 3 min"
-   ]
-  },
   "redzone/lab/backtest.py": {
    "calls": [
     "redzone/channels.py:redzone_on",
@@ -7167,7 +7085,6 @@
     "scripts/backtest.py",
     "scripts/bucket_join_measure.py",
     "scripts/buffer_shadow_grade.py",
-    "scripts/buffer_sweep.py",
     "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
@@ -7219,9 +7136,7 @@
     "declares": [],
     "drives": []
    },
-   "outputs": [
-    "scripts/calibrate_brain3.py"
-   ],
+   "outputs": [],
    "owner": "unowned",
    "role": "Calibrate Brain v3's cautious restart bound (the decision core's break budget) per stoppage type.",
    "serves": [
@@ -7253,58 +7168,10 @@
    },
    "outputs": [
     "redzone/lab/brain3cal.py",
-    "redzone/lab/brain3fit.py",
     "scripts/build_training3.py"
    ],
    "owner": "unowned",
    "role": "Brain v3 training tables: one row per logged event, with the v3 sequence features and labels.",
-   "serves": [
-    "untagged"
-   ]
-  },
-  "redzone/lab/brain3fit.py": {
-   "calls": [
-    "redzone/lab/brain3data.py:night_splits",
-    "redzone/lab/brainfit.py:auc",
-    "redzone/lab/brainfit.py:binary_report",
-    "redzone/lab/brainfit.py:calib",
-    "redzone/lab/brainfit.py:spearman",
-    "redzone/models.py:League",
-    "redzone/scoring/brain.py:Brain",
-    "redzone/scoring/brain3.py:features_for",
-    "redzone/scoring/brain3.py:flatten",
-    "redzone/scoring/brain3.py:load",
-    "redzone/scoring/brain3.py:save",
-    "redzone/scoring/breaks.py:BreakBook",
-    "redzone/scoring/breaks.py:forecast",
-    "redzone/sources/espn.py:flatten_plays",
-    "redzone/sources/espn.py:parse_summary"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/lab/brain3data.py",
-    "redzone/lab/brainfit.py",
-    "redzone/models.py",
-    "redzone/scoring/brain.py",
-    "redzone/scoring/brain3.py",
-    "redzone/scoring/breaks.py",
-    "redzone/sources/espn.py"
-   ],
-   "kind": "module",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [
-    "scripts/train_brain3.py"
-   ],
-   "owner": "unowned",
-   "role": "Train and grade Brain v3 (``scripts/train_brain3.py`` is the CLI).",
    "serves": [
     "untagged"
    ]
@@ -7350,7 +7217,6 @@
     "drives": []
    },
    "outputs": [
-    "redzone/lab/brain3fit.py",
     "redzone/lab/breakblend.py",
     "scripts/eval_brain.py",
     "scripts/train_brain.py"
@@ -7928,29 +7794,6 @@
     "untagged"
    ]
   },
-  "redzone/lab/night_ab.py": {
-   "calls": [],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [],
-    "writes": []
-   },
-   "inputs": [],
-   "kind": "module",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [
-    "redzone/lab/also_close.py"
-   ],
-   "owner": "unowned",
-   "role": "Whole-night A/B for display experiments (lane 5): one number per night on each side, a bootstrap interval on mean(on) - mean(off), and a PASS / FAIL / PENDIN...",
-   "serves": [
-    "untagged"
-   ]
-  },
   "redzone/lab/offpolicy.py": {
    "calls": [],
    "contracts": [],
@@ -8051,13 +7894,11 @@
     "redzone/lab/oracle_v2.py",
     "redzone/lab/oracle_window.py",
     "redzone/lab/reactgrade.py",
-    "scripts/buffer_sweep.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
     "scripts/exp1722_read.py",
     "scripts/noggin_selfplay.py",
-    "scripts/train_noggin_pick.py",
-    "scripts/train_noggin_pick_dagger.py"
+    "scripts/train_noggin_pick.py"
    ],
    "owner": "unowned",
    "role": "Hindsight oracle: the best schedule anyone could have run on an archived night (offline only).",
@@ -8119,39 +7960,10 @@
     "drives": []
    },
    "outputs": [
-    "scripts/buffer_sweep.py",
     "scripts/eval_sports.py"
    ],
    "owner": "unowned",
    "role": "[time-shift buffer] The windowed-hindsight oracle (Nick 9:10 AM Nov 5): exact DP over only what the buffer reveals, past-only value beyond the window.",
-   "serves": [
-    "untagged"
-   ]
-  },
-  "redzone/lab/orient.py": {
-   "calls": [
-    "redzone/config.py:default"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/config.py"
-   ],
-   "kind": "module",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [
-    "scripts/also_close_line.py",
-    "scripts/orient_line.py"
-   ],
-   "owner": "unowned",
-   "role": "[EXP-038] Grade the orientation beat: do overrides right after an automatic switch drop when the phone shows a 2-3 s \"who, score, clock, one fact\" beat?",
    "serves": [
     "untagged"
    ]
@@ -8366,9 +8178,7 @@
     "declares": [],
     "drives": []
    },
-   "outputs": [
-    "scripts/replay_check.py"
-   ],
+   "outputs": [],
    "owner": "INTEGRATION",
    "role": "Exact-date replay diagnostics.",
    "serves": [
@@ -8961,7 +8771,6 @@
     "redzone/fantasy.py",
     "redzone/grading.py",
     "redzone/lab/backtest.py",
-    "redzone/lab/brain3fit.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
     "redzone/lab/cutgrade.py",
@@ -9016,7 +8825,6 @@
     "scripts/backtest.py",
     "scripts/bucket_join_measure.py",
     "scripts/buffer_shadow_grade.py",
-    "scripts/buffer_sweep.py",
     "scripts/buffered_jump_sim.py",
     "scripts/buffered_jump_try.py",
     "scripts/build_reasoner_data.py",
@@ -9043,7 +8851,6 @@
     "scripts/queue_trace.py",
     "scripts/rc8_flip.py",
     "scripts/redzone_reconstruct.py",
-    "scripts/replay_check.py",
     "scripts/show_scorecard.py",
     "scripts/train_noggin_pick.py",
     "scripts/train_noggin_timing.py",
@@ -10057,11 +9864,9 @@
    },
    "outputs": [
     "redzone/decider/decider.py",
-    "scripts/buffer_sweep.py",
     "scripts/eval_sports.py",
     "scripts/noggin_selfplay.py",
-    "scripts/train_noggin_pick.py",
-    "scripts/train_noggin_pick_dagger.py"
+    "scripts/train_noggin_pick.py"
    ],
    "owner": "unowned",
    "role": "Noggin Reflex PICK v1: which game should be on screen, learned by imitating the hindsight oracle.",
@@ -11243,7 +11048,6 @@
    },
    "outputs": [
     "redzone/lab/brain3cal.py",
-    "redzone/lab/brain3fit.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
     "redzone/reasoner/head.py",
@@ -11251,7 +11055,6 @@
     "redzone/scoring/engine.py",
     "scripts/eval_brain.py",
     "scripts/train_brain.py",
-    "scripts/train_brain3.py",
     "scripts/train_reasoner.py"
    ],
    "owner": "MOMENT/BREAK",
@@ -11316,7 +11119,6 @@
    "outputs": [
     "redzone/lab/brain3cal.py",
     "redzone/lab/brain3data.py",
-    "redzone/lab/brain3fit.py",
     "redzone/noggin/pick.py",
     "redzone/noggin/predict_fit.py",
     "redzone/noggin/timing.py",
@@ -11353,7 +11155,6 @@
    },
    "outputs": [
     "redzone/engine.py",
-    "redzone/lab/brain3fit.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
     "redzone/scoring/brain3.py",
@@ -11758,9 +11559,7 @@
     "redzone/tuners/yttv_label.py",
     "redzone/tuners/yttv_search.py",
     "redzone/tuners/yttv_seek.py",
-    "scripts/find_yttv_code.py",
-    "scripts/multiview_probe.py",
-    "scripts/prime_search_trial.py"
+    "scripts/find_yttv_code.py"
    ],
    "owner": "SYNC",
    "role": "Read local PNG menu text with Apple Vision; never capture or control a device.",
@@ -11849,7 +11648,6 @@
     "redzone/engine.py",
     "redzone/grading.py",
     "redzone/lab/backtest.py",
-    "redzone/lab/brain3fit.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
     "redzone/lab/cutgrade.py",
@@ -12542,21 +12340,15 @@
     "scripts/doctor.py",
     "scripts/edge_probe_try.py",
     "scripts/find_yttv_code.py",
-    "scripts/join_try.py",
-    "scripts/multiview_probe.py",
     "scripts/park_prime_accept.py",
-    "scripts/prime_flip_probe.py",
     "scripts/prime_multiview_probe.py",
-    "scripts/prime_pause_try.py",
-    "scripts/prime_search_trial.py",
     "scripts/providers_check.py",
     "scripts/replay_park_try.py",
     "scripts/rz.py",
     "scripts/screen_lab.py",
     "scripts/session_drill.py",
     "scripts/watchdog_try.py",
-    "scripts/yttv_scrub_try.py",
-    "scripts/yttv_search_tune_try.py"
+    "scripts/yttv_scrub_try.py"
    ],
    "owner": "SWITCHING",
    "role": "Talk to a Fire TV stick over the network with the adb command-line tool.",
@@ -12626,7 +12418,6 @@
     "redzone/control.py",
     "redzone/tuners/join_calib.py",
     "redzone/tuners/join_watchdog.py",
-    "scripts/join_try.py",
     "scripts/watchdog_try.py"
    ],
    "owner": "SWITCHING",
@@ -12704,36 +12495,6 @@
     "STK-04"
    ]
   },
-  "redzone/tuners/multiview.py": {
-   "calls": [
-    "redzone/decider/core.py:SwitchPath"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/decider/core.py"
-   ],
-   "kind": "module",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [
-    "scripts/multiview_probe.py"
-   ],
-   "owner": "SWITCHING",
-   "role": "YouTube TV multiview as a switch path (SWITCHING).",
-   "serves": [
-    "Flips PLAYING within 3 s",
-    "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
-    "STK-03",
-    "STK-04"
-   ]
-  },
   "redzone/tuners/prime_multiview.py": {
    "calls": [],
    "contracts": [],
@@ -12790,8 +12551,7 @@
    },
    "outputs": [
     "redzone/control.py",
-    "redzone/tuners/join.py",
-    "scripts/prime_pause_try.py"
+    "redzone/tuners/join.py"
    ],
    "owner": "SWITCHING",
    "role": "[Prime buffer] Put a HIDDEN Prime Video stick a set time behind live by pausing it.",
@@ -12832,8 +12592,7 @@
     "redzone/recorded.py",
     "redzone/tuners/tuners.py",
     "redzone/tuners/yttv_search.py",
-    "scripts/find_yttv_code.py",
-    "scripts/prime_search_trial.py"
+    "scripts/find_yttv_code.py"
    ],
    "owner": "SWITCHING",
    "role": "Bounded Prime replay-search proof, separate from the live switching engine.",
@@ -13097,13 +12856,10 @@
     "redzone/tuners/providers.py",
     "redzone/tuners/yttv_search.py",
     "scripts/edge_probe_try.py",
-    "scripts/multiview_probe.py",
-    "scripts/prime_flip_probe.py",
     "scripts/prime_multiview_probe.py",
     "scripts/providers_check.py",
     "scripts/rz.py",
-    "scripts/watchdog_try.py",
-    "scripts/yttv_search_tune_try.py"
+    "scripts/watchdog_try.py"
    ],
    "owner": "SWITCHING",
    "role": "Tuners: one class per streaming app.",
@@ -13401,8 +13157,7 @@
     "redzone/lab/night/run.py",
     "redzone/platform/sound_guard.py",
     "redzone/tvsetup.py",
-    "scripts/fault_drill.py",
-    "scripts/tv_local_probe.py"
+    "scripts/fault_drill.py"
    ],
    "owner": "SWITCHING",
    "role": "Samsung TV: switch HDMI inputs (two-stick mode) and duck the volume (announcer).",
@@ -13617,9 +13372,7 @@
     ]
    },
    "outputs": [
-    "redzone/web/server.py",
-    "scripts/also_close_line.py",
-    "scripts/orient_line.py"
+    "redzone/web/server.py"
    ],
    "owner": "EXPERIENCE",
    "role": "Phone page v2 (flag `phone.v2`, default OFF): why each switch happened, rate it, \"I missed that\", and the Noggin Priority L2 sliders.",
@@ -13707,38 +13460,6 @@
    "role": "The phone's Show view (flag `show.ui`, default OFF): read-only routes over the files the show writes.",
    "serves": [
     "untagged"
-   ]
-  },
-  "scripts/also_close_line.py": {
-   "calls": [
-    "redzone/lab/also_close.py:line",
-    "redzone/lab/also_close.py:manual_share",
-    "redzone/lab/orient.py:night_switches",
-    "redzone/web/phone_v2.py:night_window"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [
-     "data/redzone.db"
-    ],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/lab/also_close.py",
-    "redzone/lab/orient.py",
-    "redzone/web/phone_v2.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "unowned",
-   "role": "[EXP-039] Print the \"Also close\" line: manual-switch share on nights with phone.also_close on vs off.",
-   "serves": [
-    "Big plays live or replayed within 3 min"
    ]
   },
   "scripts/attention_labels.py": {
@@ -13958,45 +13679,6 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Time-shift buffer shadow log: schema + Rule #1 (test writers, Cycle 24).",
-   "serves": [
-    "untagged"
-   ]
-  },
-  "scripts/buffer_sweep.py": {
-   "calls": [
-    "redzone/lab/oracle.py:Night",
-    "redzone/lab/oracle.py:counts",
-    "redzone/lab/oracle.py:grade",
-    "redzone/lab/oracle.py:solve",
-    "redzone/lab/oracle.py:tables",
-    "redzone/lab/oracle_window.py:solve_window",
-    "redzone/lab/oracle_window.py:window_steps",
-    "redzone/models.py:League",
-    "redzone/noggin/pick.py:FEED_LAG_P90"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [],
-    "writes": [
-     "summary.json"
-    ]
-   },
-   "inputs": [
-    "redzone/lab/backtest.py",
-    "redzone/lab/oracle.py",
-    "redzone/lab/oracle_window.py",
-    "redzone/models.py",
-    "redzone/noggin/pick.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "unowned",
-   "role": "[time-shift buffer] Oracle side of the buffer sweep (Nick 9:10 AM Nov 5, parts B + C).",
    "serves": [
     "untagged"
    ]
@@ -14238,34 +13920,6 @@
    "outputs": [],
    "owner": "unowned",
    "role": "[burst anchor] Do YouTube TV's MediaSession bursts line up with the feed's TV timeouts?",
-   "serves": [
-    "untagged"
-   ]
-  },
-  "scripts/calibrate_brain3.py": {
-   "calls": [
-    "redzone/lab/brain3cal.py:run",
-    "redzone/lab/brain3cal.py:save"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [],
-    "writes": [
-     "entry_cal.json"
-    ]
-   },
-   "inputs": [
-    "redzone/lab/brain3cal.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "unowned",
-   "role": "Calibrate Brain v3's cautious restart bound per break type (redzone/lab/brain3cal.py).",
    "serves": [
     "untagged"
    ]
@@ -14767,36 +14421,6 @@
    "outputs": [],
    "owner": "unowned",
    "role": "[EXP-803] Grade delay-precision arms against the base arm (redzone/lab/delaygrade.py).",
-   "serves": [
-    "untagged"
-   ]
-  },
-  "scripts/delay_report.py": {
-   "calls": [
-    "redzone/config.py:Config",
-    "redzone/decider/screen.py:DelayBook"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [
-     "data/config.yaml",
-     "data/redzone.db"
-    ],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/config.py",
-    "redzone/decider/screen.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "unowned",
-   "role": "How well each channel's stream delay is predicted, from the delay samples the app has stored.",
    "serves": [
     "untagged"
    ]
@@ -15889,35 +15513,6 @@
     "untagged"
    ]
   },
-  "scripts/hold_left_probe.py": {
-   "calls": [
-    "redzone/channels.py:ChannelMap",
-    "redzone/config.py:Config",
-    "redzone/control.py:Controller"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/channels.py",
-    "redzone/config.py",
-    "redzone/control.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "unowned",
-   "role": "[STK-07 rig check] Hold the left game, then go back to it: does it play on from the dead ball we left?",
-   "serves": [
-    "STK-07"
-   ]
-  },
   "scripts/holdset.py": {
    "calls": [
     "scripts/coverage_audit.py:DevOnly"
@@ -16015,33 +15610,6 @@
    ],
    "owner": "unowned",
    "role": "The bar the brain must beat: the hold-set measurement with the REAL standby.Planner, and on public seasons.",
-   "serves": [
-    "untagged"
-   ]
-  },
-  "scripts/join_try.py": {
-   "calls": [
-    "redzone/tuners/adb.py:Stick",
-    "redzone/tuners/join.py:join"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/tuners/adb.py",
-    "redzone/tuners/join.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "unowned",
-   "role": "Run one join (redzone/tuners/join.py) on the HIDDEN stick and print its row (also appended to data/joins.jsonl).",
    "serves": [
     "untagged"
    ]
@@ -16670,43 +16238,6 @@
     "untagged"
    ]
   },
-  "scripts/multiview_probe.py": {
-   "calls": [
-    "redzone/channels.py:ChannelMap",
-    "redzone/screen_ocr.py:recognize",
-    "redzone/tuners/adb.py:Stick",
-    "redzone/tuners/multiview.py:moves",
-    "redzone/tuners/tuners.py:YouTubeTVTuner"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [
-     "data/devices.json"
-    ],
-    "uses": [],
-    "writes": [
-     "probe.json"
-    ]
-   },
-   "inputs": [
-    "redzone/channels.py",
-    "redzone/screen_ocr.py",
-    "redzone/tuners/adb.py",
-    "redzone/tuners/multiview.py",
-    "redzone/tuners/tuners.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "unowned",
-   "role": "At home, ~5 minutes, before the games: measure YouTube TV multiview on a real stick.",
-   "serves": [
-    "untagged"
-   ]
-  },
   "scripts/nba_cdn_plays.py": {
    "calls": [],
    "contracts": [],
@@ -16951,37 +16482,6 @@
    "outputs": [],
    "owner": "unowned",
    "role": "[EXP-005] Score a candidate decider off-policy on logged nights (redzone/lab/offpolicy.py).",
-   "serves": [
-    "untagged"
-   ]
-  },
-  "scripts/orient_line.py": {
-   "calls": [
-    "redzone/lab/orient.py:compare",
-    "redzone/lab/orient.py:night_switches",
-    "redzone/lab/orient.py:overrides",
-    "redzone/web/phone_v2.py:night_window"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [
-     "data/redzone.db"
-    ],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/lab/orient.py",
-    "redzone/web/phone_v2.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "unowned",
-   "role": "[EXP-038] Print the orientation-beat line: override rates on nights with phone.orient on vs off.",
    "serves": [
     "untagged"
    ]
@@ -17609,32 +17109,6 @@
     "BTN-01"
    ]
   },
-  "scripts/prime_flip_probe.py": {
-   "calls": [
-    "redzone/tuners/adb.py:Stick"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/tuners/adb.py",
-    "redzone/tuners/tuners.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "SWITCHING",
-   "role": "Prime flip probe (~15 min, needs you home with a live Prime game and the service PAUSED).",
-   "serves": [
-    "untagged"
-   ]
-  },
   "scripts/prime_multiview_grade.py": {
    "calls": [
     "redzone/tuners/prime_multiview.py:gate"
@@ -17706,64 +17180,6 @@
     "Flips PLAYING within 3 s",
     "STK-03",
     "STK-04"
-   ]
-  },
-  "scripts/prime_pause_try.py": {
-   "calls": [
-    "redzone/tuners/adb.py:Stick",
-    "redzone/tuners/prime_pause.py:enter_buffer_pause"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/tuners/adb.py",
-    "redzone/tuners/prime_pause.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "unowned",
-   "role": "Run prime_pause.enter_buffer_pause once on the HIDDEN Prime stick and print the result row.",
-   "serves": [
-    "untagged"
-   ]
-  },
-  "scripts/prime_search_trial.py": {
-   "calls": [
-    "redzone/screen_ocr.py:OCRResult",
-    "redzone/tuners/adb.py:Stick",
-    "redzone/tuners/prime_search.py:CapturedScreen",
-    "redzone/tuners/prime_search.py:SearchProof",
-    "redzone/tuners/prime_search.py:run_prime_search"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/screen_ocr.py",
-    "redzone/tuners/adb.py",
-    "redzone/tuners/prime_search.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "SWITCHING",
-   "role": "Explicit, supervised Prime replay navigation trial on one authorized stick.",
-   "serves": [
-    "untagged"
    ]
   },
   "scripts/providers_check.py": {
@@ -18099,42 +17515,6 @@
    "outputs": [],
    "owner": "unowned",
    "role": "The release gate (\"95% good minimum\", the user's rule of 2026-11-03), checked on HELD-OUT nights.",
-   "serves": [
-    "untagged"
-   ]
-  },
-  "scripts/replay_check.py": {
-   "calls": [
-    "redzone/config.py:Config",
-    "redzone/lab/replaycheck.py:cues",
-    "redzone/lab/replaycheck.py:load_date",
-    "redzone/lab/replaycheck.py:run_session",
-    "redzone/models.py:League"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [
-     "unused_default_config.yaml"
-    ],
-    "writes": [
-     "manifest.json",
-     "manual_replay_cues.json"
-    ]
-   },
-   "inputs": [
-    "redzone/config.py",
-    "redzone/lab/replaycheck.py",
-    "redzone/models.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "INTEGRATION",
-   "role": "Replay one exact archived sports date without connecting to feeds or devices.",
    "serves": [
     "untagged"
    ]
@@ -18876,37 +18256,6 @@
     "untagged"
    ]
   },
-  "scripts/train_brain3.py": {
-   "calls": [
-    "redzone/lab/brain3fit.py:live_eval3",
-    "redzone/lab/brain3fit.py:train_league"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [
-     "metrics_v3.json"
-    ],
-    "uses": [],
-    "writes": [
-     "metrics_v3.json"
-    ]
-   },
-   "inputs": [
-    "redzone/lab/brain3fit.py",
-    "redzone/scoring/brain.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "unowned",
-   "role": "Train Brain v3 (one compact model per league) and print its test-night scorecard.",
-   "serves": [
-    "untagged"
-   ]
-  },
   "scripts/train_noggin_pick.py": {
    "calls": [
     "redzone/lab/backtest.py:Replay",
@@ -18949,36 +18298,6 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Train Noggin Reflex PICK v1 by imitating the hindsight oracle on whole factory nights (offline, cloud).",
-   "serves": [
-    "untagged"
-   ]
-  },
-  "scripts/train_noggin_pick_dagger.py": {
-   "calls": [
-    "redzone/lab/oracle.py:cue_action_values",
-    "redzone/lab/oracle.py:cue_steps",
-    "redzone/lab/oracle.py:value_to_go_cue",
-    "redzone/noggin/pick.py:PICK_FEATURES",
-    "redzone/noggin/pick.py:rollout"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/lab/oracle.py",
-    "redzone/noggin/pick.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "unowned",
-   "role": "DAgger for the possession policy: label the states the PICK-cue policy ITSELF visits with the oracle.",
    "serves": [
     "untagged"
    ]
@@ -19098,33 +18417,6 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Auto-tune the decider against the scorecards (see redzone/lab/tune.py).",
-   "serves": [
-    "untagged"
-   ]
-  },
-  "scripts/tv_local_probe.py": {
-   "calls": [
-    "redzone/tv.py:SamsungTV"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [
-     "data/tv_local_probe.json"
-    ],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/tv.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "unowned",
-   "role": "Time the TV's local input keys against SmartThings, on Nick's TV (~1 minute, Nick at the TV).",
    "serves": [
     "untagged"
    ]
@@ -19539,48 +18831,19 @@
    "serves": [
     "untagged"
    ]
-  },
-  "scripts/yttv_search_tune_try.py": {
-   "calls": [
-    "redzone/channels.py:ChannelMap",
-    "redzone/tuners/adb.py:Stick",
-    "redzone/tuners/tuners.py:YouTubeTVTuner"
-   ],
-   "contracts": [],
-   "data": {
-    "reads": [],
-    "uses": [],
-    "writes": []
-   },
-   "inputs": [
-    "redzone/channels.py",
-    "redzone/tuners/adb.py",
-    "redzone/tuners/tuners.py"
-   ],
-   "kind": "entry",
-   "machines": {
-    "declares": [],
-    "drives": []
-   },
-   "outputs": [],
-   "owner": "unowned",
-   "role": "Tune the LOCAL stations by YouTube TV search on the HIDDEN stick, through the app's own routing and tuner as if tuners.yttv_local_search were on (ChannelMap....",
-   "serves": [
-    "untagged"
-   ]
   }
  },
  "pages": {
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2352,
-  "data_files": 208,
+  "calls": 2279,
+  "data_files": 203,
   "machines": 53,
-  "modules": 484,
-  "orphans": 34,
-  "unowned": 282,
-  "untagged": 412
+  "modules": 463,
+  "orphans": 36,
+  "unowned": 265,
+  "untagged": 395
  },
  "version": 2
 }

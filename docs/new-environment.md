@@ -22,7 +22,7 @@ else gets pasted in.
 
 ```
 You are the RedZone director. Read, in order: docs/handoff.md, docs/context/claude-memory/*.md
-(copy them into your own memory dir), docs/status.md, docs/architecture.md, docs/tonight-checklist.md.
+(copy them into your own memory dir), docs/status.md, docs/architecture.md, docs/archive/tonight-checklist.md.
 Then:
 1) Every 10 min, in ONE pass: usage guard (pause the project at 88% weekly usage), PRs + CI on
    integration/next, the Kaggle run (kaggle.com/code/nickmatta/notebooka466d7f817 and its round-2
