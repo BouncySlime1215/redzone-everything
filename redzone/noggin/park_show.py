@@ -508,7 +508,7 @@ class Show:
                  leagues=None, keep=None, judge=None, eyes=None, model=None, board=None, say=print, emit=None, tune0=None,
                  prefs=None, params: ShowParams = SHOW, crunch: bool | None = None, clips: bool = False, warrant: str | None = None,
                  no_back=None, depth=None, football_slider: float | None = None, keep_live: bool = False, seen: bool = False,
-                 director=None):
+                 director=None, director_v2: bool = False, director_obj=None):
         P = self.P = params
         self.depth = dict(depth or {})                           # [PARK-NFL-LAG] game -> seconds deeper its stream is parked (its feed is late)
         if depth is not None:
@@ -591,7 +591,14 @@ class Show:
         # `director` = its DirectorParams (redzone/noggin/director.py). Both None when off: nothing below runs, decisions unchanged.
         self.director = self.seen_state = self.j_driver = None
         self.drivers = {"a": 0, "b": 0, "c": 0}                  # jumps carried out, by the director's goal that drove each
-        if director is not None:
+        # [DIRECTOR v2] park.director_v2 (A-04): with the flag on, a handed-over `director_obj` (the shape of
+        # redzone/noggin/director_protocol.ShowDirector) is used as is. Flag off, or nothing handed over: as before.
+        if director_v2 and director_obj is not None:
+            from redzone.noggin.director_protocol import is_show_director
+            if not is_show_director(director_obj):
+                raise TypeError(f"park.director_v2: {type(director_obj).__name__} lacks what the show uses (at, now, weigh, why)")
+            self.director = director_obj
+        elif director is not None:
             from redzone.noggin.director import Director
             self.director = Director(self.leagues, director)
         if seen or self.director is not None:
