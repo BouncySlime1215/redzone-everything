@@ -742,7 +742,7 @@ def load_pinned(tag_or_path: str | Path, *, root: str | Path | None = None, mani
         more = f" (+{len(problems) - SHOWN_PROBLEMS} more)" if len(problems) > SHOWN_PROBLEMS else ""
         raise ManifestError(f"REFUSED {doc.get('tag', given)}: the data does not match its manifest: " + "; ".join(problems[:SHOWN_PROBLEMS]) + more)
     if for_training:
-        fence.assert_train_nights([r["night"] for r in doc["files"] if r["night"]])
+        fence.assert_train_nights(sorted({r["night"] for r in doc["files"] if r["night"]}))
         unknown = sum(1 for r in doc["files"] if r["night"] is None)
         if unknown and not allow_unknown_nights:
             raise ManifestError(f"REFUSED {doc['tag']} for training: {unknown} file(s) have no night, so nothing proves they are outside "

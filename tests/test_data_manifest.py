@@ -535,8 +535,8 @@ def test_load_pinned_refuses_a_manifest_that_was_edited(env, archive):
 
 def test_load_pinned_for_training_refuses_fenced_nights(env, archive):
     dm.write_manifest(build(archive))
-    with pytest.raises(fence.FenceError, match="REFUSED training set"):
-        dm.load_pinned("archive-test-v1", for_training=True)
+    with pytest.raises(fence.FenceError, match=r"REFUSED training set: 1 locked night\(s\).*1 tuning night\(s\)"):
+        dm.load_pinned("archive-test-v1", for_training=True)                                  # nights, not files, are counted
     assert dm.load_pinned("archive-test-v1")                                                  # evaluation use is fine
     dm.write_manifest(build(archive, "archive-clear-v1", start="20261101", end="20261102"))
     assert len(dm.load_pinned("archive-clear-v1", for_training=True).files) == 5
