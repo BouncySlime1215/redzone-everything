@@ -25,6 +25,7 @@ import gzip
 import json
 import os
 import signal
+import ssl
 import subprocess
 import sys
 import time
@@ -89,11 +90,24 @@ class Resp:
     err: str = ""
 
 
+def make_ssl_context() -> tuple[ssl.SSLContext, str]:
+    """(context, "certifi" | "default"): certifi's CA bundle when the package is installed, else Python's own.
+
+    The repo venv's Python 3.12 has no CA file of its own (ssl.get_default_verify_paths().cafile is None), so without
+    certifi every HTTPS request fails certificate verification. certifi is optional: stdlib only when it is absent."""
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where()), "certifi"
+    except (ImportError, OSError):
+        return ssl.create_default_context(), "default"
+
+
 class UrlFetcher:
     """GET JSON with conditional requests. One thread, no retries: the poller decides what a failure means."""
 
     def __init__(self, timeout: float = 8.0, user_agent: str = USER_AGENT):
         self.timeout, self.ua = timeout, user_agent
+        self.ctx, self.ca = make_ssl_context()
         self._tags: dict[str, tuple[str | None, str | None]] = {}
 
     def get(self, url: str, conditional: bool = True) -> Resp:
@@ -104,12 +118,13 @@ class UrlFetcher:
         if modified:
             h["If-Modified-Since"] = modified
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=h), timeout=self.timeout) as r:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=h), timeout=self.timeout,
+                                        context=self.ctx) as r:
                 status, hdrs, body = r.status, r.headers, r.read(MAX_BYTES + 1)
         except urllib.error.HTTPError as e:           # 304 and every 4xx/5xx arrive here
             return Resp(e.code, None, {k.lower(): v for k, v in e.headers.items()})
         except Exception as e:                         # URLError, timeout, reset, bad status line...
-            return Resp(0, None, {}, type(e).__name__)
+            return Resp(0, None, {}, f"{type(e).__name__}: {e}"[:200])      # the class AND the message: never just a class
         hdrs = {k.lower(): v for k, v in hdrs.items()}
         if len(body) > MAX_BYTES:
             return Resp(0, None, hdrs, "too_big")
@@ -175,6 +190,8 @@ class Poller:
         self.disc_due = 0.0
         self.done = False
         self.plan: list[dict] = []                      # one entry per game on the last scoreboard: what we do and why
+        self.scoreboard_error: str | None = None        # why the last scoreboard read failed; None = it worked
+        self.cdn_error: str | None = None               # same for the NBA game list (the id mapping for the NBA feed)
         self.requests = self.errors = self.rows = 0
         self.sent_log: list[tuple[float, str]] = []      # (monotonic send time, url): kept short, for the tests' eyes
         self.last_sent = 0.0
@@ -201,6 +218,19 @@ class Poller:
         self.rows += sum(1 for e in events if e.get("ev") == "row")
         if not self.dry:
             self.log.append(self.slate, events)
+
+    def _scoreboard_failed(self, resp: Resp, which: str, host: str, src: str, why: str = "") -> str:
+        """A scoreboard read that did not give a usable answer: loud (an err event with the message, a line on stdout),
+        never an empty slate. Returns the error text; the caller keeps it in scoreboard_error / cdn_error."""
+        text = f"{which}: {why or resp.err or 'HTTP ' + str(resp.status)}"
+        if classify(resp.status, host) == "host":
+            self._host_failed(host, resp, self.mono(), None, src)      # backs the host off and writes the err event
+        else:
+            self.errors += 1
+            self._emit([{"ev": "err", "t": round(self.clock(), 3), "src": src, "game": None, "host": host,
+                         "what": (why or resp.err or resp.status), "backoff": 0}])
+        self.disc_due = self.mono() + min(60.0, self.s.discover_every)  # ask again soon
+        return text
 
     def _host_failed(self, host: str, resp: Resp, now_m: float, game: str | None, src: str) -> None:
         n = self.host_fails[host] = self.host_fails.get(host, 0) + 1
@@ -240,12 +270,20 @@ class Poller:
             games = []
             for u in urls:
                 resp, _, recv = self._request(u, conditional=False)
+                bad = ""
                 if classify(resp.status, ESPN_HOST) != "ok":
-                    if classify(resp.status, ESPN_HOST) == "host":
-                        self._host_failed(ESPN_HOST, resp, self.mono(), None, "scoreboard")
-                    self.disc_due = self.mono() + min(60.0, self.s.discover_every)
+                    bad = "no answer" if resp.status == 0 else f"HTTP {resp.status}"
+                elif not isinstance(resp.data, dict) or "events" not in resp.data:
+                    bad = "answered without an events list"
+                if bad:
+                    text = self._scoreboard_failed(resp, f"ESPN {name} scoreboard", ESPN_HOST, "scoreboard",
+                                                   resp.err or bad)
+                    if text != self.scoreboard_error:
+                        self.say(f"SCOREBOARD UNREADABLE (not an empty slate): {text}")
+                    self.scoreboard_error = text
                     return
                 self.host_fails[ESPN_HOST] = 0
+                self.scoreboard_error = None
                 self._skew(resp, recv)
                 games += espn.parse_scoreboard(lg, resp.data)
             if lg.college:
@@ -271,14 +309,18 @@ class Poller:
         cdn_idx = {}
         if feedlag.SRC_CDN in self.s.sources and any(lg == League.NBA for lg, _ in wanted):
             resp, _, recv = self._request(leagues.NBA_SCOREBOARD, conditional=False)
-            kind = classify(resp.status, host_of(leagues.NBA_SCOREBOARD))
-            if kind == "ok":
+            mirror = host_of(leagues.NBA_SCOREBOARD)
+            if classify(resp.status, mirror) == "ok" and isinstance(resp.data, dict) and "scoreboard" in resp.data:
                 cdn_idx = leagues.nba_index(resp.data)
-                self.host_fails[host_of(leagues.NBA_SCOREBOARD)] = 0
+                self.host_fails[mirror] = 0
+                self.cdn_error = None
             else:
-                if kind == "host":
-                    self._host_failed(host_of(leagues.NBA_SCOREBOARD), resp, self.mono(), None, "nba_scoreboard")
-                self.disc_due = self.mono() + min(60.0, self.s.discover_every)   # try the mapping again soon
+                bad = "answered without a scoreboard" if resp.status == 200 else ("no answer" if resp.status == 0
+                                                                                   else f"HTTP {resp.status}")
+                text = self._scoreboard_failed(resp, "NBA game list", mirror, "nba_scoreboard", resp.err or bad)
+                if text != self.cdn_error:
+                    self.say(f"NBA GAME LIST UNREADABLE (the NBA feed cannot be matched): {text}")
+                self.cdn_error = text
         self._sync_jobs(wanted, cdn_idx, now_w)
         self.done = (not any_game or all_post) and not self.jobs
 
@@ -349,8 +391,13 @@ class Poller:
         now = self.mono()
         if now - self.last_status >= STATUS_EVERY:
             self.last_status = now
-            self.say(f"[{time.strftime('%H:%M:%S')}] slate {self.slate} feeds {len(self.jobs)} requests {self.requests} "
-                     f"rows {self.rows} errors {self.errors}")
+            line = (f"[{time.strftime('%H:%M:%S')}] slate {self.slate} feeds {len(self.jobs)} requests {self.requests} "
+                    f"rows {self.rows} errors {self.errors}")
+            if self.scoreboard_error:
+                line += f" | SCOREBOARD UNREADABLE (not an empty slate): {self.scoreboard_error}"
+            if self.cdn_error:
+                line += f" | NBA game list unreadable: {self.cdn_error}"
+            self.say(line)
         disc_ready = max(self.disc_due, self.next_send)
         best, best_ready = None, None
         for j in self.jobs.values():
@@ -486,8 +533,18 @@ def main(argv=None) -> int:
         return stop_running(s.out_dir)
     s.out_dir.mkdir(parents=True, exist_ok=True)
     if a.dry_run:
-        p = Poller(s, dry=True)
+        p = Poller(s, dry=True, say=lambda m: None)
         p.discover()
+        bad = [x for x in (p.scoreboard_error, p.cdn_error) if x]
+        if bad:
+            for x in bad:
+                print(f"scoreboard unreadable (this is NOT an empty slate): {x}")
+            print(f"python {sys.version.split()[0]}, CA bundle: {getattr(p.fetcher, 'ca', '?')}. "
+                  "If this is a certificate error, run with the repo venv python (it has certifi) or install certifi.")
+            return 1
+        if not p.plan:
+            print(f"slate {p.slate}: no games on the scoreboard for this date (the scoreboard was read fine)")
+            return 0
         print(f"slate {p.slate} ({time.strftime('%a %H:%M %Z')} now): {len(p.plan)} games on the scoreboard, "
               f"would follow {len({k[1] for k in p.jobs})} now")
         for e in sorted(p.plan, key=lambda e: (e["start"] or 0, e["game"])):
@@ -512,7 +569,7 @@ def main(argv=None) -> int:
     p = Poller(s)
     p._emit([{"ev": "start", "t": round(p.clock(), 3), "schema": feedlag.LOG_VERSION, "pid": os.getpid(),
               "interval": s.interval, "max_rps": s.max_rps, "leagues": list(s.leagues), "sources": list(s.sources),
-              "ua": USER_AGENT}])
+              "ua": USER_AGENT, "py": sys.version.split()[0], "ca": getattr(p.fetcher, "ca", "?")}])
     why = "error"
     try:
         why = p.run(lambda: flag["stop"])

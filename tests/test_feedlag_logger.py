@@ -2,6 +2,9 @@
 import gzip
 import io
 import json
+import ssl
+import sys
+import unittest.mock as mock
 import urllib.error
 from datetime import datetime
 
@@ -295,7 +298,7 @@ def test_fetcher_sends_conditional_headers_and_reads_gzip(monkeypatch):
     seen = []
     body = gzip.compress(json.dumps({"a": 1}).encode())
 
-    def urlopen(req, timeout=None):
+    def urlopen(req, timeout=None, context=None):
         seen.append(dict(req.header_items()))
         if len(seen) == 1:
             return FakeResponse(body, {"Content-Encoding": "gzip", "ETag": '"abc"', "Last-Modified": "Fri, 13 Nov 2026 04:00:00 GMT"})
@@ -311,16 +314,91 @@ def test_fetcher_sends_conditional_headers_and_reads_gzip(monkeypatch):
 
 
 def test_fetcher_turns_failures_into_status_zero_not_exceptions(monkeypatch):
-    def boom(req, timeout=None):
+    def boom(req, timeout=None, context=None):
         raise urllib.error.URLError("no route")
     monkeypatch.setattr(fl.urllib.request, "urlopen", boom)
     r = fl.UrlFetcher().get("https://example.invalid/x")
-    assert r.status == 0 and r.err == "URLError"
-    monkeypatch.setattr(fl.urllib.request, "urlopen", lambda req, timeout=None: FakeResponse(b"<html>nope"))
+    assert r.status == 0 and r.err.startswith("URLError: ") and "no route" in r.err
+    monkeypatch.setattr(fl.urllib.request, "urlopen", lambda req, timeout=None, context=None: FakeResponse(b"<html>nope"))
     assert fl.UrlFetcher().get("https://example.invalid/x").err == "bad_body"
-    monkeypatch.setattr(fl.urllib.request, "urlopen", lambda req, timeout=None: FakeResponse(b"x" * (fl.MAX_BYTES + 1)))
+    monkeypatch.setattr(fl.urllib.request, "urlopen", lambda req, timeout=None, context=None: FakeResponse(b"x" * (fl.MAX_BYTES + 1)))
     assert fl.UrlFetcher().get("https://example.invalid/x").err == "too_big"
     err = urllib.error.HTTPError("https://x", 429, "Too Many", {"Retry-After": "7"}, io.BytesIO(b""))
-    monkeypatch.setattr(fl.urllib.request, "urlopen", lambda req, timeout=None: (_ for _ in ()).throw(err))
+    monkeypatch.setattr(fl.urllib.request, "urlopen", lambda req, timeout=None, context=None: (_ for _ in ()).throw(err))
     r = fl.UrlFetcher().get("https://example.invalid/x")
     assert r.status == 429 and r.headers["retry-after"] == "7"
+
+
+# --- a failed scoreboard read is never an empty slate -----------------------------------------------------------
+
+CERT_ERROR = urllib.error.URLError(ssl.SSLCertVerificationError(1, "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed"))
+
+
+def raise_cert_error(req, timeout=None, context=None):
+    raise CERT_ERROR
+
+
+def test_certifi_bundle_is_used_when_importable_else_the_default_context(monkeypatch):
+    seen = []
+    monkeypatch.setattr(fl.ssl, "create_default_context", lambda *a, **k: seen.append(k) or "ctx")
+    monkeypatch.setitem(sys.modules, "certifi", type("Fake", (), {"where": staticmethod(lambda: "/some/cacert.pem")}))
+    assert fl.make_ssl_context() == ("ctx", "certifi") and seen[-1] == {"cafile": "/some/cacert.pem"}
+    monkeypatch.setitem(sys.modules, "certifi", None)                          # not installed: ImportError
+    assert fl.make_ssl_context() == ("ctx", "default") and seen[-1] == {}
+    assert fl.UrlFetcher().ca == "default"                                      # the fetcher carries the choice
+
+
+def test_a_certificate_failure_keeps_its_class_and_message():
+    with mock.patch.object(fl.urllib.request, "urlopen", raise_cert_error):
+        r = fl.UrlFetcher().get("https://example.invalid/x")
+    assert r.status == 0 and "URLError" in r.err and "CERTIFICATE_VERIFY_FAILED" in r.err
+
+
+def test_an_unreadable_scoreboard_is_loud_in_a_real_run_and_never_an_empty_plan(tmp_path, monkeypatch):
+    monkeypatch.setattr(fl.urllib.request, "urlopen", raise_cert_error)
+    ft = FakeTime()
+    said = []
+    s = fl.Settings(out_dir=tmp_path)
+    p = fl.Poller(s, clock=ft.clock, mono=ft.mono, sleep=ft.sleep, say=said.append)      # the real fetcher, a failing opener
+    p.run(lambda: ft.elapsed() > 150)
+    assert p.plan == [] and not p.jobs and p.scoreboard_error and "CERTIFICATE_VERIFY_FAILED" in p.scoreboard_error
+    errs = [e for e in events(tmp_path) if e["ev"] == "err" and e["src"] == "scoreboard"]
+    assert errs and "CERTIFICATE_VERIFY_FAILED" in errs[0]["what"] and "URLError" in errs[0]["what"]
+    assert any(m.startswith("SCOREBOARD UNREADABLE") for m in said)                      # said at once, not only at the minute
+    assert any("SCOREBOARD UNREADABLE (not an empty slate)" in m and m.startswith("[") for m in said)    # the status line
+    assert not p.done                                                                    # and --exit-when-done must not fire
+
+
+def test_dry_run_on_an_unreadable_scoreboard_prints_the_error_and_exits_nonzero(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(fl.urllib.request, "urlopen", raise_cert_error)
+    assert fl.main(["--dry-run", "--date", SLATE, "--out-dir", str(tmp_path)]) == 1
+    out = capsys.readouterr().out
+    assert "scoreboard unreadable (this is NOT an empty slate)" in out and "URLError" in out
+    assert "CERTIFICATE_VERIFY_FAILED" in out and "certifi" in out
+    assert "games on the scoreboard" not in out
+
+
+def test_a_scoreboard_that_answers_without_events_is_an_error_not_an_empty_day(tmp_path):
+    ft = FakeTime()
+    p, _ = poller(tmp_path, ft, {SB_URL: {"unexpected": True}}, exit_when_done=True)
+    p.run(lambda: ft.elapsed() > 130)
+    assert p.scoreboard_error and "without an events list" in p.scoreboard_error and not p.done
+
+
+def test_a_genuinely_empty_day_is_reported_as_such_with_exit_zero(tmp_path, monkeypatch, capsys):
+    ft = FakeTime()
+    monkeypatch.setattr(fl, "UrlFetcher", lambda *a, **k: FakeFetcher(ft, {SB_URL: espn_scoreboard([])}))
+    assert fl.main(["--dry-run", "--date", SLATE, "--out-dir", str(tmp_path)]) == 0
+    assert "no games on the scoreboard for this date (the scoreboard was read fine)" in capsys.readouterr().out
+
+
+def test_a_scoreboard_that_recovers_clears_the_alarm(tmp_path):
+    ft = FakeTime()
+    state = {"bad": True}
+    routes = {SB_URL: lambda: fl.Resp(0, None, {}, "URLError: boom") if state["bad"] else espn_scoreboard([])}
+    p, _ = poller(tmp_path, ft, routes)
+    p.run(lambda: ft.elapsed() > 100)
+    assert "boom" in p.scoreboard_error
+    state["bad"] = False
+    p.run(lambda: ft.elapsed() > 400)
+    assert p.scoreboard_error is None

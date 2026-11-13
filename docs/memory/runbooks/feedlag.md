@@ -5,18 +5,32 @@ saw it**. Replays assume an 8 s feed; measured, ESPN is about 36 s and the NBA f
 it, touches no TV and no stick, and needs only plain `python3` (standard library). Code: `scripts/feedlag_logger.py`,
 `redzone/lab/feedlag.py`. Numbers: `scripts/feedlag_report.py`, `redzone/lab/feedlag_report.py`.
 
-## Start (about 1 minute)
+## Start (about 2 minutes)
 
-From the repo folder, any time before the night's first tip (it also joins games already under way):
+From the repo folder, any time before the night's first tip (it also joins games already under way). **Use the repo
+venv's python** (`.venv/bin/python`; on the Mac `/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone/.venv/bin/python`).
+It is the interpreter the report needs too, and its `certifi` package supplies the CA bundle that venv's Python lacks
+(without it every HTTPS request fails certificate verification). Plain `python3` also works where its HTTPS works.
+The logger itself is standard library only: certifi is used if importable, never required.
 
+1. **Plan first** (2 requests, polls nothing):
+   `.venv/bin/python scripts/feedlag_logger.py --dry-run` (add `--date YYYY-MM-DD` for another day).
+   Expect a non-empty list of games, or the explicit line `no games on the scoreboard for this date (the scoreboard was read fine)`.
+   If it prints `scoreboard unreadable (this is NOT an empty slate): ...` and exits 1, do not start the night: fix the
+   cause first (a certificate error means wrong interpreter or no certifi).
+2. **Start:**
 ```sh
 mkdir -p data/feedlag
-nohup taskpolicy -b nice -n 19 python3 scripts/feedlag_logger.py --exit-when-done > data/feedlag/logger.out 2>&1 &
+nohup taskpolicy -b nice -n 19 .venv/bin/python scripts/feedlag_logger.py --exit-when-done > data/feedlag/logger.out 2>&1 &
 ```
+
+A scoreboard that cannot be read is never treated as an empty day: the run prints `SCOREBOARD UNREADABLE ...` at once and
+in every status line, writes an `err` row (class and message), retries each minute, and `--exit-when-done` will not fire.
+The `start` row records the Python version (`py`) and CA bundle (`ca`: certifi or default).
 
 `--exit-when-done` ends it by itself after the last game of the night plus a 10-minute grace for late rows; the
 default cap is 14 hours (`--max-hours`). Check it: `tail -f data/feedlag/logger.out` (one status line a minute) and
-`wc -l data/feedlag/$(date +%Y-%m-%d).jsonl`. Plan without polling a game: `python3 scripts/feedlag_logger.py --dry-run [--date YYYY-MM-DD]` prints one line per game on
+`wc -l data/feedlag/$(date +%Y-%m-%d).jsonl`. `--dry-run` prints one line per game on
 the scoreboard (phase, start time ET, follow yes/no and why). **When it follows a game:** in-progress games at once; a
 scheduled game from 15 minutes before its tip (`--lead-minutes`; the scoreboard is re-read every 5 minutes, so it is picked
 up 10 to 15 minutes before the tip); a finished game for 10 more minutes (late rows). So `--dry-run` on a day whose games
@@ -88,6 +102,7 @@ Putting it in place for good is a reviewed change (a number every other timing t
 
 ## If something looks wrong
 
+- `SCOREBOARD UNREADABLE` in `logger.out` or `err` rows with `src: scoreboard`: read the message. `CERTIFICATE_VERIFY_FAILED` = this interpreter has no CA file; restart with `.venv/bin/python` or install certifi.
 - No rows after a game started: `grep '"ev":"err"' data/feedlag/*.jsonl | tail` (a backoff names the host and delay).
 - `track` rows but no `row` rows for `nba_cdn`: the NBA file appears only at the tip; check `logger.out` for the status line.
 - Two copies: `--stop`, then start once. A stale pid file is cleaned by `--stop`.
