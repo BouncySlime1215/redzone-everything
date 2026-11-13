@@ -1,0 +1,12 @@
+{
+  "card": "B-03-TRAINER",
+  "session": "b03-trainer-builder",
+  "branch": "b03-trainer",
+  "files": [
+    "tools/trainer/*",
+    "tools/trainer/tests/*",
+    "tests/test_trainer_*.py"
+  ],
+  "started": 1794569861,
+  "expires": 1794656261
+}
