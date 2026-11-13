@@ -17,8 +17,8 @@ python scripts/data_manifest.py build archive --tag archive-nba-20261101-2026110
 python scripts/data_manifest.py build history --tag history-nba-2026-v1 --leagues nba
 # C-02 feed-arrival logs (data/feedlag): one file per night
 python scripts/data_manifest.py build feedlag --tag feedlag-20261112-v1
-# picture data (data/vision-v1): PRIVATE, see below
-python scripts/data_manifest.py build frames --tag frames-20261111-v1
+# picture data: PRIVATE, see below; it lives outside the repo on the Mac, so name its folder
+python scripts/data_manifest.py build frames --tag frames-20261111-v1 --root <the vision-v1 folder>
 ```
 
 `--root DIR` points at another copy of the data (or set `RZ_DATA_ROOT_ARCHIVE`, `_HISTORY`, `_FEEDLAG`, `_FRAMES`). On a
