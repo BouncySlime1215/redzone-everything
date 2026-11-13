@@ -1,7 +1,7 @@
 {
-  "card": "E-01-WIRE-CATCHUP",
-  "session": "e01-wire-catchup-builder",
-  "branch": "e01-wire-catchup",
+  "card": "E-01B-CATCHUP-FIXES",
+  "session": "e01b-catchup-fixes-builder",
+  "branch": "e01b-catchup-fixes",
   "files": [
     "redzone/park_run.py",
     "redzone/control.py",
@@ -12,6 +12,6 @@
     "tests/test_park_catchup.py",
     "docs/catchup.md"
   ],
-  "started": 1794557604,
-  "expires": 1794730404
+  "started": 1794561868,
+  "expires": 1794734668
 }

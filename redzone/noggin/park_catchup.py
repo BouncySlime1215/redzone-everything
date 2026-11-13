@@ -61,6 +61,7 @@ class CatchupParams:
     look_ahead_s: int = 30          # never leave the screen's game with a big play or high leverage this close in the feed
     hot_look_s: int = 300           # no catch-up (and no further clip) while another live game had a high-leverage play this recently
     plan_wait_s: float = 10.0       # the plan allows this for the leave after the prep (a later leave re-checks every clip)
+    step_timeout_s: int = 30        # a catch-up flip (to the replay, or the live join) not back within this: the show stops
     pack: cp.PackParams = cp.PackParams()
 
     @classmethod
@@ -198,11 +199,17 @@ class CatchupShow(Show):
             await super()._drive(t)
 
     def flip_pending(self) -> bool:
-        """A flip of the catch-up's own is under way (the flip to the replay, or its live join): the show's `on` already
-        names the stick it flips to while the TV still shows the other. The app's loop (ParkRun.step) asks this before
-        it calls the input changed outside the show."""
+        """A flip of the catch-up's own is under way or has not been settled yet (the flip to the replay, or its live
+        join): the show's `on` already names the stick it flips to while the TV may still show the other. True from the
+        leave until the flip to the replay is known to have landed, and while a live join runs; a flip that did not land
+        (`up` not ok) stays masked until the show's next second hands the screen back (`_cu_flip_failed`), so the app's
+        loop (ParkRun.step) never reads the catch-up's own failed flip as an input changed outside the show. Each flip
+        is bounded by park.catchup.step_timeout_s, so this is never true for longer than that."""
         cu = self.cu
-        return cu is not None and ((cu["phase"] == "clips" and cu.get("up") is None) or cu.get("join") is not None)
+        if cu is None:
+            return False
+        up = cu.get("up")
+        return (cu["phase"] == "clips" and (up is None or up[0] != "ok")) or cu.get("join") is not None
 
     def _hidden_done(self, kind: str, game: int, res: tuple, t: int) -> None:
         super()._hidden_done(kind, game, res, t)
@@ -487,7 +494,12 @@ class CatchupShow(Show):
         cu, rig, C = self.cu, self.rig, self.cp
         g, h, v = cu["game"], cu["h"], cu["v"]
         if cu["up"] is None:
-            return                                               # the flip to the replay is under way
+            if t - cu["leave"] <= C.step_timeout_s:
+                return                                           # the flip to the replay is under way
+            task = cu.get("task")
+            if task is not None and not task.done():
+                task.cancel()                                    # a flip that never returns: where the TV is is unknown
+            cu["up"] = ("stop", f"the flip to the replay did not return in {C.step_timeout_s} s")
         if cu["up"][0] != "ok":
             self._cu_flip_failed(t)
             return
@@ -545,6 +557,12 @@ class CatchupShow(Show):
                 cu["no_cue"] = t                                 # (rig.cu_cue failed: V is lost; it plays on, parked forward)
             cu["spot"] = None if cu["j"] is None else cu["spot"]
         jt = cu["join"]
+        if jt is not None and not jt.done() and t - cu.get("join_at", t) > C.step_timeout_s:
+            jt.cancel()                                          # a join that never returns: where the TV is is unknown
+            cu["join"] = None
+            self.stop = f"the catch-up's live join did not return in {C.step_timeout_s} s"
+            self._cu_hand_back(t, f"the join stopped: {self.stop}")
+            return
         if jt is not None:
             if jt.done():
                 st, why = _result(jt, ("stop", "the jump step broke"))
@@ -569,7 +587,7 @@ class CatchupShow(Show):
             if not why:
                 cu["phase"] = "join"
                 self.on = v
-                cu["join"] = asyncio.ensure_future(rig.jump(v, True, None))
+                cu["join"], cu["join_at"] = asyncio.ensure_future(rig.jump(v, True, None)), t
                 return
             if "behind live" in why:                             # held too long: play on to a later dead ball
                 cu["j"] = cu["spot"] = None
@@ -753,6 +771,8 @@ class CatchupShow(Show):
         if st == "stop":
             self.stop = why
         self.no_jump_until = t + self.P.cool
+        self.say(f"CATCH-UP: the flip to the replay did not land ({why}); {self.names[cu['g1']]} stays on screen"
+                 + ("" if st != "stop" else ": the show stops"))
         self._cu_abort(f"the flip to the replay did not land ({why})", t)
 
     def _cu_hand_back(self, t: int, why: str) -> None:
