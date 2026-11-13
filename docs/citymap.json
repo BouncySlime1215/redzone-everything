@@ -9193,6 +9193,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/models_rt/registry.py",
     "redzone/noggin/gamevalue.py",
     "redzone/noggin/pick.py",
     "redzone/noggin/predict.py",
@@ -9206,6 +9207,33 @@
    ],
    "owner": "unowned",
    "role": "[one brain, step 4] One tree walker and one model loader (docs/onebrain-migration.md).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/models_rt/registry.py": {
+   "calls": [
+    "redzone/models_rt/forest.py:load_npz"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models_rt/forest.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/model_registry.py"
+   ],
+   "owner": "unowned",
+   "role": "Model registry on the hash-chained results ledger: register a run, promote it, load only promoted models.",
    "serves": [
     "untagged"
    ]
@@ -16812,6 +16840,36 @@
     "untagged"
    ]
   },
+  "scripts/model_registry.py": {
+   "calls": [
+    "redzone/models_rt/registry.py:demote",
+    "redzone/models_rt/registry.py:promote",
+    "redzone/models_rt/registry.py:register",
+    "redzone/models_rt/registry.py:resolve_promoted",
+    "redzone/models_rt/registry.py:sha256_file",
+    "redzone/models_rt/registry.py:state"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models_rt/registry.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Command line for the model registry (redzone/models_rt/registry.py): register, promote, demote, list, resolve.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/module_headers.py": {
    "calls": [],
    "contracts": [],
@@ -19534,13 +19592,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2375,
+  "calls": 2382,
   "data_files": 206,
   "machines": 53,
-  "modules": 483,
+  "modules": 485,
   "orphans": 36,
-  "unowned": 285,
-  "untagged": 415
+  "unowned": 287,
+  "untagged": 417
  },
  "version": 2
 }

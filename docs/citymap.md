@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**483 modules**, 415 untagged, 285 unowned, 36 orphans (no importer); 2375 call edges, 206 data files, 53 machines.
+**485 modules**, 417 untagged, 287 unowned, 36 orphans (no importer); 2382 call edges, 206 data files, 53 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -251,7 +251,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval.py` (entry) | The scorecard every change is judged by. | config, lab.backtest, lab.cutgrade, lab.evaldata, lab.optimize, lab.oracle +2 -> - | untagged |
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 
-## unowned (285)
+## unowned (287)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -327,7 +327,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/measured_timing.py` | [timing.measured, off] One source for the stick timings measured on Nick's TV, Nov 9. | - -> decider.decider, scripts.veto_audit | untagged |
 | `redzone/memory.py` | Project memory for the AI that repairs RedZone (watchdog, auto-fix brain). | - -> agent.watchdog, scripts.context_pack | untagged |
 | `redzone/models_rt/__init__.py` (package) | [one brain, step 4] Runtime model code shared by every tree model (forest.py). | - -> - | untagged |
-| `redzone/models_rt/forest.py` | [one brain, step 4] One tree walker and one model loader (docs/onebrain-migration.md). | - -> noggin.gamevalue, noggin.pick, noggin.predict, noggin.timing, reasoner.head, scoring.brain +4 | untagged |
+| `redzone/models_rt/forest.py` | [one brain, step 4] One tree walker and one model loader (docs/onebrain-migration.md). | - -> models_rt.registry, noggin.gamevalue, noggin.pick, noggin.predict, noggin.timing, reasoner.head +5 | untagged |
+| `redzone/models_rt/registry.py` | Model registry on the hash-chained results ledger: register a run, promote it, load only promoted models. | models_rt.forest -> scripts.model_registry | untagged |
 | `redzone/moments/__init__.py` (package) | Moments: the per-league tier list and the detectors that fill it from ESPN play-by-play. | moments.detect, moments.tiers -> engine, scripts.moment_rates | untagged |
 | `redzone/moments/arrival.py` | Thread-aware arrival: points for a game whose open question is about to be answered on its picture. | models, moments.threads -> noggin.show, scripts.thread_replay | untagged |
 | `redzone/moments/detect.py` | Moment detectors over one ESPN game summary (play-by-play): returns typed, timestamped moments. | moments.tiers -> decider.decider, engine, moments, moments.fill, moments.value2, noggin.gamevalue +11 | untagged |
@@ -467,6 +468,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/measure_break_lengths.py` (entry) | [Data F] Measured break lengths by league x network x break kind, from the pinned archive. | lab.backtest, lab.cutgrade, lab.splits, models, sources.espn -> - | untagged |
 | `scripts/measure_dead_left.py` (entry) | [timing.dead_v2] The dead-time-left table: sure seconds left in a stoppage, by break class and by the time already elapsed. | lab.backtest, lab.cutgrade, lab.splits, models, scoring.dead_left, sources.espn -> - | untagged |
 | `scripts/media_pull.py` (entry) | Media metadata workers (Data Division, type C): which plays got clipped, and how much people watched. | - -> - | untagged |
+| `scripts/model_registry.py` (entry) | Command line for the model registry (redzone/models_rt/registry.py): register, promote, demote, list, resolve. | models_rt.registry -> - | untagged |
 | `scripts/module_headers.py` (entry) | Check that every module says what it is and why it exists, ratcheted so only new gaps fail. | - -> - | untagged |
 | `scripts/moment_rates.py` (entry) | Measured must-see rates per league from the archive, compared with the planner's table (read only). | lab.splits, moments, moments.detect, moments.tiers -> - | untagged |
 | `scripts/nba_cdn_plays.py` (entry) | NBA.com's own action log (cdn liveData, packaged by shufinskiy/nba_data) -> hoopR-schema play rows (plan A NBA). | - -> - | untagged |
@@ -541,7 +543,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/wv_aux_label.py` (entry) | Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804). | - -> scripts.attention_labels | untagged |
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 
-## Untagged (415)
+## Untagged (417)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -696,6 +698,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/models.py`
 - `redzone/models_rt/__init__.py`
 - `redzone/models_rt/forest.py`
+- `redzone/models_rt/registry.py`
 - `redzone/moments/__init__.py`
 - `redzone/moments/arrival.py`
 - `redzone/moments/detect.py`
@@ -880,6 +883,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/measure_break_lengths.py`
 - `scripts/measure_dead_left.py`
 - `scripts/media_pull.py`
+- `scripts/model_registry.py`
 - `scripts/module_headers.py`
 - `scripts/moment_rates.py`
 - `scripts/nba_cdn_plays.py`
@@ -998,7 +1002,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/lab/replaycheck.py`
 - `redzone/tuners/identity.py`
 
-## Most-called symbols (top 25 of 1235)
+## Most-called symbols (top 25 of 1241)
 
 | symbol | callers |
 |---|---:|
