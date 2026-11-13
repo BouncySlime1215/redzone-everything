@@ -54,8 +54,9 @@ data/corpus/<tag>/
   the rest `train` (cuts at season starts, 10% each by default); with fewer seasons the cuts are whole nights. A night is never split.
   `--gap-days N` embargoes the nights just before each cut. The manifest records the cuts and five forward-chaining folds
   (`corpus.splits.<league>`), and `verify` checks that no night, game id or game content is in two roles.
-- **Wall-clock tiers.** Only the `wall` tier should feed anything that needs timing (dead-ball length, lag). The `nowall` tier is for
-  event-order learning (dt falls back to the game clock).
+- **Wall-clock tiers.** Only the `wall` tier should feed anything that needs timing (dead-ball length, lag). In the `nowall` tier the gap
+  token is the difference of the game clock, not wall seconds (that is what vocab v1 does when a play has no stamp), so its gap buckets mean
+  something else: use that tier for event-order learning only, never pooled with the `wall` tier for a timing head.
 
 ## 3. The leak fence (F-09), and what reaches a training shard
 
