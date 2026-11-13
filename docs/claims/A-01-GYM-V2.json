@@ -1,13 +1,13 @@
 {
   "card": "A-01-GYM-V2",
   "session": "a01-gym-v2-builder",
-  "branch": "a01-gym-v2",
+  "branch": "a01-gym-v2-s2",
   "files": [
     "redzone/lab/gym2/*",
     "tests/test_gym2*.py",
     "scripts/park_replay.py",
     "scripts/gym2_parity.py"
   ],
-  "started": 1794542504,
-  "expires": 1794801704
+  "started": 1794554886,
+  "expires": 1794814086
 }
