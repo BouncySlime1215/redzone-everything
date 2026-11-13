@@ -8,7 +8,7 @@
             break
     env.digest()                                  # sha256 of the canonical decision list (== replay_digest(...) for identity)
 
-The episode is `park_replay.build` (the app's own `Show` on fake sticks, `park_core.run` with the planner each second)
+The episode is `park_replay.build` (the app's own `Show` on fake sticks, the PARK core's step function with the planner each second)
 driven by the replay's own loop. Stepping never changes what runs: the loop is paused only at the moment the replay's
 fake clock is about to wake the next tick (nothing is running then), and `observe` only reads. So with the identity
 scenario the decision list (every event the show emits, every line it says, every jump record, every key and command
@@ -30,12 +30,13 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
+REPO_DIR = Path(__file__).resolve().parents[3]
+YIELD = 0                       # asyncio.sleep(YIELD): let every ready task run once (park_replay.FakeClock does the same)
 
 
 def replay_module():
     """scripts/park_replay.py, imported the way the tests import it (it puts the repo root on the path itself)."""
-    p = (ROOT / "scripts").as_posix()
+    p = (REPO_DIR / "scripts").as_posix()
     if p not in sys.path:
         sys.path.insert(0, p)
     import park_replay
@@ -105,7 +106,7 @@ def _step_clock_type(pr):
         async def sleep(self, s: float) -> None:          # FakeClock.sleep, keeping the future of a marked wait
             if s <= 0:
                 self.mark = False
-                await asyncio.sleep(0)
+                await asyncio.sleep(YIELD)
                 return
             fut = asyncio.get_running_loop().create_future()
             self._n += 1
@@ -209,7 +210,7 @@ class GymV2:
             self._held = False
         while True:
             for _ in range(12):
-                await asyncio.sleep(0)
+                await asyncio.sleep(YIELD)
             if self.task.done():
                 self.task.result()
                 self.done = True
