@@ -115,7 +115,21 @@ on, the stick is the hidden one and the source is `rewind`. `ParkHands.cue` then
    wrong, so it is never the source), marks the stick behind on that channel (#391);
 4. parks it on the frame with the ordinary park step (pause key when the frame comes, BACK, read back), or drops the
    place (the show tunes the stick again) when it landed past the frame, more than `cue_wait_max_s` (45 s) before it,
-   or unmeasured.
+   unmeasured, or deeper than the proven rewind.
+
+[E-01b] Depth: the cue never aims past the rewind measured on the TV, min(`timing.reach_s` 175 s, Nov 9;
+`park.catchup.reach_s`). The 8 s lead shrinks to fit; a clip starting past it is refused. The cap is checked before the
+scrub, again after the resume (a paused stick falls further behind while it is held) and on the measured landing.
+Lock: the controller lock is held for the scrub and for the park, not for the wait for the frame; it is taken again
+`park.steps.cue_relock_s` (2 s) before the pause key, and if another step (a stand-down's finish included) moved the
+stick meanwhile the cue sends nothing more. Flips: a catch-up flip that is refused ends that catch-up (said, logged as a
+`dropped` event) and the show goes on; a flip or live join not back within `park.catchup.step_timeout_s` (30 s) is
+cancelled and the show stops, since where the TV is is then unknown.
+
+**How the age cap is computed today** (unchanged; a ruling is pending): a clip may air at most 180 s after its first
+second aired live (`catchup_pack.age_ok`) only when its package has ONE play; a package of 2+ PLAYS has no cap. The count
+is plays, not clips: in the app's hidden-only mode a single clip that plays a close pair (or more) straight through
+counts as 2+ plays and has no cap, so such a clip can air past 180 s (the verifier saw 197 s and 199 s).
 
 Not built: a cue of the stick ON SCREEN (the next clip of a package, or the replay stick sent back to live). The app's
 rig says so with `cue_on_screen = False`, and `CatchupShow` then plays one clip per package (a close pair played
