@@ -12,7 +12,7 @@ Unit protocol (what an entry command sees; one subprocess per unit of `ckpt_ever
     RZ_JOB_NEXT                           an empty folder: write the new state and the outputs here
     RZ_JOB_CONFIG, RZ_JOB_SEED            the config file and the job seed; RZ_JOB_UNIT_SEED seeds this unit
 The worker commits RZ_JOB_NEXT as ckpt/step_<end> (CKPT.json with every file's sha256, fsync, rename) only after
-the unit exits 0, so a crash or kill at any point leaves the previous checkpoint whole. Python's random, NumPy and
+the unit exits 0 (under ckpt/<spec hash>/, so specs never mix), so a crash or kill at any point leaves the previous checkpoint whole. Python's random, NumPy and
 torch (when listed in `seed_libs`) are seeded per unit in the child; multiprocessing uses forkserver; a child
 whose worker dies exits by itself. At the end the expected outputs are copied to out/, out/MANIFEST.json is
 written, then DONE. Self-stop: no unit starts that the slowest unit so far would carry past budget_s minus
@@ -189,9 +189,14 @@ def valid_ckpt(d: str, sh: str):
     return None
 
 
+def ckpt_root(work: str, sh: str) -> str:
+    """Each spec keeps its own checkpoints, so another spec's run in the same folder can never prune or feed them."""
+    return os.path.join(work, "ckpt", sh[:16])
+
+
 def latest(work: str, sh: str):
     """(step, folder) of the newest checkpoint that verifies; a corrupt one falls back to the one before."""
-    root = os.path.join(work, "ckpt")
+    root = ckpt_root(work, sh)
     names = sorted((n for n in os.listdir(root) if n.startswith("step_")), reverse=True) if os.path.isdir(root) else []
     for n in names:
         step = valid_ckpt(os.path.join(root, n), sh)
@@ -203,7 +208,7 @@ def latest(work: str, sh: str):
 def commit_unit(nxt: str, work: str, sh: str, step: int, keep: int = 2) -> str:
     atomic_write(os.path.join(nxt, "CKPT.json"), canon({"spec": sh, "step": step, "files": tree(nxt)}).encode())
     fsync_dir(nxt)
-    root = os.path.join(work, "ckpt")
+    root = ckpt_root(work, sh)
     os.makedirs(root, exist_ok=True)
     dest = os.path.join(root, f"step_{step:010d}")
     shutil.rmtree(dest, ignore_errors=True)

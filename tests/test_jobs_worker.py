@@ -116,7 +116,7 @@ def test_self_stop_writes_partial_with_a_valid_checkpoint_then_finishes(tmp_path
     text, res = run(tmp_path, short, env=env)
     assert res["status"] == "partial", text
     assert 0 < res["step"] < 40
-    ck = tmp_path / "work" / "ckpt" / f"step_{res['step']:010d}"
+    ck = Path(worker.ckpt_root(str(tmp_path / "work"), short.spec_hash())) / f"step_{res['step']:010d}"
     assert worker.valid_ckpt(str(ck), short.spec_hash()) == res["step"]
     assert res["ckpt_sha256"] == worker.sha_file(str(ck / "CKPT.json"))
     assert not (tmp_path / "work" / "out" / "DONE").exists()
@@ -127,6 +127,17 @@ def test_self_stop_writes_partial_with_a_valid_checkpoint_then_finishes(tmp_path
         assert res["status"] == "partial", text
     assert res["status"] == "ok"
     _t, whole = run(tmp_path, jobcli.toy_spec(head, steps=(0, 40)), "whole", env=env)
+    assert res["outputs_sha256"] == whole["outputs_sha256"]
+
+
+def test_another_spec_in_the_same_folder_never_touches_the_checkpoints(tmp_path, head):
+    # regression: pruning by name across specs deleted the newer spec's only checkpoint (old spec at higher steps)
+    _t, old = run(tmp_path, jobcli.toy_spec(head, steps=(0, 100), every=50))
+    assert old["status"] == "ok"
+    new = jobcli.toy_spec(head, steps=(0, 30))
+    text, res = run(tmp_path, new)
+    assert res["status"] == "ok", text
+    _t, whole = run(tmp_path, new, "whole")
     assert res["outputs_sha256"] == whole["outputs_sha256"]
 
 
