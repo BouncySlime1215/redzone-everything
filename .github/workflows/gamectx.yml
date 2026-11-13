@@ -1,0 +1,64 @@
+# Data H game-context corpus on a free GitHub runner: never the Mac, never GPU quota, NUMBERS ONLY.
+# Push gamectx-run/<anything> to run the Wikipedia pass NEWEST-FIRST (Nick 12:10 PM), NBA before NFL in each slice:
+#   slice 1 = this season + last (NBA 2026-27, 2025-26; NFL 2026, 2025) + rivalries, slice 2 = 2023-2024,
+#   slice 3 = older (NBA 2001-02.., NFL 1999..). Each slice merges into the previous outputs, is joined to the
+#   archive (pregame rows per night + gid for T8) and pushed to branch gamectx-out/wiki the moment it lands.
+# Article text is parsed in memory and dropped; nothing textual is written. Personal-use, not for commercial release.
+name: gamectx
+on:
+  push:
+    branches: ["gamectx-run/**"]
+concurrency:
+  group: gamectx-wiki
+  cancel-in-progress: false
+jobs:
+  wiki:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    timeout-minutes: 345
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -q pandas==2.2.3 lxml==5.3.0 html5lib==1.1 beautifulsoup4==4.12.3
+      - name: restore previous outputs + eval archive
+        run: |
+          mkdir -p out
+          git fetch --depth 1 origin gamectx-out/wiki 2>/dev/null && git --work-tree=out checkout FETCH_HEAD -- . 2>/dev/null || true
+          git reset -q
+          python scripts/fetch_eval_data.py
+          cat > publish.sh <<'SH'
+          set -e
+          python scripts/gamectx/archive_join.py --ctx out --archive data/archive --out out | tee out/join.txt
+          python scripts/gamectx/pregame.py history --full --archive data/archive --ctx out --out out || true
+          python scripts/gamectx/wiki_context.py coverage --out out | tee out/coverage.txt
+          rm -rf /tmp/pub && cp -r out /tmp/pub && cd /tmp/pub && rm -rf .git && git init -q -b gamectx-out/wiki && git add -A
+          git -c user.name=gamectx -c user.email=gamectx@users.noreply.github.com commit -qm "gamectx wiki $1 from ${GITHUB_SHA} (run ${GITHUB_RUN_ID}); numbers only; personal-use, not for commercial release"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:refs/heads/gamectx-out/wiki
+          SH
+      - name: rivalries only (branch gamectx-run/rivalries-*)
+        if: contains(github.ref_name, 'rivalries')
+        run: |
+          python scripts/gamectx/wiki_context.py pull --league nba --first 2027 --last 2026 --out out
+          python scripts/gamectx/wiki_context.py pull --league nfl --first 2027 --last 2026 --out out
+          bash publish.sh rivalries
+      - name: slice 1 - this season + last
+        if: ${{ !contains(github.ref_name, 'rivalries') }}
+        run: |
+          python scripts/gamectx/wiki_context.py pull --league nba --first 2025 --last 2026 --out out
+          python scripts/gamectx/wiki_context.py pull --league nfl --first 2025 --last 2026 --out out
+          bash publish.sh slice-1
+      - name: slice 2 - 2023-2024
+        if: ${{ always() && !contains(github.ref_name, 'rivalries') }}
+        run: |
+          python scripts/gamectx/wiki_context.py pull --league nba --first 2023 --last 2024 --no-rivalries --out out
+          python scripts/gamectx/wiki_context.py pull --league nfl --first 2023 --last 2024 --no-rivalries --out out
+          bash publish.sh slice-2
+      - name: slice 3 - older (low weight)
+        if: ${{ always() && !contains(github.ref_name, 'rivalries') }}
+        run: |
+          python scripts/gamectx/wiki_context.py pull --league nba --first 2001 --last 2022 --no-rivalries --out out
+          python scripts/gamectx/wiki_context.py pull --league nfl --first 1999 --last 2022 --no-rivalries --out out
+          bash publish.sh slice-3
