@@ -7514,14 +7514,19 @@
    ]
   },
   "redzone/lab/gym2/env.py": {
-   "calls": [],
+   "calls": [
+    "redzone/lab/gym2/scenario.py:Scenario",
+    "redzone/lab/gym2/scenario.py:log_draw"
+   ],
    "contracts": [],
    "data": {
     "reads": [],
     "uses": [],
     "writes": []
    },
-   "inputs": [],
+   "inputs": [
+    "redzone/lab/gym2/scenario.py"
+   ],
    "kind": "module",
    "machines": {
     "declares": [],
@@ -7532,6 +7537,35 @@
    ],
    "owner": "unowned",
    "role": "Gym v2's episode: the PARK replay of one recorded night, stepped one show tick at a time (task A-01, slice 1).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/gym2/scenario.py": {
+   "calls": [
+    "redzone/noggin/park_show.py:ShowTiming",
+    "redzone/noggin/park_timing.py:GameTiming"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/noggin/park_show.py",
+    "redzone/noggin/park_timing.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/gym2/env.py"
+   ],
+   "owner": "unowned",
+   "role": "Gym v2 scenarios: what one practice episode draws, from a seed, and the log that lets any episode be run again (A-01 slice 2).",
    "serves": [
     "untagged"
    ]
@@ -9952,6 +9986,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/lab/gym2/scenario.py",
     "redzone/noggin/park_catchup.py",
     "redzone/park_run.py",
     "scripts/park_replay.py"
@@ -9981,6 +10016,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/lab/gym2/scenario.py",
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_show.py",
     "redzone/park_run.py",
@@ -19232,13 +19268,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2322,
+  "calls": 2326,
   "data_files": 205,
   "machines": 53,
-  "modules": 475,
+  "modules": 476,
   "orphans": 36,
-  "unowned": 277,
-  "untagged": 407
+  "unowned": 278,
+  "untagged": 408
  },
  "version": 2
 }

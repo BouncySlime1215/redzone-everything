@@ -30,6 +30,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from redzone.lab.gym2.scenario import IDENTITY, Scenario, log_draw
+
 ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -45,19 +47,6 @@ def replay_module():
 def canon(obj) -> str:
     """One canonical JSON text: sorted keys, no spaces, anything else by its repr (tuples become lists)."""
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), default=repr)
-
-
-@dataclass(frozen=True)
-class Scenario:
-    """What an episode changes against the recorded replay. Slice 1 has only the identity: no change at all."""
-    name: str = "identity"
-    replay_kw: tuple = ()                       # extra (key, value) pairs for park_replay.build
-
-    def kwargs(self) -> dict:
-        return dict(self.replay_kw)
-
-
-IDENTITY = Scenario()
 
 
 @dataclass
@@ -120,10 +109,12 @@ class GymV2:
     """One episode of the practice world on a recorded dev night. See the module docstring."""
 
     def __init__(self, night: str, games: int = 4, *, league: str = "nba", scenario: Scenario = IDENTITY, seed: int = 0,
-                 minutes: float = 0.0, loaded: tuple | None = None):
+                 minutes: float = 0.0, loaded: tuple | None = None, draw_log=None):
         self.night, self.games, self.league, self.scenario = str(night), int(games), league, scenario
+        self.draw_log, self.draw = draw_log, None
         self.seed, self.minutes, self.loaded = int(seed), float(minutes), loaded
         self.loop = self.task = self.show = self.clock = None
+        self.done = False
         self.rec = Recorder()
 
     # ---- the episode ---------------------------------------------------------------------------------------------
@@ -131,8 +122,12 @@ class GymV2:
         self.close()
         pr = replay_module()
         self.rec = Recorder()
+        sc = self.scenario
         b = pr.build(self.night, self.games, league=self.league, seed=self.seed, minutes=self.minutes, loaded=self.loaded,
-                     say=self.rec.say, emit=self.rec.emit, clock_type=_step_clock_type(pr), **self.scenario.kwargs())
+                     say=self.rec.say, emit=self.rec.emit, clock_type=_step_clock_type(pr), **sc.build_kwargs())
+        if not sc.identity:
+            sc.patch(b, pr)
+        self.draw = log_draw(self.draw_log, night=self.night, games=self.games, episode_seed=self.seed, scenario=sc)
         self.show, self.clock, self.rows, self.a, self.b = b.show, b.clock, b.rows, b.a, b.b
         self.loop = asyncio.new_event_loop()
         self.task, self._held, self.done, self.next_t = None, False, False, b.a
@@ -149,6 +144,11 @@ class GymV2:
         if self.done:
             self._finish_loop()
         return self.observe(), 0.0, self.done, {"t": self.next_t, "scenario": self.scenario.name}
+
+    @classmethod
+    def from_draw(cls, row: dict, **kw) -> "GymV2":
+        """The episode a draw-log line describes, set up to run again exactly."""
+        return cls(row["night"], row["games"], scenario=Scenario.from_dict(row["scenario"]), seed=row["episode_seed"], **kw)
 
     def run(self) -> "GymV2":
         if self.loop is None and not self.done:
