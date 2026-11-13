@@ -84,6 +84,8 @@ sync:
     enabled: false         # logged always (recordings/<day>/sync_anchors.jsonl); fed to the filter only when on.
     start_bias_s: 15       # whistle -> ad on screen, a PRIOR until the Wednesday probe data refits it
     bias_sd_s: 10
+    true_gap_s: null       # [F-01] the sims' TRUE whistle -> ad gap (redzone/lab/backtest.ad_breaks); null = follow start_bias_s, as before
+    true_gap_sd_s: null    # [F-01] ...and its spread; null = follow bias_sd_s, as before
     min_s: 10              # plausible whistle -> ad-on-screen window (feed wall to screen time)
     max_s: 240
   burst_anchor:            # [burst anchor] a burst onset <-> the feed's last dead ball -> a delay sample
@@ -203,6 +205,24 @@ score:
     inning_mult: {early: 0.85, mid: 1.0, eighth: 1.1, ninth_plus: 1.2}
     walk_off_spot: 15
     no_hitter: {through_6: 25, through_7: 35, ninth: 50}
+  context:                 # [F-01] the extra moment points every league shares (redzone/scoring/engine.py context()); each number is the code's own fallback
+    lead_change_cap: 8     # most points a back-and-forth game can add
+    lead_change_fade_s: 150  # a lead change counts as "just flipped" for this long
+    fresh_flip: 0          # points for a lead that just changed hands (0 = off)
+    upset_min_spread: 3    # an upset is brewing only when the pregame spread was at least this
+    upset_full_spread: 10  # ...and counts in full at this spread
+    overtime: 4            # overtime / extras, every league
+    nfl: {wp_leverage: 0, lead_change_each: 0, upset: 0}
+    nba: {wp_leverage: 0, lead_change_each: 0, upset: 8, late_within_6: 4}   # late_within_6: within 6 under 3:00 of the 4th
+    nhl: {wp_leverage: 15, lead_change_each: 2.0, upset: 8, late_one_goal: 10}   # late_one_goal: within a goal in the last 5:00 of the 3rd
+    mlb: {wp_leverage: 6, lead_change_each: 0, upset: 8}
+
+scoring:                   # [F-01] display switches read by the phone (redzone/web/phone_v2.py)
+  watch_value: false       # the /slate view shows each live game's learned watch value (Scored.watch_value); display only, the code's own fallback
+
+control:                   # [F-01] how long a switch may run before the app gives up on it (engine._switch_deadline, supervisor, platform/health, lab/night)
+  max_switch_s: 150        # a switch that never reports back is given up on after this long (the code's own fallback)
+  max_start_switch_s: 75   # ...and a first pick, with nothing confirmed on screen yet, after this long (the code's own fallback)
 
 brain:                     # learned models (redzone/scoring/brain.py, trained by scripts/train_brain.py)
   enabled: false           # feed the brain's game flow / key-moment / break odds into the score and break forecast
@@ -269,6 +289,8 @@ reasoner:                  # live game reasoner (redzone/reasoner): lock_in per 
 decider:
   switch_margin: 10
   mine_late_closeness: 0.2   # [D-11] "your team late and close": closeness at or above this (Decider._mine_late)
+  fail_cooldown_s: 90        # [F-01] a target whose switch failed is not tried again for this long (engine.py; the code's own fallback)
+  safe_auto_resume_s: 600    # [F-01] safe mode (decider.auto_resume) resumes itself after this long (engine.py; the code's own fallback)
   entry:
     enabled: true             # [D-11] the entry timing itself (off: every switch goes straight in)
     allow_live_fallback: false  # [D-01] Rule #1: no go-in-live exit without this (crunch_now live/rewind, max_wait_s, rewind_only, no_wait_leagues, imminent chases)
@@ -353,6 +375,7 @@ decider:
   mine_late_max_lead_wp: 1.0
   leave:                   # [cut rules, Nick Nov 4 3:15 PM] never JOIN mid-play; LEAVING mid-play only at low leverage
     dead_windows: []       # [whistle detection] also leave on the play-by-play's dead windows in these leagues
+    high_leverage_recent_s: 30.0   # [F-01] [slate] a basketball walk-up leave waits this long after the game was last high leverage (Decider._may_leave_on_walk; the code's own fallback)
     tune_s: 6              # ...and the window must outlast this tune margin (a visit can't come back inside it)
                            # [Nov 7] these two sat in a second `leave:` block that YAML dropped: merged here
     low_leverage: []       # leagues where a low-leverage moment may be left mid-play ([] = never: today's rule)
@@ -559,6 +582,7 @@ autonomy:
 supervisor:                # watches the live system and fixes what it can on its own (redzone/supervisor.py)
   enabled: true
   ntfy_topic: ""           # optional: push the nightly report to the free ntfy app (pick a hard-to-guess topic)
+  ntfy_server: "https://ntfy.sh"   # [F-01] the ntfy server the push goes to (supervisor.DEFAULTS["ntfy_server"], the same value)
   budget:                  # error budget, over the last window_nights nights that had switches (nightly report)
     window_nights: 7
     failure_pct: 5         # failed + picture-never-confirmed switches, % of live switches
@@ -622,6 +646,7 @@ governor:                  # keeps the Mac cool and its disk free (redzone/gover
   enabled: true
   every_s: 30              # look at the Mac this often
   calm_s: 180              # a busy/hot/battery state must clear this long before work resumes
+  footprint_log: true      # [F-01] log the Mac's footprint to data/footprint.jsonl (Governor.from_config; the code's own fallback)
   busy_load: 0.85          # 5-min load per CPU core above this: the Mac is busy (eco)
   battery_eco: true        # on battery: eco (no reel downloads/lab/archive, slower idle polling; OCR keeps its full rate)
   battery_low_pct: 20      # on battery under this: critical (also no OCR, no local model)
@@ -672,6 +697,7 @@ two_stick:
   cec_flip: true           # HOME -> HDMI-CEC Active Source as the last-resort flip (the TV's own input change,
                            # set up by scripts/tv_setup.py, goes first when it's proven)
   enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment
+  break_p: 0.5             # [F-01] a break forecast at or above this probability lets the hidden stick pre-spend the break (engine._break_standby; the code's own fallback)
   hold_s: 20               # keep the hidden stick on a game at least this long before re-tuning it...
   min_gain: 8              # ...and then only for one this many points better (your game's return and
                            # a replay about to play take it right away)
@@ -858,6 +884,7 @@ canary:                    # [item 8, Nov 7] daily pre-game self-test on the HID
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true
+  pause_poll_s: 0.4        # [F-01] how often a buffered jump re-reads the hidden stick's player while its PAUSE settles (control.py; the code's own fallback)
   yttv_seek: scrub         # [Nick, Nov 7] a YouTube TV catch-up is seeked on the HIDDEN stick by the overlay scrub
                            # (yttv_seek.enter_buffer, knob-checked), its landing READ on the label (LabelProbe), then
                            # it plays up to park_lead_s before the snap and pauses there; the flip un-pauses it. The
@@ -937,6 +964,7 @@ timing:
     by_league: {nfl: 60, cfb: 60, nba: 90, cbb: 90, wcbb: 90, nhl: 90}
     default: 60
     max_s: 90              # Nick's cap (~1 min behind live accepted, 90 s at most)
+    shadow_stay_leave_every_s: 15.0   # [F-01] the buffer shadow logs an unchanged stay at most this often (buffer_shadow.py; the code's own fallback)
     held_max_age_s: 600    # held.json offsets older than this are not restored at start (the stick may have moved)
     resume_poll_s: 0.5     # how often a hold's resume re-reads playback while it settles
     resume_settle_s: 6     # [overseer Nov 7] a hold's PLAY may read 'stopped' for a moment (Prime re-buffering): wait this long for 'playing'
@@ -1035,6 +1063,10 @@ delay:                     # seconds your screen runs behind real life, per app;
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
   sigma_default: 15
   model: channel           # channel: predict each channel (channels of one app differ, truTV 22 s vs FS1 42 s); legacy: one figure per app
+  boundary: true           # [F-01] read the YouTube TV sticks around each quarter hour to time a show change (engine._boundary_loop; the code's own fallback)
+  scorebug: true           # [F-01] the Prime score-bug reader loop runs while a Prime game is on screen (engine._scorebug_loop; the code's own fallback)
+  timing:                  # [F-01] [timing] per-app stated doubt; null = absent = today (DelayBook.apply_timing_config)
+    app_sigma: null        # {app: {sigma_s, min_anchors, meter_s, replay: <timing_replay's verdict>}}; needs its hold-out replay verdict
   scorebug_hidden: true    # [Nick 9:25 AM Nov 5] also read the bug on the hidden stick while its Prime preload is live
                            # (our fastest NFL "feed", ~16 s behind the arena); numbers only, never frames
   scorebug_log: true       # every bug read (score, clock, period, down) to data/scorebug_reads.jsonl for the feed race
@@ -1095,23 +1127,6 @@ break_lengths_s:           # typical commercial lengths used to plan catch-ups
   nba: {timeout: 90, end_period: 130, halftime: 900}
   nhl: {timeout: 120, end_period: 150, intermission: 1130}
   mlb: {end_period: 130, pitching_change: 150}
-
-flags:                       # kill switches, one per subsystem (redzone/contracts/flags.py). On = allowed to run
-  brain_v3: true             # (the subsystem's own setting still decides if it's enabled). Off = its degraded mode.
-  hype_v2: true
-  break_model: true
-  reasoner: true
-  watchdog_model: true
-  reel: true
-  highlight_jump: true
-  drive_priority: true
-  trip_budget: true
-  nhl_rules: true
-  tv_flip: true
-  preload: true
-  sync_predictor: true
-  auto_tune: true
-  fastcast: true
 
 noggin:                    # docs/noggin.md
   belief:
@@ -1237,6 +1252,7 @@ league_overrides:          # [league overrides, Nick Nov 4 8:20/8:40 PM] per-lea
 queue:                     # [build plan P-BUILD] one queue owns the hidden stick; ships OFF until its gate passes (WP-02, WP-12)
   enabled: false
   r3_flippable: false      # a route only found by a search hit may be flipped to; undecided until test T3
+  warn_within_s: 180.0     # [F-01] a long-lead route's known lead only counts inside this window, so a game hours away cannot hold the hidden stick (engine._queue_lead; the code's own fallback)
 
 commit_gate:               # [build plan WP-05] one named-veto gate at the flip for every non-tap switch (decider/gate.py)
   enabled: false
@@ -1269,6 +1285,7 @@ arbiter:                   # [build plan WP-17] picks among legal options, with 
 legal:                     # [LEAVE-AT-FLIP] noggin/legal.py. Needs arbiter.enabled: nothing else reads this list
   leave_at_flip: false     # a cut stays listed with the leave gate shut or no landing yet; it waits (decider.leave_wait) and goes only when the flip's leave rules and a dead-ball landing both allow it
   leave_low_leverage: []   # leagues where a held cut may leave mid-play at a low-leverage moment (Decider._leavable: redzone/lab/leverage.py's floor, your team, crunch, a locked moment). Needs leave_at_flip. [] = only at a dead window: today's rule
+  leave_silent_s: 5.0      # [F-01] a held cut whose brain gives no opinion is dropped after this long (Decider._leave_worth; the code's own fallback)
   leave_wait_s: 45         # the longest a cut waits (per league: league_overrides); it also ends when the target stops being worth it or can't be entered at all
   lock_dead_ball: false    # [YES-1] a moment lock (red-zone drive, power play, at-bat) stops hiding every cut for as long as the game state holds: only a lock at a high-leverage moment (close and late, overtime) hides cuts, and it lets one through at a proven dead ball when the cut outranks it by decider.locked_override_lead. The leave gate still decides when
   facts_urgent: false      # [YES-1] the list plans each landing as the flip gate does (gate.Flip.replan: the urgent margin of a crunch or sticky entry, a possession-start cue). Off: the list plans with neither and is stricter than the gate
@@ -1617,7 +1634,3 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
       "nfl|two-minute warning": 78.0   # n=1,011
       "nfl|end period": 168.0          # n=1,041 (quarter end)
       "nfl|end of half": 811.0         # n=505
-
-eyes:                      # [EYES, integration plan unit 0b] the hidden watcher: its own muted Chrome reads the on-air game clock and
-                           # each frame's time, and keeps each game's offset K
-  enabled: false           # OFF and read by nothing yet (units EYES-PACKAGE and EYES-LINK). Needs Nick's one sign-in in the watcher's own profile

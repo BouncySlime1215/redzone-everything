@@ -9,8 +9,9 @@
     "redzone/contracts/flags.py",
     "tests/test_config_literal_keys.py",
     "tests/test_contracts.py",
+    "tests/test_governor.py",
     "docs/architecture.md"
   ],
-  "started": 1794542669,
-  "expires": 1794629069
+  "started": 1794544495,
+  "expires": 1794630895
 }

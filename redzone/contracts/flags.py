@@ -2,12 +2,15 @@
 
 Owner: INTEGRATION (the list).
 
-STATUS (audit R3, 2026-11-08): NOT WIRED.  `enabled()` below is read by no production code, so
-`flags.<name>` in config switches nothing; only tests/test_contracts.py calls it.  Each subsystem is
-gated by its OWN key: brain.enabled, reasoner.enabled, reel.enabled / reel.play, replay.*, tuners.*,
-noggin.*, hardening.*, two_stick.*, decider.* (see default_config.yaml).  Use those to turn a part
-off.  Wiring `enabled()` into each guard is a larger change that is not scheduled; until it is, DEGRADED
-documents what each part does when it is off or missing, and the Flag names are kept for that table.
+STATUS (audit R3, 2026-11-08; F-01, 2026-11-12): NOT WIRED, and NOT A CONFIG KEY.  `enabled()` below is read by
+no production code; only tests/test_contracts.py calls it.  The 15-key `flags:` block that used to sit in
+default_config.yaml switched nothing, so F-01 removed it (a `flags.<name>` in data/config.yaml is now rejected as an
+unknown setting, and `enabled()` on the real Config always returns its default).  Each subsystem is gated by its OWN
+key: brain.enabled, reasoner.enabled, reel.enabled / reel.play, replay.*, tuners.*, noggin.*, hardening.*,
+two_stick.*, decider.* (see default_config.yaml).  Use those to turn a part off.  Wiring `enabled()` into each guard
+is a larger change that is not scheduled; until it is, DEGRADED documents what each part does when it is off or
+missing, and the Flag names are kept for that table.  To wire one: add its key to default_config.yaml in the same PR
+that reads it (tests/test_config_literal_keys.py fails a literal read whose key the YAML lacks).
 
 Why: first added in 418ffc56 (2026-11-03) as "Architecture contract v1: interfaces, stubs, contract tests, ownership, status board"; no separate decision is recorded for this module.
 """

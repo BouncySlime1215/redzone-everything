@@ -855,8 +855,11 @@ _NHL_TV_MARKS = (14 * 60, 10 * 60, 6 * 60)   # seconds LEFT in a 20:00 period
 def ad_breaks(replays, lag_true, cfg, rng: random.Random) -> dict[str, list[tuple[float, float]]]:
     """game -> [(feed wallclock of the dead ball, true screen time the ad comes up)], the latter without
     the time-shift buffer (added at match time). The gap is drawn per break."""
-    mu = float(cfg.get("sync.break_anchor.true_gap_s", cfg.get("sync.break_anchor.start_bias_s", 15.0)))
-    sd = float(cfg.get("sync.break_anchor.true_gap_sd_s", cfg.get("sync.break_anchor.bias_sd_s", 10.0)))
+    # [F-01] the YAML carries both true_gap keys as null = "not set, follow the prior" (a null must not reach float())
+    mu = cfg.get("sync.break_anchor.true_gap_s", None)
+    mu = float(cfg.get("sync.break_anchor.start_bias_s", 15.0) if mu is None else mu)
+    sd = cfg.get("sync.break_anchor.true_gap_sd_s", None)
+    sd = float(cfg.get("sync.break_anchor.bias_sd_s", 10.0) if sd is None else sd)
     out: dict[str, list[tuple[float, float]]] = {}
     for r in replays:
         rows, done = [], set()
