@@ -74,6 +74,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "fantasy.season": (2020, 2100),
     "break_lengths_s": (0, 1800),
     "score.league_weight": (0.5, 1.5),
+    "score.context.lead_change_fade_s": (0, 1800),   # [F-01] seconds; the shipped 150 is above the generic score limit
     "score.personal.my_team_league": (0.0, 1.5),
     "score": (-100, 100),
     "decider": (0, 1000),

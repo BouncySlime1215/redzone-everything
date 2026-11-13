@@ -1,0 +1,16 @@
+{
+  "card": "C-02-FEEDLAG",
+  "session": "c02-feedlag-builder",
+  "branch": "c02-feed-arrival-logger",
+  "files": [
+    "redzone/lab/feedlag.py",
+    "redzone/lab/feedlag_report.py",
+    "scripts/feedlag_logger.py",
+    "scripts/feedlag_report.py",
+    "tests/test_feedlag*.py",
+    "docs/memory/runbooks/feedlag.md",
+    "docs/memory/runbooks/README.md"
+  ],
+  "started": 1794542431,
+  "expires": 1794715231
+}

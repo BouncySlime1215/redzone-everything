@@ -27,7 +27,7 @@ import hashlib
 import heapq
 import json
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from redzone.lab.gym2 import slates
@@ -119,12 +119,13 @@ class GymV2:
     """One episode of the practice world on a recorded dev night. See the module docstring."""
 
     def __init__(self, night: str, games: int = 4, *, league: str = "nba", scenario: Scenario = IDENTITY, seed: int = 0,
-                 minutes: float = 0.0, loaded: tuple | None = None, draw_log=None, mix: dict | None = None,
+                 minutes: float = 0.0, loaded: tuple | None = None, draw_log=None, mix: dict | None = None, mix_games: list | None = None,
                  weights: Weights | None = None, mask_level: str = "strict"):
         """mix: a census mix ({"nba": 2, "cbb": 1}): the slate is composed from recorded fit games (slates.compose, with
         this episode's seed) instead of `night`'s own. weights: the reward terms' weights. mask_level: Rule1Mask's level."""
         self.night, self.games, self.league, self.scenario = str(night), int(games), league, scenario
         self.mix, self.weights, self.mask_level = (dict(mix) if mix else None), weights or Weights(), mask_level
+        self.mix_games = [list(x) for x in mix_games] if mix_games else None      # [league, game id, shift s] per game
         self.draw_log, self.draw = draw_log, None
         self.seed, self.minutes, self.loaded = int(seed), float(minutes), loaded
         self.loop = self.task = self.show = self.clock = None
@@ -140,7 +141,7 @@ class GymV2:
         kw = sc.build_kwargs()
         loaded = self.loaded
         if self.mix:
-            rs, slate = slates.compose(self.mix, self.seed)
+            rs, slate, self.mix_games = slates.compose(self.mix, self.seed, games=self.mix_games)
             loaded, self.games = (rs, slate), len(rs)
             hooks = [slates.mixed_timing(rs)] + ([kw["timing"]] if "timing" in kw else [])
             kw["timing"] = lambda tm, _h=hooks: _chain(tm, _h)
@@ -149,7 +150,9 @@ class GymV2:
         if not sc.identity:
             sc.patch(b, pr)
         self.draw = log_draw(self.draw_log, night=self.night, games=self.games, episode_seed=self.seed, scenario=sc,
-                             extra={"mix": dict(self.mix)} if self.mix else None)
+                             minutes=self.minutes, league=self.league,
+                             extra={"weights": asdict(self.weights), "mask_level": self.mask_level,
+                                    **({"mix": dict(self.mix), "mix_games": self.mix_games} if self.mix else {})})
         self.show, self.clock, self.rows, self.a, self.b = b.show, b.clock, b.rows, b.a, b.b
         self.meter = RewardMeter(self.show.judge, b.a)
         self.loop = asyncio.new_event_loop()
@@ -189,8 +192,13 @@ class GymV2:
     @classmethod
     def from_draw(cls, row: dict, **kw) -> "GymV2":
         """The episode a draw-log line describes, set up to run again exactly."""
+        kw.setdefault("minutes", row.get("minutes", 0.0))
+        kw.setdefault("league", row.get("league", "nba"))
+        kw.setdefault("mask_level", row.get("mask_level", "strict"))
+        if "weights" in row:
+            kw.setdefault("weights", Weights(**row["weights"]))
         return cls(row["night"], row["games"], scenario=Scenario.from_dict(row["scenario"]), seed=row["episode_seed"],
-                   mix=row.get("mix"), **kw)
+                   mix=row.get("mix"), mix_games=row.get("mix_games"), **kw)
 
     def run(self) -> "GymV2":
         if self.loop is None and not self.done:

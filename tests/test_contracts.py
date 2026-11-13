@@ -17,13 +17,14 @@ def _game(gid="g1", league=League.NHL, phase=Phase.LIVE) -> GameState:
     return GameState(league, gid, Team("BOS", score=2), Team("NYR", score=1), phase=phase, period=3, clock_s=600)
 
 
-def test_every_flag_is_a_config_key_with_a_degraded_mode():
+def test_every_flag_has_a_degraded_mode_and_none_is_a_config_key():
+    """F-01: the `flags:` block switched nothing (enabled() has no production caller), so it left the YAML.
+    The Flag names stay for the DEGRADED table; a flag that gets wired adds its key in the PR that reads it."""
     import yaml
     from redzone.config import DEFAULTS
     data = yaml.safe_load(DEFAULTS.read_text())
-    assert set(data["flags"]) == {f.value for f in c.Flag}
+    assert "flags" not in data
     for f in c.Flag:
-        assert data["flags"][f.value] is True, f
         assert f.value in c.DEGRADED, f
 
 

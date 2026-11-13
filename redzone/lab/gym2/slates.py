@@ -108,44 +108,62 @@ def fit_games(league: str, root: Path | None = None) -> list[tuple[str, str]]:
     return [(n, g) for n in sorted(keep) for g in games.get(n, ())]
 
 
-def compose(mix: dict, seed: int, *, root: Path | None = None) -> tuple[list, list]:
-    """(recorded games, their whole-night facts) for one census mix: random fit games of each league, the first tipping
-    off at the earliest original tip, the others STAGGER later. Deterministic in (mix, seed)."""
+def compose(mix: dict, seed: int, *, root: Path | None = None, games: list | None = None) -> tuple[list, list, list]:
+    """(recorded games, their whole-night facts, the games used as [league, game id, shift s]) for one census mix: random
+    fit games of each league, the first tipping off at the earliest original tip, the others STAGGER later.
+    Deterministic in (mix, seed) on one archive; with `games` (from a draw log) exactly those games and shifts, so a
+    mixed episode re-runs identically on another machine. A chosen game that cannot be loaded FAILS (never skipped);
+    games with fewer than 60 rows are passed over in the draw (load_replay's own rule) and counted in the error."""
     from redzone.lab.backtest import Replay
     from redzone.lab.gym2.env import replay_module
     from redzone.models import League
     root = _root(root)
     pr = replay_module()                       # (puts scripts/ on the path)
     import park_ceiling as pc
+
+    def load(lg: str, gid: str):
+        f = root / "data/archive" / lg / f"summary_{gid}.json"
+        if not f.exists():
+            raise FileNotFoundError(f"mix game {lg} {gid}: {f} is not here")
+        r = Replay.load(League(lg), f)         # a broken file raises: never skipped silently
+        if r is None:
+            raise ValueError(f"mix game {lg} {gid}: no plays in {f}")
+        return r
+
+    if games:
+        out = [pr.repair(shift_replay(load(lg, gid), int(dt))) for lg, gid, dt in games]
+        out.sort(key=lambda r: r.wall[0])
+        return out, [pc.truth_of(r) for r in out], [list(x) for x in games]
     rng = random.Random(f"gym2-compose:{int(seed)}:{sorted(mix.items())}")
-    rs = []
+    rs, used = [], []
     for lg in sorted(mix):
         pool = fit_games(lg, root)
         rng.shuffle(pool)
-        got = 0
+        got, short = 0, 0
         for night, gid in pool:
             if got == mix[lg]:
                 break
-            f = root / "data/archive" / lg / f"summary_{gid}.json"
-            try:
-                r = Replay.load(League(lg), f) if f.exists() else None
-            except (OSError, ValueError):
-                r = None
-            if r is not None and len(r.plays) >= 60:
+            r = load(lg, gid)
+            if len(r.plays) >= 60:
                 rs.append(r)
+                used.append((lg, gid))
                 got += 1
+            else:
+                short += 1
         if got < mix[lg]:
-            raise ValueError(f"only {got} recorded {lg} games here, the mix needs {mix[lg]}")
+            raise ValueError(f"only {got} recorded {lg} dev games here ({short} passed over with < 60 rows), the mix needs {mix[lg]}")
     t_first = min(r.wall[0] for r in rs)
     order = list(range(len(rs)))
     rng.shuffle(order)
-    out = []
+    out, spec = [], []
     for n, k in enumerate(order):
         r = rs[k]
         at = t_first + (0 if n == 0 else rng.randint(*STAGGER))
-        out.append(pr.repair(shift_replay(r, int(round(at - r.wall[0])))))
-    out.sort(key=lambda r: r.wall[0])
-    return out, [pc.truth_of(r) for r in out]
+        dt = int(round(at - r.wall[0]))
+        out.append(pr.repair(shift_replay(r, dt)))
+        spec.append([used[k][0], used[k][1], dt])
+    pairs = sorted(zip(out, spec), key=lambda x: x[0].wall[0])
+    return [p[0] for p in pairs], [pc.truth_of(p[0]) for p in pairs], [p[1] for p in pairs]
 
 
 def mixed_timing(rs: list):
