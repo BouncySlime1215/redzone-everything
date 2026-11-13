@@ -15,7 +15,7 @@ frozen counters, never looser):
            really land in: `land_margin` seconds either side, by the READ STATE of that end's stream (A-01b). The
            margin is MARGIN_SIGMAS (2) x the stream's landing sd, rounded UP to the MARGIN_STEP grid; the sd is the
            root sum of squares of the four error parts the replay's judge draws and the show pads with
-           (park_timing.TimingParams, ledger L18 and L29-L30): the position (0.29 s once the tune's place was READ: the
+           (the show's TimingParams, as park_show imports it; ledger L18 and L29-L30): the position (0.29 s once the tune's place was READ: the
            label is a whole-second floor, L18 (1); a stream NOT known to be read: 2.0 s, the largest measured fresh-tune
            sd, L18 (2): 1.24 s espn n=21, 1.98 s fs1 n=10), K at its floor (K_SD_MIN 0.5 s, L29-L30), the feed stamp
            (NBA 0.33, college 0.5, football 0.40 s) and the key (0.13 s). So NBA: read 1.5 s, unread 4.5 s (the flat
@@ -27,7 +27,7 @@ frozen counters, never looser):
            moment") and the replay's judge (park_replay.Judge.flip counts hl_leave on the high-leverage span whether
            or not the ball is dead) read stricter. Which reading is the rule is Nick's call; strict takes the stricter.
            NOT covered by any margin here: a game with NO K tonight (the replay's "nok" case, scenario rung R0): its K
-           doubt is the 12 s prior (park_timing prior_sd), far past a few seconds of dead ball.
+           doubt is the 12 s prior (TimingParams.prior_sd), far past a few seconds of dead ball.
 
 What is and is not shared with the show: NOTHING of the show's own guard is used here. The show's hard guard
 (the PARK facts module's `refusal`, `Controller.park_why`) works on what the show BELIEVES at that second (its feed so far, its
@@ -46,8 +46,7 @@ from dataclasses import dataclass
 from redzone import grading
 from redzone.lab import cutgrade, leverage
 from redzone.noggin.k_table import K_SD_MIN
-from redzone.noggin.park_show import SHOW
-from redzone.noggin.park_timing import TIMING
+from redzone.noggin.park_show import SHOW, TIMING
 
 UNREAD_TUNE_SD = 2.0           # a fresh tune whose place was not read: the largest measured landing sd (L18: 1.98 s fs1)
 MARGIN_SIGMAS = 2.0            # the strict margin covers this many landing sds either side of a cut
