@@ -57,6 +57,10 @@ class HookContext:
     model_path: str = ""
     model_meta: dict = field(default_factory=dict)
     unk_w: float = 0.0          # the planner's own weight for an unreported second (its guess is unk_w x leverage)
+    model_sha256: str = ""      # the sha256 the fence check was made on (a factory re-reads and must find the same bytes)
+    base: int = 0               # the night's base wall second: grid second K of game g is wall base + K - shifts[g]
+    shifts: list = field(default_factory=list)
+    replays: list = field(default_factory=list)   # the recorded games (plays + wall stamps) the show was built from
 
 
 class Arm:
@@ -172,6 +176,7 @@ class HookArm(Arm):
         self.hook, self.model = hook, model
         self.model_meta: dict = {}
         self.model_sha256 = ""
+        self.hook_obj = None            # the hook of the last night attached (tests read its counters)
 
     def describe(self) -> dict:
         return {**super().describe(), "hook": self.hook, "model_sha256": self.model_sha256}
@@ -203,8 +208,11 @@ class HookArm(Arm):
 
     def attach(self, show, night: str) -> None:
         ctx = HookContext(str(night), [str(r.league.value) for r in show.replays], [r.gid for r in show.replays],
-                          self.seed, self.model, dict(self.model_meta), float(show.pl.p.unk_w))
+                          self.seed, self.model, dict(self.model_meta), float(show.pl.p.unk_w), self.model_sha256,
+                          int(show.night.base), list(getattr(show.feed, "shifts", None) or [0.0] * len(show.replays)),
+                          list(show.replays))
         hook = self.factory()(ctx)
+        self.hook_obj = hook
         if self.seam == "rate":
             show.pl.unknown = hook
         else:
