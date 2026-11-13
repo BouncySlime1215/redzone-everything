@@ -154,10 +154,10 @@ def _pick(rng: random.Random, w: dict) -> str:
     return keys[-1]
 
 
-def log_draw(path, *, night: str, games: int, episode_seed: int, scenario: Scenario) -> dict:
-    """Append one draw to a JSONL log: enough to run the episode again (`Scenario.from_dict`)."""
+def log_draw(path, *, night: str, games: int, episode_seed: int, scenario: Scenario, extra: dict | None = None) -> dict:
+    """Append one draw to a JSONL log: enough to run the episode again (`Scenario.from_dict`; `extra`: e.g. the mix)."""
     row = {"sampler": SAMPLER, "night": str(night), "games": int(games), "episode_seed": int(episode_seed),
-           "scenario": scenario.to_dict()}
+           "scenario": scenario.to_dict(), **(extra or {})}
     if path is not None:
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)

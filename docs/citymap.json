@@ -6952,6 +6952,7 @@
     "redzone/engine.py",
     "redzone/lab/backtest.py",
     "redzone/lab/cutgrade.py",
+    "redzone/lab/gym2/mask.py",
     "redzone/lab/oracle.py",
     "redzone/lab/oracle_window.py",
     "redzone/lab/reactgrade.py",
@@ -7098,6 +7099,7 @@
     "agent/kaggle/build_moments_kaggle.py",
     "redzone/demo/engine.py",
     "redzone/lab/cutgrade.py",
+    "redzone/lab/gym2/slates.py",
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
     "redzone/lab/oracle.py",
@@ -7331,6 +7333,7 @@
    },
    "outputs": [
     "redzone/lab/backtest.py",
+    "redzone/lab/gym2/mask.py",
     "redzone/lab/oracle.py",
     "redzone/lab/sportsgrade.py",
     "scripts/buffer_shadow_grade.py",
@@ -7515,8 +7518,15 @@
   },
   "redzone/lab/gym2/env.py": {
    "calls": [
+    "redzone/lab/gym2/mask.py:Rule1Mask",
+    "redzone/lab/gym2/reward.py:RewardMeter",
+    "redzone/lab/gym2/reward.py:Weights",
+    "redzone/lab/gym2/reward.py:rule1",
     "redzone/lab/gym2/scenario.py:Scenario",
-    "redzone/lab/gym2/scenario.py:log_draw"
+    "redzone/lab/gym2/scenario.py:log_draw",
+    "redzone/lab/gym2/slates.py:compose",
+    "redzone/lab/gym2/slates.py:draw_mix",
+    "redzone/lab/gym2/slates.py:mixed_timing"
    ],
    "contracts": [],
    "data": {
@@ -7525,7 +7535,10 @@
     "writes": []
    },
    "inputs": [
-    "redzone/lab/gym2/scenario.py"
+    "redzone/lab/gym2/mask.py",
+    "redzone/lab/gym2/reward.py",
+    "redzone/lab/gym2/scenario.py",
+    "redzone/lab/gym2/slates.py"
    ],
    "kind": "module",
    "machines": {
@@ -7533,10 +7546,67 @@
     "drives": []
    },
    "outputs": [
+    "redzone/lab/gym2/slates.py",
     "scripts/gym2_parity.py"
    ],
    "owner": "unowned",
    "role": "Gym v2's episode: the PARK replay of one recorded night, stepped one show tick at a time (task A-01, slice 1).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/gym2/mask.py": {
+   "calls": [
+    "redzone/grading.py:clean_leave",
+    "redzone/grading.py:dead_at",
+    "redzone/grading.py:idx",
+    "redzone/lab/cutgrade.py:after_bucket",
+    "redzone/lab/leverage.py:high_leverage"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/grading.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/lab/leverage.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/gym2/env.py"
+   ],
+   "owner": "unowned",
+   "role": "Gym v2's Rule #1 mask: which cuts a director may make, by the FROZEN grader's own functions (A-01 slice 3).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/gym2/reward.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/gym2/env.py"
+   ],
+   "owner": "unowned",
+   "role": "Gym v2's reward terms, each judged where the picture TRULY was (the replay's judge), per step (A-01 slice 3).",
    "serves": [
     "untagged"
    ]
@@ -7570,6 +7640,46 @@
     "untagged"
    ]
   },
+  "redzone/lab/gym2/slates.py": {
+   "calls": [
+    "redzone/lab/backtest.py:Replay",
+    "redzone/lab/gym2/env.py:replay_module",
+    "redzone/lab/splits.py:archive_nights",
+    "redzone/lab/splits.py:nights_for",
+    "redzone/models.py:League",
+    "redzone/noggin/park_show.py:ShowTiming",
+    "redzone/noggin/park_timing.py:GameTiming",
+    "redzone/sources/espn.py:_ts"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/gym2/env.py",
+    "redzone/lab/splits.py",
+    "redzone/models.py",
+    "redzone/noggin/park_show.py",
+    "redzone/noggin/park_timing.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/gym2/env.py"
+   ],
+   "owner": "unowned",
+   "role": "Gym v2 slates: census-weighted sport mixes built from recorded dev-night games (A-01 slice 3).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/leverage.py": {
    "calls": [
     "redzone/models.py:pro_period",
@@ -7594,6 +7704,7 @@
    },
    "outputs": [
     "redzone/lab/backtest.py",
+    "redzone/lab/gym2/mask.py",
     "redzone/lab/outcome_label.py",
     "redzone/lab/sportsgrade.py",
     "scripts/buffered_jump_sim.py",
@@ -8310,6 +8421,7 @@
    "outputs": [
     "redzone/lab/brain3data.py",
     "redzone/lab/breakblend.py",
+    "redzone/lab/gym2/slates.py",
     "redzone/lab/tune.py",
     "scripts/backfill_eval_v2.py",
     "scripts/bucket_join_measure.py",
@@ -8878,6 +8990,7 @@
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
     "redzone/lab/cutgrade.py",
+    "redzone/lab/gym2/slates.py",
     "redzone/lab/leverage.py",
     "redzone/lab/night/presses.py",
     "redzone/lab/night/run.py",
@@ -9987,6 +10100,7 @@
    },
    "outputs": [
     "redzone/lab/gym2/scenario.py",
+    "redzone/lab/gym2/slates.py",
     "redzone/noggin/park_catchup.py",
     "redzone/park_run.py",
     "scripts/park_replay.py"
@@ -10017,6 +10131,7 @@
    },
    "outputs": [
     "redzone/lab/gym2/scenario.py",
+    "redzone/lab/gym2/slates.py",
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_show.py",
     "redzone/park_run.py",
@@ -11947,6 +12062,7 @@
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
     "redzone/lab/cutgrade.py",
+    "redzone/lab/gym2/slates.py",
     "redzone/lab/leverage.py",
     "redzone/lab/night/run.py",
     "redzone/lab/oracle.py",
@@ -19268,13 +19384,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2326,
+  "calls": 2346,
   "data_files": 205,
   "machines": 53,
-  "modules": 476,
+  "modules": 479,
   "orphans": 36,
-  "unowned": 278,
-  "untagged": 408
+  "unowned": 281,
+  "untagged": 411
  },
  "version": 2
 }
