@@ -95,6 +95,46 @@ def tabs_for(A: list, guard: int) -> list[Tab]:
     return out
 
 
+UNKNOWN_RATE_CLAMP = (0.1, 4.0)      # a handed-over rate is held to this x the planner's own guess (track A section 9)
+
+
+class ClampedUnknownRate:
+    """park.unknown_rate_v2 (task A-05): a handed-over `unknown` hook (bind(arrs, setting), rate(game, last reported
+    second, now)) held to UNKNOWN_RATE_CLAMP x the planner's own guess for that second (unk_w x the game's leverage
+    there), as the stage-6 arm holds its model. A rate that is not a finite number gives the guess itself (counted in
+    `unusable`). Any per-league scaling is the hook's own job. Counters: calls, clamped, unusable."""
+
+    def __init__(self, inner, unk_w: float):
+        self.inner, self.unk_w = inner, float(unk_w)
+        self.A = None
+        self.calls = self.clamped = self.unusable = 0
+
+    def bind(self, A: list, s: Setting) -> None:
+        self.A = A
+        self.inner.bind(A, s)
+
+    def rate(self, g: int, K: int, t: int) -> float:
+        base = self.unk_w * self.A[g].lev[K]
+        r = self.inner.rate(g, K, t)
+        self.calls += 1
+        try:
+            r = float(r)
+        except (TypeError, ValueError):
+            r = math.nan
+        if not math.isfinite(r):
+            self.unusable += 1
+            return base
+        lo, hi = UNKNOWN_RATE_CLAMP[0] * base, UNKNOWN_RATE_CLAMP[1] * base
+        if r < lo or r > hi:
+            self.clamped += 1
+        return min(max(r, lo), hi)
+
+
+def unknown_rate_v2_on(get) -> bool:
+    """park.unknown_rate_v2 from a config getter (`cfg.get`): True only for a literal True, as every park flag."""
+    return get("park.unknown_rate_v2", False) is True
+
+
 class Planner:
     """Drives park_core.run(planner=...). act() each second -> (jump now, the hidden stick's game, the spot to pause at, how).
     `params` holds the timing numbers the search reads (an instance may be given its own).

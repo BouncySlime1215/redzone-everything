@@ -39,7 +39,7 @@ from redzone.models import League
 from redzone.noggin import park_core
 from redzone.noggin.park_core import PARK_PARAMS, Arr, Night, Setting, State, Stats
 from redzone.noggin.park_facts import FACTS, GRID, FactsParams, GameFacts, merge_eyes, pad_arr, refusal, shift
-from redzone.noggin.park_plan import NO_TUNE, FAR, FRESH_BEHIND, Plan, Planner
+from redzone.noggin.park_plan import NO_TUNE, FAR, FRESH_BEHIND, ClampedUnknownRate, Plan, Planner
 from redzone.noggin.park_timing import TIMING, ErrorParts, GameTiming, TimingParams
 from redzone.sources import espn
 
@@ -508,7 +508,7 @@ class Show:
                  leagues=None, keep=None, judge=None, eyes=None, model=None, board=None, say=print, emit=None, tune0=None,
                  prefs=None, params: ShowParams = SHOW, crunch: bool | None = None, clips: bool = False, warrant: str | None = None,
                  no_back=None, depth=None, football_slider: float | None = None, keep_live: bool = False, seen: bool = False,
-                 director=None, director_v2: bool = False, director_obj=None):
+                 director=None, director_v2: bool = False, director_obj=None, unknown_rate_v2: bool = False, unknown=None):
         P = self.P = params
         self.depth = dict(depth or {})                           # [PARK-NFL-LAG] game -> seconds deeper its stream is parked (its feed is late)
         if depth is not None:
@@ -528,7 +528,15 @@ class Show:
         plan = plan or Plan(jump_bonus=P.bonus)
         self.join_playing = bool(getattr(rig, "join_playing", True))
         deep = bool(getattr(rig, "deep", True))
-        self.pl = Planner(plan, show=self, skip=False, confirm=P.confirm if timed else 0,
+        # [PLANNER v2] park.unknown_rate_v2 (A-05): with the flag on (a literal True), a handed-over `unknown` hook prices
+        # the seconds the feed has not reported, held to 0.1x..4x the planner's guess. Off, or nothing handed over: None,
+        # the planner's own guess, and the handed-over object is never touched.
+        rate = None
+        if unknown_rate_v2 is True and unknown is not None:
+            if not (callable(getattr(unknown, "bind", None)) and callable(getattr(unknown, "rate", None))):
+                raise TypeError(f"park.unknown_rate_v2: {type(unknown).__name__} lacks what the planner uses (bind, rate)")
+            rate = ClampedUnknownRate(unknown, plan.unk_w)
+        self.pl = Planner(plan, rate, show=self, skip=False, confirm=P.confirm if timed else 0,
                           tune_lag=int(math.ceil(rig.tune_lag + (timing.p.tune_sd if rig.steps else 0.0))) if timed else 0,
                           hold_off=rig.hold_off if timed else 0, hold_ready=rig.hold_off + 1 if timed else 1,
                           resume_s=1 if timed else 0, sticky=timed, dead_w=P.dead_w if timed else 0.0,
