@@ -166,3 +166,38 @@ def test_the_show_planner_option_lists_are_as_recorded(name):
     got = run_show(night, games, minutes, build_kw)
     assert got == A05_SHOW_PINNED[name]
     assert got[1] > 100 and got[2] >= 3
+
+
+def plan_state(pl, st) -> str:
+    return opt_text((pl.cmd, pl.go, pl.wr, pl.info, pl.open, pl.firm, pl.land_j, pl.next, pl.land, pl.searches,
+                     list(st.sched), list(st.firm)))
+
+
+@pytest.mark.parametrize("name", sorted(SIM_SCENARIOS))
+def test_options_lists_what_a_search_would_without_planning(name):
+    """Planner.options (the option list on its own) gives the very rows and value of staying a search builds at the
+    same second on the same state, the best of them by plan value, and leaves the planner's plan untouched."""
+    seed, guard, plan, kw = SIM_SCENARIOS[name]
+    night, s = random_night(seed), exact(guard)
+    pl = pp.Planner(pp.Plan(**plan), **kw)
+    a, b = night.span
+    brain = ps.Foresight()
+    st, S = ps.run(night, brain, s, t0=a, t1=a + 1, planner=pl)
+    checked = with_rows = 0
+    for t in range(a + 1, b):
+        if t % 97 == 0:
+            before = plan_state(pl, st)
+            v0, opts, best = pl.options(t, S)
+            again = pl.options(t, S)
+            assert plan_state(pl, st) == before
+            assert opt_text(again) == opt_text((v0, opts, best))
+            assert best is (max(opts, key=lambda r: r[0]) if opts else None)
+            pl.trace = []
+            pl._search(t, S)
+            tt, tv0, _cs, _K, topts, _chosen = pl.trace[0]
+            pl.trace = None
+            assert (tt, opt_text(tv0), opt_text(topts)) == (t, opt_text(v0), opt_text(opts))
+            checked += 1
+            with_rows += bool(opts)
+        st, S = ps.run(night, brain, s, t0=t, t1=t + 1, state=S, stats=st, planner=pl)
+    assert checked >= 20 and with_rows >= 5
