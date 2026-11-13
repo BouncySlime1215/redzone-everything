@@ -593,7 +593,7 @@ class Show:
         self.drivers = {"a": 0, "b": 0, "c": 0}                  # jumps carried out, by the director's goal that drove each
         # [DIRECTOR v2] park.director_v2 (A-04): with the flag on, a handed-over `director_obj` (the shape of
         # redzone/noggin/director_protocol.ShowDirector) is used as is. Flag off, or nothing handed over: as before.
-        if director_v2 and director_obj is not None:
+        if director_v2 is True and director_obj is not None:   # a literal True, as director_protocol.director_v2_on reads it
             from redzone.noggin.director_protocol import is_show_director
             if not is_show_director(director_obj):
                 raise TypeError(f"park.director_v2: {type(director_obj).__name__} lacks what the show uses (at, now, weigh, why)")
