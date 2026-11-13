@@ -217,9 +217,6 @@ def test_dry_run_writes_nothing(tmp_path, monkeypatch, capsys):
     ft = FakeTime()
     f = FakeFetcher(ft, world(ft))
     monkeypatch.setattr(fl, "UrlFetcher", lambda *a, **k: f)
-    monkeypatch.setattr(fl.time, "time", ft.clock)
-    monkeypatch.setattr(fl.time, "monotonic", ft.mono)
-    monkeypatch.setattr(fl.time, "sleep", ft.sleep)
     assert fl.main(["--dry-run", "--out-dir", str(tmp_path / "out"), "--date", SLATE]) == 0
     assert "would follow 2 feeds" in capsys.readouterr().out
     assert not list((tmp_path / "out").glob("*.jsonl"))
