@@ -7492,6 +7492,50 @@
     "untagged"
    ]
   },
+  "redzone/lab/gym2/__init__.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "package",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Gym v2: the practice world for the AI director (task A-01), research only and never imported by the show.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/gym2/env.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/gym2_parity.py"
+   ],
+   "owner": "unowned",
+   "role": "Gym v2's episode: the PARK replay of one recorded night, stepped one show tick at a time (task A-01, slice 1).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/leverage.py": {
    "calls": [
     "redzone/models.py:pro_period",
@@ -15770,6 +15814,33 @@
     "untagged"
    ]
   },
+  "scripts/gym2_parity.py": {
+   "calls": [
+    "redzone/lab/gym2/env.py:GymV2",
+    "redzone/lab/gym2/env.py:digest",
+    "redzone/lab/gym2/env.py:replay_decisions"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/gym2/env.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Gym v2 parity gate (task A-01): the practice world with the identity scenario decides byte for byte as the replay.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/holdset.py": {
    "calls": [
     "scripts/coverage_audit.py:DevOnly"
@@ -19161,13 +19232,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2319,
+  "calls": 2322,
   "data_files": 205,
   "machines": 53,
-  "modules": 472,
+  "modules": 475,
   "orphans": 36,
-  "unowned": 274,
-  "untagged": 404
+  "unowned": 277,
+  "untagged": 407
  },
  "version": 2
 }

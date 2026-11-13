@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**472 modules**, 404 untagged, 274 unowned, 36 orphans (no importer); 2319 call edges, 205 data files, 53 machines.
+**475 modules**, 407 untagged, 277 unowned, 36 orphans (no importer); 2322 call edges, 205 data files, 53 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -251,7 +251,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval.py` (entry) | The scorecard every change is judged by. | config, lab.backtest, lab.cutgrade, lab.evaldata, lab.optimize, lab.oracle +2 -> - | untagged |
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 
-## unowned (274)
+## unowned (277)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -290,6 +290,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/breakblend.py` | Fit and grade how the break forecast mixes the rules with the brain (``breaks.blend``). | config, lab.brainfit, lab.datasets, lab.splits, models, scoring.brain +2 -> scripts.eval_break_blend | untagged |
 | `redzone/lab/delaygrade.py` | [EXP-803] Delay precision grader, matching EXP-803's pre-registration exactly (#296, rescoped Cycle 19 #295). | lab.reactgrade -> scripts.delay_grade | untagged |
 | `redzone/lab/evaldata.py` | One pinned eval dataset, so every thread, CI and the Mac grade on byte-identical nights. | config, contracts.switching, uses:ConfigSwitchPaths -> demo.__main__, lab.backtest, lab.splits, scripts.backfill_eval_v2, scripts.bucket_join_measure, scripts.build_eval_data +12 | untagged |
+| `redzone/lab/gym2/__init__.py` (package) | Gym v2: the practice world for the AI director (task A-01), research only and never imported by the show. | - -> - | untagged |
+| `redzone/lab/gym2/env.py` | Gym v2's episode: the PARK replay of one recorded night, stepped one show tick at a time (task A-01, slice 1). | - -> scripts.gym2_parity | untagged |
 | `redzone/lab/leverage.py` | Leverage floor for a mid-play LEAVE (Nick, Nov 4 3:15 PM ET). | models, sources.espn -> lab.backtest, lab.outcome_label, lab.sportsgrade, scripts.buffered_jump_sim, scripts.park_ceiling, scripts.redzone_reconstruct +1 | untagged |
 | `redzone/lab/night/__init__.py` (package) | The end-to-end night: the whole system through a replayed night, against fake sticks and a fake TV. | - -> - | untagged |
 | `redzone/lab/night/__main__.py` | python -m redzone.lab.night [--hours H] [--start HH:MM] [--json out.json] ... | lab.night.run, lab.night.vclock -> - | untagged |
@@ -438,6 +440,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/gi_v3_nba.py` (entry) | GI v3 NBA (WV loop cycle 1, prereg /mnt/project-files/wv-loop/prereg-gi-v3-nba.md). | - -> - | untagged |
 | `scripts/grading_check.py` (entry) | Grading rules in CI (docs/grading.md; Nick, Nov 4 2026 6:40 PM ET: "grading even SHARPER"). | - -> - | untagged |
 | `scripts/green_summaries.py` (entry) | [EXP-102] Green moment source: nflverse NFL and NBA.com cdn NBA play-by-play -> ESPN-summary-shaped archives, so the reasoner moment builder (agent/kaggle/bu... | noggin.factory, sources.espn -> - | untagged |
+| `scripts/gym2_parity.py` (entry) | Gym v2 parity gate (task A-01): the practice world with the identity scenario decides byte for byte as the replay. | lab.gym2.env -> - | untagged |
 | `scripts/holdset.py` (entry) | How much of the hold-set choice can any model win? | scripts.coverage_audit -> agent.kaggle.qwen_eval, scripts.holdset_public, scripts.kaggle_gamevalue, scripts.kaggle_gamevalue_holdset, scripts.value_leak_check | untagged |
 | `scripts/holdset_public.py` (entry) | The bar the brain must beat: the hold-set measurement with the REAL standby.Planner, and on public seasons. | config, decider.decider, lab.backtest, lab.evaldata, models, noggin.factory +5 -> agent.kaggle.qwen_eval, scripts.kaggle_gamevalue, scripts.kaggle_gamevalue_holdset, scripts.kaggle_value_shards, scripts.value_leak_check | untagged |
 | `scripts/jump_try.py` (entry) | Jump mode on the real TV: turn it on / off through the running app's settings API (undoable), and watch what it does from data/jumps.jsonl (one row per jump:... | - -> - | untagged |
@@ -530,7 +533,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/wv_aux_label.py` (entry) | Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804). | - -> scripts.attention_labels | untagged |
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 
-## Untagged (404)
+## Untagged (407)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -646,6 +649,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/lab/datasets.py`
 - `redzone/lab/delaygrade.py`
 - `redzone/lab/evaldata.py`
+- `redzone/lab/gym2/__init__.py`
+- `redzone/lab/gym2/env.py`
 - `redzone/lab/leverage.py`
 - `redzone/lab/night/__init__.py`
 - `redzone/lab/night/__main__.py`
@@ -840,6 +845,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/gi_v3_nba.py`
 - `scripts/grading_check.py`
 - `scripts/green_summaries.py`
+- `scripts/gym2_parity.py`
 - `scripts/holdset.py`
 - `scripts/holdset_public.py`
 - `scripts/jump_try.py`
@@ -976,7 +982,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/lab/replaycheck.py`
 - `redzone/tuners/identity.py`
 
-## Most-called symbols (top 25 of 1208)
+## Most-called symbols (top 25 of 1211)
 
 | symbol | callers |
 |---|---:|
