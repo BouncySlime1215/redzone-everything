@@ -61,6 +61,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "delay.edge_prior.refresh": (0, 60),
     "delay.edge_prior.prior": (0.2, 180),
     "delay.edge_prior.drift_cap_s": (0, 10),
+    "replay.montage_age_s": (0, 86400),   # [F-01b] seconds; the shipped 14400 (every missed big play still on the DVR) is above the generic replay limit
     "replay": (0, 7200),
     "reel.min_clips": (1, 12),
     "reel.min_s": (5, 120),
@@ -75,11 +76,16 @@ LIMITS: dict[str, tuple[float, float]] = {
     "break_lengths_s": (0, 1800),
     "score.league_weight": (0.5, 1.5),
     "score.context.lead_change_fade_s": (0, 1800),   # [F-01] seconds; the shipped 150 is above the generic score limit
+    "score.nfl.wp_swing.fade_s": (0, 1800),   # [F-01b] seconds; the shipped 120 is above the generic score limit (-100..100, built for points)
+    "score.nba.run_fade_s": (0, 1800),        # [F-01b] seconds; the shipped 120, the same
     "score.personal.my_team_league": (0.0, 1.5),
     "score": (-100, 100),
+    "decider.wait_for_my_team_s": (0, 7200),   # [F-01b] seconds; the shipped 1800 (your team tips within half an hour) is above the generic decider limit
     "decider": (0, 1000),
     "jump_mode": (0, 600),
     "tuners.prime_tiles": (1, 3),
+    "tuners.unauthorized_retry_s": (0, 3600),   # [F-01b] seconds; the shipped 300 (DEV-15: re-connecting an unauthorized stick re-raises the TV prompt) is above the generic tuners limit
+    "tuners.launch_timeout_s": (0, 120),        # [F-01b] seconds; the shipped 30 (DEV-11: `am start -W` of a cold start can top 15 s) is above the generic tuners limit
     "tuners": (0, 10),
     "two_stick.min_gain": (0, 100),
     "two_stick.input_settle_s": (0, 10),
@@ -92,6 +98,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "governor.calm_s": (0, 3600),
     "governor.busy_load": (0.2, 4.0),
     "governor.battery_low_pct": (0, 100),
+    "governor.swap_critical_pct": (0, 100),   # [F-01b] a percent; the shipped 90 is below the generic governor limit (100..16000, built for MB)
     "governor": (100, 16000),
     "brain.break_weight": (0.0, 1.0),
     "brain.break_blend": (-10.0, 10.0),
@@ -119,6 +126,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "timing.behind_live_s.rc8_fixed_s": (0, 90),
     "timing.behind_live_s.max_s": (0, 90),             # Nick's cap: never more than 90 s behind live
     "demo": (0, 60),   # replay simulator timings (redzone/demo/engine.py)
+    "timing.nerds_shots_s": (0, 120),   # [F-01b] seconds after landing, one limit for each number in the list (Live Latency is readable 11-23 s after a tune)
 }
 
 # Former rate/dwell limits are deliberately inactive. Old saved files and lab
@@ -255,7 +263,14 @@ def validate(cfg: dict, defaults: dict, path: str = "") -> None:
             if not isinstance(v, str):
                 raise ConfigError(f"'{p}' must be text")
         elif isinstance(d, list):
-            if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+            if d and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in d):
+                # [F-01b] a list of numbers (timing.nerds_shots_s) is a legal setting as a list of numbers, each inside the limit
+                if not isinstance(v, list) or not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in v):
+                    raise ConfigError(f"'{p}' must be a list of numbers")
+                rng = _limit_for(p)
+                if rng and not all(rng[0] <= x <= rng[1] for x in v):
+                    raise ConfigError(f"'{p}' must have every number between {rng[0]} and {rng[1]} (got {v})")
+            elif not isinstance(v, list) or not all(isinstance(x, str) for x in v):
                 raise ConfigError(f"'{p}' must be a list of names")
 
 
