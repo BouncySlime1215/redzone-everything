@@ -36,7 +36,7 @@ import re
 import tempfile
 from pathlib import Path, PurePosixPath
 
-ROOT = Path(__file__).resolve().parents[2]
+REGISTRY_ROOT = Path(__file__).resolve().parents[2]
 SUITE = "model-registry"
 EVENTS = ("register", "promote", "demote")
 REG_VERDICTS = ("PASS", "FAIL", "INCONCLUSIVE")
@@ -59,7 +59,7 @@ class UnpromotedModelError(RegistryError):
 
 def _ledger():
     """scripts/results_ledger.py, loaded by path (scripts/ is not a package). The one ledger implementation."""
-    spec = importlib.util.spec_from_file_location("_rz_results_ledger", ROOT / "scripts" / "results_ledger.py")
+    spec = importlib.util.spec_from_file_location("_rz_results_ledger", REGISTRY_ROOT / "scripts" / "results_ledger.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -244,7 +244,7 @@ def demote(run_id: str, reason: str, base: Path | None = None) -> dict:
 
 
 def _artifact(st: dict, root: Path | None) -> Path:
-    root = (ROOT if root is None else Path(root)).resolve()
+    root = (REGISTRY_ROOT if root is None else Path(root)).resolve()
     path = (root / st["artifact_path"]).resolve()
     if root not in path.parents:
         raise UnpromotedModelError(f"run {st['run_id']}: artifact path escapes the root")

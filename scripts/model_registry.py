@@ -27,7 +27,7 @@ from redzone.models_rt import registry as R  # noqa: E402
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--dir", type=Path, default=R.DEFAULT_DIR, help="ledger folder (default results/)")
-    ap.add_argument("--root", type=Path, default=R.ROOT, help="folder artifact paths are relative to")
+    ap.add_argument("--root", type=Path, default=R.REGISTRY_ROOT, help="folder artifact paths are relative to")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("register")
     p.add_argument("--from", dest="src", type=Path, required=True)
