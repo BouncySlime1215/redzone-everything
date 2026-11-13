@@ -519,6 +519,32 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
     far enough ahead of it for a padded leave, so the show almost never makes its first jump).
     seen / director: [SEEN] park.seen and [DIRECTOR] park.director_v1 for this run (Director v1's numbers and the league
     weights from the default config); both off = the replay as before."""
+    b = build(night_id, games, case=case, hands=hands, first=first, minutes=minutes, seed=seed, league=league, fail=fail,
+              poll=poll, say=say, loaded=loaded, params=params, stop_min=stop_min, board=board, rig_kw=rig_kw, model=model,
+              eyes=eyes, emit=emit, any_shot=any_shot, grid=grid, prime=prime, prime_k=prime_k, prime_pad=prime_pad, walk=walk,
+              nfl=nfl, nfl_lag=nfl_lag, deep=deep, slider=slider, pin=pin, seen=seen, director=director, step_costs=step_costs)
+    asyncio.run(b.clock.run(drive(b.show, b.clock, b.rows, b.a, b.b)))
+    return b.show
+
+
+class Built:
+    """A replay set up and not yet run (`build`): the show, its fake clock, the row feed and the span [a, b)."""
+    __slots__ = ("show", "clock", "rows", "a", "b")
+
+    def __init__(self, show: Show, clock: FakeClock, rows: RowFeed, a: int, b: int):
+        self.show, self.clock, self.rows, self.a, self.b = show, clock, rows, a, b
+
+
+def build(night_id: str, games: int = 4, *, case: str = "tonight", hands: str = "app", first: str = "", minutes: float = 0,
+          seed: int = 0, league: str = "nba", fail: dict | None = None, poll: int = 3, say=None, loaded: tuple | None = None,
+          params: ShowParams | None = None, stop_min: dict | None = None, board=None, rig_kw: dict | None = None,
+          model=None, eyes=None, emit=None, any_shot: bool = False, grid: tuple | None = None, prime: int = 0,
+          prime_k: str = "bug", prime_pad: int | None = None, walk: str = "any", nfl: int = -1, nfl_lag: float | None = None,
+          deep: bool = False, slider: float | None = None, pin: bool = False, seen: bool = False, director: bool = False,
+          step_costs: str = "model", clock_type=None) -> Built:
+    """Everything `replay` sets up, not yet run: `replay` is `build` then `drive` to the end of the span. The practice
+    world (`redzone/lab/gym2`) builds the same way and steps the same drive, so it has no second physics.
+    clock_type: the fake clock's class (default FakeClock; the practice world's clock marks each tick's wait)."""
     P = params or ShowParams.from_config(config.default)
     first = first or "read"
     rs, slate = loaded or load_replay(night_id, games, league)
@@ -552,8 +578,8 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
     feed = FactsFeed([(r.league, r.gid) for r in rs], night, [0.0] * len(rs), leads, stop_min=stop_min,
                      params=FactsParams.from_config(config.default), keep_shots=any_shot)
     _, S0 = park_core.run(full, _Hindsight(), eng, t0=a, t1=a)     # the first picture, picked the way park_plan.py picks it
-    clock = FakeClock(float(a))
-    tune0 = {g: 2.7 + (P.read if steps else 0.0) for g in range(len(rs))}
+    clock = (clock_type or FakeClock)(float(a))
+    tune0 ={g: 2.7 + (P.read if steps else 0.0) for g in range(len(rs))}
     if primes:                                                   # [park.prime] a Prime tune: switch_cost.prime + its hold
         rk = dict(rig_kw or {})
         cost = prime_cost(P, steps)
@@ -591,8 +617,7 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
     rows = RowFeed(rs, feed, full.base, leads, poll)
     if board is not None:
         board.start(show, "replay", (b - a) / 60.0)
-    asyncio.run(clock.run(drive(show, clock, rows, a, b)))
-    return show
+    return Built(show, clock, rows, a, b)
 
 
 # ---------------------------------------------------------------------------------------------- [park.prime] Prime games
