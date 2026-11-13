@@ -7613,8 +7613,8 @@
   },
   "redzone/lab/gym2/scenario.py": {
    "calls": [
-    "redzone/noggin/park_show.py:ShowTiming",
-    "redzone/noggin/park_timing.py:GameTiming"
+    "redzone/noggin/park_show.py:GameTiming",
+    "redzone/noggin/park_show.py:ShowTiming"
    ],
    "contracts": [],
    "data": {
@@ -7623,8 +7623,7 @@
     "writes": []
    },
    "inputs": [
-    "redzone/noggin/park_show.py",
-    "redzone/noggin/park_timing.py"
+    "redzone/noggin/park_show.py"
    ],
    "kind": "module",
    "machines": {
@@ -7647,8 +7646,8 @@
     "redzone/lab/splits.py:archive_nights",
     "redzone/lab/splits.py:nights_for",
     "redzone/models.py:League",
+    "redzone/noggin/park_show.py:GameTiming",
     "redzone/noggin/park_show.py:ShowTiming",
-    "redzone/noggin/park_timing.py:GameTiming",
     "redzone/sources/espn.py:_ts"
    ],
    "contracts": [],
@@ -7663,7 +7662,6 @@
     "redzone/lab/splits.py",
     "redzone/models.py",
     "redzone/noggin/park_show.py",
-    "redzone/noggin/park_timing.py",
     "redzone/sources/espn.py"
    ],
    "kind": "module",
@@ -10130,8 +10128,6 @@
     "drives": []
    },
    "outputs": [
-    "redzone/lab/gym2/scenario.py",
-    "redzone/lab/gym2/slates.py",
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_show.py",
     "redzone/park_run.py",

@@ -3,7 +3,7 @@
 Terms (track A-director section 4, "Reward"); each is kept apart in `info["terms"]` and the scalar is their weighted sum:
   value       graded value seen: value2's grade of each play on screen with its lead-in (park_replay.Judge.v2). value2 is
               not frozen yet (task F-08): the term is the replay's own number until it is.
-  must_see    the grader's big plays seen live (Judge.big; park_core.Arr.mom)
+  must_see    the grader's big plays seen live (Judge.big; the PARK core's Arr.mom)
   live        seconds of live play on screen
   staleness   minus the mean age (minutes) of what the viewer has seen of each game in progress, per second on the show's
               clock (the seen-state scorecard's mean_unseen, park_replay.seen_card); Track E's seen-state replaces it later

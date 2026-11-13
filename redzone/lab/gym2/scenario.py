@@ -37,7 +37,7 @@ from pathlib import Path
 SAMPLER = "gym2-scenario-v1"
 
 # The measured numbers the sampler draws from: (value, source). Tests check the draws against these.
-MEASURED = {
+GYM_MEASURED = {
     "feed_median_s": {"league": (10.7, "L111: NBA CDN, 632 rows, 7 games"), "espn": (36.0, "L111 / study 03: ESPN summary")},
     "feed_p90_s": {"league": (60.0, "L111"), "espn": (67.0, "study 03 (L111 builder: 73.5)")},
     "feed_game_sd_s": {"league": (0.5, "L111: game medians 10.2-11.7 s"), "espn": (2.0, "ESTIMATE")},
@@ -46,8 +46,8 @@ MEASURED = {
     "p_park_fail": (1 / 19, "L112: 1 park of 19 failed"),
     "steps_s": ({"tune": 16.0, "park": 4.2, "jump_off": 6.9, "jump_on": 2.7}, "L112 (n=20), L116 bench"),
 }
-RUNGS = {"R0": (None,), "R1": (10, 8), "R2": (2,), "R3": (1, 2)}     # None = no K (the "nok" case, about 48 s)
-RUNG_W = {"R0": 1.0, "R1": 1.0, "R2": 1.0, "R3": 1.0}
+PAD_RUNGS = {"R0": (None,), "R1": (10, 8), "R2": (2,), "R3": (1, 2)}     # None = no K (the "nok" case, about 48 s)
+PAD_RUNG_W = {"R0": 1.0, "R1": 1.0, "R2": 1.0, "R3": 1.0}
 FEED_W = {"league": 0.5, "espn": 0.5}
 FAST_W = 0.5
 NOMINAL_FEED_LAG = 8.0          # what the replay (and the show) assume: park_replay's leads are built on it
@@ -132,18 +132,18 @@ IDENTITY = Scenario()
 def sample(seed: int, n_games: int, *, rung_w: dict | None = None, feed_w: dict | None = None, fast_w: float = FAST_W) -> Scenario:
     """One episode's world from `seed` alone."""
     rng = random.Random(f"{SAMPLER}:{int(seed)}")
-    rung = _pick(rng, rung_w or RUNG_W)
-    pad = rng.choice(RUNGS[rung])
-    srcs = tuple(_pick(rng, feed_w or FEED_W) for _ in range(n_games))
-    lags = tuple(round(max(1.0, rng.gauss(MEASURED["feed_median_s"][s][0], MEASURED["feed_game_sd_s"][s][0])), 3) for s in srcs)
-    lo, hi = MEASURED["tune_sd_s"][0]
+    rung = _weighted(rng, rung_w or PAD_RUNG_W)
+    pad = rng.choice(PAD_RUNGS[rung])
+    srcs = tuple(_weighted(rng, feed_w or FEED_W) for _ in range(n_games))
+    lags = tuple(round(max(1.0, rng.gauss(GYM_MEASURED["feed_median_s"][s][0], GYM_MEASURED["feed_game_sd_s"][s][0])), 3) for s in srcs)
+    lo, hi = GYM_MEASURED["tune_sd_s"][0]
     return Scenario(name=f"draw-{int(seed)}", seed=int(seed), rung=rung, pad_s=pad, feed_src=srcs, feed_lag_s=lags,
                     tail_p=TAIL_P, tail_med_s=tuple(TAIL_MED[s] for s in srcs), tail_sig=TAIL_SIG,
-                    tune_sd=round(rng.uniform(lo, hi), 4), p_read_fail=MEASURED["p_read_fail"][0],
-                    p_park_fail=MEASURED["p_park_fail"][0], steps="on" if rng.random() < fast_w else "off")
+                    tune_sd=round(rng.uniform(lo, hi), 4), p_read_fail=GYM_MEASURED["p_read_fail"][0],
+                    p_park_fail=GYM_MEASURED["p_park_fail"][0], steps="on" if rng.random() < fast_w else "off")
 
 
-def _pick(rng: random.Random, w: dict) -> str:
+def _weighted(rng: random.Random, w: dict) -> str:
     keys = sorted(w)
     tot = sum(w[k] for k in keys)
     x, acc = rng.random() * tot, 0.0
@@ -171,7 +171,7 @@ def rung_timing(tm, pad_s: int):
     """The show's timing with every game that has a K cut at exactly `pad_s` on a read stream: all four error parts
     scaled by one factor (as park_replay.prime_timing does). Games with no K keep their wide prior."""
     from redzone.noggin.park_show import ShowTiming
-    from redzone.noggin.park_timing import GameTiming
+    from redzone.noggin.park_show import GameTiming
     games = []
     for g in tm.g:
         if not g.known:
@@ -188,7 +188,7 @@ def rung_timing(tm, pad_s: int):
 def truth_timing(tm, tune_sd: float):
     """The judge's truth: as the show's model, except a stream whose tune was not read lands with sd `tune_sd`."""
     from redzone.noggin.park_show import ShowTiming
-    from redzone.noggin.park_timing import GameTiming
+    from redzone.noggin.park_show import GameTiming
     games = [GameTiming(g.league, g.k, replace(g.params, tune_sd=float(tune_sd))) for g in tm.g]
     return ShowTiming(games, delay=tm.delay, read=tm.read, eyes=tm.eyes, params=replace(tm.p, tune_sd=float(tune_sd)))
 

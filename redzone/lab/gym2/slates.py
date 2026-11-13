@@ -6,7 +6,7 @@
 
 The mix weights are the ten-year schedule census (L100: 588,941 events; redzone-agents models/mix-census-v1,
 top_mixes.csv, universe "owner_known": reachable with today's subscriptions and a known league), kept to PARK's leagues
-(nba, cbb, nfl, cfb), two games or more, at most MAX_GAMES. Nights with two or more NFL games (Sunday afternoons) are
+(nba, cbb, nfl, cfb), two games or more, at most MIX_MAX_GAMES. Nights with two or more NFL games (Sunday afternoons) are
 left out: RedZone's football scope is Monday and Thursday nights. Only the top 50 mixes of the census table exist, so
 rarer mixes are absent (named, not hidden). `CENSUS_MINUTES` is that table's aggregate minutes a mix was on.
 
@@ -25,12 +25,11 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
 PARK_LEAGUES = ("nba", "cbb", "nfl", "cfb")
-MAX_GAMES = 6                                  # track A section 4: at most 6 games
-STAGGER_S = (0, 90 * 60)                       # ESTIMATE: later tip-offs, uniform
+MIX_MAX_GAMES = 6                                  # track A section 4: at most 6 games
+STAGGER = (0, 90 * 60)                       # ESTIMATE: later tip-offs, uniform
 # owner_known universe of the census's top 50 (minutes a year the mix was on, summed over the full years):
-# kept: PARK leagues only, at least 2 games, at most 1 NFL game. Larger mixes are capped at MAX_GAMES by `draw_mix`.
+# kept: PARK leagues only, at least 2 games, at most 1 NFL game. Larger mixes are capped at MIX_MAX_GAMES by `draw_mix`.
 CENSUS_MINUTES = {
     "nba:2": 26510.0, "cbb:2": 18587.0, "nba:3": 12862.0, "cbb:1+nba:1": 12231.0, "cfb:2": 10171.0, "cbb:3": 9382.0,
     "nba:1+nfl:1": 9266.0, "cfb:3": 9024.0, "cbb:2+nba:1": 7803.0, "nba:4": 7147.0, "nba:2+nfl:1": 6862.0,
@@ -38,6 +37,14 @@ CENSUS_MINUTES = {
     "cfb:8": 4722.0, "cbb:5": 4629.0, "cbb:4": 4487.0, "cbb:2+nba:2": 4400.0, "nba:5": 4383.0, "cfb:1+nba:1": 4284.0,
     "cfb:4": 4232.0, "cbb:3+nba:2": 3955.0, "cbb:1+cfb:1": 3920.0,
 }
+
+
+def _root(root: Path | None) -> Path:
+    """The repo root (gym2.env's, imported late: env imports this module)."""
+    if root is not None:
+        return Path(root)
+    from redzone.lab.gym2.env import REPO_DIR
+    return REPO_DIR
 
 
 def parse_mix(s: str) -> dict:
@@ -48,13 +55,14 @@ def parse_mix(s: str) -> dict:
     return out
 
 
-def available(leagues=PARK_LEAGUES, root: Path = ROOT) -> set:
+def available(leagues=PARK_LEAGUES, root: Path | None = None) -> set:
     """Leagues with recorded dev (fit) games here (CI's pinned eval data has nba and nfl; the Mac's data may have more)."""
+    root = _root(root)
     return {lg for lg in leagues if (root / "data/archive" / lg).is_dir() and fit_games(lg, root)}
 
 
 def draw_mix(seed: int, *, have: set | None = None, weights: dict | None = None) -> dict:
-    """One mix, census-weighted, among those whose leagues all have recorded games here; capped at MAX_GAMES games
+    """One mix, census-weighted, among those whose leagues all have recorded games here; capped at MIX_MAX_GAMES games
     (a larger mix keeps its leagues in proportion, each at least 1)."""
     have = available() if have is None else set(have)
     w = {m: v for m, v in (weights or CENSUS_MINUTES).items() if set(parse_mix(m)) <= have}
@@ -70,9 +78,9 @@ def draw_mix(seed: int, *, have: set | None = None, weights: dict | None = None)
             break
     mix = parse_mix(pick)
     tot = sum(mix.values())
-    if tot > MAX_GAMES:
-        mix = {lg: max(1, round(n * MAX_GAMES / tot)) for lg, n in mix.items()}
-        while sum(mix.values()) > MAX_GAMES:
+    if tot > MIX_MAX_GAMES:
+        mix = {lg: max(1, round(n * MIX_MAX_GAMES / tot)) for lg, n in mix.items()}
+        while sum(mix.values()) > MIX_MAX_GAMES:
             big = max(sorted(mix), key=lambda lg: mix[lg])
             mix[big] -= 1
     return mix
@@ -92,20 +100,21 @@ def shift_replay(r, dt: int):
     return replace(r, plays=plays, wall=[w + dt for w in r.wall], _cache={})
 
 
-def fit_games(league: str, root: Path = ROOT) -> list[tuple[str, str]]:
+def fit_games(league: str, root: Path | None = None) -> list[tuple[str, str]]:
     """(night, game id) of every recorded dev (fit) game of a league, oldest first. Locked nights never appear."""
     from redzone.lab import splits
-    d = root / "data/archive" / league
+    d = _root(root) / "data/archive" / league
     keep, games = splits.nights_for(d, "fit") or set(), splits.archive_nights(d)
     return [(n, g) for n in sorted(keep) for g in games.get(n, ())]
 
 
-def compose(mix: dict, seed: int, *, root: Path = ROOT) -> tuple[list, list]:
+def compose(mix: dict, seed: int, *, root: Path | None = None) -> tuple[list, list]:
     """(recorded games, their whole-night facts) for one census mix: random fit games of each league, the first tipping
-    off at the earliest original tip, the others STAGGER_S later. Deterministic in (mix, seed)."""
+    off at the earliest original tip, the others STAGGER later. Deterministic in (mix, seed)."""
     from redzone.lab.backtest import Replay
     from redzone.lab.gym2.env import replay_module
     from redzone.models import League
+    root = _root(root)
     pr = replay_module()                       # (puts scripts/ on the path)
     import park_ceiling as pc
     rng = random.Random(f"gym2-compose:{int(seed)}:{sorted(mix.items())}")
@@ -133,7 +142,7 @@ def compose(mix: dict, seed: int, *, root: Path = ROOT) -> tuple[list, list]:
     out = []
     for n, k in enumerate(order):
         r = rs[k]
-        at = t_first + (0 if n == 0 else rng.randint(*STAGGER_S))
+        at = t_first + (0 if n == 0 else rng.randint(*STAGGER))
         out.append(pr.repair(shift_replay(r, int(round(at - r.wall[0])))))
     out.sort(key=lambda r: r.wall[0])
     return out, [pc.truth_of(r) for r in out]
@@ -144,7 +153,7 @@ def mixed_timing(rs: list):
     already does for football."""
     def fix(tm):
         from redzone.noggin.park_show import ShowTiming
-        from redzone.noggin.park_timing import GameTiming
+        from redzone.noggin.park_show import GameTiming
         games = [GameTiming(str(r.league.value if hasattr(r.league, "value") else r.league), g.k, g.params) for r, g in zip(rs, tm.g)]
         return ShowTiming(games, delay=tm.delay, read=tm.read, eyes=tm.eyes, params=tm.p)
     return fix

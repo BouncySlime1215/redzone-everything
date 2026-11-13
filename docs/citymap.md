@@ -294,8 +294,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/gym2/env.py` | Gym v2's episode: the PARK replay of one recorded night, stepped one show tick at a time (task A-01, slice 1). | lab.gym2.mask, lab.gym2.reward, lab.gym2.scenario, lab.gym2.slates -> lab.gym2.slates, scripts.gym2_parity | untagged |
 | `redzone/lab/gym2/mask.py` | Gym v2's Rule #1 mask: which cuts a director may make, by the FROZEN grader's own functions (A-01 slice 3). | grading, lab.cutgrade, lab.leverage -> lab.gym2.env | untagged |
 | `redzone/lab/gym2/reward.py` | Gym v2's reward terms, each judged where the picture TRULY was (the replay's judge), per step (A-01 slice 3). | - -> lab.gym2.env | untagged |
-| `redzone/lab/gym2/scenario.py` | Gym v2 scenarios: what one practice episode draws, from a seed, and the log that lets any episode be run again (A-01 slice 2). | noggin.park_show, noggin.park_timing -> lab.gym2.env | untagged |
-| `redzone/lab/gym2/slates.py` | Gym v2 slates: census-weighted sport mixes built from recorded dev-night games (A-01 slice 3). | lab.backtest, lab.gym2.env, lab.splits, models, noggin.park_show, noggin.park_timing +1 -> lab.gym2.env | untagged |
+| `redzone/lab/gym2/scenario.py` | Gym v2 scenarios: what one practice episode draws, from a seed, and the log that lets any episode be run again (A-01 slice 2). | noggin.park_show -> lab.gym2.env | untagged |
+| `redzone/lab/gym2/slates.py` | Gym v2 slates: census-weighted sport mixes built from recorded dev-night games (A-01 slice 3). | lab.backtest, lab.gym2.env, lab.splits, models, noggin.park_show, sources.espn -> lab.gym2.env | untagged |
 | `redzone/lab/leverage.py` | Leverage floor for a mid-play LEAVE (Nick, Nov 4 3:15 PM ET). | models, sources.espn -> lab.backtest, lab.gym2.mask, lab.outcome_label, lab.sportsgrade, scripts.buffered_jump_sim, scripts.park_ceiling +2 | untagged |
 | `redzone/lab/night/__init__.py` (package) | The end-to-end night: the whole system through a replayed night, against fake sticks and a fake TV. | - -> - | untagged |
 | `redzone/lab/night/__main__.py` | python -m redzone.lab.night [--hours H] [--start HH:MM] [--json out.json] ... | lab.night.run, lab.night.vclock -> - | untagged |
@@ -355,7 +355,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/noggin/park_plan.py` | PARK planner: the search that plans the two-stick show (stay, jump, hold, roll, skip, tune) a few jumps ahead. | noggin.park_core -> noggin.park_show, scripts.park_compare, scripts.park_plan, scripts.park_replay, scripts.park_table | untagged |
 | `redzone/noggin/park_prime.py` | PARK on Prime Video: which games the show may take from Prime, what a Prime tune costs, that Prime has no back route, and each Prime game's K from the hidden... | config, contracts.switching, decider.sync, screen.scorebug, sync_edge, uses:ConfigSwitchPaths -> control, park_run, scripts.park_prime_accept, scripts.park_replay | untagged |
 | `redzone/noggin/park_show.py` | PARK show: the in-app controller of the two-stick show, one second at a time (integration plan unit 8). | grading, models, noggin.director, noggin.park_core, noggin.park_facts, noggin.park_plan +3 -> lab.gym2.scenario, lab.gym2.slates, noggin.park_catchup, park_run, scripts.park_replay | untagged |
-| `redzone/noggin/park_timing.py` | PARK timing: where a game's feed time sits on a stick's picture, how sure that is, and each game's padding. | noggin.k_table -> lab.gym2.scenario, lab.gym2.slates, noggin.park_facts, noggin.park_show, park_run, scripts.park_replay | untagged |
+| `redzone/noggin/park_timing.py` | PARK timing: where a game's feed time sits on a stick's picture, how sure that is, and each game's padding. | noggin.k_table -> noggin.park_facts, noggin.park_show, park_run, scripts.park_replay | untagged |
 | `redzone/noggin/park_verify.py` | [park.verify_game, OFF] Is the game on a stick's picture the game PARK thinks that channel carries? | screen.scorebug -> control, park_run | untagged |
 | `redzone/noggin/pick.py` | Noggin Reflex PICK v1: which game should be on screen, learned by imitating the hindsight oracle. | grading, models, models_rt.forest, noggin.features, noggin.timing, scoring.brain3 +1 -> decider.decider, scripts.eval_sports, scripts.noggin_selfplay, scripts.train_noggin_pick | untagged |
 | `redzone/noggin/predict.py` | Noggin Reflex Predict v1: P(a big play in the next 30 / 60 / 120 s of play) at a restart (numpy only). | models_rt.forest, noggin.features, noggin.timing -> noggin.live, noggin.predict_fit, scripts.train_noggin_predict | untagged |
@@ -990,7 +990,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/lab/replaycheck.py`
 - `redzone/tuners/identity.py`
 
-## Most-called symbols (top 25 of 1221)
+## Most-called symbols (top 25 of 1222)
 
 | symbol | callers |
 |---|---:|

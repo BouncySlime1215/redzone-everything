@@ -84,7 +84,7 @@ def test_draw_mix_is_census_weighted_capped_and_keeps_nfl_to_one_game():
     have = {"nba", "nfl", "cbb", "cfb"}
     assert slates.draw_mix(9, have=have) == slates.draw_mix(9, have=have)
     mixes = [slates.draw_mix(s, have=have) for s in range(3000)]
-    assert all(2 <= sum(m.values()) <= slates.MAX_GAMES and m.get("nfl", 0) <= 1 for m in mixes)
+    assert all(2 <= sum(m.values()) <= slates.MIX_MAX_GAMES and m.get("nfl", 0) <= 1 for m in mixes)
     only = [slates.draw_mix(s, have={"nba", "nfl"}) for s in range(3000)]
     assert all(set(m) <= {"nba", "nfl"} for m in only)
     w = {k: v for k, v in slates.CENSUS_MINUTES.items() if set(slates.parse_mix(k)) <= {"nba", "nfl"}}
@@ -97,7 +97,7 @@ def test_draw_mix_is_census_weighted_capped_and_keeps_nfl_to_one_game():
 @needs_archive
 def test_a_composed_slate_uses_dev_games_only_staggered_and_moved_whole():
     if not {"nba", "nfl"} <= slates.available():
-        pytest.skip("needs recorded nba and nfl dev games")
+        pytest.skip("pinned eval data not fetched (nba and nfl dev games)")
     mix = {"nba": 2, "nfl": 1}
     rs, slate = slates.compose(mix, 4)
     rs2, _ = slates.compose(mix, 4)
@@ -105,7 +105,7 @@ def test_a_composed_slate_uses_dev_games_only_staggered_and_moved_whole():
     fit = {lg: {g for _, g in slates.fit_games(lg)} for lg in mix}
     assert all(r.gid in fit[r.league.value] for r in rs)
     starts = sorted(r.wall[0] for r in rs)
-    assert starts[-1] - starts[0] <= slates.STAGGER_S[1]
+    assert starts[-1] - starts[0] <= slates.STAGGER[1]
     assert len(slate) == 3 and sorted(str(r.league.value) for r in rs) == ["nba", "nba", "nfl"]
 
 
@@ -129,7 +129,7 @@ def test_reward_terms_add_up_to_what_the_judge_saw_and_rule_1_is_only_a_diagnost
 @needs_archive
 def test_a_mixed_episode_runs_and_is_logged_with_its_mix(tmp_path):
     if "nfl" not in slates.available():
-        pytest.skip("needs recorded nfl dev games")
+        pytest.skip("pinned eval data not fetched (nfl dev games)")
     log = tmp_path / "d.jsonl"
     env = gym.GymV2("mix-test", 2, seed=3, mix={"nba": 1, "nfl": 1}, minutes=10, draw_log=log)
     first = env.run().digest()

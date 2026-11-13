@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from redzone import grading
 from redzone.lab import cutgrade, leverage
 
-HIGH_PLAY_S = 7.0       # a high-leverage play covers this long before its stamp (veto_audit.PLAY_LEN_S, park_ceiling.HIGH_PLAY_S)
+HIGH_PLAY_LEN = 7.0       # a high-leverage play covers this long before its stamp (veto_audit.PLAY_LEN_S, park_ceiling.HIGH_PLAY_LEN)
 
 
 @dataclass(frozen=True)
@@ -75,11 +75,11 @@ class Rule1Mask:
         return Verdict(True)
 
     def in_high_play(self, g: int, i: float) -> bool:
-        """Is second i inside a high-leverage play of game g (a play covers HIGH_PLAY_S before its stamp: the replay
+        """Is second i inside a high-leverage play of game g (a play covers HIGH_PLAY_LEN before its stamp: the replay
         judge's and the show's guard's high-leverage span)?"""
         r = self.rs[g]
         st = self.base + float(i)
-        k = grading.idx(r.wall, st + HIGH_PLAY_S)
+        k = grading.idx(r.wall, st + HIGH_PLAY_LEN)
         while k >= 0 and r.wall[k] >= st:
             if leverage.high_leverage(r.league, r.plays[k]):
                 return True
