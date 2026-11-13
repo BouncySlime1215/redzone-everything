@@ -16,7 +16,12 @@ nohup taskpolicy -b nice -n 19 python3 scripts/feedlag_logger.py --exit-when-don
 
 `--exit-when-done` ends it by itself after the last game of the night plus a 10-minute grace for late rows; the
 default cap is 14 hours (`--max-hours`). Check it: `tail -f data/feedlag/logger.out` (one status line a minute) and
-`wc -l data/feedlag/$(date +%Y-%m-%d).jsonl`. Plan without polling a game: `python3 scripts/feedlag_logger.py --dry-run`.
+`wc -l data/feedlag/$(date +%Y-%m-%d).jsonl`. Plan without polling a game: `python3 scripts/feedlag_logger.py --dry-run [--date YYYY-MM-DD]` prints one line per game on
+the scoreboard (phase, start time ET, follow yes/no and why). **When it follows a game:** in-progress games at once; a
+scheduled game from 15 minutes before its tip (`--lead-minutes`; the scoreboard is re-read every 5 minutes, so it is picked
+up 10 to 15 minutes before the tip); a finished game for 10 more minutes (late rows). So `--dry-run` on a day whose games
+are hours away correctly says "would follow 0 now". Started at 17:00 ET it waits, then picks up each evening game by
+itself; `--exit-when-done` never fires while any game is still scheduled or in progress.
 
 Options: `--leagues nba,cbb` adds ranked college basketball (ESPN only, at most `--cbb-max-games 4` at once);
 `--sources espn_summary` drops the NBA feed; `--date YYYY-MM-DD` follows another slate.

@@ -3,6 +3,7 @@ import gzip
 import io
 import json
 import urllib.error
+from datetime import datetime
 
 import pytest
 
@@ -188,6 +189,42 @@ def test_exit_when_done_stops_after_the_last_game_and_a_finished_game_gets_a_gra
     assert len(end) == 2 and ft.elapsed() > 150                                # polled on through the grace period first
 
 
+def test_the_plan_names_every_game_with_its_phase_start_and_reason(tmp_path):
+    ft = FakeTime()                                                                 # 23:00 ET
+    routes = {SB_URL: espn_scoreboard([("1", "post", "AAA", "BBB", T0 - 4 * 3600), ("2", "in", "CHA", "PHX", T0 - 3600),
+                                       ("3", "pre", "EEE", "FFF", T0 + 10 * 60), ("4", "pre", "GGG", "HHH", T0 + 3 * 3600)]),
+              leagues.NBA_SCOREBOARD: nba_scoreboard([("0022600230", "CHA", "PHX")])}
+    p, _ = poller(tmp_path, ft, routes)
+    p.dry = True
+    p.discover()
+    plan = {e["game"]: e for e in p.plan}
+    assert [plan[g]["phase"] for g in "1234"] == ["post", "live", "pre", "pre"]
+    assert [plan[g]["follow"] for g in "1234"] == [False, True, True, False]
+    assert plan["1"]["why"] == "final, not followed" and plan["2"]["why"] == "in progress"
+    assert "tips in 10 min" in plan["3"]["why"] and "tips in 180 min" in plan["4"]["why"] and "15 min before tip" in plan["4"]["why"]
+    assert {k for k in p.jobs} == {("espn_summary", "2"), ("nba_cdn", "2"), ("espn_summary", "3")}
+    assert all(e["start"] for e in plan.values())
+
+
+def test_a_run_started_at_5pm_picks_up_the_evening_games_and_exit_when_done_waits_for_them(tmp_path):
+    ft = FakeTime(datetime(2026, 11, 12, 17, 0, tzinfo=feedlag.EASTERN).timestamp())
+    tip = ft.wall + 2 * 3600
+    state = {"s": "pre"}
+    routes = {SB_URL: lambda: espn_scoreboard([("100", state["s"], "CHA", "PHX", tip), ("101", "pre", "MIN", "DAL", tip + 3600)]),
+              leagues.NBA_SCOREBOARD: nba_scoreboard([("0022600230", "CHA", "PHX")]),
+              SUM_URL: espn_summary([]), PBP_URL: lambda: fl.Resp(404)}
+    p, _ = poller(tmp_path, ft, routes, exit_when_done=True)
+    assert p.run(lambda: ft.wall > tip - 20 * 60) == "signal"                        # all games still scheduled: no early exit
+    assert not p.jobs and not p.done
+    assert p.run(lambda: ft.wall > tip + 30 * 60) == "signal" and not p.done        # still running half an hour after the tip
+    tracked = [e for e in events(tmp_path) if e["ev"] == "track" and e["game"] == "100"]
+    assert {e["src"] for e in tracked} == {"espn_summary", "nba_cdn"}
+    assert all(-900 <= e["t"] - tip <= -600 for e in tracked)                       # found 10 to 15 minutes before the tip
+    assert ("espn_summary", "101") not in p.jobs                                    # the 2nd game (tip +60 min) waits for its own lead
+    p.run(lambda: ft.wall > tip + 55 * 60)
+    assert ("espn_summary", "101") in p.jobs
+
+
 def test_a_day_with_no_games_ends_at_once_when_asked(tmp_path):
     ft = FakeTime()
     p, _ = poller(tmp_path, ft, {SB_URL: espn_scoreboard([])}, exit_when_done=True)
@@ -233,7 +270,8 @@ def test_dry_run_writes_nothing(tmp_path, monkeypatch, capsys):
     f = FakeFetcher(ft, world(ft))
     monkeypatch.setattr(fl, "UrlFetcher", lambda *a, **k: f)
     assert fl.main(["--dry-run", "--out-dir", str(tmp_path / "out"), "--date", SLATE]) == 0
-    assert "would follow 2 feeds" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "1 games on the scoreboard, would follow 1 now" in out and "in progress -> espn_summary+nba_cdn" in out
     assert not list((tmp_path / "out").glob("*.jsonl"))
 
 

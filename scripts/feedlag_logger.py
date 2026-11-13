@@ -31,6 +31,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from datetime import datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
@@ -65,7 +66,7 @@ class Settings:
     max_games: int = 12                           # NBA games followed at once
     cbb_max_games: int = 4                        # college basketball games followed at once (ranked games first)
     discover_every: float = 300.0                 # re-read the scoreboards this often
-    lead: float = 600.0                           # start polling a game this long before its scheduled tip
+    lead: float = 900.0                           # follow a scheduled game from this long before its tip (15 min)
     post_grace: float = 600.0                     # keep polling a finished game this long (feeds back-fill late rows)
     max_hours: float = 14.0                       # stop by itself after this long
     exit_when_done: bool = False                  # stop once every game of the slate is over
@@ -173,6 +174,7 @@ class Poller:
         self.known: dict[tuple[str, str], set[str]] = {} if dry else self.log.known(self.slate)
         self.disc_due = 0.0
         self.done = False
+        self.plan: list[dict] = []                      # one entry per game on the last scoreboard: what we do and why
         self.requests = self.errors = self.rows = 0
         self.sent_log: list[tuple[float, str]] = []      # (monotonic send time, url): kept short, for the tests' eyes
         self.last_sent = 0.0
@@ -231,6 +233,7 @@ class Poller:
         ymd = slate.replace("-", "")
         wanted: list[tuple] = []       # (League, GameState)
         all_post, any_game = True, False
+        self.plan = []
         for name in self.s.leagues:
             lg = LEAGUES[name]
             urls = espn.scoreboard_urls(lg, None, ymd)
@@ -261,7 +264,10 @@ class Poller:
                 if any((src, g.game_id) in self.jobs for src in self.s.sources) and now_w - since <= self.s.post_grace:
                     recent.append(g)
                     all_post = False
-            wanted += [(lg, g) for g in (live + soon + recent)[:cap]]
+            chosen = (live + soon + recent)[:cap]
+            wanted += [(lg, g) for g in chosen]
+            for g in games:
+                self.plan.append(self._plan_line(lg, g, now_w, g in chosen, g in recent, g in soon, cap))
         cdn_idx = {}
         if feedlag.SRC_CDN in self.s.sources and any(lg == League.NBA for lg, _ in wanted):
             resp, _, recv = self._request(leagues.NBA_SCOREBOARD, conditional=False)
@@ -275,6 +281,25 @@ class Poller:
                 self.disc_due = self.mono() + min(60.0, self.s.discover_every)   # try the mapping again soon
         self._sync_jobs(wanted, cdn_idx, now_w)
         self.done = (not any_game or all_post) and not self.jobs
+
+    def _plan_line(self, lg: League, g, now_w: float, chosen: bool, in_grace: bool, soon: bool, cap: int) -> dict:
+        """One game's line of the plan: its state, its start, whether it is followed now, and why."""
+        mins = (g.start_time - now_w) / 60.0 if g.start_time else None
+        if g.phase == Phase.LIVE:
+            follow, why = True, "in progress"
+        elif g.phase == Phase.PRE:
+            when = f"tips in {mins:.0f} min" if mins is not None else "start time unknown"
+            follow = soon
+            why = f"{when}, inside the {self.s.lead / 60:g} min lead" if soon else \
+                f"{when}; followed from {self.s.lead / 60:g} min before tip"
+        elif g.phase == Phase.POST:
+            follow, why = in_grace, "final, post-game grace (late rows)" if in_grace else "final, not followed"
+        else:
+            follow, why = False, "state unknown"
+        if follow and not chosen:
+            follow, why = False, f"over the cap ({cap} games at once)"
+        return {"league": lg.value, "game": g.game_id, "matchup": f"{g.away.abbr}@{g.home.abbr}", "phase": g.phase.value,
+                "start": g.start_time, "follow": follow, "why": why}
 
     def _skew(self, resp: Resp, recv: float) -> None:
         """The server's Date header against our clock (1 s resolution): a wrong Mac clock would bias every lag."""
@@ -431,6 +456,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--max-rps", type=float, default=3.0, help="global requests per second (ceiling 4)")
     ap.add_argument("--max-games", type=int, default=12)
     ap.add_argument("--cbb-max-games", type=int, default=4)
+    ap.add_argument("--lead-minutes", type=float, default=15.0, help="follow a scheduled game from this long before its tip")
     ap.add_argument("--max-hours", type=float, default=14.0)
     ap.add_argument("--date", help="slate to follow, YYYY-MM-DD (default: tonight, US Eastern)")
     ap.add_argument("--exit-when-done", action="store_true", help="stop once every game of the slate is over")
@@ -449,7 +475,7 @@ def settings_from(a: argparse.Namespace) -> Settings:
     if bad:
         raise SystemExit(f"unknown source {bad}; use {', '.join(feedlag.FEED_SOURCES)}")
     return Settings(out_dir=a.out_dir, leagues=names, sources=srcs, interval=a.interval, max_rps=a.max_rps,
-                    max_games=a.max_games, cbb_max_games=a.cbb_max_games, max_hours=a.max_hours,
+                    max_games=a.max_games, cbb_max_games=a.cbb_max_games, max_hours=a.max_hours, lead=a.lead_minutes * 60.0,
                     exit_when_done=a.exit_when_done, date=a.date)
 
 
@@ -462,9 +488,13 @@ def main(argv=None) -> int:
     if a.dry_run:
         p = Poller(s, dry=True)
         p.discover()
-        print(f"slate {p.slate}: would follow {len(p.jobs)} feeds")
-        for (src, game), j in sorted(p.jobs.items()):
-            print(f"  {src:13} {j.tracker.lg} game {game} {'(before the tip)' if j.tracker.primed else '(under way)'}")
+        print(f"slate {p.slate} ({time.strftime('%a %H:%M %Z')} now): {len(p.plan)} games on the scoreboard, "
+              f"would follow {len({k[1] for k in p.jobs})} now")
+        for e in sorted(p.plan, key=lambda e: (e["start"] or 0, e["game"])):
+            start = datetime.fromtimestamp(e["start"], feedlag.EASTERN).strftime("%a %H:%M ET") if e["start"] else "?"
+            feeds = "+".join(src for (src, game) in sorted(p.jobs) if game == e["game"])
+            print(f"  {e['league']} {e['game']} {e['matchup']:8} {e['phase']:5} start {start:13} "
+                  f"follow {'yes' if e['follow'] else 'no ':3} {e['why']}" + (f" -> {feeds}" if feeds else ""))
         print(f"interval {s.interval:g} s per feed, at most {s.max_rps:g} requests/s overall, {s.out_dir}")
         return 0
     pf = _pidfile(s.out_dir)
