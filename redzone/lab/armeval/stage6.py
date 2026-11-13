@@ -27,21 +27,19 @@ import argparse
 import hashlib
 import io
 import json
-from bisect import bisect_right
 from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
 
+from redzone import featurestore
 from redzone.lab import fence
 from redzone.lab.armeval.arms import ARMEVAL_CLAMP
 
 STAGE6_STEP = 10.0                     # the model is asked once per game per 10 s of its clock (stage6_rerank.STEP_S)
 STAGE6_MISSING = -999.0                # a feature the export reads as unknown
-STAGE6_REG = {"nba": 4, "cbb": 2}      # regulation periods (the half is reg // 2)
-STAGE6_WHISTLE = ("foul", "violation", "outofbounds", "substitution", "kickedball", "delay", "technical", "flagrant",
-                  "jumpball", "freethrow")
+STAGE6_FEATURES = featurestore.FS_STATE4_NAMES   # lev_now, since_stop, last_kind, since_to (feature set "state4")
 STAGE6_CHECK_TOL = 1e-4                # the packed trees must reproduce the export's stored check rows this closely
 # L105's league weights for high-leverage value (stage5_policy.WEIGHTS = default_config.yaml league weights, Nov 11)
 STAGE6_LEAGUE_W = {"nfl": 1.15, "cfb": 1.10, "nba": 1.05, "cbb": 1.0, "nhl": 0.95, "mlb": 0.9, "wcbb": 0.9}
@@ -142,50 +140,26 @@ def stage6_check(model: dict) -> float:
     return worst
 
 
-# ---- the four state features, from the rows the feed has shown -------------------------------------------------------
+# ---- the four state features, from the rows the feed has shown (built by the feature store, set "state4") ----------
 def stage6_kind(type_text: str, period: int, half: int) -> int:
-    """What a row says about play (stage4_reader.kind_of): 0 action, 1 whistle, 2 review, 3 timeout, 4 period end,
+    """What a row says about play (featurestore.fs_kind): 0 action, 1 whistle, 2 review, 3 timeout, 4 period end,
     5 halftime, 6 end of game."""
-    tn = type_text.lower().replace(" ", "").replace("-", "").replace("\n", "")
-    if "timeout" in tn:
-        return 3
-    if tn in ("endgame", "endofgame"):
-        return 6
-    if tn == "endperiod":
-        return 5 if period == half else 4
-    if "challenge" in tn or "review" in tn:
-        return 2
-    return 1 if any(w in tn for w in STAGE6_WHISTLE) else 0
+    return featurestore.fs_kind(featurestore.fs_norm_type(type_text), period, half)
 
 
 class Stage6Rows:
-    """One game's rows as the state features read them: wall stamps (the show's own), kind, last stoppage, last timeout."""
+    """One game's rows as the state features read them, parsed once by the feature store with the show's own wall
+    stamps (F-06: the same code the notebooks train on)."""
 
     def __init__(self, league: str, plays: list, wall: list):
-        half, per = STAGE6_REG.get(league, 4) // 2, 0
+        self.league = league
         self.wall = [float(w) for w in wall]
-        self.kind, self.last_stop, self.last_to = [], [], []
-        ls = lt = -1
-        for i, p in enumerate(plays):
-            try:
-                per = int(float(((p.get("period") or {}).get("number")))) or per or 1
-            except (TypeError, ValueError):
-                per = per or 1
-            k = stage6_kind(str((p.get("type") or {}).get("text") or ""), per, half)
-            ls = i if k > 0 else ls
-            lt = i if k == 3 else lt
-            self.kind.append(k)
-            self.last_stop.append(ls)
-            self.last_to.append(lt)
+        self.P = featurestore.fs_parse(league, {"plays": list(plays)}, wall=self.wall, min_rows=1)
 
     def features(self, te: float, lev: float) -> dict:
         """lev_now, since_stop, last_kind, since_to at wall second te (rows stamped at or before te only)."""
-        j = min(max(bisect_right(self.wall, te) - 1, 0), len(self.wall) - 1)
-
-        def since(k: int) -> float:
-            return min(te - self.wall[k], 9999.0) if k >= 0 else 9999.0
-        return {"lev_now": lev, "since_stop": since(self.last_stop[j]), "last_kind": float(self.kind[j]),
-                "since_to": since(self.last_to[j])}
+        cols = featurestore.fs_columns("state4", self.league, self.P, [te], lev=[lev])
+        return {"lev_now": lev, **{k: float(cols[k][0]) for k in STAGE6_FEATURES[1:]}}
 
 
 # ---- the hook -----------------------------------------------------------------------------------------------------------

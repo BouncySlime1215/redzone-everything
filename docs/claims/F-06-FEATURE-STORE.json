@@ -1,0 +1,16 @@
+{
+  "card": "F-06-FEATURE-STORE",
+  "session": "f06-builder",
+  "branch": "f06-feature-store",
+  "files": [
+    "redzone/featurestore.py",
+    "redzone/lab/armeval/stage6.py",
+    "redzone/models_rt/registry.py",
+    "scripts/feature_parity.py",
+    "tests/test_featurestore*.py",
+    "tests/fixtures/featurestore_*",
+    "docs/feature-store.md"
+  ],
+  "started": 1794569888,
+  "expires": 1794656288
+}
