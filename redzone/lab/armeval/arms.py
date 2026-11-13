@@ -56,6 +56,7 @@ class HookContext:
     seed: int
     model_path: str = ""
     model_meta: dict = field(default_factory=dict)
+    unk_w: float = 0.0          # the planner's own weight for an unreported second (its guess is unk_w x leverage)
 
 
 class Arm:
@@ -151,8 +152,7 @@ class PlannerGuessRate:
 def planner_guess_hook(ctx: HookContext) -> PlannerGuessRate:
     """The template factory for a heavy rate arm (`--hook redzone.lab.armeval.arms:planner_guess_hook`): it returns
     the planner's own guess, so a heavy arm built on it must decide exactly as `planner` (the plug-in's own no-op)."""
-    from redzone.noggin.park_plan import Plan
-    return PlannerGuessRate(Plan().unk_w)
+    return PlannerGuessRate(ctx.unk_w)
 
 
 class NoopRateArm(Arm):
@@ -203,7 +203,7 @@ class HookArm(Arm):
 
     def attach(self, show, night: str) -> None:
         ctx = HookContext(str(night), [str(r.league.value) for r in show.replays], [r.gid for r in show.replays],
-                          self.seed, self.model, dict(self.model_meta))
+                          self.seed, self.model, dict(self.model_meta), float(show.pl.p.unk_w))
         hook = self.factory()(ctx)
         if self.seam == "rate":
             show.pl.unknown = hook
