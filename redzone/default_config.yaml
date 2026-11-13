@@ -1594,6 +1594,9 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
     flip_methods: [smartthings]   # the TV's own input change; never HOME on a stick
     input_rereads: 2       # an input the sound readback did not return is read again this many times...
     input_reread_s: 0.7    # ...this far apart
+    cue_lead_s: 8          # [park.catchup, E-01] a catch-up cue scrubs back to land this far before the clip's start (half a
+                           # 15 s LEFT plus the scrub's 6 s tolerance; a prior, not yet run on the TV: E-02), then pauses on it
+    cue_wait_max_s: 45     # ...and is dropped (tune again) when the clip's start is further ahead than this after it lands
   leagues: [nba, cbb]      # [PARK-CONTROLLER, unit 8] the leagues whose live games the PARK show takes. [PARK-NFL] nfl / cfb may be
                            # added: football facts are the grader's NFL dead time, never past the play clock unexplained
                            # (park.play_clock_s 40 + park.snap_slack_s 5), padding about 3 s (park.timing.stamp_sd_football 0.4)

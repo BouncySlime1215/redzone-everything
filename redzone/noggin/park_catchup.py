@@ -22,14 +22,18 @@ started in crunch time; a pinned (kept) stick is never used; any failed step bef
 
 Which plays and from where: redzone/noggin/catchup_pack.py (pure). The device steps are the rig's `cu_cue(k, game,
 frame, source, visible) -> (ok, seconds)`: put stick k at grid second `frame` of `game` by `source` (rewind | reel |
-moments), paused. Only the replay's fake rig has it (scripts/catchup_replay.py). The app's ControllerRig does not, so
-this class never starts a catch-up in the app (fail closed); `redzone/park_run.py` does not build it yet.
+moments), paused. The replay's fake rig has every source and cues on screen too (scripts/park_replay.py CatchupRig).
+The app's ControllerRig (redzone/park_run.py, which builds this class when park.catchup.enabled is on: task E-01) cues
+only the HIDDEN stick by rewind (Controller.park_cue; not yet run on the TV, task E-02) and says so with
+`cue_on_screen = False`: then a package is one clip (a close pair played through counts as two plays, under Nick's age
+rule for its play count), the live join is never made by re-cueing the replay stick, and a game whose way back needs
+that ("h_join") gets no catch-up. A rig without `cu_cue` never starts one (fail closed).
 
 The seen-state seam: `SeenLike.last_seen(game)`, the game's own grid second last on screen. With park.seen on the show
 has the real tracker (redzone/noggin/seen.py, `Show.seen_state`) and `TrackerSeen` answers from it; otherwise `ShowSeen`
 answers from the show's own `seen_to`.
 
-Pure apart from the rig: no clock or I/O of its own. Not imported by the app.
+Pure apart from the rig: no clock or I/O of its own. The app imports it only with park.catchup.enabled on.
 """
 from __future__ import annotations
 
@@ -170,6 +174,7 @@ class CatchupShow(Show):
         self.cu: dict | None = None                              # the catch-up under way
         self.cu_pkg: cp.Package | None = None
         self.cu_ok = bool(self.cp.enabled) and not self.rig.instant and callable(getattr(self.rig, "cu_cue", None))
+        self.cu_screen = getattr(self.rig, "cue_on_screen", True) is not False   # can the stick on screen be re-cued
         self.cu_log: list = []                                   # one row per catch-up that reached the screen
         self.cu_chances: dict = {}                               # (game, park) -> "" started, or why not
         self.cu_aborts: dict = {}
@@ -191,6 +196,13 @@ class CatchupShow(Show):
     async def _drive(self, t: int) -> None:
         if self.cu is None:
             await super()._drive(t)
+
+    def flip_pending(self) -> bool:
+        """A flip of the catch-up's own is under way (the flip to the replay, or its live join): the show's `on` already
+        names the stick it flips to while the TV still shows the other. The app's loop (ParkRun.step) asks this before
+        it calls the input changed outside the show."""
+        cu = self.cu
+        return cu is not None and ((cu["phase"] == "clips" and cu.get("up") is None) or cu.get("join") is not None)
 
     def _hidden_done(self, kind: str, game: int, res: tuple, t: int) -> None:
         super()._hidden_done(kind, game, res, t)
@@ -253,8 +265,8 @@ class CatchupShow(Show):
         C = self.cp
         if self.keep is not None and self.keep == h:
             return "a pinned stick"                              # the kept stream is never sent back
-        if self._cu_mode(v) == "h_join" and g in self.no_back:
-            return "no way back to live"                         # H must join live itself, and this game's app cannot seek
+        if self._cu_mode(v) == "h_join" and (g in self.no_back or not self.cu_screen):
+            return "no way back to live"                         # H must join live itself, and this game's app (or the rig) cannot seek
         if self.anchor_now >= 0:
             return "crunch time"
         if self._cu_alarm(t) is not None:
@@ -265,6 +277,8 @@ class CatchupShow(Show):
             return "its tune failed lately"
         plays = plays_of(self, g, C.pack)
         sel = cp.select(plays, -math.inf if since is None else since, math.inf, C.pack)
+        if sel and not self.cu_screen:                           # no re-cue on screen: the best stretch that plays through
+            sel = max(cp._segments(sel, C.pack), key=lambda seg: (sum(cp.worth(p, C.pack) for p in seg), seg[-1].at))
         if not sel:
             return "nothing missed worth a clip"
         app = "prime" if g in self.no_back else "yttv"
@@ -279,6 +293,8 @@ class CatchupShow(Show):
             pkg = cp.plan(sel, float(t), stick, C.pack, wait_s=wait, flip_s=float(self.flip), game=g)
             if pkg is None:
                 return "no source can show it in time"
+        if not self.cu_screen and len(pkg.clips) > 1:
+            return "it needs a cue on screen"                    # (a stretch that could not play through)
         self.cu_pkg = replace(pkg, line=cp.recap_line(pkg.plays, _since_label(self, g, since), C.pack))
         return ""
 
@@ -563,7 +579,7 @@ class CatchupShow(Show):
         waited = t - cu["wait_from"]
         if cu["mode"] == "v_join" and waited <= C.join_wait_s:
             return
-        if not cu.get("rejoin") and g == cu["game"] and g not in self.no_back:
+        if not cu.get("rejoin") and g == cu["game"] and g not in self.no_back and self.cu_screen:
             f = self._cu_fresh_spot(t, g, h)
             if f is not None:                                    # H itself is sent to a fresh dead ball: the live join
                 cu["rejoin"] = f
