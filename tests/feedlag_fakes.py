@@ -44,9 +44,11 @@ class FakeFetcher:
     def __init__(self, ft: FakeTime, routes: dict, latency: float = 0.2):
         self.ft, self.routes, self.latency = ft, routes, latency
         self.calls: list[tuple[float, str]] = []
+        self.conditional: dict[str, bool] = {}
 
-    def get(self, url: str) -> Resp:
+    def get(self, url: str, conditional: bool = True) -> Resp:
         self.calls.append((self.ft.mono(), url))
+        self.conditional[url] = conditional
         self.ft.sleep(self.latency)
         r = self.routes.get(url)
         r = r() if callable(r) else r

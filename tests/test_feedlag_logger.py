@@ -78,6 +78,8 @@ def test_rows_are_logged_with_their_arrival_window_and_every_limit_holds(tmp_pat
     ft = FakeTime()
     p, f = poller(tmp_path, ft, world(ft), max_rps=2.0)
     p.run(lambda: ft.elapsed() > 180)
+    assert f.conditional[SB_URL] is False and f.conditional[leagues.NBA_SCOREBOARD] is False     # a 304 would hide the games
+    assert f.conditional[SUM_URL] is True and f.conditional[PBP_URL] is True
     ev = events(tmp_path)
     rows = [e for e in ev if e["ev"] == "row"]
     by_src = {s: [e for e in rows if e["src"] == s] for s in feedlag.FEED_SOURCES}

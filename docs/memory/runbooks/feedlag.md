@@ -34,11 +34,11 @@ file and never logs a row twice.
 ## What it does to the feeds (all enforced in code)
 
 - At most one request per **10 s per game and source** (the `--interval` floor; a lower value is raised to 10).
-- At most `--max-rps` (default 2, **hard ceiling 4**) requests per second across everything. On a big night the cap
+- At most `--max-rps` (default 3, **hard ceiling 4**) requests per second across everything. On a big night the cap
   wins and each feed is polled a little less often; arrival windows get wider, never the request rate higher.
 - Backoff per host on 429, 5xx, 403 (ESPN), timeouts and network errors: 30 s doubling to 10 min, `Retry-After`
   honoured. A game whose NBA file is not up yet (S3 says 403/404 before the tip) backs off that game alone (15 s to 1 min).
-- Conditional GETs (ETag / If-Modified-Since), gzip, an 8 s timeout, an 8 MB cap per response.
+- Conditional GETs (ETag / If-Modified-Since) on the game feeds (scoreboards are always asked for whole), gzip, an 8 s timeout, an 8 MB cap per response.
 - `User-Agent: feedlag-logger/1 (low-rate metadata sidecar; at most one request per 10 s per game)`. No name, no project.
 - The NBA feed is the same S3 mirror of liveData the show already polls (`redzone/sources/leagues.py`, `sources.nba_primary`).
   Nick's terms-of-use decision N4 is about adding *new* NBA CDN use; this adds one more 10-second poller on an endpoint

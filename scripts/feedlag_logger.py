@@ -61,7 +61,7 @@ class Settings:
     leagues: tuple = ("nba",)
     sources: tuple = feedlag.FEED_SOURCES
     interval: float = feedlag.FLOOR_INTERVAL      # seconds between requests for one game and source
-    max_rps: float = 2.0                          # requests per second across everything
+    max_rps: float = 3.0                          # requests per second across everything (ceiling 4)
     max_games: int = 12                           # NBA games followed at once
     cbb_max_games: int = 4                        # college basketball games followed at once (ranked games first)
     discover_every: float = 300.0                 # re-read the scoreboards this often
@@ -95,9 +95,9 @@ class UrlFetcher:
         self.timeout, self.ua = timeout, user_agent
         self._tags: dict[str, tuple[str | None, str | None]] = {}
 
-    def get(self, url: str) -> Resp:
+    def get(self, url: str, conditional: bool = True) -> Resp:
         h = {"User-Agent": self.ua, "Accept": "application/json", "Accept-Encoding": "gzip"}
-        etag, modified = self._tags.get(url, (None, None))
+        etag, modified = self._tags.get(url, (None, None)) if conditional else (None, None)
         if etag:
             h["If-None-Match"] = etag
         if modified:
@@ -180,13 +180,14 @@ class Poller:
         self.last_status = self.started
 
     # -- one request, paced -----------------------------------------------------------------------------------
-    def _request(self, url: str) -> tuple[Resp, float, float]:
+    def _request(self, url: str, conditional: bool = True) -> tuple[Resp, float, float]:
+        """One paced GET. Scoreboards are asked for whole (conditional=False): a 304 would carry no games."""
         wait = self.next_send - self.mono()
         if wait > 0:
             self.sleep(wait)
         sent_m, sent = self.mono(), self.clock()
         self.next_send = sent_m + self.spacing
-        resp = self.fetcher.get(url)
+        resp = self.fetcher.get(url) if conditional else self.fetcher.get(url, conditional=False)
         received = self.clock()
         self.requests += 1
         self.last_sent = sent_m
@@ -235,7 +236,7 @@ class Poller:
             urls = espn.scoreboard_urls(lg, None, ymd)
             games = []
             for u in urls:
-                resp, _, recv = self._request(u)
+                resp, _, recv = self._request(u, conditional=False)
                 if classify(resp.status, ESPN_HOST) != "ok":
                     if classify(resp.status, ESPN_HOST) == "host":
                         self._host_failed(ESPN_HOST, resp, self.mono(), None, "scoreboard")
@@ -263,7 +264,7 @@ class Poller:
             wanted += [(lg, g) for g in (live + soon + recent)[:cap]]
         cdn_idx = {}
         if feedlag.SRC_CDN in self.s.sources and any(lg == League.NBA for lg, _ in wanted):
-            resp, _, recv = self._request(leagues.NBA_SCOREBOARD)
+            resp, _, recv = self._request(leagues.NBA_SCOREBOARD, conditional=False)
             kind = classify(resp.status, host_of(leagues.NBA_SCOREBOARD))
             if kind == "ok":
                 cdn_idx = leagues.nba_index(resp.data)
@@ -425,7 +426,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--sources", default=",".join(feedlag.FEED_SOURCES), help="espn_summary,nba_cdn")
     ap.add_argument("--interval", type=float, default=feedlag.FLOOR_INTERVAL,
                     help="seconds between requests for one game and source (floor 10)")
-    ap.add_argument("--max-rps", type=float, default=2.0, help="global requests per second (ceiling 4)")
+    ap.add_argument("--max-rps", type=float, default=3.0, help="global requests per second (ceiling 4)")
     ap.add_argument("--max-games", type=int, default=12)
     ap.add_argument("--cbb-max-games", type=int, default=4)
     ap.add_argument("--max-hours", type=float, default=14.0)
