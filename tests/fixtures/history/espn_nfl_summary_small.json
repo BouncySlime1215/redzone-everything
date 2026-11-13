@@ -1,0 +1,1949 @@
+{
+ "header": {
+  "id": "401772894",
+  "uid": "s:20~l:28~e:401772894",
+  "season": {
+   "year": 2025,
+   "current": false,
+   "type": 2
+  },
+  "timeValid": true,
+  "competitions": [
+   {
+    "id": "401772894",
+    "uid": "s:20~l:28~e:401772894~c:401772894",
+    "date": "2025-11-30T18:00Z",
+    "neutralSite": false,
+    "conferenceCompetition": false,
+    "boxscoreAvailable": true,
+    "commentaryAvailable": false,
+    "liveAvailable": false,
+    "onWatchESPN": false,
+    "recent": false,
+    "wallclockAvailable": true,
+    "boxscoreSource": "full",
+    "playByPlaySource": "full",
+    "competitors": [
+     {
+      "id": "29",
+      "uid": "s:20~l:28~t:29",
+      "order": 0,
+      "homeAway": "home",
+      "winner": true,
+      "team": {
+       "id": "29",
+       "guid": "647c27bf-ab86-550e-5b83-91c29e73e4a9",
+       "uid": "s:20~l:28~t:29",
+       "location": "Carolina",
+       "name": "Panthers",
+       "nickname": "Panthers",
+       "abbreviation": "CAR",
+       "displayName": "Carolina Panthers",
+       "color": "0085ca",
+       "alternateColor": "000000",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/nfl/500/car.png",
+         "width": 500,
+         "height": 500,
+         "alt": "",
+         "rel": [
+          "full",
+          "default"
+         ],
+         "lastUpdated": "2024-06-25T18:45Z"
+        },
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/car.png",
+         "width": 500,
+         "height": 500,
+         "alt": "",
+         "rel": [
+          "full",
+          "dark"
+         ],
+         "lastUpdated": "2024-06-25T18:45Z"
+        },
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/car.png",
+         "width": 500,
+         "height": 500,
+         "alt": "",
+         "rel": [
+          "full",
+          "scoreboard"
+         ],
+         "lastUpdated": "2024-06-25T18:46Z"
+        },
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/scoreboard/car.png",
+         "width": 500,
+         "height": 500,
+         "alt": "",
+         "rel": [
+          "full",
+          "scoreboard",
+          "dark"
+         ],
+         "lastUpdated": "2024-06-25T18:45Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/grayscale.png",
+         "width": 500,
+         "height": 500,
+         "alt": "",
+         "rel": [
+          "full",
+          "grayscale"
+         ],
+         "lastUpdated": "2026-03-31T12:54Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/primary_logo_on_white_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "primary_logo_on_white_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/primary_logo_on_black_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "primary_logo_on_black_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/primary_logo_on_primary_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "primary_logo_on_primary_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/primary_logo_on_secondary_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "primary_logo_on_secondary_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/primary_logo_black.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "primary_logo_black"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/primary_logo_white.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "primary_logo_white"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/secondary_logo_on_white_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "secondary_logo_on_white_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/secondary_logo_on_black_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "secondary_logo_on_black_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/secondary_logo_on_primary_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "secondary_logo_on_primary_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/secondary_logo_on_secondary_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "secondary_logo_on_secondary_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/secondary_logo_black.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "secondary_logo_black"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/secondary_logo_white.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "secondary_logo_white"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        }
+       ],
+       "links": [
+        {
+         "rel": [
+          "clubhouse",
+          "desktop",
+          "team"
+         ],
+         "href": "https://www.espn.com/nfl/team/_/name/car/carolina-panthers",
+         "text": "Clubhouse"
+        }
+       ]
+      },
+      "score": "31",
+      "linescores": [
+       {
+        "displayValue": "14"
+       },
+       {
+        "displayValue": "3"
+       },
+       {
+        "displayValue": "7"
+       },
+       {
+        "displayValue": "7"
+       }
+      ],
+      "record": [
+       {
+        "type": "total",
+        "summary": "7-6",
+        "displayValue": "7-6"
+       },
+       {
+        "type": "home",
+        "summary": "4-2",
+        "displayValue": "4-2"
+       }
+      ],
+      "possession": false
+     },
+     {
+      "id": "14",
+      "uid": "s:20~l:28~t:14",
+      "order": 1,
+      "homeAway": "away",
+      "winner": false,
+      "team": {
+       "id": "14",
+       "guid": "2e1473b2-e269-fd7a-1137-c1edacb85986",
+       "uid": "s:20~l:28~t:14",
+       "location": "Los Angeles",
+       "name": "Rams",
+       "nickname": "Rams",
+       "abbreviation": "LAR",
+       "displayName": "Los Angeles Rams",
+       "color": "003594",
+       "alternateColor": "ffd100",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/nfl/500/lar.png",
+         "width": 500,
+         "height": 500,
+         "alt": "",
+         "rel": [
+          "full",
+          "default"
+         ],
+         "lastUpdated": "2026-04-24T14:36Z"
+        },
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/lar.png",
+         "width": 500,
+         "height": 500,
+         "alt": "",
+         "rel": [
+          "full",
+          "dark"
+         ],
+         "lastUpdated": "2026-04-24T14:27Z"
+        },
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/lar.png",
+         "width": 500,
+         "height": 500,
+         "alt": "",
+         "rel": [
+          "full",
+          "scoreboard"
+         ],
+         "lastUpdated": "2026-04-24T14:36Z"
+        },
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/scoreboard/lar.png",
+         "width": 500,
+         "height": 500,
+         "alt": "",
+         "rel": [
+          "full",
+          "scoreboard",
+          "dark"
+         ],
+         "lastUpdated": "2026-04-24T14:27Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/grayscale.png",
+         "width": 500,
+         "height": 500,
+         "alt": "",
+         "rel": [
+          "full",
+          "grayscale"
+         ],
+         "lastUpdated": "2026-03-31T12:52Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/primary_logo_on_white_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "primary_logo_on_white_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/primary_logo_on_black_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "primary_logo_on_black_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/primary_logo_on_primary_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "primary_logo_on_primary_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/primary_logo_on_secondary_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "primary_logo_on_secondary_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/primary_logo_black.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "primary_logo_black"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/primary_logo_white.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "primary_logo_white"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/secondary_logo_on_white_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "secondary_logo_on_white_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/secondary_logo_on_black_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "secondary_logo_on_black_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/secondary_logo_on_primary_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "secondary_logo_on_primary_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/secondary_logo_on_secondary_color.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "secondary_logo_on_secondary_color"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/secondary_logo_black.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "secondary_logo_black"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        },
+        {
+         "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/secondary_logo_white.png",
+         "width": 4096,
+         "height": 4096,
+         "alt": "",
+         "rel": [
+          "full",
+          "secondary_logo_white"
+         ],
+         "lastUpdated": "2026-07-22T20:30Z"
+        }
+       ],
+       "links": [
+        {
+         "rel": [
+          "clubhouse",
+          "desktop",
+          "team"
+         ],
+         "href": "https://www.espn.com/nfl/team/_/name/lar/los-angeles-rams",
+         "text": "Clubhouse"
+        }
+       ]
+      },
+      "score": "28",
+      "linescores": [
+       {
+        "displayValue": "7"
+       },
+       {
+        "displayValue": "14"
+       },
+       {
+        "displayValue": "0"
+       },
+       {
+        "displayValue": "7"
+       }
+      ],
+      "record": [
+       {
+        "type": "total",
+        "summary": "9-3",
+        "displayValue": "9-3"
+       },
+       {
+        "type": "road",
+        "summary": "4-2",
+        "displayValue": "4-2"
+       }
+      ],
+      "possession": false
+     }
+    ],
+    "status": {
+     "type": {
+      "id": "3",
+      "name": "STATUS_FINAL",
+      "state": "post",
+      "completed": true,
+      "description": "Final",
+      "detail": "Final",
+      "shortDetail": "Final"
+     },
+     "isTBDFlex": false
+    },
+    "broadcasts": [
+     {
+      "type": {
+       "id": "1",
+       "shortName": "TV"
+      },
+      "market": {
+       "id": "1",
+       "type": "National"
+      },
+      "media": {
+       "shortName": "Fox"
+      },
+      "lang": "en",
+      "region": "us",
+      "isNational": true
+     }
+    ],
+    "boxscoreMinutes": true
+   }
+  ],
+  "links": [
+   {
+    "rel": [
+     "summary",
+     "desktop",
+     "event"
+    ],
+    "href": "https://www.espn.com/nfl/game/_/gameId/401772894/rams-panthers",
+    "text": "Gamecast",
+    "shortText": "Summary",
+    "isExternal": false,
+    "isPremium": false
+   },
+   {
+    "rel": [
+     "recap",
+     "desktop",
+     "event"
+    ],
+    "href": "https://www.espn.com/nfl/recap?gameId=401772894",
+    "text": "Recap",
+    "shortText": "Recap",
+    "isExternal": false,
+    "isPremium": false
+   },
+   {
+    "rel": [
+     "boxscore",
+     "desktop",
+     "event"
+    ],
+    "href": "https://www.espn.com/nfl/boxscore/_/gameId/401772894",
+    "text": "Box Score",
+    "shortText": "Box Score",
+    "isExternal": false,
+    "isPremium": false
+   },
+   {
+    "rel": [
+     "pbp",
+     "desktop",
+     "event"
+    ],
+    "href": "https://www.espn.com/nfl/playbyplay/_/gameId/401772894",
+    "text": "Play-by-Play",
+    "shortText": "Play-by-Play",
+    "isExternal": false,
+    "isPremium": false
+   },
+   {
+    "rel": [
+     "teamstats",
+     "desktop",
+     "event"
+    ],
+    "href": "https://www.espn.com/nfl/matchup?gameId=401772894",
+    "text": "Team Stats",
+    "shortText": "Team Stats",
+    "isExternal": false,
+    "isPremium": false
+   }
+  ],
+  "week": 13,
+  "league": {
+   "id": "28",
+   "uid": "s:20~l:28",
+   "name": "National Football League",
+   "abbreviation": "NFL",
+   "shortName": "NFL",
+   "slug": "nfl",
+   "isTournament": false,
+   "links": [
+    {
+     "rel": [
+      "index",
+      "desktop",
+      "league"
+     ],
+     "href": "https://www.espn.com/nfl/",
+     "text": "Index"
+    },
+    {
+     "rel": [
+      "index",
+      "sportscenter",
+      "app",
+      "league"
+     ],
+     "href": "sportscenter://x-callback-url/showClubhouse?uid=s:20~l:28",
+     "text": "Index"
+    },
+    {
+     "rel": [
+      "schedule",
+      "desktop",
+      "league"
+     ],
+     "href": "https://www.espn.com/nfl/schedule",
+     "text": "Schedule"
+    },
+    {
+     "rel": [
+      "schedule",
+      "sportscenter",
+      "app",
+      "league"
+     ],
+     "href": "sportscenter://x-callback-url/showClubhouse?uid=s:20~l:28&section=scores",
+     "text": "Schedule"
+    },
+    {
+     "rel": [
+      "standings",
+      "desktop",
+      "league"
+     ],
+     "href": "https://www.espn.com/nfl/standings",
+     "text": "Standings"
+    },
+    {
+     "rel": [
+      "standings",
+      "sportscenter",
+      "app",
+      "league"
+     ],
+     "href": "sportscenter://x-callback-url/showClubhouse?uid=s:20~l:28&section=standings",
+     "text": "Standings"
+    },
+    {
+     "rel": [
+      "rankings",
+      "desktop",
+      "league"
+     ],
+     "href": "https://www.espn.com/nfl/powerrankings",
+     "text": "Power Rankings"
+    },
+    {
+     "rel": [
+      "scores",
+      "desktop",
+      "league"
+     ],
+     "href": "https://www.espn.com/nfl/scoreboard",
+     "text": "Scores"
+    },
+    {
+     "rel": [
+      "scores",
+      "sportscenter",
+      "app",
+      "league"
+     ],
+     "href": "sportscenter://x-callback-url/showClubhouse?uid=s:20~l:28&section=scores",
+     "text": "Scores"
+    },
+    {
+     "rel": [
+      "stats",
+      "desktop",
+      "league"
+     ],
+     "href": "https://www.espn.com/nfl/stats",
+     "text": "Stats"
+    },
+    {
+     "rel": [
+      "stats",
+      "sportscenter",
+      "app",
+      "league"
+     ],
+     "href": "sportscenter://x-callback-url/showClubhouse?uid=s:20~l:28&section=stats",
+     "text": "Stats"
+    },
+    {
+     "rel": [
+      "teams",
+      "desktop",
+      "league"
+     ],
+     "href": "https://www.espn.com/nfl/teams",
+     "text": "Teams"
+    },
+    {
+     "rel": [
+      "athletes",
+      "desktop",
+      "league"
+     ],
+     "href": "https://www.espn.com/nfl/players",
+     "text": "Players"
+    },
+    {
+     "rel": [
+      "injuries",
+      "desktop",
+      "league"
+     ],
+     "href": "https://www.espn.com/nfl/injuries",
+     "text": "Injuries"
+    },
+    {
+     "rel": [
+      "odds",
+      "desktop",
+      "league"
+     ],
+     "href": "https://www.espn.com/nfl/odds",
+     "text": "Odds"
+    },
+    {
+     "rel": [
+      "odds",
+      "sportscenter",
+      "app",
+      "league"
+     ],
+     "href": "sportscenter://x-callback-url/showClubhouse?uid=s:20~l:28&section=odds",
+     "text": "Odds"
+    },
+    {
+     "rel": [
+      "playoff-bracket",
+      "desktop",
+      "league"
+     ],
+     "href": "https://www.espn.com/nfl/playoff-bracket",
+     "text": "Bracket"
+    },
+    {
+     "rel": [
+      "playoff-bracket",
+      "sportscenter",
+      "app",
+      "league"
+     ],
+     "href": "sportscenter://x-callback-url/showClubhouse?uid=s:20~l:28&section=bracket",
+     "text": "Bracket"
+    },
+    {
+     "rel": [
+      "freeagency",
+      "desktop",
+      "league"
+     ],
+     "href": "https://insider.espn.com/nfl/freeagency/",
+     "text": "Freeagency"
+    }
+   ],
+   "logos": [
+    {
+     "href": "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png",
+     "rel": [
+      "full",
+      "default"
+     ]
+    },
+    {
+     "href": "https://a.espncdn.com/i/teamlogos/leagues/500-dark/nfl.png",
+     "rel": [
+      "full",
+      "dark"
+     ]
+    }
+   ]
+  }
+ },
+ "drives": {
+  "previous": [
+   {
+    "id": "4017728941",
+    "description": "6 plays, 35 yards, 2:50",
+    "team": {
+     "id": "14",
+     "name": "Rams",
+     "abbreviation": "LAR",
+     "displayName": "Los Angeles Rams",
+     "shortDisplayName": "Rams",
+     "logos": [
+      {
+       "href": "https://a.espncdn.com/i/teamlogos/nfl/500/lar.png",
+       "width": 500,
+       "height": 500,
+       "alt": "",
+       "rel": [
+        "full",
+        "default"
+       ],
+       "lastUpdated": "2026-04-24T14:36Z"
+      },
+      {
+       "href": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/lar.png",
+       "width": 500,
+       "height": 500,
+       "alt": "",
+       "rel": [
+        "full",
+        "dark"
+       ],
+       "lastUpdated": "2026-04-24T14:27Z"
+      },
+      {
+       "href": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/lar.png",
+       "width": 500,
+       "height": 500,
+       "alt": "",
+       "rel": [
+        "full",
+        "scoreboard"
+       ],
+       "lastUpdated": "2026-04-24T14:36Z"
+      },
+      {
+       "href": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/scoreboard/lar.png",
+       "width": 500,
+       "height": 500,
+       "alt": "",
+       "rel": [
+        "full",
+        "scoreboard",
+        "dark"
+       ],
+       "lastUpdated": "2026-04-24T14:27Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/grayscale.png",
+       "width": 500,
+       "height": 500,
+       "alt": "",
+       "rel": [
+        "full",
+        "grayscale"
+       ],
+       "lastUpdated": "2026-03-31T12:52Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/primary_logo_on_white_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "primary_logo_on_white_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/primary_logo_on_black_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "primary_logo_on_black_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/primary_logo_on_primary_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "primary_logo_on_primary_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/primary_logo_on_secondary_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "primary_logo_on_secondary_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/primary_logo_black.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "primary_logo_black"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/primary_logo_white.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "primary_logo_white"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/secondary_logo_on_white_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "secondary_logo_on_white_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/secondary_logo_on_black_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "secondary_logo_on_black_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/secondary_logo_on_primary_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "secondary_logo_on_primary_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/secondary_logo_on_secondary_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "secondary_logo_on_secondary_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/secondary_logo_black.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "secondary_logo_black"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/2e1473b2-e269-fd7a-1137-c1edacb85986/logos/secondary_logo_white.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "secondary_logo_white"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      }
+     ]
+    },
+    "start": {
+     "period": {
+      "type": "quarter",
+      "number": 1
+     },
+     "clock": {
+      "displayValue": "15:00"
+     },
+     "yardLine": 35,
+     "text": "CAR 35"
+    },
+    "end": {
+     "period": {
+      "type": "quarter",
+      "number": 1
+     },
+     "clock": {
+      "displayValue": "12:10"
+     },
+     "yardLine": 0,
+     "text": "CAR 0"
+    },
+    "timeElapsed": {
+     "displayValue": "2:50"
+    },
+    "yards": 35,
+    "isScore": true,
+    "offensivePlays": 6,
+    "result": "TD",
+    "shortDisplayResult": "TD",
+    "displayResult": "Touchdown",
+    "plays": [
+     {
+      "id": "40177289440",
+      "sequenceNumber": "4000",
+      "type": {
+       "id": "53",
+       "text": "Kickoff",
+       "abbreviation": "K"
+      },
+      "text": "R.Fitzgerald kicks 61 yards from CAR 35 to LA 4. R.Rivers pushed ob at 50 for 46 yards (R.Fitzgerald).PENALTY on CAR-T.Incoom, Unnecessary Roughness, 15 yards, enforced at 50.",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "15:00"
+      },
+      "scoringPlay": false,
+      "priority": false,
+      "modified": "2025-12-01T00:06Z",
+      "wallclock": "2025-11-30T18:02:51Z",
+      "teamParticipants": [
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/14?lang=en&region=us"
+        },
+        "id": "14",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/40177289440/teams/14/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/40177289440/teams/14/statistics/0?lang=en&region=us"
+        },
+        "order": 1,
+        "type": "offense"
+       },
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/29?lang=en&region=us"
+        },
+        "id": "29",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/40177289440/teams/29/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/40177289440/teams/29/statistics/0?lang=en&region=us"
+        },
+        "order": 2,
+        "type": "defense"
+       }
+      ],
+      "isPenalty": true,
+      "statYardage": 31,
+      "start": {
+       "down": 0,
+       "distance": 0,
+       "yardLine": 35,
+       "yardsToEndzone": 65,
+       "team": {
+        "id": "29"
+       }
+      },
+      "end": {
+       "down": 1,
+       "distance": 10,
+       "yardLine": 35,
+       "yardsToEndzone": 35,
+       "downDistanceText": "1st & 10 at CAR 35",
+       "shortDownDistanceText": "1st & 10",
+       "possessionText": "CAR 35",
+       "team": {
+        "id": "14"
+       }
+      },
+      "penalty": {
+       "yards": 15,
+       "type": {
+        "slug": "unnecessary-roughness",
+        "text": "Unnecessary Roughness"
+       },
+       "status": {
+        "slug": "accepted",
+        "text": "Accepted"
+       }
+      },
+      "isTurnover": false
+     },
+     {
+      "id": "40177289479",
+      "sequenceNumber": "7900",
+      "type": {
+       "id": "3",
+       "text": "Pass Incompletion"
+      },
+      "text": "(Shotgun) M.Stafford pass incomplete short left to K.Williams (A.Robinson).",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "14:54"
+      },
+      "scoringPlay": false,
+      "priority": false,
+      "modified": "2025-12-01T00:06Z",
+      "wallclock": "2025-11-30T18:04:08Z",
+      "teamParticipants": [
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/14?lang=en&region=us"
+        },
+        "id": "14",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/40177289479/teams/14/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/40177289479/teams/14/statistics/0?lang=en&region=us"
+        },
+        "order": 1,
+        "type": "offense"
+       },
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/29?lang=en&region=us"
+        },
+        "id": "29",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/40177289479/teams/29/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/40177289479/teams/29/statistics/0?lang=en&region=us"
+        },
+        "order": 2,
+        "type": "defense"
+       }
+      ],
+      "isPenalty": false,
+      "statYardage": 0,
+      "start": {
+       "down": 1,
+       "distance": 10,
+       "yardLine": 35,
+       "yardsToEndzone": 35,
+       "downDistanceText": "1st & 10 at CAR 35",
+       "shortDownDistanceText": "1st & 10",
+       "possessionText": "CAR 35",
+       "team": {
+        "id": "14"
+       }
+      },
+      "end": {
+       "down": 2,
+       "distance": 10,
+       "yardLine": 35,
+       "yardsToEndzone": 35,
+       "downDistanceText": "2nd & 10 at CAR 35",
+       "shortDownDistanceText": "2nd & 10",
+       "possessionText": "CAR 35",
+       "team": {
+        "id": "14"
+       }
+      },
+      "isTurnover": false
+     },
+     {
+      "id": "401772894102",
+      "sequenceNumber": "10200",
+      "type": {
+       "id": "24",
+       "text": "Pass Reception",
+       "abbreviation": "REC"
+      },
+      "text": "(Shotgun) M.Stafford pass short middle to P.Nacua to CAR 25 for 10 yards (N.Scott; K.Barnes).",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "14:49"
+      },
+      "scoringPlay": false,
+      "priority": false,
+      "modified": "2025-12-01T00:06Z",
+      "wallclock": "2025-11-30T18:04:52Z",
+      "teamParticipants": [
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/14?lang=en&region=us"
+        },
+        "id": "14",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894102/teams/14/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894102/teams/14/statistics/0?lang=en&region=us"
+        },
+        "order": 1,
+        "type": "offense"
+       },
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/29?lang=en&region=us"
+        },
+        "id": "29",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894102/teams/29/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894102/teams/29/statistics/0?lang=en&region=us"
+        },
+        "order": 2,
+        "type": "defense"
+       }
+      ],
+      "isPenalty": false,
+      "statYardage": 10,
+      "start": {
+       "down": 2,
+       "distance": 10,
+       "yardLine": 35,
+       "yardsToEndzone": 35,
+       "downDistanceText": "2nd & 10 at CAR 35",
+       "shortDownDistanceText": "2nd & 10",
+       "possessionText": "CAR 35",
+       "team": {
+        "id": "14"
+       }
+      },
+      "end": {
+       "down": 1,
+       "distance": 10,
+       "yardLine": 25,
+       "yardsToEndzone": 25,
+       "downDistanceText": "1st & 10 at CAR 25",
+       "shortDownDistanceText": "1st & 10",
+       "possessionText": "CAR 25",
+       "team": {
+        "id": "14"
+       }
+      },
+      "yardsAfterCatch": 5,
+      "isTurnover": false
+     },
+     {
+      "id": "401772894127",
+      "sequenceNumber": "12700",
+      "type": {
+       "id": "5",
+       "text": "Rush",
+       "abbreviation": "RUSH"
+      },
+      "text": "K.Williams right guard to CAR 21 for 4 yards (N.Scourton).",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "14:13"
+      },
+      "scoringPlay": false,
+      "priority": false,
+      "modified": "2025-12-01T00:06Z",
+      "wallclock": "2025-11-30T18:05:28Z",
+      "teamParticipants": [
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/14?lang=en&region=us"
+        },
+        "id": "14",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894127/teams/14/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894127/teams/14/statistics/0?lang=en&region=us"
+        },
+        "order": 1,
+        "type": "offense"
+       },
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/29?lang=en&region=us"
+        },
+        "id": "29",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894127/teams/29/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894127/teams/29/statistics/0?lang=en&region=us"
+        },
+        "order": 2,
+        "type": "defense"
+       }
+      ],
+      "isPenalty": false,
+      "statYardage": 4,
+      "start": {
+       "down": 1,
+       "distance": 10,
+       "yardLine": 25,
+       "yardsToEndzone": 25,
+       "downDistanceText": "1st & 10 at CAR 25",
+       "shortDownDistanceText": "1st & 10",
+       "possessionText": "CAR 25",
+       "team": {
+        "id": "14"
+       }
+      },
+      "end": {
+       "down": 2,
+       "distance": 6,
+       "yardLine": 21,
+       "yardsToEndzone": 21,
+       "downDistanceText": "2nd & 6 at CAR 21",
+       "shortDownDistanceText": "2nd & 6",
+       "possessionText": "CAR 21",
+       "team": {
+        "id": "14"
+       }
+      },
+      "isTurnover": false
+     }
+    ]
+   },
+   {
+    "id": "4017728942",
+    "description": "9 plays, 69 yards, 4:32",
+    "team": {
+     "id": "29",
+     "name": "Panthers",
+     "abbreviation": "CAR",
+     "displayName": "Carolina Panthers",
+     "shortDisplayName": "Panthers",
+     "logos": [
+      {
+       "href": "https://a.espncdn.com/i/teamlogos/nfl/500/car.png",
+       "width": 500,
+       "height": 500,
+       "alt": "",
+       "rel": [
+        "full",
+        "default"
+       ],
+       "lastUpdated": "2024-06-25T18:45Z"
+      },
+      {
+       "href": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/car.png",
+       "width": 500,
+       "height": 500,
+       "alt": "",
+       "rel": [
+        "full",
+        "dark"
+       ],
+       "lastUpdated": "2024-06-25T18:45Z"
+      },
+      {
+       "href": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/car.png",
+       "width": 500,
+       "height": 500,
+       "alt": "",
+       "rel": [
+        "full",
+        "scoreboard"
+       ],
+       "lastUpdated": "2024-06-25T18:46Z"
+      },
+      {
+       "href": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/scoreboard/car.png",
+       "width": 500,
+       "height": 500,
+       "alt": "",
+       "rel": [
+        "full",
+        "scoreboard",
+        "dark"
+       ],
+       "lastUpdated": "2024-06-25T18:45Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/grayscale.png",
+       "width": 500,
+       "height": 500,
+       "alt": "",
+       "rel": [
+        "full",
+        "grayscale"
+       ],
+       "lastUpdated": "2026-03-31T12:54Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/primary_logo_on_white_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "primary_logo_on_white_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/primary_logo_on_black_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "primary_logo_on_black_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/primary_logo_on_primary_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "primary_logo_on_primary_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/primary_logo_on_secondary_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "primary_logo_on_secondary_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/primary_logo_black.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "primary_logo_black"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/primary_logo_white.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "primary_logo_white"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/secondary_logo_on_white_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "secondary_logo_on_white_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/secondary_logo_on_black_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "secondary_logo_on_black_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/secondary_logo_on_primary_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "secondary_logo_on_primary_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/secondary_logo_on_secondary_color.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "secondary_logo_on_secondary_color"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/secondary_logo_black.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "secondary_logo_black"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      },
+      {
+       "href": "https://a.espncdn.com/guid/647c27bf-ab86-550e-5b83-91c29e73e4a9/logos/secondary_logo_white.png",
+       "width": 4096,
+       "height": 4096,
+       "alt": "",
+       "rel": [
+        "full",
+        "secondary_logo_white"
+       ],
+       "lastUpdated": "2026-07-22T20:30Z"
+      }
+     ]
+    },
+    "start": {
+     "period": {
+      "type": "quarter",
+      "number": 1
+     },
+     "clock": {
+      "displayValue": "12:10"
+     },
+     "yardLine": 31,
+     "text": "CAR 31"
+    },
+    "end": {
+     "period": {
+      "type": "quarter",
+      "number": 1
+     },
+     "clock": {
+      "displayValue": "7:38"
+     },
+     "yardLine": 100,
+     "text": "LAR 0"
+    },
+    "timeElapsed": {
+     "displayValue": "4:32"
+    },
+    "yards": 69,
+    "isScore": true,
+    "offensivePlays": 9,
+    "result": "TD",
+    "shortDisplayResult": "TD",
+    "displayResult": "Touchdown",
+    "plays": [
+     {
+      "id": "401772894240",
+      "sequenceNumber": "24000",
+      "type": {
+       "id": "53",
+       "text": "Kickoff",
+       "abbreviation": "K"
+      },
+      "text": "H.Mevis kicks 56 yards from LA 35 to CAR 9. T.Etienne to CAR 31 for 22 yards (T.Reeder).",
+      "awayScore": 7,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "12:10"
+      },
+      "scoringPlay": false,
+      "priority": false,
+      "modified": "2025-12-01T00:06Z",
+      "wallclock": "2025-11-30T18:11:12Z",
+      "teamParticipants": [
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/29?lang=en&region=us"
+        },
+        "id": "29",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894240/teams/29/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894240/teams/29/statistics/0?lang=en&region=us"
+        },
+        "order": 1,
+        "type": "offense"
+       },
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/14?lang=en&region=us"
+        },
+        "id": "14",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894240/teams/14/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894240/teams/14/statistics/0?lang=en&region=us"
+        },
+        "order": 2,
+        "type": "defense"
+       }
+      ],
+      "isPenalty": false,
+      "statYardage": 22,
+      "start": {
+       "down": 0,
+       "distance": 0,
+       "yardLine": 65,
+       "yardsToEndzone": 65,
+       "team": {
+        "id": "14"
+       }
+      },
+      "end": {
+       "down": 1,
+       "distance": 10,
+       "yardLine": 31,
+       "yardsToEndzone": 69,
+       "downDistanceText": "1st & 10 at CAR 31",
+       "shortDownDistanceText": "1st & 10",
+       "possessionText": "CAR 31",
+       "team": {
+        "id": "29"
+       }
+      },
+      "isTurnover": false
+     },
+     {
+      "id": "401772894270",
+      "sequenceNumber": "27000",
+      "type": {
+       "id": "5",
+       "text": "Rush",
+       "abbreviation": "RUSH"
+      },
+      "text": "R.Dowdle right end to CAR 30 for -1 yards (B.Fiske, P.Ford).",
+      "awayScore": 7,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "12:04"
+      },
+      "scoringPlay": false,
+      "priority": false,
+      "modified": "2025-12-01T00:06Z",
+      "wallclock": "2025-11-30T18:12:02Z",
+      "teamParticipants": [
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/29?lang=en&region=us"
+        },
+        "id": "29",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894270/teams/29/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894270/teams/29/statistics/0?lang=en&region=us"
+        },
+        "order": 1,
+        "type": "offense"
+       },
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/14?lang=en&region=us"
+        },
+        "id": "14",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894270/teams/14/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894270/teams/14/statistics/0?lang=en&region=us"
+        },
+        "order": 2,
+        "type": "defense"
+       }
+      ],
+      "isPenalty": false,
+      "statYardage": -1,
+      "start": {
+       "down": 1,
+       "distance": 10,
+       "yardLine": 31,
+       "yardsToEndzone": 69,
+       "downDistanceText": "1st & 10 at CAR 31",
+       "shortDownDistanceText": "1st & 10",
+       "possessionText": "CAR 31",
+       "team": {
+        "id": "29"
+       }
+      },
+      "end": {
+       "down": 2,
+       "distance": 11,
+       "yardLine": 30,
+       "yardsToEndzone": 70,
+       "downDistanceText": "2nd & 11 at CAR 30",
+       "shortDownDistanceText": "2nd & 11",
+       "possessionText": "CAR 30",
+       "team": {
+        "id": "29"
+       }
+      },
+      "isTurnover": false
+     },
+     {
+      "id": "401772894292",
+      "sequenceNumber": "29200",
+      "type": {
+       "id": "5",
+       "text": "Rush",
+       "abbreviation": "RUSH"
+      },
+      "text": "(Shotgun) R.Dowdle up the middle to CAR 34 for 4 yards (N.Landman).",
+      "awayScore": 7,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "11:30"
+      },
+      "scoringPlay": false,
+      "priority": false,
+      "modified": "2025-12-01T00:06Z",
+      "wallclock": "2025-11-30T18:12:37Z",
+      "teamParticipants": [
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/29?lang=en&region=us"
+        },
+        "id": "29",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894292/teams/29/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894292/teams/29/statistics/0?lang=en&region=us"
+        },
+        "order": 1,
+        "type": "offense"
+       },
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/14?lang=en&region=us"
+        },
+        "id": "14",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894292/teams/14/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894292/teams/14/statistics/0?lang=en&region=us"
+        },
+        "order": 2,
+        "type": "defense"
+       }
+      ],
+      "isPenalty": false,
+      "statYardage": 4,
+      "start": {
+       "down": 2,
+       "distance": 11,
+       "yardLine": 30,
+       "yardsToEndzone": 70,
+       "downDistanceText": "2nd & 11 at CAR 30",
+       "shortDownDistanceText": "2nd & 11",
+       "possessionText": "CAR 30",
+       "team": {
+        "id": "29"
+       }
+      },
+      "end": {
+       "down": 3,
+       "distance": 7,
+       "yardLine": 34,
+       "yardsToEndzone": 66,
+       "downDistanceText": "3rd & 7 at CAR 34",
+       "shortDownDistanceText": "3rd & 7",
+       "possessionText": "CAR 34",
+       "team": {
+        "id": "29"
+       }
+      },
+      "isTurnover": false
+     },
+     {
+      "id": "401772894314",
+      "sequenceNumber": "31400",
+      "type": {
+       "id": "24",
+       "text": "Pass Reception",
+       "abbreviation": "REC"
+      },
+      "text": "(Shotgun) B.Young pass short right to J.Coker to CAR 49 for 15 yards (J.Stewart).",
+      "awayScore": 7,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "10:54"
+      },
+      "scoringPlay": false,
+      "priority": false,
+      "modified": "2025-12-01T00:06Z",
+      "wallclock": "2025-11-30T18:13:13Z",
+      "teamParticipants": [
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/29?lang=en&region=us"
+        },
+        "id": "29",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894314/teams/29/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894314/teams/29/statistics/0?lang=en&region=us"
+        },
+        "order": 1,
+        "type": "offense"
+       },
+       {
+        "team": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2025/teams/14?lang=en&region=us"
+        },
+        "id": "14",
+        "statistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894314/teams/14/statistics/1?lang=en&region=us"
+        },
+        "playStatistics": {
+         "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/events/401772894/competitions/401772894/plays/401772894314/teams/14/statistics/0?lang=en&region=us"
+        },
+        "order": 2,
+        "type": "defense"
+       }
+      ],
+      "isPenalty": false,
+      "statYardage": 15,
+      "start": {
+       "down": 3,
+       "distance": 7,
+       "yardLine": 34,
+       "yardsToEndzone": 66,
+       "downDistanceText": "3rd & 7 at CAR 34",
+       "shortDownDistanceText": "3rd & 7",
+       "possessionText": "CAR 34",
+       "team": {
+        "id": "29"
+       }
+      },
+      "end": {
+       "down": 1,
+       "distance": 10,
+       "yardLine": 49,
+       "yardsToEndzone": 51,
+       "downDistanceText": "1st & 10 at CAR 49",
+       "shortDownDistanceText": "1st & 10",
+       "possessionText": "CAR 49",
+       "team": {
+        "id": "29"
+       }
+      },
+      "yardsAfterCatch": 8,
+      "isTurnover": false
+     }
+    ]
+   }
+  ]
+ },
+ "wallclockAvailable": true,
+ "winprobability": [
+  {
+   "homeWinPercentage": 0.2807,
+   "tiePercentage": 0.0,
+   "playId": "4017728941"
+  },
+  {
+   "homeWinPercentage": 0.2229,
+   "tiePercentage": 0.0,
+   "playId": "40177289440"
+  }
+ ]
+}
