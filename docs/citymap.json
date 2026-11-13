@@ -7543,8 +7543,8 @@
   },
   "redzone/lab/gym2/scenario.py": {
    "calls": [
-    "redzone/noggin/park_show.py:ShowTiming",
-    "redzone/noggin/park_timing.py:GameTiming"
+    "redzone/noggin/park_show.py:GameTiming",
+    "redzone/noggin/park_show.py:ShowTiming"
    ],
    "contracts": [],
    "data": {
@@ -7553,8 +7553,7 @@
     "writes": []
    },
    "inputs": [
-    "redzone/noggin/park_show.py",
-    "redzone/noggin/park_timing.py"
+    "redzone/noggin/park_show.py"
    ],
    "kind": "module",
    "machines": {
@@ -10016,7 +10015,6 @@
     "drives": []
    },
    "outputs": [
-    "redzone/lab/gym2/scenario.py",
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_show.py",
     "redzone/park_run.py",

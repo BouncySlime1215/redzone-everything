@@ -1,5 +1,5 @@
 """Gym v2 slice 2 (task A-01): the scenario sampler draws from a seed only, logs every draw so an episode can be run
-again exactly, and its draws match the measured numbers it cites (scenario.MEASURED).
+again exactly, and its draws match the measured numbers it cites (scenario.GYM_MEASURED).
 
 Why: EXP1b failed on a practice world with too little variation; variation is only useful if it is the measured kind
 and every episode can be reproduced.
@@ -38,7 +38,7 @@ def test_identity_is_the_default_and_changes_nothing_it_builds():
 def test_draws_match_the_measured_numbers():
     draws = [S.sample(s, 4) for s in range(4000)]
     rungs = [d.rung for d in draws]
-    for r in S.RUNGS:
+    for r in S.PAD_RUNGS:
         assert abs(rungs.count(r) / len(draws) - 0.25) < 0.03
     assert {d.pad_s for d in draws if d.rung == "R1"} == {10, 8} and {d.pad_s for d in draws if d.rung == "R3"} == {1, 2}
     assert {d.pad_s for d in draws if d.rung == "R0"} == {None}
@@ -48,8 +48,8 @@ def test_draws_match_the_measured_numbers():
             by[src].append(lag)
     for src, lags in by.items():
         assert abs(len(lags) / (4 * len(draws)) - S.FEED_W[src]) < 0.02
-        assert abs(statistics.median(lags) - S.MEASURED["feed_median_s"][src][0]) < 0.15
-        assert abs(statistics.pstdev(lags) - S.MEASURED["feed_game_sd_s"][src][0]) < 0.1
+        assert abs(statistics.median(lags) - S.GYM_MEASURED["feed_median_s"][src][0]) < 0.15
+        assert abs(statistics.pstdev(lags) - S.GYM_MEASURED["feed_game_sd_s"][src][0]) < 0.1
     sds = [d.tune_sd for d in draws]
     assert min(sds) >= 1.2 and max(sds) <= 2.0 and abs(statistics.mean(sds) - 1.6) < 0.02
     assert all(d.p_read_fail == pytest.approx(0.3) and d.p_park_fail == pytest.approx(1 / 19) for d in draws)
@@ -80,10 +80,10 @@ def test_the_late_row_tail_has_the_measured_median_and_p90_on_recorded_stamps():
     pr = gym.replay_module()
     rs = pr.load_replay("20261023", 4)[0]
     for src in ("league", "espn"):
-        lag = S.MEASURED["feed_median_s"][src][0]
+        lag = S.GYM_MEASURED["feed_median_s"][src][0]
         q = [S.tail_quantiles(r.wall, lag, S.TAIL_P, S.TAIL_MED[src], S.TAIL_SIG, seed=k) for k in range(5) for r in rs]
         assert abs(statistics.median(x[0] for x in q) - lag) < 1.0
-        assert abs(statistics.median(x[1] for x in q) - S.MEASURED["feed_p90_s"][src][0]) < 8.0
+        assert abs(statistics.median(x[1] for x in q) - S.GYM_MEASURED["feed_p90_s"][src][0]) < 8.0
 
 
 @needs_archive
@@ -102,7 +102,7 @@ def test_fake_step_times_sit_near_the_tv_measurements():
     """The fake sticks' step times (park_replay.FakeRig with STEP_COSTS off/on) against L112/L116. Gym v2 inherits the
     replay's rig unchanged; its jump runs about 0.7 s slower than the TV in both modes (named in the PR), so the bar
     here is 1 s."""
-    want = S.MEASURED["steps_s"][0]
+    want = S.GYM_MEASURED["steps_s"][0]
     for steps, jump in (("off", want["jump_off"]), ("on", want["jump_on"])):
         env = gym.GymV2("20261023", 4, scenario=S.Scenario(name="t", steps=steps), minutes=20)
         env.reset()
