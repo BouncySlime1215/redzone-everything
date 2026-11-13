@@ -541,10 +541,11 @@ def build(night_id: str, games: int = 4, *, case: str = "tonight", hands: str = 
           model=None, eyes=None, emit=None, any_shot: bool = False, grid: tuple | None = None, prime: int = 0,
           prime_k: str = "bug", prime_pad: int | None = None, walk: str = "any", nfl: int = -1, nfl_lag: float | None = None,
           deep: bool = False, slider: float | None = None, pin: bool = False, seen: bool = False, director: bool = False,
-          step_costs: str = "model", clock_type=None) -> Built:
+          step_costs: str = "model", clock_type=None, timing=None) -> Built:
     """Everything `replay` sets up, not yet run: `replay` is `build` then `drive` to the end of the span. The practice
     world (`redzone/lab/gym2`) builds the same way and steps the same drive, so it has no second physics.
-    clock_type: the fake clock's class (default FakeClock; the practice world's clock marks each tick's wait)."""
+    clock_type: the fake clock's class (default FakeClock; the practice world's clock marks each tick's wait).
+    timing: tm -> tm, a practice-world scenario's change to the games' timing before anything is built on it (None = as before)."""
     P = params or ShowParams.from_config(config.default)
     first = first or "read"
     rs, slate = loaded or load_replay(night_id, games, league)
@@ -562,6 +563,8 @@ def build(night_id: str, games: int = 4, *, case: str = "tonight", hands: str = 
             tm.g[g] = football_timing(tm.g[g])
     for g in primes:
         tm.g[g] = prime_timing(tm.g[g], prime_k, prime_pad)
+    if timing is not None:                                       # [GYM2] a practice-world scenario's timing (None: as before)
+        tm = timing(tm)
     eng = engine_setting(tm.pad0(), lead, late_cap=P.late_cap - P.show_delay - P.jump_slack, tune_s=3.0 + (P.read if steps else 0.0),
                          min_live=P.min_look, land_wait=P.land_wait, flip=P.jump_real, pause_reach=P.pause_reach,
                          any_shot=any_shot)                      # (any_shot: the what-if OUTSIDE Rule #1; the app never sets it)

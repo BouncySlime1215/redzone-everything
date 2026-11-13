@@ -1234,6 +1234,13 @@
    "users": [],
    "writers": []
   },
+  "replay_profile.json": {
+   "readers": [],
+   "users": [
+    "scripts/feedlag_report.py"
+   ],
+   "writers": []
+  },
   "report.json": {
    "readers": [],
    "users": [
@@ -6952,6 +6959,7 @@
     "redzone/engine.py",
     "redzone/lab/backtest.py",
     "redzone/lab/cutgrade.py",
+    "redzone/lab/gym2/mask.py",
     "redzone/lab/oracle.py",
     "redzone/lab/oracle_window.py",
     "redzone/lab/reactgrade.py",
@@ -7098,6 +7106,7 @@
     "agent/kaggle/build_moments_kaggle.py",
     "redzone/demo/engine.py",
     "redzone/lab/cutgrade.py",
+    "redzone/lab/gym2/slates.py",
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
     "redzone/lab/oracle.py",
@@ -7331,6 +7340,7 @@
    },
    "outputs": [
     "redzone/lab/backtest.py",
+    "redzone/lab/gym2/mask.py",
     "redzone/lab/oracle.py",
     "redzone/lab/sportsgrade.py",
     "scripts/buffer_shadow_grade.py",
@@ -7492,6 +7502,74 @@
     "untagged"
    ]
   },
+  "redzone/lab/feedlag.py": {
+   "calls": [
+    "redzone/sources/espn.py:_clock_s",
+    "redzone/sources/espn.py:_get",
+    "redzone/sources/espn.py:_int",
+    "redzone/sources/espn.py:_ts",
+    "redzone/sources/espn.py:flatten_plays",
+    "redzone/sources/espn.py:stoppage_for",
+    "redzone/sources/leagues.py:_iso_clock",
+    "redzone/sources/leagues.py:_iso_ts",
+    "redzone/sources/leagues.py:nba_stoppage"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models.py",
+    "redzone/sources/espn.py",
+    "redzone/sources/leagues.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/feedlag_report.py",
+    "scripts/feedlag_logger.py"
+   ],
+   "owner": "unowned",
+   "role": "Feed-arrival log: which rows a feed publishes and when WE first saw each one (metadata only, no network).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/feedlag_report.py": {
+   "calls": [
+    "redzone/lab/timing.py:PROFILE_PATH",
+    "redzone/lab/timing.py:load_profile",
+    "redzone/lab/timing.py:quantile"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/feedlag.py",
+    "redzone/lab/timing.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/feedlag_report.py"
+   ],
+   "owner": "unowned",
+   "role": "Arrival-lag numbers from the feed-arrival logs, and the replay-lab lag profile rebuilt from them (no network).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/gym2/__init__.py": {
    "calls": [],
    "contracts": [],
@@ -7514,6 +7592,79 @@
    ]
   },
   "redzone/lab/gym2/env.py": {
+   "calls": [
+    "redzone/lab/gym2/mask.py:Rule1Mask",
+    "redzone/lab/gym2/reward.py:RewardMeter",
+    "redzone/lab/gym2/reward.py:Weights",
+    "redzone/lab/gym2/reward.py:rule1",
+    "redzone/lab/gym2/scenario.py:Scenario",
+    "redzone/lab/gym2/scenario.py:log_draw",
+    "redzone/lab/gym2/slates.py:compose",
+    "redzone/lab/gym2/slates.py:draw_mix",
+    "redzone/lab/gym2/slates.py:mixed_timing"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/gym2/mask.py",
+    "redzone/lab/gym2/reward.py",
+    "redzone/lab/gym2/scenario.py",
+    "redzone/lab/gym2/slates.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/gym2/slates.py",
+    "scripts/gym2_parity.py"
+   ],
+   "owner": "unowned",
+   "role": "Gym v2's episode: the PARK replay of one recorded night, stepped one show tick at a time (task A-01, slice 1).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/gym2/mask.py": {
+   "calls": [
+    "redzone/grading.py:clean_leave",
+    "redzone/grading.py:dead_at",
+    "redzone/grading.py:idx",
+    "redzone/lab/cutgrade.py:after_bucket",
+    "redzone/lab/leverage.py:high_leverage"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/grading.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/lab/leverage.py",
+    "redzone/noggin/park_show.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/gym2/env.py"
+   ],
+   "owner": "unowned",
+   "role": "Gym v2's Rule #1 mask: which cuts a director may make, judged on the recorded truth (A-01 slice 3).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/gym2/reward.py": {
    "calls": [],
    "contracts": [],
    "data": {
@@ -7528,10 +7679,77 @@
     "drives": []
    },
    "outputs": [
-    "scripts/gym2_parity.py"
+    "redzone/lab/gym2/env.py"
    ],
    "owner": "unowned",
-   "role": "Gym v2's episode: the PARK replay of one recorded night, stepped one show tick at a time (task A-01, slice 1).",
+   "role": "Gym v2's reward terms, each judged where the picture TRULY was (the replay's judge), per step (A-01 slice 3).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/gym2/scenario.py": {
+   "calls": [
+    "redzone/noggin/park_show.py:GameTiming",
+    "redzone/noggin/park_show.py:ShowTiming"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/noggin/park_show.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/gym2/env.py"
+   ],
+   "owner": "unowned",
+   "role": "Gym v2 scenarios: what one practice episode draws, from a seed, and the log that lets any episode be run again (A-01 slice 2).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/gym2/slates.py": {
+   "calls": [
+    "redzone/lab/backtest.py:Replay",
+    "redzone/lab/gym2/env.py:replay_module",
+    "redzone/lab/splits.py:archive_nights",
+    "redzone/lab/splits.py:nights_for",
+    "redzone/models.py:League",
+    "redzone/noggin/park_show.py:GameTiming",
+    "redzone/noggin/park_show.py:ShowTiming",
+    "redzone/sources/espn.py:_ts"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/gym2/env.py",
+    "redzone/lab/splits.py",
+    "redzone/models.py",
+    "redzone/noggin/park_show.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/gym2/env.py"
+   ],
+   "owner": "unowned",
+   "role": "Gym v2 slates: census-weighted sport mixes built from recorded dev-night games (A-01 slice 3).",
    "serves": [
     "untagged"
    ]
@@ -7560,6 +7778,7 @@
    },
    "outputs": [
     "redzone/lab/backtest.py",
+    "redzone/lab/gym2/mask.py",
     "redzone/lab/outcome_label.py",
     "redzone/lab/sportsgrade.py",
     "scripts/buffered_jump_sim.py",
@@ -8276,6 +8495,7 @@
    "outputs": [
     "redzone/lab/brain3data.py",
     "redzone/lab/breakblend.py",
+    "redzone/lab/gym2/slates.py",
     "redzone/lab/tune.py",
     "scripts/backfill_eval_v2.py",
     "scripts/bucket_join_measure.py",
@@ -8485,6 +8705,7 @@
    },
    "outputs": [
     "redzone/lab/backtest.py",
+    "redzone/lab/feedlag_report.py",
     "scripts/burst_align.py",
     "scripts/exp023_belief.py",
     "scripts/kaggle_gamevalue_holdset.py",
@@ -8844,6 +9065,8 @@
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
     "redzone/lab/cutgrade.py",
+    "redzone/lab/feedlag.py",
+    "redzone/lab/gym2/slates.py",
     "redzone/lab/leverage.py",
     "redzone/lab/night/presses.py",
     "redzone/lab/night/run.py",
@@ -8906,6 +9129,7 @@
     "scripts/exp023_belief.py",
     "scripts/exp1722_read.py",
     "scripts/fault_drill.py",
+    "scripts/feedlag_logger.py",
     "scripts/holdset_public.py",
     "scripts/kaggle_gamevalue_holdset.py",
     "scripts/leak_check.py",
@@ -8969,6 +9193,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/models_rt/registry.py",
     "redzone/noggin/gamevalue.py",
     "redzone/noggin/pick.py",
     "redzone/noggin/predict.py",
@@ -8982,6 +9207,33 @@
    ],
    "owner": "unowned",
    "role": "[one brain, step 4] One tree walker and one model loader (docs/onebrain-migration.md).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/models_rt/registry.py": {
+   "calls": [
+    "redzone/models_rt/forest.py:load_npz"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models_rt/forest.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/model_registry.py"
+   ],
+   "owner": "unowned",
+   "role": "Model registry on the hash-chained results ledger: register a run, promote it, load only promoted models.",
    "serves": [
     "untagged"
    ]
@@ -9952,6 +10204,9 @@
     "drives": []
    },
    "outputs": [
+    "redzone/lab/gym2/mask.py",
+    "redzone/lab/gym2/scenario.py",
+    "redzone/lab/gym2/slates.py",
     "redzone/noggin/park_catchup.py",
     "redzone/park_run.py",
     "scripts/park_replay.py"
@@ -11911,6 +12166,8 @@
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
     "redzone/lab/cutgrade.py",
+    "redzone/lab/feedlag.py",
+    "redzone/lab/gym2/slates.py",
     "redzone/lab/leverage.py",
     "redzone/lab/night/run.py",
     "redzone/lab/oracle.py",
@@ -11938,6 +12195,7 @@
     "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
+    "scripts/feedlag_logger.py",
     "scripts/green_summaries.py",
     "scripts/holdset_public.py",
     "scripts/measure_break_lengths.py",
@@ -12185,8 +12443,10 @@
    },
    "outputs": [
     "redzone/engine.py",
+    "redzone/lab/feedlag.py",
     "redzone/recorder.py",
-    "redzone/sources/fastfeeds.py"
+    "redzone/sources/fastfeeds.py",
+    "scripts/feedlag_logger.py"
    ],
    "owner": "PLATFORM",
    "role": "League feeds that are faster or richer than ESPN for some things.",
@@ -15595,6 +15855,76 @@
     "untagged"
    ]
   },
+  "scripts/feedlag_logger.py": {
+   "calls": [
+    "redzone/lab/feedlag.py:ArrivalTracker",
+    "redzone/lab/feedlag.py:DayLog",
+    "redzone/lab/feedlag.py:espn_rows",
+    "redzone/lab/feedlag.py:slate_date",
+    "redzone/sources/espn.py:keep_college",
+    "redzone/sources/espn.py:parse_scoreboard",
+    "redzone/sources/espn.py:scoreboard_urls",
+    "redzone/sources/espn.py:summary_url",
+    "redzone/sources/leagues.py:NBA_PBP",
+    "redzone/sources/leagues.py:nba_index",
+    "redzone/sources/leagues.py:nba_match"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/feedlag.py",
+    "redzone/models.py",
+    "redzone/sources/espn.py",
+    "redzone/sources/leagues.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Nightly feed-arrival logger: polls the night's games politely and logs when each feed row first shows up.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/feedlag_report.py": {
+   "calls": [
+    "redzone/lab/feedlag_report.py:build_replay_profile",
+    "redzone/lab/feedlag_report.py:day_files",
+    "redzone/lab/feedlag_report.py:format_report",
+    "redzone/lab/feedlag_report.py:load_arrivals",
+    "redzone/lab/feedlag_report.py:report",
+    "redzone/lab/feedlag_report.py:write_profile"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [
+     "replay_profile.json"
+    ],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/feedlag_report.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Read the nightly feed-arrival logs: lag quantiles per source and row kind, and the replay-lab lag profile with real lags.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/fetch_eval_data.py": {
    "calls": [
     "redzone/lab/evaldata.py:asset_url",
@@ -16506,6 +16836,36 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Media metadata workers (Data Division, type C): which plays got clipped, and how much people watched.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/model_registry.py": {
+   "calls": [
+    "redzone/models_rt/registry.py:demote",
+    "redzone/models_rt/registry.py:promote",
+    "redzone/models_rt/registry.py:register",
+    "redzone/models_rt/registry.py:resolve_promoted",
+    "redzone/models_rt/registry.py:sha256_file",
+    "redzone/models_rt/registry.py:state"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models_rt/registry.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Command line for the model registry (redzone/models_rt/registry.py): register, promote, demote, list, resolve.",
    "serves": [
     "untagged"
    ]
@@ -19232,13 +19592,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2322,
-  "data_files": 205,
+  "calls": 2382,
+  "data_files": 206,
   "machines": 53,
-  "modules": 475,
+  "modules": 485,
   "orphans": 36,
-  "unowned": 277,
-  "untagged": 407
+  "unowned": 287,
+  "untagged": 417
  },
  "version": 2
 }

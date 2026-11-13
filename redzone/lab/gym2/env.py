@@ -27,8 +27,13 @@ import hashlib
 import heapq
 import json
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+from redzone.lab.gym2 import slates
+from redzone.lab.gym2.mask import Rule1Mask
+from redzone.lab.gym2.reward import RewardMeter, Weights, rule1
+from redzone.lab.gym2.scenario import IDENTITY, Scenario, log_draw
 
 REPO_DIR = Path(__file__).resolve().parents[3]
 YIELD = 0                       # asyncio.sleep(YIELD): let every ready task run once (park_replay.FakeClock does the same)
@@ -46,19 +51,6 @@ def replay_module():
 def canon(obj) -> str:
     """One canonical JSON text: sorted keys, no spaces, anything else by its repr (tuples become lists)."""
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), default=repr)
-
-
-@dataclass(frozen=True)
-class Scenario:
-    """What an episode changes against the recorded replay. Slice 1 has only the identity: no change at all."""
-    name: str = "identity"
-    replay_kw: tuple = ()                       # extra (key, value) pairs for park_replay.build
-
-    def kwargs(self) -> dict:
-        return dict(self.replay_kw)
-
-
-IDENTITY = Scenario()
 
 
 @dataclass
@@ -96,6 +88,12 @@ def replay_decisions(night: str, games: int = 4, *, league: str = "nba", seed: i
     return decision_list(show, rec)
 
 
+def _chain(tm, hooks):
+    for h in hooks:
+        tm = h(tm)
+    return tm
+
+
 def _step_clock_type(pr):
     """park_replay.FakeClock, plus a mark on the wait that comes before each tick (see GymV2._drive)."""
     class _StepClock(pr.FakeClock):
@@ -121,10 +119,17 @@ class GymV2:
     """One episode of the practice world on a recorded dev night. See the module docstring."""
 
     def __init__(self, night: str, games: int = 4, *, league: str = "nba", scenario: Scenario = IDENTITY, seed: int = 0,
-                 minutes: float = 0.0, loaded: tuple | None = None):
+                 minutes: float = 0.0, loaded: tuple | None = None, draw_log=None, mix: dict | None = None, mix_games: list | None = None,
+                 weights: Weights | None = None, mask_level: str = "strict"):
+        """mix: a census mix ({"nba": 2, "cbb": 1}): the slate is composed from recorded fit games (slates.compose, with
+        this episode's seed) instead of `night`'s own. weights: the reward terms' weights. mask_level: Rule1Mask's level."""
         self.night, self.games, self.league, self.scenario = str(night), int(games), league, scenario
+        self.mix, self.weights, self.mask_level = (dict(mix) if mix else None), weights or Weights(), mask_level
+        self.mix_games = [list(x) for x in mix_games] if mix_games else None      # [league, game id, shift s] per game
+        self.draw_log, self.draw = draw_log, None
         self.seed, self.minutes, self.loaded = int(seed), float(minutes), loaded
         self.loop = self.task = self.show = self.clock = None
+        self.done = False
         self.rec = Recorder()
 
     # ---- the episode ---------------------------------------------------------------------------------------------
@@ -132,24 +137,68 @@ class GymV2:
         self.close()
         pr = replay_module()
         self.rec = Recorder()
-        b = pr.build(self.night, self.games, league=self.league, seed=self.seed, minutes=self.minutes, loaded=self.loaded,
-                     say=self.rec.say, emit=self.rec.emit, clock_type=_step_clock_type(pr), **self.scenario.kwargs())
+        sc = self.scenario
+        kw = sc.build_kwargs()
+        loaded = self.loaded
+        if self.mix:
+            rs, slate, self.mix_games = slates.compose(self.mix, self.seed, games=self.mix_games)
+            loaded, self.games = (rs, slate), len(rs)
+            hooks = [slates.mixed_timing(rs)] + ([kw["timing"]] if "timing" in kw else [])
+            kw["timing"] = lambda tm, _h=hooks: _chain(tm, _h)
+        b = pr.build(self.night, self.games, league=self.league, seed=self.seed, minutes=self.minutes, loaded=loaded,
+                     say=self.rec.say, emit=self.rec.emit, clock_type=_step_clock_type(pr), **kw)
+        if not sc.identity:
+            sc.patch(b, pr)
+        self.draw = log_draw(self.draw_log, night=self.night, games=self.games, episode_seed=self.seed, scenario=sc,
+                             minutes=self.minutes, league=self.league,
+                             extra={"weights": asdict(self.weights), "mask_level": self.mask_level,
+                                    **({"mix": dict(self.mix), "mix_games": self.mix_games} if self.mix else {})})
         self.show, self.clock, self.rows, self.a, self.b = b.show, b.clock, b.rows, b.a, b.b
+        self.meter = RewardMeter(self.show.judge, b.a)
         self.loop = asyncio.new_event_loop()
         self.task, self._held, self.done, self.next_t = None, False, False, b.a
         return self.observe()
 
     def step(self, action=None) -> tuple:
-        """Run the show to the next tick that has to wait on the clock (or to the end). Slice 1 takes no action."""
+        """Run the show to the next tick that has to wait on the clock (or to the end). No action yet: the show's own
+        planner decides (wiring a director's ranking into Planner is task A-02/A-03). The reward is the weighted sum of
+        the terms the step earned (reward.py); info carries the terms, the judge's Rule #1 counts and, at the end, the
+        mask's audit of every cut the show made."""
         if action is not None:
-            raise ValueError("Gym v2 slice 1 has no actions: the show's own planner decides (identity)")
+            raise ValueError("Gym v2 has no actions yet: the show's own planner decides")
         if self.loop is None:
             raise RuntimeError("reset() first")
         if not self.done:
             self.loop.run_until_complete(self._pump())
         if self.done:
             self._finish_loop()
-        return self.observe(), 0.0, self.done, {"t": self.next_t, "scenario": self.scenario.name}
+        upto = (self.show.last_t + 1) if self.done and self.show.last_t is not None else self.next_t
+        terms = self.meter.read(upto)
+        info = {"t": self.next_t, "scenario": self.scenario.name, "terms": terms, "rule1": rule1(self.show.judge)}
+        if self.done:
+            info["mask_audit"] = self.mask().audit(self.show.judge.cuts)
+        return self.observe(), self.weights.total(terms), self.done, info
+
+    def mask(self) -> Rule1Mask:
+        """The Rule #1 mask over this episode's recorded games (true seconds on the night's grid)."""
+        return Rule1Mask(self.show.replays, self.show.night.base, level=self.mask_level)
+
+    @classmethod
+    def from_mix(cls, seed: int, *, scenario: Scenario = IDENTITY, have: set | None = None, **kw) -> "GymV2":
+        """An episode on a census-weighted mix (slates.draw_mix) composed with the same seed."""
+        mix = slates.draw_mix(seed, have=have)
+        return cls(f"mix-{int(seed)}", sum(mix.values()), scenario=scenario, seed=seed, mix=mix, **kw)
+
+    @classmethod
+    def from_draw(cls, row: dict, **kw) -> "GymV2":
+        """The episode a draw-log line describes, set up to run again exactly."""
+        kw.setdefault("minutes", row.get("minutes", 0.0))
+        kw.setdefault("league", row.get("league", "nba"))
+        kw.setdefault("mask_level", row.get("mask_level", "strict"))
+        if "weights" in row:
+            kw.setdefault("weights", Weights(**row["weights"]))
+        return cls(row["night"], row["games"], scenario=Scenario.from_dict(row["scenario"]), seed=row["episode_seed"],
+                   mix=row.get("mix"), mix_games=row.get("mix_games"), **kw)
 
     def run(self) -> "GymV2":
         if self.loop is None and not self.done:
