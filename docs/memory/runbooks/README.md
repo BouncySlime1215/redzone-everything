@@ -23,6 +23,7 @@ Short, do-this-now steps. Each one links to the full doc. Run everything from th
 | The daily hidden-stick canary failed or warned | [canary.md](canary.md) |
 | Joins land off target / a SHIFT alert | [join-calibration.md](join-calibration.md) |
 | Log how late each feed row really arrives (nightly sidecar, C-02) | [feedlag.md](feedlag.md) |
+| Pin the exact data a training run uses; check or load a pinned version (F-05) | [data-manifests.md](data-manifests.md) |
 
 ## Memory hook
 
