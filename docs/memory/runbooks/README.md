@@ -24,6 +24,7 @@ Short, do-this-now steps. Each one links to the full doc. Run everything from th
 | Joins land off target / a SHIFT alert | [join-calibration.md](join-calibration.md) |
 | Log how late each feed row really arrives (nightly sidecar, C-02) | [feedlag.md](feedlag.md) |
 | Pin the exact data a training run uses; check or load a pinned version (F-05) | [data-manifests.md](data-manifests.md) |
+| Tokenise the play-by-play into hashed training shards; verify a corpus (B-02) | [corpus-v1.md](corpus-v1.md) |
 
 ## Memory hook
 
