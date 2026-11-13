@@ -15,6 +15,10 @@ On any stand-down the sticks are finished first (`park_finish`: never leave a st
 `ControllerRig` gives the show each stream's place from the moves' own results: which game, read or not, paused or
 not, how far behind the show's edge. The plan and the guard then use exactly the padding that stream has earned.
 
+[park.catchup] (OFF) With park.catchup.enabled on the show is `park_catchup.CatchupShow` ("here is what you missed, then
+live", docs/catchup.md) and `ControllerRig.cu_cue` is its device step (`Controller.park_cue`: the hidden stick only, by
+rewind; not yet run on the TV, task E-02). Off, nothing of it is imported and the show is built as before.
+
 No stick or TV I/O here (rule K3): only the controller's park steps. Nothing here runs or is imported with the flag
 off beyond the loop's own sleep.
 
@@ -28,6 +32,7 @@ import logging
 import math
 import re
 import time
+from functools import partial
 
 from redzone.models import Phase
 from redzone.noggin.k_table import read_k_table
@@ -62,6 +67,7 @@ class ControllerRig:
     instant = False
     join_playing = False           # Controller.park_jump resumes a PARKED stick: it never joins one that plays
     deep = False                   # Controller.park_tune reads with park.steps.read_steps presses: no tune is sent further back
+    cue_on_screen = False          # [park.catchup] Controller.park_cue cues only the hidden stick (an on-screen re-seek: E-02)
 
     def __init__(self, ctl, clock: WallClock, targets: list[str], params: ShowParams):
         hands = ctl.park_hands()
@@ -149,6 +155,21 @@ class ControllerRig:
         self._done(k, out)
         return (True, self.lag[k]) if out.ok else (False, None)
 
+    async def cu_cue(self, k: int, game: int, frame: float, source: str, visible: bool) -> tuple:
+        """[park.catchup] The catch-up's device step (park_catchup.CatchupShow): stream k, holding `game`, is put at the
+        show's grid second `frame` and paused there (Controller.park_cue). Only the hidden stick and only by rewind; a
+        cue on screen (the next clip, or the replay stick sent back to live) is refused here (not built: E-02), and the
+        catch-up then goes live from the clip on screen. Returns (ok, seconds)."""
+        t0 = self.clock.now()
+        if visible or not self._hidden(k) or self.game[k] != game:
+            self.note[k] = {"way": "", "why": "only the hidden stick, holding the game, is cued"}
+            return False, 0.0
+        content = frame + self.clock.base - self.live_lag - self.delay   # the inverse of sync()'s frozen frame
+        out = await self.ctl.park_cue(self.targets[game], content, source)
+        self._over.pop(k, None)
+        self._done(k, out)
+        return bool(out.ok), self.clock.now() - t0
+
     async def jump(self, k: int, resume: bool, hold: int | None = None) -> tuple:
         if not resume or self.game[k] is None or not self._hidden(k):
             return "kept", "the stick to join is not parked on that game"
@@ -234,6 +255,15 @@ def director_params(cfg):
         return None
     from redzone.noggin.director import DirectorParams
     return DirectorParams.from_config(cfg.get)
+
+
+def catchup_params(cfg):
+    """[park.catchup] The catch-up move's numbers when park.catchup.enabled is on (redzone/noggin/park_catchup.py: the
+    show is then a CatchupShow), else None: off, nothing of it is imported and the show is built as before."""
+    if cfg.get("park.catchup.enabled", False) is not True:
+        return None
+    from redzone.noggin.park_catchup import CatchupParams
+    return CatchupParams.from_config(cfg.get)
 
 
 def feed_lags(cfg, leagues: list, base: float) -> list:
@@ -387,7 +417,8 @@ class ParkRun:
                 await self.begin()
             return
         show, t = self.show, int(self.clock.now())
-        if show.j_op is None and self.e.control.active != show.on:
+        flipping = getattr(show, "flip_pending", None)           # [park.catchup] a catch-up's own flip under way
+        if show.j_op is None and not (flipping is not None and flipping()) and self.e.control.active != show.on:
             await self.stand_down("the TV input changed outside the show")
             return
         self.rig.sync()
@@ -559,18 +590,24 @@ class ParkRun:
                        if park_prime.app_of(t) == park_prime.PRIME and g.league.base.value == "nfl"), None)
             if cfg.get("park.prime.pin_football", False) is True and kf is not None and rig.game[on] == kf:
                 keep = on                                        # [pinned anchor] the Prime football stream is never re-tuned
-        self.show = Show(night, eng, tm, rig, feed, names=names,
-                         chans=[("prime" if park_prime.app_of(t) == park_prime.PRIME else t.split(":", 1)[1]) for t in targets],
-                         leagues=[g.league.value for _, g, _ in games], board=self.board, say=lambda line: log.info("park show: %s", line),
-                         tune0={k: (park_prime.tune_cost(targets[k], cfg, yttv_s=yttv_s, show_delay=P.show_delay,
-                                                         tune_lag=rig.tune_lag) if prime else yttv_s) for k in range(len(games))},
-                         prefs=my_prefs(names, self.my_teams(), P.my_pref),
-                         params=P, model=self.model, eyes=self.watcher,
-                         no_back={k for k, t in enumerate(targets) if not park_prime.rewinds(t, cfg.get)} if prime else None,
-                         depth=({k: max(0.0, lags[k] - P.feed_lag) for k in range(len(games)) if lags[k] > P.feed_lag}
-                                if cfg.get("park.feed_lag.enabled", False) is True else None),
-                         football_slider=football_slider(cfg), keep=keep, keep_live=keep is not None,
-                         seen=cfg.get("park.seen", False) is True, director=director_params(cfg))
+        cu = catchup_params(cfg)                                 # [park.catchup] off: the show as before
+        if cu is None:
+            build = Show
+        else:
+            from redzone.noggin.park_catchup import CatchupShow
+            build = partial(CatchupShow, catchup=cu)
+        self.show = build(night, eng, tm, rig, feed, names=names,
+                          chans=[("prime" if park_prime.app_of(t) == park_prime.PRIME else t.split(":", 1)[1]) for t in targets],
+                          leagues=[g.league.value for _, g, _ in games], board=self.board, say=lambda line: log.info("park show: %s", line),
+                          tune0={k: (park_prime.tune_cost(targets[k], cfg, yttv_s=yttv_s, show_delay=P.show_delay,
+                                                          tune_lag=rig.tune_lag) if prime else yttv_s) for k in range(len(games))},
+                          prefs=my_prefs(names, self.my_teams(), P.my_pref),
+                          params=P, model=self.model, eyes=self.watcher,
+                          no_back={k for k, t in enumerate(targets) if not park_prime.rewinds(t, cfg.get)} if prime else None,
+                          depth=({k: max(0.0, lags[k] - P.feed_lag) for k in range(len(games)) if lags[k] > P.feed_lag}
+                                 if cfg.get("park.feed_lag.enabled", False) is True else None),
+                          football_slider=football_slider(cfg), keep=keep, keep_live=keep is not None,
+                          seen=cfg.get("park.seen", False) is True, director=director_params(cfg))
         self.show.begin(0, on, a)
         self.rig, self.clock, self.gids, self.seen, self.told = rig, clock, [gid for gid, _, _ in games], {}, 0
         self.shows += 1

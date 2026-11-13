@@ -1,0 +1,17 @@
+{
+  "card": "E-01-WIRE-CATCHUP",
+  "session": "e01-wire-catchup-builder",
+  "branch": "e01-wire-catchup",
+  "files": [
+    "redzone/park_run.py",
+    "redzone/control.py",
+    "redzone/noggin/park_catchup.py",
+    "scripts/park_replay.py",
+    "scripts/catchup_replay.py",
+    "tests/test_catchup_wiring.py",
+    "tests/test_park_catchup.py",
+    "docs/catchup.md"
+  ],
+  "started": 1794557604,
+  "expires": 1794730404
+}

@@ -4468,6 +4468,36 @@ class Controller:
                 self._set_hidden(None, False, why="PARK: lost its place")
             return out
 
+    async def park_cue(self, target: str, content_s: float, source: str = "rewind") -> ParkStep:
+        """[park.catchup] Send the hidden stick, playing or parked on `target` (placed by park_tune), BACK to the frame
+        at content time `content_s` (YouTube's clock, as ParkPlace.content) and freeze it there (ParkHands.cue): a
+        catch-up clip's start, queued while the stick is unseen. Only the rewind source (the overlay scrub,
+        tuners/yttv_seek.enter_buffer, measured by the label reader) and only YouTube TV. Refused with
+        park.catchup.enabled off; never a stick on screen. NOT YET RUN ON THE TV (task E-02)."""
+        why = self.park_why()
+        if not why and self.cfg.get("park.catchup.enabled", False) is not True:
+            why = "park.catchup.enabled is off"
+        if why:
+            return self._park_refused("cue", target, why)
+        hands, hid = self.park_hands(), self.hidden
+        if hid is None or hid is self.main:
+            return self._park_refused("cue", target, "no hidden stick")
+        if source != "rewind":
+            return self._park_refused("cue", target, f"no {source} driver: only the rewind cues a clip")
+        async with self._lock:
+            out = await hands.cue(hid, target, content_s, lambda: self.hidden is hid and self.main is not hid)
+            if self.hidden is hid and hands.place_of(hid) is None and self.hidden_target == target:
+                self._set_hidden(None, False, why="PARK: lost its place")
+            return out
+
+    def _cue_readers(self, stick: Stick, behind_live_s: float) -> dict:
+        """[park.catchup] enter_buffer's label readers for a cue, as the scrub entry wires them (`_scrub_into`): the
+        label probe armed at the stick's own behind-live, else the engine's reader; {} when there is none (the cue is
+        then refused before any key: where it lands is never estimated)."""
+        if self.label_probe is not None and self.label_probe.arm(stick, behind_live_s):
+            return {"read_overlay": self.label_probe.overlay_reader, "read_behind": self.label_probe}
+        return {"read_behind": self.read_behind} if self.read_behind is not None else {}
+
     def park_stale(self) -> str:
         """Why the hidden stick's park should be made again ("" = it holds, or there is none)."""
         hands, hid = self._park_hands, self.hidden
@@ -6632,6 +6662,84 @@ class ParkHands:
         place.paused, place.ref_wall, place.ref_pos = False, e.wall, e.pos_now_s
         self._to(stick, "playing", "resumed: it plays on unseen")
         st.outcome, st.numbers = "ok", self._place_numbers(place, e)
+        return self._done(st, t0)
+
+    async def cue(self, stick: Stick, target: str, content_s: float, hidden: Callable[[], bool]) -> ParkStep:
+        """[park.catchup] A catch-up clip's start on a HIDDEN stick placed on `target`: resume it if parked, scrub it
+        back with the overlay (yttv_seek.enter_buffer) to land park.steps.cue_lead_s before the frame at content time
+        `content_s`, take its new place from the label reader's measured behind-live (never the media session's
+        position after a seek, which is wrong), then park it on that frame (`park`: the pause key when the frame
+        comes, BACK, read back). Fails closed: nothing pressed without a label reader, a reach the scrub cannot make
+        or a sound incident; after any press that does not end parked on the frame the place is dropped (the show
+        tunes the stick again) and the stick is marked behind on the channel (#391)."""
+        from redzone.tuners import yttv_seek
+        t0, st = self.now(), ParkStep("cue", "failed", stick=self.label(stick), target=target,
+                                      way="resume, overlay scrub back, label read, pause on the frame")
+        if self.pending:
+            await self._settle(stick)                         # [park.fast_steps] its hold's read-back first
+        place = self.places.get(stick.host)
+        lag = self._live_lag()
+        if place is None or place.target != target or not place.read:
+            st.outcome, st.why = "refused", "not placed on this game by a read tune"
+            return self._done(st, t0)
+        if self._is_prime(target) or self.apps.get(stick.host, "youtubetv") != "youtubetv":
+            st.outcome, st.why = "refused", "only YouTube TV rewinds"
+            return self._done(st, t0)
+        if self.stopped or self.ctl._sound_blocked() or not hidden():
+            st.outcome, st.why = "refused", "a sound stop, or the stick is not hidden"
+            return self._done(st, t0)
+        now = self.now()
+        back = (now - content_s + self.step_s("cue_lead_s")) - place.behind_s(now)
+        reach = float(yttv_seek._cfg(self.ctl.cfg, "max_back_s"))
+        if back <= 0 or back > reach:
+            st.outcome = "refused"
+            st.why = (f"{back:.0f} s back is past the scrub's reach ({reach:.0f} s)" if back > 0
+                      else "the frame is still ahead of the stick: nothing to rewind")
+            return self._done(st, t0)
+        if self.ctl.label_probe is None and self.ctl.read_behind is None:
+            st.outcome, st.why = "refused", "no label reader to measure where the cue lands"
+            return self._done(st, t0)
+        if place.paused:
+            r = await self.resume(stick, target)              # the scrub starts from a playing picture
+            if not r.ok:
+                st.why = f"it did not play before the scrub ({r.why})"
+                return self._done(st, t0)
+            now = self.now()                                  # (a paused stick fell behind while it was held)
+            back = (now - content_s + self.step_s("cue_lead_s")) - place.behind_s(now)
+        behind_live = place.behind_s(now) - lag               # where it plays now, behind its stream's live edge
+        readers = self.ctl._cue_readers(stick, behind_live)
+        if "read_behind" not in readers:                      # (the probe refuses a stick marked behind on this channel)
+            st.why = "the label reader could not be armed on this stick"
+            return self._done(st, t0)
+        res = await yttv_seek.enter_buffer(stick, back, cfg=self.ctl.cfg, pkg=self._pkg(stick), still_hidden=hidden,
+                                           behind_before_s=behind_live, **readers)
+        st.numbers = {"asked_back_s": round(back, 2), "presses": res.presses, "scrub_s": round(res.took_s, 2)}
+        if res.presses or res.committed:
+            self.ctl._moved_behind(stick, target)            # the keys moved it: a same-channel link would not reset it
+        landed = res.behind_s
+        if not res.ok or landed is None:
+            self._drop(stick, "a cue that did not land measured: tune again")
+            st.why = f"the scrub did not land measured ({res.reason or 'no label read'})"
+            return self._done(st, t0)
+        r = await self._wait(stick, "playing", self.step_s("replay_wait_s"))
+        if r is None or r.pos_now_s is None:
+            self._drop(stick, "not playing after the cue: tune again")
+            st.why = "no playing report after the scrub"
+            return self._done(st, t0)
+        place.anchor = r.wall - (lag + float(landed)) - r.pos_now_s      # the place, from the measured landing
+        place.paused, place.frozen_pos, place.ref_wall, place.ref_pos = False, None, r.wall, r.pos_now_s
+        at = r.wall + (content_s - place.content(r.pos_now_s))           # the wall time its frame plays
+        st.numbers.update(landed_behind_live_s=round(float(landed), 2), frame_in_s=round(at - self.now(), 2))
+        if at < self.now() + self.pause_lead(stick) or at > self.now() + self.step_s("cue_wait_max_s"):
+            self._drop(stick, "the cue landed too far from its frame: tune again")
+            st.why = f"it landed {at - self.now():.1f} s from the clip's start"
+            return self._done(st, t0)
+        out = await self.park(stick, target, at)
+        st.numbers.update(out.numbers)
+        if not out.ok:
+            st.why = f"not parked on the frame ({out.why})"
+            return self._done(st, t0)
+        st.outcome = "ok"
         return self._done(st, t0)
 
     def stale(self, stick: Stick) -> str:

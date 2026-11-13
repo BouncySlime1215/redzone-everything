@@ -87,7 +87,7 @@ def test_off_it_is_the_show_decision_for_decision():
 
 @needs_archive
 def test_on_a_rig_without_the_cue_step_nothing_starts():
-    """The app's ControllerRig has no `cu_cue` yet: the flag on changes nothing there (fail closed)."""
+    """A rig with no `cu_cue` step: the flag on changes nothing there (fail closed)."""
     plain = pr.replay("20261023", 2, minutes=30)
     old = pr.Show
     pr.Show = partial(CatchupShow, catchup=CatchupParams(enabled=True))
@@ -159,3 +159,33 @@ def test_no_must_see_anywhere_airs_unseen_while_a_package_is_up():
                 if r["leave"] < m <= r["join"]:
                     assert (g, m) in j.shown, (g, m, r["leave"], r["join"])
     assert cr.metrics(show, c)["behind_max_s"] <= 145 + 1
+
+
+# ---------------------------------------------------------------------------------------------- [E-01] the show's own wiring
+def test_park_replay_builds_the_catchup_show_as_the_old_swap_did_decision_for_decision():
+    """park_replay.replay(catchup=...) (the classes ParkRun.begin and the fakes use with park.catchup.enabled on) decides
+    exactly as the catch-up replay's earlier class swap (`wired`), and with catchup=None exactly as before."""
+    c = cr.params_for("proven")
+    with cr.wired(c):
+        old = pr.replay("20261028", 4, minutes=40)
+    new = pr.replay("20261028", 4, minutes=40, catchup=c)
+    assert isinstance(new, CatchupShow) and new.cu_ok and new.cu_screen
+    assert new.rig.sent == old.rig.sent and pr.result(new) == pr.result(old)
+    assert [r["leave"] for r in new.cu_log] == [r["leave"] for r in old.cu_log] and new.cu_log
+
+
+def test_with_only_the_hidden_stick_cued_a_package_is_one_clip_under_nicks_age_rule_and_keeps_rule_1():
+    """The app's controller cues only the hidden stick (Controller.park_cue): every package is one clip (a close pair
+    played through counts as two plays), nothing is cued on screen, no catch-up needs the replay stick sent back to
+    live, the 3-minute cap holds for a one-play clip, and the frozen grader still sees 0 mid-play joins."""
+    show, c = cr.run("20261028", 4, "proven", hidden=True, minutes=70)
+    m = cr.metrics(show, c)
+    assert m["done"] >= 1 and not show.cu_screen
+    for r in show.cu_log:
+        assert len(r["clips"]) == 1 and not r["rejoined"] and r["broke"] == ""
+        n = len(r["plays"])
+        assert all(cp.age_ok(cl.lo, cl.air, c.pack, n) for cl in r["clips"])
+        assert n >= 2 or all(cp.age_s(cl.lo, cl.air, c.pack) < 180.0 for cl in r["clips"])
+    assert not any(w.startswith("the replay stick") or w == "a clip could not be cued" for w in show.cu_aborts)
+    assert (m["grader_entries_mid_play"], m["grader_leaves_mid_play"], m["cu_join_mid"], m["cu_leave_mid"]) == (0, 0, 0, 0)
+    assert m["clip_starts"]["mid"] == 0 and m["clips_late"] == 0 and m["behind_max_s"] <= 145 + 1

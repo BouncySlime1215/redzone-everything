@@ -3,16 +3,18 @@
     nice -n 15 python scripts/catchup_replay.py --night 20261028 --games 4                  # proven numbers only
     nice -n 15 python scripts/catchup_replay.py --night 20261028 --games 4 --scenario library --lines 20
     nice -n 15 python scripts/catchup_replay.py --table                                     # the PR's table
+    nice -n 15 python scripts/catchup_replay.py --night 20261028 --games 4 --hidden         # the app's hidden-only cue
 
-What runs: `scripts/park_replay.replay` (the app's own `Show` on a recorded night, fed row by row, fake sticks and a fake
-TV, Rule #1 judged where the pictures truly were) with three classes swapped in for the run only:
+What runs: `scripts/park_replay.replay(..., catchup=params)` (the app's own `Show` on a recorded night, fed row by row,
+fake sticks and a fake TV, Rule #1 judged where the pictures truly were) with the three classes park_replay swaps in
+when `catchup` is given, the way `redzone/park_run.py` builds the show with park.catchup.enabled on (task E-01):
   * `redzone.noggin.park_catchup.CatchupShow` for `Show` (with park.catchup.enabled off it IS the show);
-  * `CatchupRig` for `FakeRig`: the fake sticks plus `cu_cue`, the catch-up's one new step (a stick put at a clip's
-    start by rewind, Key plays reel or Prime Key Moments), timed from catchup_pack.PackParams (measured where measured,
-    named priors where not);
-  * `CatchupJudge` for `Judge`: a catch-up is ONE cut for the judge and the frozen grader: the leave of the screen's game
-    (live) and the live join of game X, with the replay between them. The replay is not a live picture.
-park_replay.py itself is not edited (claimed by PARK-UNIFY until its claim closes); this script wraps it.
+  * `park_replay.CatchupRig` for `FakeRig`: the fake sticks plus `cu_cue`, the catch-up's one new step (a stick put at
+    a clip's start by rewind, Key plays reel or Prime Key Moments), timed from catchup_pack.PackParams (measured where
+    measured, named priors where not). `--hidden`: only the hidden stick is cued, as the app's controller does today
+    (`Controller.park_cue`): one clip per package, no live join by re-cueing the replay stick;
+  * `park_replay.CatchupJudge` for `Judge`: a catch-up is ONE cut for the judge and the frozen grader: the leave of the
+    screen's game (live) and the live join of game X, with the replay between them. The replay is not a live picture.
 
 The age rule in every scenario is Nick's (Nov 11): 2+ plays have no age cap, one play keeps the 3-minute cap.
 The scenarios (catchup_pack's docstring has every unknown):
@@ -31,7 +33,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import math
 import random
 import sys
 from dataclasses import replace
@@ -60,84 +61,14 @@ NFL_PRIME = {"nfl": 0, "prime": 1, "nfl_lag": 44.0, "deep": True}
 
 
 # ---------------------------------------------------------------------------------------------- the fakes
-class CatchupRig(pr.FakeRig):
-    """The fake sticks plus the catch-up's step. `cu_cue(k, game, frame, source, visible)`: stick k is put at grid second
-    `frame` of `game`, paused, by `source`; it takes the package's own model of that source (prep when hidden, the
-    gap when the replay is already on screen). It lands within the read's error (cue_sd)."""
-
-    def __init__(self, *a, pack: cp.PackParams | None = None, cue_sd: float = 1.0, **kw):
-        super().__init__(*a, **kw)
-        self.pack, self.cue_sd = pack or cp.PackParams(), cue_sd
-        self.cues: list = []
-
-    async def cu_cue(self, k: int, game: int, frame: float, source: str, visible: bool) -> tuple:
-        P, now = self.pack, self._now()
-        if source == "rewind":
-            took = P.seek_gap_s if visible else P.seek_base_s + P.seek_per_s * max(0.0, now + self.delay - frame)
-        elif source == "reel":
-            took = P.reel_gap_s if visible else P.reel_open_s
-        else:
-            took = P.moments_gap_s if visible else P.moments_open_s
-        took += min(4.0, self.rng.expovariate(1 / 0.8))
-        self.sent.append(("cue", k, game, source))
-        await self._wait(took)
-        if self._fails("cue"):
-            return False, took
-        err = self.rng.gauss(0.0, self.cue_sd)
-        self.game[k], self.paused[k], self.frozen[k] = game, True, float(frame) + err
-        self.lag[k] = self._now() - self.frozen[k]
-        self.cues.append((k, game, float(frame), err, source))
-        return True, took
-
-
-class CatchupJudge(pr.Judge):
-    """The judge plus a catch-up's one cut: the leave's true second taken at the leave, the join's at the join."""
-
-    def __init__(self, *a, **kw):
-        super().__init__(*a, **kw)
-        self.catchups: list[int] = []                           # indices into self.cuts that were catch-ups
-
-    def leave_true(self, k: int, g: int, i: int) -> float:
-        e1 = self.tm.errs(g)
-        return i - self.e.get(k, 0.0) + self.rng.gauss(0.0, math.hypot(e1[2], e1[3]))
-
-    def catchup_cut(self, t: int, g1: int, true_i: float, k2: int, g2: int, j: int, paused: bool) -> None:
-        """Judge.flip's bookkeeping, with the leave already taken (the same rules, line for line)."""
-        xs, xh, bad = self.A[g1], self.A[g2], 0
-        e2 = self.tm.errs(g2)
-        true_j = j - self.e.get(k2, 0.0) + self.rng.gauss(0.0, e2[2] if paused else math.hypot(e2[2], e2[3]))
-        ti, ej = self._at(xs, true_i), self._at(xh, true_j)
-        self.catchups.append(len(self.cuts))
-        self.cuts.append((g1, true_i, g2, true_j))
-        self.e_log.append((0.0, self.e.get(k2, 0.0)))
-        if not xs.dead[ti]:
-            if xs.legal[ti]:
-                self.walk_leave += 1
-            else:
-                self.mid_leave, bad = self.mid_leave + 1, bad + 1
-        if xs.hl[ti]:
-            self.hl_leave, bad = self.hl_leave + 1, bad + 1
-        if not xh.dead[ej]:
-            if xh.legal[ej]:
-                self.walk_entry += 1
-            else:
-                self.mid_entry, bad = self.mid_entry + 1, bad + 1
-        if self.last is not None and self.live >= 3:
-            self.jumps.append(self.last)
-            self.plays += self.look_plays
-            self.one_play += int(self.look_plays <= 1)
-        elif self.last is not None:
-            self.noplay += 1
-        wait = xh.left[ej] if xh.dead[ej] else 0
-        self.land_wait.append(wait)
-        self.brk_land += int(bool(xh.brk[ej]) and wait > 10)
-        self.flips.append((t, g2, bad))
-        self.last, self.live, self.look_plays, self.was_dead, self.from_true = t, 0, 0, True, None
+# [E-01] they live in park_replay now (`park_replay.replay(catchup=...)` builds the show the app builds with the flag on)
+CatchupRig, CatchupJudge = pr.CatchupRig, pr.CatchupJudge
 
 
 @contextlib.contextmanager
 def wired(params: CatchupParams):
-    """park_replay's Show, FakeRig and Judge swapped for the catch-up ones, for one run."""
+    """park_replay's Show, FakeRig and Judge swapped for the catch-up ones, for one run (the way this script ran before
+    park_replay took `catchup=`; `run` no longer uses it, and a test checks both ways decide the same)."""
     old = pr.Show, pr.FakeRig, pr.Judge
     pr.Show, pr.FakeRig, pr.Judge = partial(CatchupShow, catchup=params), partial(CatchupRig, pack=params.pack), CatchupJudge
     try:
@@ -153,13 +84,15 @@ def params_for(scenario: str) -> CatchupParams | None:
     return CatchupParams(enabled=True, pack=replace(cp.PackParams(), **over))
 
 
-def run(night: str, games: int, scenario: str, **kw):
-    """One replay; (show, catch-up params or None)."""
+def run(night: str, games: int, scenario: str, hidden: bool = False, **kw):
+    """One replay; (show, catch-up params or None). hidden: the fake sticks cue only the hidden stick (the app's
+    controller today, Controller.park_cue)."""
     c = params_for(scenario)
     if c is None:
         return pr.replay(night, games, **kw), None
-    with wired(c):
-        return pr.replay(night, games, **kw), c
+    if hidden:
+        kw["rig_kw"] = {**dict(kw.get("rig_kw") or {}), "on_screen": False}
+    return pr.replay(night, games, catchup=c, **kw), c
 
 
 # ---------------------------------------------------------------------------------------------- the numbers
@@ -272,7 +205,7 @@ def describe(m: dict, head: str) -> str:
     return "\n".join(lines)
 
 
-def table(seed: int = 0, dump: str = "") -> str:
+def table(seed: int = 0, dump: str = "", hidden: bool = False) -> str:
     """The PR's table: the 3 NBA dev nights (4 games) and the pinned NFL + Prime case; off, proven, and the 10-minute
     rewind what-if. `dump`: also write each run's numbers as one JSON line to this file."""
     import json
@@ -286,7 +219,7 @@ def table(seed: int = 0, dump: str = "") -> str:
     names = {"off": "off", "proven": "175 s (proven)", "rewind10": "10 min (what-if)", "library": "whole game (what-if)"}
     for label, night, games, kw in cases:
         for sc in ("off", "proven", "rewind10"):
-            show, c = run(night, games, sc, seed=seed, **kw)
+            show, c = run(night, games, sc, hidden=hidden, seed=seed, **kw)
             m = metrics(show, c)
             missed = m["big_n"] - m["big_live"]
             seen = f"{100 * m['v2_live']:.0f}%" + (f" + {100 * m['v2_via']:.0f}%" if c else "")
@@ -320,9 +253,10 @@ def main() -> int:
     ap.add_argument("--pin", action="store_true")
     ap.add_argument("--table", action="store_true", help="the 3 NBA nights and the NFL + Prime case, every scenario")
     ap.add_argument("--dump", default="", help="with --table: also append each run's numbers as JSON lines here")
+    ap.add_argument("--hidden", action="store_true", help="the fake sticks cue only the hidden stick, as the app's controller does")
     a = ap.parse_args()
     if a.table:
-        table(a.seed, a.dump)
+        table(a.seed, a.dump, a.hidden)
         return 0
     shown = [0]
 
@@ -330,7 +264,7 @@ def main() -> int:
         shown[0] += 1
         if shown[0] <= a.lines:
             print(line)
-    show, c = run(a.night, a.games, a.scenario, minutes=a.minutes, seed=a.seed, say=say, nfl=a.nfl, prime=a.prime,
+    show, c = run(a.night, a.games, a.scenario, hidden=a.hidden, minutes=a.minutes, seed=a.seed, say=say, nfl=a.nfl, prime=a.prime,
                   nfl_lag=a.nfl_lag, deep=a.deep, pin=a.pin)
     print(describe(metrics(show, c), f"CATCH-UP REPLAY ({a.scenario}; night {a.night}, {a.games} games, FAKE sticks, not measured on the TV)"))
     return 0
