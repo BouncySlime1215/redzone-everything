@@ -5,6 +5,7 @@
     python scripts/arm_verdict.py run --arm stage6_rerank --hook mod:make_hook --model m.npz --nights 20261021
     python scripts/arm_verdict.py recompute data/armeval/<run>          # the verifier: recount from the raw logs
     python scripts/arm_verdict.py arms                                   # the arms and their seams
+    python scripts/arm_verdict.py l105 data/armeval/<run>               # stage 6's L105 metric on that run (A-03)
 
 Writes into --out (default data/armeval/<arm>-<config hash>, git-ignored): verdict.json (canonical bytes: the same
 arm, nights, options and commit give the same file), raw/<arm>/<night>.json (every cut, the screen timeline, every
@@ -38,6 +39,7 @@ from redzone.lab import fence  # noqa: E402
 from redzone.lab.armeval import arms as A  # noqa: E402
 from redzone.lab.armeval import episode as E  # noqa: E402
 from redzone.lab.armeval import recompute as R  # noqa: E402
+from redzone.lab.armeval import stage6 as S6  # noqa: E402
 from redzone.lab.armeval import verdict as V  # noqa: E402
 
 NIGHT_SETS = {                                   # fixed sets of real dev nights (park_replay refuses any other night)
@@ -206,6 +208,28 @@ def recompute_cmd(a) -> int:
     return 1 if probs else 0
 
 
+def l105_cmd(a) -> int:
+    """L105's metric (high-leverage points, pooled and per mix, plus all value) on a run's arm vs its baseline, from the
+    raw logs and the archive's grader facts. Writes l105.json next to the verdict (outside the verdict's bytes)."""
+    d = Path(a.dir)
+    v = json.loads((d / "verdict.json").read_text())
+    if not v["baseline"] or v["baseline"] == v["arm"]["name"]:
+        raise SystemExit("l105 needs a run paired with a baseline arm")
+    pairs = []
+    for card in v["per_night"]:
+        spec = card["night"]
+        x = E.load_night(spec, v["meta"]["config"]["games"])
+        facts = list(x.slate) + ([E.replay_module().shifted_nfl(x.nfl, x.slate)[1]] if x.nfl >= 0 else [])
+        sides = [S6.stage6_hl_card(json.loads((d / "raw" / who / f"{spec}.json").read_text()), facts)
+                 for who in (v["arm"]["name"], v["baseline"])]
+        pairs.append((card["mix"], *sides))
+    out = {"arm": v["arm"]["name"], "baseline": v["baseline"], "verdict_sha256": fence.file_sha256(d / "verdict.json"),
+           **S6.stage6_l105(pairs)}
+    write(d / "l105.json", V.canon_json(out))
+    print(V.canon_json(out), end="")
+    return 0
+
+
 def arms_cmd(_a) -> int:
     for name, cls in sorted(A.ARMEVAL_ARMS.items()):
         print(f"{name:14s} seam {cls.seam:6s} {'HEAVY (Kaggle / Colab model)' if cls.heavy else 'local'}")
@@ -237,8 +261,10 @@ def main(argv=None) -> int:
     c = sub.add_parser("recompute")
     c.add_argument("dir")
     sub.add_parser("arms")
+    lv = sub.add_parser("l105")
+    lv.add_argument("dir")
     a = ap.parse_args(argv)
-    return {"run": run_cmd, "recompute": recompute_cmd, "arms": arms_cmd}[a.cmd](a)
+    return {"run": run_cmd, "recompute": recompute_cmd, "arms": arms_cmd, "l105": l105_cmd}[a.cmd](a)
 
 
 if __name__ == "__main__":
