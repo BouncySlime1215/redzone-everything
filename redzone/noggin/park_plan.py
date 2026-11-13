@@ -17,6 +17,7 @@ from __future__ import annotations
 import math
 from bisect import bisect_left
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 from redzone.noggin.park_core import PARK_PARAMS, Arr, ParkParams, Setting
 
@@ -92,6 +93,46 @@ def tabs_for(A: list, guard: int) -> list[Tab]:
             cache[guard] = Tab(x, guard)
         out.append(cache[guard])
     return out
+
+
+UNKNOWN_RATE_CLAMP = (0.1, 4.0)      # a handed-over rate is held to this x the planner's own guess (track A section 9)
+
+
+class ClampedUnknownRate:
+    """park.unknown_rate_v2 (task A-05): a handed-over `unknown` hook (bind(arrs, setting), rate(game, last reported
+    second, now)) held to UNKNOWN_RATE_CLAMP x the planner's own guess for that second (unk_w x the game's leverage
+    there), as the stage-6 arm holds its model. A rate that is not a finite number gives the guess itself (counted in
+    `unusable`). Any per-league scaling is the hook's own job. Counters: calls, clamped, unusable."""
+
+    def __init__(self, inner, unk_w: float):
+        self.inner, self.unk_w = inner, float(unk_w)
+        self.A = None
+        self.calls = self.clamped = self.unusable = 0
+
+    def bind(self, A: list, s: Setting) -> None:
+        self.A = A
+        self.inner.bind(A, s)
+
+    def rate(self, g: int, K: int, t: int) -> float:
+        base = self.unk_w * self.A[g].lev[K]
+        r = self.inner.rate(g, K, t)
+        self.calls += 1
+        try:
+            r = float(r)
+        except (TypeError, ValueError):
+            r = math.nan
+        if not math.isfinite(r):
+            self.unusable += 1
+            return base
+        lo, hi = UNKNOWN_RATE_CLAMP[0] * base, UNKNOWN_RATE_CLAMP[1] * base
+        if r < lo or r > hi:
+            self.clamped += 1
+        return min(max(r, lo), hi)
+
+
+def unknown_rate_v2_on(get) -> bool:
+    """park.unknown_rate_v2 from a config getter (`cfg.get`): True only for a literal True, as every park flag."""
+    return get("park.unknown_rate_v2", False) is True
 
 
 class Planner:
@@ -227,6 +268,33 @@ class Planner:
     # ---- the search -----------------------------------------------------------------------------------------------
 
     def _search(self, t: int, S) -> None:
+        """One planning pass: what the search reads now (`_frame`), the option list and the best of it (`_options`,
+        `_best_option`), the scheduled jump kept (`_keep`), then the plan the sticks follow (`_hold`)."""
+        self.searches += 1
+        self.next, self.land = t + self.p.replan_s, S.s_land
+        f = self._frame(t, S)
+        v0, opts, best, landable = self._options(f)
+        best = self._keep(f, v0, opts, best)
+        if self.trace is not None:
+            self.trace.append((t, v0, f.cs, f.K, opts, best))
+        self._hold(f, best, landable)
+
+    def options(self, t: int, S) -> tuple:
+        """The option list a search at second t on state S would build, without planning anything: (value of staying,
+        every option row as `jumps` makes it, the best row by `_best_option` or None). The planner's own plan, its
+        schedule and its counters are untouched; an `unknown` hook and the show are asked as a search asks them.
+        For tests and for a later learned scorer that ranks the same rows (WORKPLAN v2 A-05)."""
+        v0, opts, best, _ = self._options(self._frame(t, S))
+        return v0, opts, best
+
+    def _best_option(self, opts: list):
+        """The candidate scoring: the row with the highest plan value (row[0]); the first such row on a tie. The one
+        call a learned scorer over the option list replaces."""
+        return max(opts, key=lambda r: r[0]) if opts else None
+
+    def _frame(self, t: int, S) -> SimpleNamespace:
+        """Everything one search reads (the screen and the hidden stick now, the feed's reports, each game's worth of
+        an unreported second) and the search's own steps over it (`stay`, `jumps`), built fresh for second t."""
         p, tabs, A, prm, show = self.p, self.tabs, self.A, self.params, self.show
         G, flip, lead, reach, n = self.G, self.flip, self.lead, self.reach, self.n
         lw, late_w, bonus, min_live, spots = self.lw, p.late_w, p.jump_bonus, self.min_live, p.spots
@@ -243,8 +311,6 @@ class Planner:
         K1, last = K + 1, K - G                    # `last`: the last position whose padding the feed has reported
         T = t + p.horizon
         N = len(A)
-        self.searches += 1
-        self.next, self.land = t + p.replan_s, S.s_land
         unk = self.unknown
         u = [0.0] * N
         for g in range(N):
@@ -583,17 +649,32 @@ class Planner:
         ld = lands(scr, hg, hp, c0, w0, t, self._fresh_gap(True))
         if lv and tw + lv[0][0] - cs + flip + p.bank_s > T:
             T = tw + lv[0][0] - cs + flip + p.bank_s        # the first leave is further off than the horizon: plan to it
-        v0 = stay(scr, cs, tw, m0s, live0, paid, lv, T)
-        opts = jumps(scr, cs, tw, m0s, live0, paid, lv, ld, p.depth, T)
-        best = max(opts, key=lambda r: r[0]) if opts else None
+        return SimpleNamespace(t=t, K=K, last=last, T=T, N=N, A=A, u=u, cap=cap, cap_hit=cap_hit, cost=cost, show=show,
+                               scr=scr, tw=tw, cs=cs, m0s=m0s, live0=live0, paid=paid, hg=hg, hp=hp, c0=c0, lv=lv, ld=ld,
+                               stay=stay, jumps=jumps)
+
+    def _options(self, f: SimpleNamespace) -> tuple:
+        """The option list of one search: (value of staying, every jump row, the best row or None, the games a reported
+        leave could be paired with). With no jump worth making in the feed's reports, the rows are the banked landings."""
+        p, flip = self.p, self.flip
+        scr, cs, tw, m0s, live0, paid, lv, ld, T, last = f.scr, f.cs, f.tw, f.m0s, f.live0, f.paid, f.lv, f.ld, f.T, f.last
+        v0 = f.stay(scr, cs, tw, m0s, live0, paid, lv, T)
+        opts = f.jumps(scr, cs, tw, m0s, live0, paid, lv, ld, p.depth, T)
+        best = self._best_option(opts)
         landable = {row[7][0] for row in opts}       # games a reported leave could be paired with (for why())
         if best is None or best[0] <= v0 + 1e-9:
             # no jump worth making is in the feed's reports. Bank a landing: assume the next leave comes `exp_wait` past the
             # reports and put the hidden stick where the first `bank_s` seconds after that jump are worth most. The value
             # before the jump is the same for every landing, so only what follows it is compared. Never scheduled.
             i = (cs if cs > last else last + 1) + p.exp_wait
-            opts = jumps(scr, i, tw + i - cs, i, 3, True, [(i, i + JOIN_SLACK)], ld, 1, tw + i - cs + flip + p.bank_s, False)
-            best = max(opts, key=lambda r: r[0]) if opts else None
+            opts = f.jumps(scr, i, tw + i - cs, i, 3, True, [(i, i + JOIN_SLACK)], ld, 1, tw + i - cs + flip + p.bank_s, False)
+            best = self._best_option(opts)
+        return v0, opts, best, landable
+
+    def _keep(self, f: SimpleNamespace, v0: float, opts: list, best):
+        """The row the plan takes: the best one, unless the jump already scheduled is kept (it is within `stick` of the
+        best, or due within `commit_s`), or a new tune of the hidden stick gains less than `stick`."""
+        p, prm, t, hg = self.p, self.params, f.t, f.hg
         kept = False
         if self.sticky and best is not None and self.go is not None and self.open is not None and self.land_j is not None:
             for row in opts:                # [show] first choice: the scheduled jump with the landing it was scheduled on
@@ -613,8 +694,14 @@ class Planner:
             here = max((row for row in opts if row[7][1] != TUNE), key=lambda r: r[0], default=None)
             if here is not None and best[0] - here[0] <= (p.stick if self.tune_stick is None else self.tune_stick):
                 best = here
-        if self.trace is not None:
-            self.trace.append((t, v0, cs, K, opts, best))
+        return best
+
+    def _hold(self, f: SimpleNamespace, best, landable: set) -> None:
+        """Turn the chosen row into the plan the sticks follow: the hidden stick's next step (`cmd`), the jump waited
+        for (`go`) and its warrant, and the schedule log; with no row, park the hidden stick where play is."""
+        p, prm, tabs, lead = self.p, self.params, self.tabs, self.lead
+        t, lv, cap_hit, N, show, scr, A, u, cost, hg, hp, c0, cap = (f.t, f.lv, f.cap_hit, f.N, f.show, f.scr, f.A, f.u,
+                                                                    f.cost, f.hg, f.hp, f.c0, f.cap)
         if best is None:
             self.go = self.open = self.land_j = None
             self.info = (bool(lv), landable, cap_hit, -1, False, False)

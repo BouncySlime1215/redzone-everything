@@ -1637,6 +1637,10 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
   director_v2: false       # [DIRECTOR v2] OFF. On: the show uses a director object handed to it (Show(director_obj=...), the
                            # shape of redzone/noggin/director_protocol.py) instead of building Director v1; with nothing handed
                            # over it is as before. Nothing in the app hands one over yet (task A-04 is the seam only)
+  unknown_rate_v2: false   # [PLANNER v2] OFF. On: the show's planner prices a second the feed has not reported with a rate object
+                           # handed to it (Show(unknown=...): bind(arrs, setting), rate(game, last reported second, now)), held to
+                           # 0.1x..4x the planner's own guess (park_plan.ClampedUnknownRate); with nothing handed over it is as
+                           # before. Nothing in the app hands one over yet (task A-05 is the seam only)
   director:                # [DIRECTOR] Director v1's numbers (picked in replay on 3 recorded NBA nights; not measured on the TV)
     big_w: 3.0             # (a) a game with a close-and-late or overtime play in the feed's last big_look seconds: x this
     big_look: 90           # ...seconds (park.show.crunch_look)
