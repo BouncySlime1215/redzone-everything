@@ -45,9 +45,14 @@ Expected volume and time for the big run (ESTIMATE, from the B0 arithmetic; the 
 | NHL | 14,000 | 4.4M | 16,000 | 4.4 |
 | MLB | 25,000 | 14.0M | 27,000 | 7.5 |
 
-The B0a target (30M events) is reached by NBA + NFL + CFB + NHL + men's college over ten seasons (about 43M by this arithmetic,
-about 29 hours); the full plan (about 85M) is about 52 hours. Run it in 10 to 12 hour Kaggle sessions or on the Mac in
-the background; re-run the same command after each stop. Disk: about 20 KB per game compressed, so about 3.5 GB for 177,000 games.
+Measured in the 2026-11-13 smoke run: 0.87 requests/second sustained (the cap is 1), about 19 KB on disk per NBA game and 13 KB per NFL
+game, about 480 plays per NBA game and 187 per NFL game. Hours above are at 1/s; divide by 0.87 for the likely wall time.
+
+Cheaper route for three leagues: the hoopR and wehoop files hold ESPN's own rows for NBA (2002+), men's college (2003+) and women's
+college (2005+) in one file per season, so those leagues cost about 11 requests per ten seasons instead of 15,000 to 60,000
+(section 3). `--plan` prints both. With the file route for NBA, men's and women's college and ESPN-direct for NFL, college
+football, NHL and MLB, ten seasons are about 54,000 requests: 15 hours at 1/s, about 17 at the measured rate. Whichever route is
+used, the same game appears in both; B-02 deduplicates across providers (corpus rule 3).
 
 ### Run it on Kaggle (the big run; the Mac stays free)
 
@@ -76,6 +81,35 @@ python scripts/fetch_history.py --accept-restrictive --source wehoop_wbb --seaso
 One parquet per season from `raw.githubusercontent.com` (robots.txt there: 404, no rules). A season file that touches a fenced
 night is skipped whole (NBA 2026 touches the locked window). The ledger holds bytes, sha256, ETag and, with pyarrow, rows and games.
 `nflverse_pbp` (blocked) and `cfbfastr_pbp` (unverified) refuse and print the finding; see `python scripts/fetch_history.py --licences`.
+
+## History depth: how far back ESPN goes (measured 2026-11-13)
+
+Method: `--probe`. For each league and season, read the calendar, then 2 scoreboard units spread through the season and 4 final games
+from each (8 games a season; 2 in the first pass); count plays and the share with a wall clock and a game clock. Numbers only; no data kept.
+The sample is spread, not random, so read it as indicative. Fenced nights were never sampled. About 1,100 requests in total.
+
+| League | Schedule (calendar) back to | Plays present from | Plays per game, old vs recent | Games with plays (sampled) | Wall clocks from | Game clock |
+|---|---|---|---|---|---|---|
+| NBA | 1995 or earlier (scan stopped there) | between 2002 and 2004 (2001 and 1998: none) | 2004: 425, 2010: 438, 2019: 483, 2024: 468 | 100% from 2004 | all games 2016+, half of 2013, none 2010 and before | all seasons |
+| Men's college | 2001 | about 2006 (2004: none) | 2007: 262, 2010: 329, 2019: 287, 2024: 320 | 2007 50%, 2010 75%, 2013 75%, 2016+ about 100% | 2022+ only (2019 and before: none) | all seasons |
+| Women's college | 2001 | about 2010 (2007 and before: almost none) | 2010: 358, 2019: 323, 2024: 328 | 2010 12%, 2013 38%, 2019 80%, 2024 100% | 2022+ only | all seasons |
+| NFL | 1999 | 2001 at least (1998: no games) | 2001: 171, 2010: 168, 2019: 178, 2024: 189 | 100% every sampled season 2001 to 2024 | 2016+ (2013 and before: none) | all seasons |
+| College football (FBS board) | 1999 | 2001 at least (2004: 6 of 8) | 2001: 206, 2010: 177, 2019: 177, 2024: 181 | 75% to 100% | 2016+ | all seasons |
+| NHL | 1996 | 2007 (2004: only 13 plays a game; 2001: none) | 2007: 269, 2010: 295, 2019: 319, 2024: 318 | 100% from 2007 | 2022 or 2023 on (2019 and before: none) | all seasons |
+| MLB | 1995 or earlier (scan stopped there) | 2004 (2001 and 1998: none) | 2004: 640, 2010: 645, 2019: 591, 2024: 602 | 100% from 2004 | 2024 only; 2022 about 19% | none (baseball has no clock) |
+
+Reading it:
+
+- Older seasons are not thinner where they exist: plays per game are within about 20% of recent seasons (men's college 2007 and NHL 2007 are the lowest, about 15 to 18% under).
+  What older seasons lack is **wall clocks**: before 2016 for NBA, NFL and college football, before 2022 for college basketball, NHL and MLB.
+  Those games go in the separate "no wall clock" tier (corpus rule 2); the records keep `wall_frac` so B-02 can split them.
+- Coverage is where older seasons are **incomplete**: men's college before 2016 and women's college before 2019 have plays for only
+  part of the games (12% to 75%). The fetcher records the rest as `no_plays` and abandons a season whose first 25 games all lack plays.
+- Season windows: first season with plays is NBA about 2003, men's college about 2006, women's college about 2010, NFL and college football
+  2001 or earlier, NHL 2007 (2004 is nearly empty), MLB 2004. The first seasons were not narrowed to the exact year.
+- College plays per game in ESPN summaries are about 320, not the 513 assumed in the Track B arithmetic, so the college event
+  totals there are probably about 35% too high for ESPN-direct (sample of 8 to 16 games a season; hoopR rows per game were not measured for college).
+- Individual games can be missing plays in any season (one of two sampled NBA 2022 and NHL 2022 games had none).
 
 ## 4. Pack for Corpus v1 (B-02)
 

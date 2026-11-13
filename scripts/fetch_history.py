@@ -42,16 +42,25 @@ PLAN_TABLE = {"nba": (1300, 506, 200), "cbb": (5900, 513, 150), "wcbb": (5500, 5
               "cfb": (800, 170, 17), "nhl": (1400, 315, 200), "mlb": (2500, 560, 200)}
 
 
+# Leagues whose play rows also come as one file per season (hoopR / wehoop, ESPN rows already flattened): about one request a season.
+FILE_ROUTE = {"nba": "hoopr_nba", "cbb": "hoopr_mbb", "wcbb": "wehoop_wbb"}
+MEASURED_RATE = 0.87    # requests/second sustained in the 2026-11-13 smoke run (the 1/s cap is never exceeded)
+
+
 def plan(leagues: list[str], seasons: list[int], rate: float = 1.0) -> str:
-    lines = [f"{'league':<6} {'seasons':>7} {'games':>9} {'events':>12} {'requests':>9} {'hours':>7}   (ESTIMATE, {rate:g} request/second)"]
-    tg = te = tr = 0
+    lines = [f"{'league':<6} {'seasons':>7} {'games':>9} {'events':>12} {'requests':>9} {'hours':>7}  {'or by files':<22}  (ESTIMATE, {rate:g} request/second)"]
+    tg = te = tr = tr_files = 0
     for code in leagues:
         g, e, u = PLAN_TABLE[code]
         n = len(seasons)
         games, events, req = g * n, g * n * e, g * n + u * n + n
         tg, te, tr = tg + games, te + events, tr + req
-        lines.append(f"{code:<6} {n:>7} {games:>9,} {events:>12,} {req:>9,} {req / rate / 3600:>7.1f}")
+        tr_files += n + 1 if code in FILE_ROUTE else req
+        route = f"{FILE_ROUTE[code]}: {n + 1} requests" if code in FILE_ROUTE else "-"
+        lines.append(f"{code:<6} {n:>7} {games:>9,} {events:>12,} {req:>9,} {req / rate / 3600:>7.1f}  {route:<22}")
     lines.append(f"{'total':<6} {'':>7} {tg:>9,} {te:>12,} {tr:>9,} {tr / rate / 3600:>7.1f}")
+    lines.append(f"with the file route for nba, cbb, wcbb: {tr_files:,} requests, {tr_files / rate / 3600:.1f} hours at {rate:g}/s "
+                 f"({tr_files / MEASURED_RATE / 3600:.1f} hours at the {MEASURED_RATE} measured)")
     return "\n".join(lines)
 
 
