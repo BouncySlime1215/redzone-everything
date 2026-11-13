@@ -3,7 +3,8 @@
 
     python scripts/qdata_build.py pool --data-root data/archive                  # allowed training nights (fence + cutoff)
     python scripts/qdata_build.py build --shard-range 0 2 --master-seed 7 --data-root data/archive --out OUT
-    python scripts/qdata_build.py ties OUT [--eps 1e-6] [--json]                 # tie share by padding / scenario / mix
+    python scripts/qdata_build.py ties OUT [--eps 1e-6] [--json]                 # tie share by padding / scenario / mix,
+                                                                                 # also over executed options only
     python scripts/qdata_build.py verify OUT                                     # F-05 manifest re-hash (data_manifest.py's check)
     python scripts/qdata_build.py cost --data-root data/archive --cpu 50 --out OUT   # toy build under a CPU budget; extrapolation
     python scripts/qdata_build.py volume --data-root data/archive                # the files and MB the job needs uploaded
@@ -49,8 +50,13 @@ def cmd_pool(a) -> int:
 
 
 def cmd_ties(a) -> int:
-    tab = Q.tie_table(Q.all_rows(a.out), eps=a.eps)
-    print(json.dumps(tab, indent=1, sort_keys=True) if a.json else Q.tie_table_text(tab))
+    rows = Q.all_rows(a.out)
+    tab = Q.tie_table(rows, eps=a.eps)
+    ex = Q.exec_tie_table(rows, eps=a.eps)
+    if a.json:
+        print(json.dumps(dict(tab, executed=ex), indent=1, sort_keys=True))
+    else:
+        print(Q.tie_table_text(tab) + "\n\n" + Q.exec_tie_table_text(ex))
     return 0
 
 
@@ -72,7 +78,8 @@ def cmd_cost(a) -> int:
     if not p.nights:
         print("no training night here: nothing to measure", file=sys.stderr)
         return 2
-    plan = Q.SlatePlan(p, a.master_seed, slates=a.slates, per_shard=a.per_shard, episode_min=a.episode_min, points=a.points)
+    plan = Q.SlatePlan(p, a.master_seed, slates=a.slates, per_shard=a.per_shard, episode_min=a.episode_min, points=a.points,
+                       execution=a.execution)
     loader = Q.QLoader(a.data_root)
     c0 = time.process_time()
     rows, slates, load_s, per = [], 0, 0.0, []
@@ -83,7 +90,7 @@ def cmd_cost(a) -> int:
             loader.game(lg, gid)
         l1 = time.process_time()
         r, s = Q.build_slate(d, loader, episode_min=plan.episode_min, points=plan.points, horizon=plan.horizon,
-                             master_seed=plan.master_seed)
+                             master_seed=plan.master_seed, execution=plan.execution)
         l2 = time.process_time()
         for x in r:
             x["shard"] = 0
@@ -112,6 +119,7 @@ def cmd_cost(a) -> int:
                   f"{sum(x[2] for x in xs) / len(xs):.3f} s per slate")
     tab = Q.tie_table(rows)
     print("TOY tie table:\n" + Q.tie_table_text(tab))
+    print("TOY executed-options table:\n" + Q.exec_tie_table_text(Q.exec_tie_table(rows)))
     n = a.target
     per_slate = cpu / max(1, slates)
     hours = per_slate * n / 3600.0
@@ -168,6 +176,7 @@ def parser() -> argparse.ArgumentParser:
     c.add_argument("--points", type=int, default=Q.QD_POINTS)
     c.add_argument("--target", type=int, default=Q.QD_SLATES, help="slates to extrapolate to")
     c.add_argument("--out", default="", help="write the toy rows here (git-ignored scratch folder)")
+    c.add_argument("--execution", default="a02", choices=Q.QD_EXECUTION, help="how forced jumps are run (docs/qdata.md)")
     vol = sub.add_parser("volume", help="files and MB the Colab job needs")
     pool_args(vol)
     return ap
