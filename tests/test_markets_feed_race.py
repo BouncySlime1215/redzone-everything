@@ -66,3 +66,23 @@ def test_one_trigger_per_score_and_in_order_matching():
     assert a["lead_s"]["espn_summary"] == -35.0 and a["score"] == [0, 3]       # first change -> first screen
     assert b["lead_s"]["espn_summary"] == -20.0 and b["score"] == [7, 3]       # never reused, never crossed
     assert "polymarket" in a["lead_s"] and "polymarket" not in b["lead_s"]    # one trigger, one score
+
+
+def test_order_ranks_sources_without_a_screen():
+    espn = [{"source": "espn_scoreboard", "recv_ts": 0.0, "score": [0, 0], "prev": None},
+            {"source": "espn_scoreboard", "recv_ts": 130.0, "score": [7, 0], "prev": [0, 0]},
+            {"source": "espn_summary", "recv_ts": 120.0, "score": [7, 0], "prev": [0, 0]},
+            {"source": "espn_summary", "recv_ts": 900.0, "score": [7, 3], "prev": [7, 0]}]
+    poly = [{"row": "trigger", "game_key": "nfl:20261106:JAX@BAL", "recv_ts": 105.0},
+            {"row": "trigger", "game_key": "nfl:20261106:MIA@BUF", "recv_ts": 890.0}]
+    app = [{"t": 110.0, "game": "401", "label": "score 7-0", "first": "espn_summary", "others": {"nfl": 4.0}},
+           {"t": 100.0, "game": "999", "label": "score 14-0", "first": "nfl", "others": {}},
+           {"t": 111.0, "game": "401", "label": "stop p1 600", "first": "nfl", "others": {}}]
+    res = R.order(espn, poly, app, "nfl:20261105:JAX@BAL")
+    assert res["events"] == 2 and "no screen lead" in res["note"]
+    e0 = res["rows"][0]
+    assert e0["score"] == [7, 0] and e0["first"] == "polymarket"
+    assert e0["lag_s"] == {"app:espn_summary": 5.0, "app:nfl": 9.0, "espn_scoreboard": 25.0,
+                           "espn_summary": 15.0, "polymarket": 0.0}
+    assert "polymarket" not in res["rows"][1]["lag_s"]        # the other game's trigger is not used
+    assert res["summary"]["polymarket"]["first_n"] == 1
