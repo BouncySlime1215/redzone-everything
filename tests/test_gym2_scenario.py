@@ -92,7 +92,8 @@ def test_an_episode_runs_again_exactly_from_its_logged_draw(tmp_path):
     env = gym.GymV2("20261023", 4, scenario=S.sample(4, 4), seed=3, minutes=8, draw_log=log)
     first = env.run().digest()
     row = json.loads(log.read_text().splitlines()[0])
-    again = gym.GymV2.from_draw(row, minutes=8).run().digest()
+    assert row["minutes"] == 8.0 and row["league"] == "nba" and row["code"] and row["sampler"] == S.SAMPLER
+    again = gym.GymV2.from_draw(row).run().digest()
     assert again == first
     assert first != gym.GymV2("20261023", 4, seed=3, minutes=8).run().digest()     # the draw did change the world
 
@@ -120,3 +121,59 @@ def test_fake_step_times_sit_near_the_tv_measurements():
         assert abs(statistics.mean(took["tune"]) - want["tune"]) < 1.0
         assert abs(statistics.mean(took["pause"]) - want["park"]) < 0.5
         assert abs(statistics.mean(took["jump"]) - jump) < 1.0
+
+
+class _Rows:
+    """A stand-in for park_replay.RowFeed's game list and FactsFeed: records the tick each row is handed over."""
+
+    def __init__(self, walls, lead=0, poll=3):
+        self.rs = [type("R", (), {"wall": w, "plays": list(range(len(w))), "data": None})() for w in walls]
+        self.base, self.poll, self.leads = 0, poll, [lead] * len(walls)
+        self.got = [dict() for _ in walls]
+        self.at = [0] * len(walls)
+        self.feed = self
+
+    def offer_rows(self, g, rows, t, final=False, data=None):
+        for p in rows:
+            self.got[g].setdefault(p, t)
+
+
+def _plain(pr):
+    return lambda rows: pr.RowFeed(rows.rs, rows, rows.base, rows.leads, rows.poll)
+
+
+def _delivery(make, walls):
+    rows = _Rows(walls)
+    f = make(rows)
+    for t in range(0, 4000):
+        f.step(t)
+    return rows.got
+
+
+@pytest.mark.parametrize("src", ["league", "espn"])
+def test_a_lagged_feed_delivers_every_row_later_by_its_lag_less_the_nominal(src):
+    """Verifier, Nov 13: the lag ran backwards (rows arrived EARLY). Each row must come in lag - 8 s later than the
+    replay's nominal feed (to the 3 s poll), never earlier."""
+    pr = gym.replay_module()
+    walls = [[100.0 + 7.0 * k for k in range(200)]]
+    plain = _delivery(_plain(pr), walls)[0]
+    lag = S.GYM_MEASURED["feed_median_s"][src][0]
+    late = _delivery(lambda rows: S.LateRowFeed(pr, rows, [lag], 0.0, [0.0], 0.0, 1), walls)[0]
+    d = [late[k] - plain[k] for k in plain]
+    assert min(d) > 0
+    assert all(abs(x - (lag - S.NOMINAL_FEED_LAG)) <= 3 for x in d)
+    assert abs(statistics.mean(d) - (lag - S.NOMINAL_FEED_LAG)) < 1.6
+
+
+@needs_archive
+def test_on_a_recorded_night_the_first_rows_arrive_later_under_each_drawn_lag():
+    pr = gym.replay_module()
+    rs = pr.load_replay("20261023", 4)[0]
+    base = int(min(r.wall[0] for r in rs))
+    walls = [[w - base for w in r.wall[:40]] for r in rs]
+    plain = _delivery(_plain(pr), walls)
+    for src in ("league", "espn"):
+        lag = S.GYM_MEASURED["feed_median_s"][src][0]
+        late = _delivery(lambda rows: S.LateRowFeed(pr, rows, [lag] * 4, 0.0, [0.0] * 4, 0.0, 1), walls)
+        for g in range(4):
+            assert late[g][0] - plain[g][0] == pytest.approx(lag - S.NOMINAL_FEED_LAG, abs=3)

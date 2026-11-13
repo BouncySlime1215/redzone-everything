@@ -14,11 +14,15 @@ Per episode (track A-director section 4), each number from a measurement (or mar
                  holds every later row back until it is in (rows come in order). The tail is tuned so the per-row lag
                  has the measured p90 (CDN about 60 s, ESPN about 67 s); L111 says that tail is partly late-STAMPED rows,
                  so as a delivery delay it is the pessimistic side. The show keeps believing its own 8 s.
-  position error a fresh unread tune lands with sd U(1.2, 2.0) s (L18: 1.24 s espn, 1.98 s fs1), on the fake stick and
-                 in the judge's truth.
+  position error a fresh tune lands with sd U(1.2, 2.0) s off its nominal lag (L18: 1.24 s espn, 1.98 s fs1). In the
+                 replay that spread lives in two places, and the scenario sets both: a READ tune's fake stick reports its
+                 place with that noise in it (park_replay FakeRig.tune: the read sees where it landed, so the show knows
+                 it); an UNREAD tune reports the nominal place and the judge draws the true place with that sd
+                 (truth_timing). Same physical spread, seen or hidden.
   stick failures a place read fails 6 of 20 (L112), a park fails 1 of 19 (L112): independent per step.
   step times     the app's steps with park.fast_steps off or on (park_replay STEP_COSTS, priced from L112 / L116: tune
-                 16.0 s, park 4.2 s, jump 6.9 s off and 2.7 s on), half each.
+                 16.0 s, park 4.2 s, jump 6.9 s off: TV, L112; jump 2.7 s and park 3.4 s on: a fake-stick BENCH, L116,
+                 not yet measured on the TV), half each.
 Not modelled yet (named, not hidden): late-edited stamps injected into the feed (L79; the recorded nights carry their
 own), BACK undoing a pause (L74, one case, no rate), flip failures (0 of 19 on the TV), K error beyond the rung's model.
 
@@ -44,7 +48,7 @@ GYM_MEASURED = {
     "tune_sd_s": ((1.2, 2.0), "L18: 1.24 s espn n=21, 1.98 s fs1 n=10"),
     "p_read_fail": (6 / 20, "L112: places read 14 of 20"),
     "p_park_fail": (1 / 19, "L112: 1 park of 19 failed"),
-    "steps_s": ({"tune": 16.0, "park": 4.2, "jump_off": 6.9, "jump_on": 2.7}, "L112 (n=20), L116 bench"),
+    "steps_s": ({"tune": 16.0, "park": 4.2, "jump_off": 6.9, "jump_on": 2.7}, "L112 TV (n=20); jump_on: L116 fake-stick bench, not TV"),
 }
 PAD_RUNGS = {"R0": (None,), "R1": (10, 8), "R2": (2,), "R3": (1, 2)}     # None = no K (the "nok" case, about 48 s)
 PAD_RUNG_W = {"R0": 1.0, "R1": 1.0, "R2": 1.0, "R3": 1.0}
@@ -71,7 +75,7 @@ class Scenario:
     tail_p: float = 0.0               # per row: probability it arrives late
     tail_med_s: tuple = ()            # per game: the late extra's median
     tail_sig: float = 0.0
-    tune_sd: float | None = None      # a fresh unread tune's landing sd (None = the replay's)
+    tune_sd: float | None = None      # a fresh tune's landing sd, read or not (None = the replay's); see the docstring
     p_read_fail: float = 0.0
     p_park_fail: float = 0.0
     steps: str = "model"              # park_replay STEP_COSTS: model (as before) | off | on
@@ -154,10 +158,26 @@ def _weighted(rng: random.Random, w: dict) -> str:
     return keys[-1]
 
 
-def log_draw(path, *, night: str, games: int, episode_seed: int, scenario: Scenario) -> dict:
-    """Append one draw to a JSONL log: enough to run the episode again (`Scenario.from_dict`)."""
-    row = {"sampler": SAMPLER, "night": str(night), "games": int(games), "episode_seed": int(episode_seed),
-           "scenario": scenario.to_dict()}
+def code_version() -> str:
+    """The repo's git commit (with "+dirty" when files differ from it), or "unknown" off a checkout."""
+    import subprocess
+    root = Path(__file__).resolve().parents[3]
+    try:
+        sha = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10).stdout.strip()
+        dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"], capture_output=True,
+                               text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    return (sha or "unknown") + ("+dirty" if dirty else "")
+
+
+def log_draw(path, *, night: str, games: int, episode_seed: int, scenario: Scenario, minutes: float = 0.0,
+             league: str = "nba", extra: dict | None = None) -> dict:
+    """Append one draw to a JSONL log: everything needed to run the episode again (`GymV2.from_draw`): the night, games,
+    league, minutes, episode seed, the whole scenario, the sampler and code version, and `extra` (the env adds its
+    reward weights, mask level and, for a mix, the exact games and shifts)."""
+    row = {"sampler": SAMPLER, "code": code_version(), "night": str(night), "games": int(games), "league": str(league),
+           "minutes": float(minutes), "episode_seed": int(episode_seed), "scenario": scenario.to_dict(), **(extra or {})}
     if path is not None:
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -221,9 +241,10 @@ class LateRowFeed:
         self.rs, self.feed, self.base, self.poll = rows.rs, rows.feed, rows.base, rows.poll
         self.leads, self.k, self.first = list(rows.leads), [0] * len(rows.rs), True
         rng = random.Random(seed)
-        # a row stamped s is in once the show's edge t is past s - lead (park_replay.RowFeed); a lag L instead of the
-        # nominal one moves that by L - nominal
-        self.arr = [[a - (float(lags[g]) - NOMINAL_FEED_LAG) for a in
+        # a row stamped s is in once the show's edge t is past s - lead (park_replay.RowFeed); a feed lag L instead of
+        # the nominal one makes every row arrive L - nominal LATER (park_replay's own convention for a late NFL feed:
+        # lead = ... + 8 - nfl_lag). [Verifier, Nov 13: this was subtracted, so a lagged feed arrived early.]
+        self.arr = [[a + (float(lags[g]) - NOMINAL_FEED_LAG) for a in
                      arrivals(r.wall, 0.0, tail_p, float(tail_meds[g]), tail_sig, rng)] for g, r in enumerate(self.rs)]
 
     def step(self, t: int) -> None:

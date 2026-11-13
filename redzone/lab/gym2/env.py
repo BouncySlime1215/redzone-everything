@@ -128,7 +128,8 @@ class GymV2:
                      say=self.rec.say, emit=self.rec.emit, clock_type=_step_clock_type(pr), **sc.build_kwargs())
         if not sc.identity:
             sc.patch(b, pr)
-        self.draw = log_draw(self.draw_log, night=self.night, games=self.games, episode_seed=self.seed, scenario=sc)
+        self.draw = log_draw(self.draw_log, night=self.night, games=self.games, episode_seed=self.seed, scenario=sc,
+                             minutes=self.minutes, league=self.league)
         self.show, self.clock, self.rows, self.a, self.b = b.show, b.clock, b.rows, b.a, b.b
         self.loop = asyncio.new_event_loop()
         self.task, self._held, self.done, self.next_t = None, False, False, b.a
@@ -149,6 +150,8 @@ class GymV2:
     @classmethod
     def from_draw(cls, row: dict, **kw) -> "GymV2":
         """The episode a draw-log line describes, set up to run again exactly."""
+        kw.setdefault("minutes", row.get("minutes", 0.0))
+        kw.setdefault("league", row.get("league", "nba"))
         return cls(row["night"], row["games"], scenario=Scenario.from_dict(row["scenario"]), seed=row["episode_seed"], **kw)
 
     def run(self) -> "GymV2":
