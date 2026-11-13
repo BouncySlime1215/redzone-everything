@@ -77,6 +77,16 @@ def test_a_game_seen_before_the_tip_has_no_history_and_missing_polls_bound_the_f
     assert ev[0]["gid"] == "0022600230"
 
 
+def test_a_feed_that_suddenly_shows_dozens_of_rows_was_blank_not_fast():
+    tr = feedlag.ArrivalTracker(feedlag.SRC_ESPN, "nba", "g1")
+    tr.observe([row(1)], T0, T0 + 0.1)
+    flood = [row(i) for i in range(2, 2 + feedlag.BULK_ROWS + 1)]
+    ev = tr.observe([row(1), *flood], T0 + 10, T0 + 10.1)
+    assert [e["ev"] for e in ev] == ["bulk"] and ev[0]["rows"] == len(flood) and tr.bulk == len(flood)
+    assert tr.observe([row(1), *flood], T0 + 20, T0 + 20.1) == []             # remembered: never logged as arrivals later
+    assert [e["row"] for e in tr.observe([row(1), *flood, row(99)], T0 + 30, T0 + 30.1)] == ["99"]
+
+
 def test_restart_remembers_logged_rows_so_they_are_not_logged_again(tmp_path):
     log = feedlag.DayLog(tmp_path)
     tr = feedlag.ArrivalTracker(feedlag.SRC_ESPN, "nba", "g1")

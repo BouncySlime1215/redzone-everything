@@ -293,6 +293,8 @@ class Poller:
                 gm = leagues.nba_match(g, cdn_idx) if cdn_idx else None
                 if gm and gm.get("gameId"):
                     wants.append((feedlag.SRC_CDN, str(gm["gameId"]), leagues.NBA_PBP.format(id=gm["gameId"])))
+            if (feedlag.SRC_CDN, g.game_id) in self.jobs:
+                keep.add((feedlag.SRC_CDN, g.game_id))           # a failed mapping lookup must not drop a running feed
             for src, gid, url in wants:
                 if src not in self.s.sources:
                     continue
@@ -310,7 +312,7 @@ class Poller:
             if k not in keep:
                 j = self.jobs.pop(k)
                 self._emit([{"ev": "drop", "t": round(now_w, 3), "src": k[0], "game": k[1], "logged": j.tracker.logged,
-                             "baseline": j.tracker.baseline}])
+                             "baseline": j.tracker.baseline, "bulk": j.tracker.bulk}])
         base = self.mono()
         for i, j in enumerate(fresh):                    # spread first polls across one interval
             j.due = base + self.s.interval * i / max(1, len(fresh))

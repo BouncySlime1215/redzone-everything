@@ -33,6 +33,7 @@ FEED_SOURCES = (SRC_ESPN, SRC_CDN)
 LOG_VERSION = 1
 FLOOR_INTERVAL = 10.0         # seconds between two requests for one game and source: never lower, whatever the flags say
 HARD_RPS = 4.0                # requests per second across everything: never higher, whatever the flags say
+BULK_ROWS = 40                # more new rows than this in one answer is a feed that was blank or stale, not arrivals
 ROLLOVER_HOURS = 6.0          # a slate (one night of games, one log file) ends at 06:00 US Eastern
 EASTERN = ZoneInfo("America/New_York")
 
@@ -173,6 +174,7 @@ class ArrivalTracker:
         self.prev: float | None = None      # send time of the last poll that came back with a usable answer
         self.baseline = 0
         self.logged = 0
+        self.bulk = 0
 
     def empty_poll(self, sent: float) -> None:
         """A poll that proved nothing was published yet (the feed's file does not exist before the tip)."""
@@ -188,6 +190,12 @@ class ArrivalTracker:
             self.primed = True
             events.append({"ev": "game", "t": round(received, 3), "src": self.src, "lg": self.lg, "game": self.game,
                            "baseline": self.baseline})
+        elif len(new) > BULK_ROWS:
+            # A normal 10 s window brings a handful of rows. Dozens at once means the feed was empty, stale or
+            # unreachable and caught up: their arrival is unknown, so they are remembered like history.
+            self.bulk += len(new)
+            events.append({"ev": "bulk", "t": round(received, 3), "src": self.src, "lg": self.lg, "game": self.game,
+                           "rows": len(new)})
         else:
             events = [row_event(self.src, self.lg, self.game, self.gid, r, received, self.prev) for r in new]
             self.logged += len(events)

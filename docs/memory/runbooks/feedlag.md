@@ -52,7 +52,7 @@ file and never logs a row twice.
 | `ev` | meaning |
 |---|---|
 | `row` | a feed row first seen: `t` (we saw it), `prev` (we sent the poll before), `src`, `lg`, `game` (ESPN event id), `row`, `kind`, `typ`, `stop`, `stamp` (the row's own wallclock), `per`, `clk`, `pub` (NBA feed's own publish time) |
-| `track` / `drop` / `game` | a game's feed started or ended being followed; `game.baseline` = rows that already existed (history, not logged) |
+| `track` / `drop` / `game` / `bulk` | a game's feed started or ended being followed; `game.baseline` = rows that already existed (history, not logged); `bulk` = 40+ new rows in one answer (a blank or stale feed catching up), remembered, not logged as arrivals |
 | `clock` | server `Date` minus our clock (a Mac clock off by more than a second would bias every lag) |
 | `err` / `start` / `stop` / `slate` | backoffs and their delay, the run's settings, how it ended |
 

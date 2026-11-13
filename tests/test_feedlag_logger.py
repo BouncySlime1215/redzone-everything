@@ -149,6 +149,19 @@ def test_a_nba_feed_file_that_is_not_up_yet_backs_off_that_game_only(tmp_path):
     assert first_cdn["prev"] is not None and first_cdn["t"] - first_cdn["prev"] <= 61   # bounded by the last miss
 
 
+def test_a_failed_nba_scoreboard_lookup_does_not_drop_a_running_feed(tmp_path):
+    ft = FakeTime()
+    state = {"down": False}
+    routes = world(ft, **{leagues.NBA_SCOREBOARD: lambda: fl.Resp(503) if state["down"] else nba_scoreboard([("0022600230", "CHA", "PHX")])})
+    p, f = poller(tmp_path, ft, routes, discover_every=30.0)
+    p.run(lambda: ft.elapsed() > 40)
+    assert (feedlag.SRC_CDN, "100") in p.jobs
+    state["down"] = True
+    p.run(lambda: ft.elapsed() > 400)
+    assert (feedlag.SRC_CDN, "100") in p.jobs and not [e for e in events(tmp_path) if e["ev"] == "drop"]
+    assert [e for e in events(tmp_path) if e["ev"] == "err" and e["src"] == "nba_scoreboard"]
+
+
 def test_a_restart_appends_and_never_logs_a_row_twice(tmp_path):
     ft = FakeTime()
     p, _ = poller(tmp_path, ft, world(ft))
