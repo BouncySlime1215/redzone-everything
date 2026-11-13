@@ -1,0 +1,22 @@
+{
+ "A0": {
+  "games": 68,
+  "big_live_pct": 81.7,
+  "crunch_live_pct": 90.7,
+  "your_team_crunch_live": "31/31",
+  "mid_play_cuts": 0,
+  "switches_per_hour": 1.2,
+  "dead_air_pct": 18.8
+ },
+ "A1_poss_s_12": {
+  "games": 68,
+  "big_live_pct": 83.1,
+  "crunch_live_pct": 91.0,
+  "your_team_crunch_live": "31/31",
+  "mid_play_cuts": 0,
+  "switches_per_hour": 1.2,
+  "dead_air_pct": 18.8
+ },
+ "split": "fit (seen, dev only)",
+ "tag": "personal-use, not for commercial release"
+}
