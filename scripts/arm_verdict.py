@@ -189,7 +189,7 @@ def recompute_cmd(a) -> int:
         x = E.load_night(spec, v["meta"]["config"]["games"])
         rs = list(x.rs)
         if x.nfl >= 0:
-            rs.append(E.gym.replay_module().shifted_nfl(x.nfl, x.slate)[0])
+            rs.append(E.replay_module().shifted_nfl(x.nfl, x.slate)[0])
         games[spec], files[spec] = rs, dict(x.files)
     sides = [(v["arm"]["name"], v["per_night"])]
     if v["baseline"] and v["baseline"] != v["arm"]["name"]:

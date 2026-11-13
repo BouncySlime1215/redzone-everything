@@ -15,11 +15,48 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import hashlib
+import json
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from redzone.lab.gym2 import env as gym
+ARMEVAL_REPO = Path(__file__).resolve().parents[3]
+
+
+def replay_module():
+    """scripts/park_replay.py as a module (scripts/ is not a package; the script puts the repo root on the path)."""
+    import importlib
+    where = (ARMEVAL_REPO / "scripts").as_posix()
+    if where not in sys.path:
+        sys.path.insert(0, where)
+    return importlib.import_module("park_replay")
+
+
+def _text(obj) -> str:
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), default=repr)
+
+
+class Lines:
+    """The show's `say` and `emit`, kept as text the moment each is made."""
+
+    def __init__(self):
+        self.says, self.events = [], []
+
+    def say(self, line: str) -> None:
+        self.says.append(str(line))
+
+    def emit(self, row: dict) -> None:
+        self.events.append(_text(row))
+
+
+def decisions_sha256(show, lines: Lines, pr) -> str:
+    """sha256 of everything the show decided and did: events, lines, jump records, keys sent, warrants, refusals, result."""
+    every = {"events": lines.events, "says": lines.says, "records": [_text(r) for r in show.records],
+             "sent": _text(show.rig.sent), "warrants": _text(show.warrants), "refused": _text(show.refused),
+             "result": _text(pr.result(show))}
+    return hashlib.sha256(_text(every).encode()).hexdigest()
 
 ARMEVAL_SPEC = re.compile(r"^(\d{8})(?::(\d+))?(?:\+nfl(\d+))?$")
 ARMEVAL_MIX_CLASS = (({"nba"}, "nba_only"), ({"nba", "cbb"}, "nba_college"))
@@ -71,7 +108,7 @@ class Loaded:
 
 def load_night(spec: str, games: int = 4, archive: Path | None = None) -> Loaded:
     """A dev night through park_replay.load_replay (it refuses non-dev nights), and the files behind it."""
-    pr = gym.replay_module()
+    pr = replay_module()
     night, n, nfl = parse_spec(spec, games)
     rs, slate = pr.load_replay(night, n, "nba")
     root = Path(archive) if archive is not None else pr.ROOT / "data/archive"
@@ -118,14 +155,14 @@ def _ratio(a, b, nd: int = 4):
 
 def run_night(arm, loaded: Loaded, *, minutes: float = 0.0, seed: int = 0, census: Path | None = None) -> tuple[dict, dict]:
     """(the night's scorecard, its raw log). Deterministic: the same arm, night, minutes and seed give the same bytes."""
-    pr = gym.replay_module()
-    rec = gym.Recorder()
+    pr = replay_module()
+    rec = Lines()
     b = pr.build(loaded.night, loaded.games, seed=seed, minutes=minutes, loaded=(loaded.rs, loaded.slate), nfl=loaded.nfl,
                  say=rec.say, emit=rec.emit, **arm.replay_kw())
     show = b.show
     arm.attach(show, loaded.night)
     asyncio.run(b.clock.run(pr.drive(show, b.clock, b.rows, b.a, b.b)))
-    digest = gym.digest(gym.decision_list(show, rec))
+    digest = decisions_sha256(show, rec, pr)
     row, sc, j = pr.result(show), pr.seen_card(show), show.judge
     rs, base = show.replays, show.night.base
     leagues = [str(r.league.value) for r in rs]

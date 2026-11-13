@@ -42,7 +42,7 @@ def fixture_night(tmp: Path) -> E.Loaded:
     from redzone.lab.backtest import Replay
     from redzone.models import League
     from redzone.sources import espn
-    pr = E.gym.replay_module()
+    pr = E.replay_module()
     import park_ceiling as pc
     fs = [TESTS_DIR / "fixtures" / f"espn_nba_summary_{g}.json" for g in FIXTURE_GAMES]
     r0, r1 = (Replay.load(League.NBA, f) for f in fs)
