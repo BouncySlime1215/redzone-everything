@@ -116,7 +116,7 @@ def test_flag_off_ignores_a_handed_over_object_and_builds_its_own_director(monke
     _, plain = _run(pr, monkeypatch, director=False)
     bomb = Untouchable()
     show, with_bomb = _run(pr, monkeypatch, director=False, director_v2=False, director_obj=bomb)
-    assert show.director is None and with_bomb == plain
+    assert show.director is None and show.seen_state is None and with_bomb == plain
     _, v1 = _run(pr, monkeypatch, director=True)
     show, v1_bomb = _run(pr, monkeypatch, director=True, director_v2=False, director_obj=bomb)
     assert type(show.director) is dr.Director and v1_bomb == v1 and v1 != plain and show.jumps_done >= 3
@@ -155,3 +155,6 @@ def test_flag_off_decisions_are_identical_with_and_without_an_object(monkeypatch
     show_a, a = _run(pr, monkeypatch, director=False)
     show_b, b = _run(pr, monkeypatch, director=False, director_v2=False, director_obj=Untouchable())
     assert a == b and show_a.records == show_b.records and show_a.jump_at == show_b.jump_at and show_a.jumps_done >= 3
+    assert show_b.director is None and show_b.seen_state is None
+    show_c, c = _run(pr, monkeypatch, director=False, director_v2="false", director_obj=Untouchable())   # only a literal True turns it on
+    assert c == a and show_c.director is None and show_c.seen_state is None
