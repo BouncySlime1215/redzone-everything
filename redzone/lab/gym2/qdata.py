@@ -11,9 +11,9 @@ value_v3 per game, read causally at te; the show's own stick state), every optio
 QD_WINDOW seconds plus STAY, the strict Rule #1 mask verdict of each (with the read states it was judged under), Q of every
 legal option, the best and second-best gap, and the DECISIVE and TIE flags.
 
-The world. Track A section 4 names the engine: `park_core.run`, the show's own step function, with the plain planner
-(`park_plan.Planner`, the search the show runs every tick). Each slate is run with that planner on the recorded truth of its
-games (park_core.Night of park_ceiling.truth_of, the arrays the replay's judge also reads). The padding is one of A1's
+The world. Track A section 4 names the engine: the PARK core's `run`, the show's own step function, with the plain planner
+(the PARK planner's `Planner`, the search the show runs every tick). Each slate is run with that planner on the recorded truth of its
+games (the core's Night of park_ceiling.truth_of, the arrays the replay's judge also reads). The padding is one of A1's
 settings (QD_PADDINGS, the core's guard), and the feed lag is drawn per game from Gym v2's scenario sampler
 (scenario.sample: league feed median 10.7 s or ESPN about 36 s, L111); the slate's planner knows the feed `know` seconds
 ahead of its edge, as park_replay builds it for a late feed (lead = show_delay + 13 + 8 - lag, the worst game's lag).
@@ -28,7 +28,7 @@ Options and Q. STAY (no jump for QD_WINDOW seconds) and each distinct first jump
 that search's rows, before the planner's own choice or its fall-back to banked landings. Each option is rolled out from the
 state just before that tick for QD_HORIZON seconds (Plan.horizon): the chosen option is FORCED (the planner keeps that row
 until its jump is made or its second passes; STAY vetoes every jump in the window), then the PLAIN PLANNER continues (the
-default continuation policy). Q is the graded value seen in the rollout: park_core's own `v2_seen` (value2's grade of each
+default continuation policy). Q is the graded value seen in the rollout: the core's own `v2_seen` (value2's grade of each
 play on screen with its 7 s lead-in, the `value` term of Gym v2's reward, which the replay judge counts the same way).
 Must-see points, live seconds and the core's own Rule #1 counts ride along per option. Q is labelled with the planner's
 continuation, not an oracle's: A4 (fitted-Q) iterates it with the learned policy's own.
@@ -45,7 +45,7 @@ Decisive and tie. Over the legal options' Q (rounded to QD_ROUND places): gap = 
 neither (single = True) and is left out of the tie share.
 
 Not modelled here (named, not hidden): stick failures and step-time jitter (Gym v2's FakeRig), feed rows arriving late
-(the heavy tail), and the show's guard (park_facts.refusal): the training mask is the strict grader mask, as in Gym v2.
+(the heavy tail), and the show's guard (the PARK facts module's refusal): the training mask is the strict grader mask, as in Gym v2.
 
 Research only: nothing under redzone/ outside lab/gym2 imports it, and no config key reads it (ship OFF).
 Why: WORKPLAN v2 A-02 and track A section 4 "Labels": Q for EVERY legal option, never an argmax, with the decisive flag and
@@ -67,7 +67,7 @@ from pathlib import Path
 QD_FORMAT = "redzone-qdata/1"
 QD_VERSION = "qdata-v1"
 QD_PADDINGS = (49, 10, 8, 3)        # A1's padding settings, seconds (track A section 8, A1)
-QD_HORIZON = 90                     # seconds of rollout per option (park_plan.Plan.horizon)
+QD_HORIZON = 90                     # seconds of rollout per option (the planner's Plan.horizon)
 QD_WINDOW = 10                      # a first jump planned within this many seconds is an option now (Plan.commit_s)
 QD_DECISIVE = 0.10                  # best beats second by at least this (EXP1b, value2 points)
 QD_TIE_EPS = 1e-6                   # top two within this are a tie

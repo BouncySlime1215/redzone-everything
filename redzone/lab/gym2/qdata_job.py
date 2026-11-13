@@ -3,13 +3,13 @@
 Two ways to run it (the same code builds the same bytes):
 
     python -m redzone.lab.gym2.qdata_job --shard-range 0 3 --master-seed 7 --data-root data/archive --out OUT
-    python -m redzone.lab.gym2.qdata_job          # under tools/jobs/worker.py: steps = shard indexes (unit protocol)
+    python -m redzone.lab.gym2.qdata_job          # under the F-03 job worker: steps = shard indexes (unit protocol)
 
 By hand: shards go to OUT/shards, each shard's summary (its done mark) to OUT/summaries; a shard already done for this
 plan is skipped, so a killed run started again resumes. Then OUT/qdata.manifest.json (F-05 format, every shard file's
 sha256 and row count) and OUT/qdata_summary.json (tie table, counts) are rewritten.
 
-Under the F-03 worker (tools/jobs/worker.py; docs/qdata.md has a spec): RZ_JOB_STEP_START/END are the shard range of
+Under the F-03 job worker (docs/jobs.md; docs/qdata.md has a spec): RZ_JOB_STEP_START/END are the shard range of
 the unit, RZ_JOB_CONFIG holds the plan (master_seed, slates, per_shard, data_root, out, max_nfl, cutoff, episode_min,
 points, horizon, tag), RZ_JOB_WORK is the job's folder. The shard files are written under RZ_JOB_WORK/<out> (default
 "qdata"), outside the worker's checkpoints, so a checkpoint never copies or re-hashes the growing data; the unit's
