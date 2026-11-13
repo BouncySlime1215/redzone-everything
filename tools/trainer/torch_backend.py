@@ -18,6 +18,7 @@ import torch
 from tools.trainer.model import DecoderConfig, EventDecoder
 
 TORCH_BACKEND_NAME = "torch-decoder"
+FP16_MAX_OVERFLOW_STREAK = 20     # loss-scale overflow skips in a row before the run is treated as diverged
 
 
 def _grad_scaler(enabled: bool):
@@ -37,8 +38,8 @@ class TorchBackend:
                  precision: str = "auto"):
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         cuda = self.device.type == "cuda"
-        if precision == "auto":
-            precision = ("bf16" if torch.cuda.is_bf16_supported() else "fp16") if cuda else "fp32"
+        if precision == "auto":       # is_bf16_supported() is True on a T4 (emulated): ask for Ampere or newer
+            precision = ("bf16" if torch.cuda.get_device_capability(self.device)[0] >= 8 else "fp16") if cuda else "fp32"
         if precision not in ("bf16", "fp16", "fp32") or (precision != "fp32" and not cuda):
             raise ValueError(f"precision {precision!r} on {self.device.type}")
         self.precision = precision
@@ -55,6 +56,7 @@ class TorchBackend:
                                       {"params": no_decay, "weight_decay": 0.0}], lr=0.0, betas=tuple(betas), eps=eps)
         self.scaler = _grad_scaler(precision == "fp16")
         self.clip, self.z = clip, z_loss
+        self.overflow_streak = 0
         self.opt.zero_grad(set_to_none=True)
 
     def _ids(self, a) -> torch.Tensor:
@@ -89,6 +91,9 @@ class TorchBackend:
             self.scaler.update()
             skipped = self.scaler.get_scale() < before
             self.opt.zero_grad(set_to_none=True)
+            self.overflow_streak = self.overflow_streak + 1 if skipped else 0
+            if skipped and (self.overflow_streak >= FP16_MAX_OVERFLOW_STREAK or self.scaler.get_scale() < 1.0):
+                return {"grad_norm": float("inf"), "skipped": True}   # persistent overflow: the monitor halts
             return {"grad_norm": None if skipped else gn, "skipped": skipped}
         if not math.isfinite(gn):
             self.opt.zero_grad(set_to_none=True)
@@ -102,7 +107,7 @@ class TorchBackend:
         self.model.eval()
         x, y = self._ids(batch["x"]), self._ids(batch["y"])
         with self._autocast():
-            logits = self.model(x)
+            logits = self.model(x, fp32_head=True)      # NLL and calibration from unquantized logits
         lp = torch.log_softmax(logits.float(), dim=-1)
         nll = -lp.gather(-1, y.unsqueeze(-1)).squeeze(-1)
         top_lp, top = lp.max(dim=-1)
@@ -110,9 +115,9 @@ class TorchBackend:
         return {"nll": to_np(nll), "p_top1": to_np(top_lp.exp()), "correct": to_np((top == y).float())}
 
     def max_attention_logit(self, batch: dict) -> float:
+        """On the first window only, in fp32 (fp16 would overflow exactly when the signal matters)."""
         self.model.eval()
-        with self._autocast():
-            return self.model.max_attention_logit(self._ids(batch["x"]))
+        return self.model.max_attention_logit(self._ids(batch["x"][:1]))
 
     # --- persistence ------------------------------------------------------------------------------------------
     def save(self, folder: Path) -> None:

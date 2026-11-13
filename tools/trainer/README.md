@@ -11,13 +11,14 @@ Run from the repo root (or the root of the code bundle pushed to Kaggle/Colab):
 ```sh
 python -m tools.trainer.job train --config CFG.json --data TAG_OR_PATH.manifest.json --data-root DIR --out OUT \
     [--stop-step N] [--max-hours H] [--prereg PREREG.yaml] [--run-id ID]
-python -m tools.trainer.job smoke --out OUT [--backend numpy|torch]     # kill-and-resume == uninterrupted
+python -m tools.trainer.job smoke --out OUT [--backend numpy|torch] [--device cpu|cuda]   # kill-and-resume == uninterrupted
 python -m tools.trainer.job gbm --config CFG.json --data ... --data-root DIR --out OUT [--fields 0,4,5]
 ```
 
 - A work unit is (config, seed, step range): `--stop-step` ends the range; running the same command again
   resumes from `OUT/ckpt` by itself. A checkpoint of a different run (config, data manifest, seed, training
-  cutoff, backend or code changed) is refused, never overwritten (`--allow-code-change` for a code-only fix).
+  cutoff, backend, precision or code changed) is refused, never overwritten (`--allow-code-change` for a
+  code-only fix; `--allow-precision-change` when Colab hands a T4 (fp16) to a run started in bf16).
 - `--max-hours`: self-stop before the step that would overrun it (set about 85% of the session cap); the
   checkpoint is saved and the exit code is 4, so the runner re-queues the same command.
 - `RZ_GIT_SHA` (40 hex) must be set by the runner when the bundle has no `.git`; without a git sha the
@@ -53,7 +54,7 @@ stamped into every checkpoint and the exported model. No manifest kind for token
 | Where | Command | What it proves |
 |---|---|---|
 | CI and the Mac (numpy, no torch) | `python -m pytest -q tests/test_trainer_reference.py tests/test_trainer_gbm.py` | WSD schedule; initial loss near ln(10,511) on vocab v1; exact gradients (finite differences); overfit one batch; causality (model and attention mask); gradient-accumulation equivalence; save-resume equivalence (bitwise) in-process and through real processes killed mid-run; refusal of another run's checkpoint; corrupt checkpoint falls back to the previous; spike monitor and divergence halt; time-budget self-stop; manifest pin (tamper, unpinned index, vocab mismatch); fence refusals on both sides; registry record validated by F-02's validator; fence accepts the exported model; GBM baseline causal, proper and learning |
-| GPU runtime (Kaggle or Colab, torch) | `python -m pytest -q tools/trainer/tests` then `python -m tools.trainer.job smoke --backend torch --out /tmp/smoke` | The same model-level tests on the torch decoder: initial loss, overfit, causality, accumulation, save-resume (bitwise on CPU), GQA shapes, mixed precision on the GPU, and the kill-and-resume smoke |
+| GPU runtime (Kaggle or Colab, torch) | `python -m pytest -q tools/trainer/tests` (it also runs the torch smoke on CPU and, on a GPU, on cuda) | The same model-level tests on the torch decoder: initial loss, overfit, causality, accumulation, save-resume (bitwise on CPU), GQA shapes, bf16 and fp16-with-loss-scaling runs on the GPU, and the kill-and-resume smoke (bitwise on CPU, within 1e-4 on cuda) |
 
 CI does not collect `tools/trainer/tests` (pyproject `testpaths = ["tests"]`) because CI has no torch; the
 torch tests use no skips. **The torch files (`model.py`, `torch_backend.py`, `tools/trainer/tests`) have never

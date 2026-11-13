@@ -200,6 +200,17 @@ def test_resume_refuses_a_different_run(corpus, tmp_path):
             testkit.toy_trainer(corpus, tmp_path, _backend(other), other).resume()
 
 
+def test_resume_refuses_a_precision_change_unless_allowed(corpus, tmp_path, monkeypatch):
+    cfg = testkit.toy_cfg(total_steps=4)
+    testkit.toy_trainer(corpus, tmp_path, _backend(cfg), cfg).run(stop_step=2)
+    t = testkit.toy_trainer(corpus, tmp_path, _backend(cfg), cfg)
+    monkeypatch.setattr(t.backend, "describe", lambda: {"gpu_type": "T4", "n_params": 1, "backend": "numpy-reference",
+                                                        "precision": "fp16"})
+    with pytest.raises(loop.ResumeRefused, match="precision"):
+        t.resume()
+    assert t.resume(allow_precision_change=True) and t.step == 2
+
+
 def test_corrupt_checkpoint_falls_back_to_previous(corpus, tmp_path):
     cfg = testkit.toy_cfg(total_steps=8, ckpt_every=2, keep_ckpts=3)
     testkit.toy_trainer(corpus, tmp_path, _backend(cfg), cfg).run(stop_step=6)

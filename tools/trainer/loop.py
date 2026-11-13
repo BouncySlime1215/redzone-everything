@@ -105,7 +105,8 @@ class Trainer:
         m = self.meta
         return {"config_hash": self.cfg_hash, "data_manifest_hash": m["data_manifest_hash"], "seed": self.cfg.seed,
                 "training_cutoff": m["training_cutoff"], "train_nights_sha256": m["train_nights_sha256"],
-                "code_hash": m["code_hash"], "backend": self.backend.describe()["backend"]}
+                "code_hash": m["code_hash"], "backend": self.backend.describe()["backend"],
+                "precision": self.backend.describe().get("precision", "float64")}
 
     def _state(self) -> dict:
         return {"identity": self.identity(), "config": asdict(self.cfg), "step": self.step,
@@ -117,9 +118,10 @@ class Trainer:
     def save(self) -> Path:
         return checkpoint.save(self.out / "ckpt", self.step, self._state(), self.backend.save, self.cfg.keep_ckpts)
 
-    def resume(self, allow_code_change: bool = False) -> bool:
+    def resume(self, allow_code_change: bool = False, allow_precision_change: bool = False) -> bool:
         """Load the newest good checkpoint of this same run. False when there is none. ResumeRefused when the
-        checkpoint belongs to another run (a different config, data, seed, cutoff, backend or code)."""
+        checkpoint belongs to another run (a different config, data, seed, cutoff, backend, precision or code).
+        A precision change (bf16 on an A100 resumed as fp16 on a T4) is refused unless allowed explicitly."""
         folder, notes = checkpoint.latest(self.out / "ckpt")
         for n in notes:
             print(f"[trainer] checkpoint note: {n}", flush=True)
@@ -127,7 +129,8 @@ class Trainer:
             return False
         st = checkpoint.read_state(folder)
         mine, theirs = self.identity(), st.get("identity", {})
-        diff = [k for k in mine if mine[k] != theirs.get(k) and not (k == "code_hash" and allow_code_change)]
+        waived = {k for k, ok in (("code_hash", allow_code_change), ("precision", allow_precision_change)) if ok}
+        diff = [k for k in mine if mine[k] != theirs.get(k) and k not in waived]
         if diff:
             raise ResumeRefused(f"{folder.name} belongs to another run: {', '.join(diff)} differ")
         self.backend.load(folder)
@@ -151,7 +154,7 @@ class Trainer:
         if n_tok > 0:
             for b in chunks:                                  # every micro-batch scaled by the step's token count
                 nll += self.backend.accumulate(b, 1.0 / n_tok)
-        info = self.backend.step(lr)
+        info = self.backend.step(lr) if n_tok > 0 else {"grad_norm": None, "skipped": True}   # nan loss: halt
         loss = nll / n_tok if n_tok else float("nan")
         mon = self.monitor.update(loss, info.get("grad_norm"))
         self.step += 1

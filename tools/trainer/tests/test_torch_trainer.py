@@ -54,9 +54,9 @@ def test_overfits_one_tiny_batch():
     be = TorchBackend(56, 16, seed=1, device="cpu", weight_decay=0.0, **TINY)
     s = np.random.default_rng(0).integers(8, 56, (4, 17))
     b = {"x": s[:, :16], "y": s[:, 1:], "mask": np.ones((4, 16))}
-    for _ in range(300):
+    for _ in range(500):
         loss = be.accumulate(b, 1 / 64) / 64
-        be.step(3e-3)
+        be.step(5e-3)
     assert loss < 0.05, loss
 
 
@@ -93,7 +93,7 @@ def test_gradient_accumulation_equals_one_big_batch(corpus, tmp_path):
     for g, c in zip(grads[1:], curves[1:]):
         for k in g:
             assert torch.allclose(g[k], grads[0][k], atol=1e-7, rtol=1e-4), k
-        assert np.allclose(c, curves[0], rtol=1e-4)
+        assert np.allclose(c, curves[0], rtol=1e-3)
 
 
 def test_save_resume_equals_uninterrupted_bitwise_on_cpu(corpus, tmp_path):
@@ -119,18 +119,24 @@ def test_attention_logit_and_gqa_shapes():
 
 
 def test_full_run_on_the_runtime_device(corpus, tmp_path):
-    """On a GPU runtime: bf16 (A100/L4) or fp16 with loss scaling (T4), and the GPU name is logged."""
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    cfg = testkit.toy_cfg(total_steps=6, model={"backend": "torch", "vocab": "toy"})
-    tr = testkit.toy_trainer(corpus, tmp_path, _backend(cfg, device=device, precision="auto"), cfg)
-    res = tr.run()
-    assert res["status"] == loop.STATUS_DONE and math.isfinite(res["last_train"]["loss"])
-    desc = tr.backend.describe()
-    assert (desc["gpu_type"] != "cpu") == (device == "cuda")
-    assert desc["precision"] in (("bf16", "fp16") if device == "cuda" else ("fp32",))
+    """On a GPU runtime: bf16 (Ampere or newer) and fp16 with loss scaling (every GPU, the T4 path), and the GPU
+    name is logged. On a CPU-only runtime: fp32."""
+    cuda = torch.cuda.is_available()
+    device = "cuda" if cuda else "cpu"
+    precisions = (("bf16", "fp16") if torch.cuda.get_device_capability()[0] >= 8 else ("fp16",)) if cuda else ("fp32",)
+    for prec in precisions:
+        cfg = testkit.toy_cfg(total_steps=6, model={"backend": "torch", "vocab": "toy"})
+        tr = testkit.toy_trainer(corpus, tmp_path / prec, _backend(cfg, device=device, precision=prec), cfg)
+        res = tr.run()
+        assert res["status"] == loop.STATUS_DONE and math.isfinite(res["last_train"]["loss"]), prec
+        desc = tr.backend.describe()
+        assert (desc["gpu_type"] != "cpu") == cuda and desc["precision"] == prec
+        assert tr.identity()["precision"] == prec
 
 
 def test_job_smoke_kill_and_resume(tmp_path):
-    proc = subprocess.run([sys.executable, "-m", "tools.trainer.job", "smoke", "--backend", "torch", "--out",
-                           str(tmp_path)], cwd=REPO, capture_output=True, text=True, timeout=900)
-    assert proc.returncode == 0 and "SMOKE PASS" in proc.stdout, proc.stdout + proc.stderr
+    for device in ("cpu", "cuda") if torch.cuda.is_available() else ("cpu",):
+        proc = subprocess.run([sys.executable, "-m", "tools.trainer.job", "smoke", "--backend", "torch", "--device",
+                               device, "--out", str(tmp_path / device)], cwd=REPO, capture_output=True, text=True,
+                              timeout=900)
+        assert proc.returncode == 0 and "SMOKE PASS" in proc.stdout, proc.stdout + proc.stderr

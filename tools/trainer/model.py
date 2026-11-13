@@ -148,20 +148,26 @@ class EventDecoder(nn.Module):
             if isinstance(m, (nn.Linear, nn.Embedding)):
                 nn.init.normal_(m.weight, mean=0.0, std=c.init_std)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Token ids [B, T] (T <= ctx) -> float32 logits [B, T, vocab]."""
+    def forward(self, x: torch.Tensor, fp32_head: bool = False) -> torch.Tensor:
+        """Token ids [B, T] (T <= ctx) -> float32 logits [B, T, vocab]. fp32_head runs the output layer outside
+        autocast (evaluation: bf16 logits are off by about 0.03 at logit 10)."""
         if x.shape[1] > self.cfg.ctx:
             raise ValueError(f"sequence of {x.shape[1]} tokens is longer than ctx {self.cfg.ctx}")
         h = self.embed(x)
         for b in self.blocks:
             h = b(h, self.rope_cos, self.rope_sin)
+        if fp32_head:
+            with torch.autocast(device_type=x.device.type, enabled=False):
+                return self.head(self.norm(h.float()))
         return self.head(self.norm(h)).float()
 
     @torch.no_grad()
     def max_attention_logit(self, x: torch.Tensor) -> float:
-        h = self.embed(x)
-        out = float("-inf")
-        for b in self.blocks:
-            out = max(out, b.attn.max_logit(b.attn_norm(h), self.rope_cos, self.rope_sin))
-            h = b(h, self.rope_cos, self.rope_sin)
+        """Run in fp32 with autocast off; pass one window (the score matrix is heads x T x T)."""
+        with torch.autocast(device_type=x.device.type, enabled=False):
+            h = self.embed(x).float()
+            out = float("-inf")
+            for b in self.blocks:
+                out = max(out, b.attn.max_logit(b.attn_norm(h), self.rope_cos, self.rope_sin))
+                h = b(h, self.rope_cos, self.rope_sin)
         return out
