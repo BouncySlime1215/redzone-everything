@@ -42,7 +42,7 @@ EVENTS = ("register", "promote", "demote")
 REG_VERDICTS = ("PASS", "FAIL", "INCONCLUSIVE")
 REQUIRED = ("run_id", "git_sha", "code_hash", "config_hash", "data_manifest_hash", "prereg_hash", "seed",
             "metrics", "verdict", "artifact_path", "artifact_sha256", "promoted", "gpu_type", "hours")
-OPTIONAL = ("model", "training_cutoff", "license", "note")
+OPTIONAL = ("model", "training_cutoff", "license", "note", "feature_set")   # feature_set: redzone.featurestore.fs_tag
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _GIT_SHA = re.compile(r"[0-9a-f]{40}")
 _RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
