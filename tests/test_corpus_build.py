@@ -336,20 +336,21 @@ def test_hoopr_rows_become_games_with_exact_nights_and_a_date_only_fallback(tmp_
 
 # ---- dedup ----------------------------------------------------------------------------------------------------
 
-def light(provider="espn", origin="history-shard", gid="1", night="20200101", plays=300, wall=1.0, sig="s" * 20, changes=50, league="nba"):
-    return Light(provider, origin, league, 2020, gid, night, True, "clear", plays, wall, sig, changes, "x")
+def light(provider="espn", origin="history-shard", gid="1", night="20200101", plays=300, wall=1.0, sig="s" * 20, changes=50, league="nba", ref="x"):
+    return Light(provider, origin, league, 2020, gid, night, True, "clear", plays, wall, sig, changes, ref)
 
 
 def test_dedup_by_id_keeps_the_better_copy_whatever_the_order():
     espn, hoopr = light("espn", gid="9"), light("hoopr", "dataset", gid="9", plays=310, wall=0.0)
     for order in ([espn, hoopr], [hoopr, espn]):
         r = dedup.resolve(order)
-        assert list(r.keep) == [espn.key] and r.pairs == [{"league": "nba", "by": "id", "kept": "espn:history-shard:9", "dropped": "hoopr:dataset:9"}]
+        assert list(r.keep) == [espn.key] and r.pairs == [{"league": "nba", "by": "id", "kept": "espn:history-shard:9", "dropped": "hoopr:dataset:9",
+                                                       "kept_ref": "x", "dropped_ref": "x"}]
     # a copy with wall clocks beats a longer one without; with equal quality the provider order decides
     assert dedup.resolve([light("hoopr", "dataset", gid="9", wall=1.0), light("wehoop", "dataset", gid="9", wall=1.0)]).keep.keys() == {
-        ("nba", "hoopr", "dataset", "9")}
+        ("nba", "hoopr", "dataset", "9", "x")}
     assert dedup.resolve([light("espn", gid="9", wall=0.0, plays=300), light("hoopr", "dataset", gid="9", wall=1.0, plays=290)]).keep.keys() == {
-        ("nba", "hoopr", "dataset", "9")}
+        ("nba", "hoopr", "dataset", "9", "x")}
 
 
 def test_dedup_by_signature_catches_another_id_space_and_leaves_ambiguity_alone():
@@ -383,6 +384,19 @@ def test_a_game_in_espn_and_in_hoopr_is_built_once(tmp_path):
     pairs = [json.loads(x) for x in (out / manifest.CORPUS_DEDUP_FILE).read_text().splitlines()]
     assert len(pairs) == 3 and {p["by"] for p in pairs} == {"id", "signature"} and all(p["kept"].startswith("espn:") for p in pairs)
     assert gids_in(out, doc).isdisjoint({"55555"}) and len(gids_in(out, doc, season=2020)) == 6
+
+
+def test_one_game_filed_in_two_shard_files_is_built_once(tmp_path):
+    hist = make_history(tmp_path / "h", fenced=False)
+    again = espn_record("nba", 2021, "2020003", nba_night(2020, 3), n=40)                    # season 2020's game 3, mislabelled 2021 in a second shard
+    write_history_shard(hist, "nba", 2021, [again] + [espn_record("nba", 2021, f"2021{k:03d}", nba_night(2021, k), n=40) for k in range(6)])
+    out = tmp_path / "out"
+    doc = run_build(hist, out)
+    assert doc["corpus"]["dedup"]["by_id"] == 1 and doc["corpus"]["dedup"]["games_kept"] == 30 and manifest.verify_corpus(doc, out) == []
+    (pair,) = [json.loads(x) for x in (out / manifest.CORPUS_DEDUP_FILE).read_text().splitlines()]
+    assert pair["kept"] == pair["dropped"] and pair["kept_ref"] != pair["dropped_ref"]
+    assert sum(1 for row in doc["corpus"]["shards"] for g in shardio.read_shard(out.joinpath(*row["path"].split("/"))).header["index"]
+               if g[0] == "2020003") == 1
 
 
 def test_a_hoopr_only_season_keeps_its_provider_and_the_no_wall_tier(tmp_path):

@@ -143,8 +143,9 @@ class Light:
     ref: str
 
     @property
-    def key(self) -> tuple[str, str, str, str]:
-        return (self.league, self.provider, self.origin, self.gid)
+    def key(self) -> tuple[str, str, str, str, str]:
+        """One physical copy of a game: the same id read from two files is two copies (a season mislabelled in one shard, a game filed twice)."""
+        return (self.league, self.provider, self.origin, self.gid, self.ref)
 
 
 def light_of(rec: GameRec) -> Light:

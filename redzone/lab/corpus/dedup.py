@@ -11,7 +11,8 @@ Two stages, both on `Light` records (a game without its plays):
                    within a day of each other. This catches providers with a different id space. A cluster with two copies from the same
                    provider is ambiguous (two real games with one trajectory) and is left alone, counted as such.
 Which copy survives: a game in the wall-clock tier first, then more plays, then ESPN before hoopR before wehoop, then the folder it was
-read from (packed shard, per-game files, archive, dataset), then the id. The choice depends on the games only, never on read order.
+read from (packed shard, per-game files, archive, dataset), then the id and the file. The choice depends on the games only, never on read order.
+A game read twice from the same provider and folder (the same id in two shard files) is two copies like any other.
 """
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ CORPUS_NIGHT_SLACK_DAYS = 1
 
 def quality_key(g: Light) -> tuple:
     return (0 if g.wall_frac >= CORPUS_WALL_MIN else 1, -g.n_plays, CORPUS_PROVIDER_RANK.get(g.provider, 9),
-            CORPUS_ORIGIN_RANK.get(g.origin, 9), g.gid)
+            CORPUS_ORIGIN_RANK.get(g.origin, 9), g.gid, g.ref)
 
 
 def _days_apart(a: str | None, b: str | None) -> int | None:
@@ -46,6 +47,10 @@ def _compatible(a: Light, b: Light) -> bool:
 
 def _label(g: Light) -> str:
     return f"{g.provider}:{g.origin}:{g.gid}"
+
+
+def _pair(by: str, kept: Light, dropped: Light) -> dict[str, str]:
+    return {"league": kept.league, "by": by, "kept": _label(kept), "dropped": _label(dropped), "kept_ref": kept.ref, "dropped_ref": dropped.ref}
 
 
 @dataclass
@@ -85,7 +90,7 @@ def resolve(lights: Iterable[Light]) -> DedupResult:
         survivors.append(best)
         for other in group[1:]:
             if _compatible(best, other) or (best.night is None and other.night is None):
-                res.pairs.append({"league": best.league, "by": "id", "kept": _label(best), "dropped": _label(other)})
+                res.pairs.append(_pair("id", best, other))
             else:
                 survivors.append(other)
                 res.id_conflicts += 1
@@ -107,7 +112,7 @@ def resolve(lights: Iterable[Light]) -> DedupResult:
             cluster.sort(key=quality_key)
             for other in cluster[1:]:
                 dropped.add(other.key)
-                res.pairs.append({"league": other.league, "by": "signature", "kept": _label(cluster[0]), "dropped": _label(other)})
+                res.pairs.append(_pair("signature", cluster[0], other))
     res.keep = {g.key: g for g in survivors if g.key not in dropped}
-    res.pairs.sort(key=lambda p: (p["league"], p["kept"], p["dropped"]))
+    res.pairs.sort(key=lambda p: (p["league"], p["kept"], p["dropped"], p["kept_ref"], p["dropped_ref"]))
     return res

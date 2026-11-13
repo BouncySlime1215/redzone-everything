@@ -138,6 +138,7 @@ def _build(cfg: BuildConfig, out: Path, tmp: Path, log: Callable[[str], None]) -
     notes: list[str] = []
     groups: dict[tuple, list[_Entry]] = {}
     providers_seen: set[str] = set()
+    emitted: set[tuple] = set()                      # a copy that appears twice in one file is written once
     block: dict[str, dict] = {}
 
     def flush(league: str, season: int) -> None:
@@ -156,9 +157,11 @@ def _build(cfg: BuildConfig, out: Path, tmp: Path, log: Callable[[str], None]) -
         current = (unit.league, unit.season)
         reads: dict[str, str] = {}
         for rec in src.games(unit, silent, reads):
-            light = keep.get((rec.league, rec.provider, rec.origin, rec.gid))
-            if light is None or len(rec.plays) < cfg.min_events:
+            key = (rec.league, rec.provider, rec.origin, rec.gid, rec.ref)
+            light = keep.get(key)
+            if light is None or key in emitted or len(rec.plays) < cfg.min_events:
                 continue
+            emitted.add(key)
             role = "tuning" if light.klass == "tuning" else plan[rec.league].role_of(rec.night)
             if role is None:
                 embargo[rec.league] += 1
