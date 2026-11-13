@@ -321,8 +321,6 @@ def test_game_ids_from_the_network_cannot_escape_the_folder(tmp_path):
 
 
 def test_a_data_folder_inside_a_repo_must_be_git_ignored(tmp_path):
-    if subprocess.run(["git", "--version"], capture_output=True).returncode != 0:
-        pytest.skip("git missing")
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
@@ -405,8 +403,7 @@ def test_fences_match_the_repo_constants():
 
 
 def test_fence_constants_agree_with_the_kaggle_fetch_scripts():
-    pytest.importorskip("pyarrow")
-    from agent.kaggle import sports_common as sc
+    from agent.kaggle import sports_common as sc          # needs pyarrow: requirements-ci.txt and the Mac venv have it
     for lg, night in sc.EVAL_FIRST_NIGHT.items():
         if lg in EVAL_FIRST_NIGHT:
             assert EVAL_FIRST_NIGHT[lg] == night, lg
@@ -553,6 +550,27 @@ def test_404_and_empty_summaries_are_terminal_states(tmp_path):
     assert len(fake.log) == before
 
 
+def test_a_season_with_no_play_by_play_is_abandoned_after_a_run_of_empty_games(tmp_path):
+    n = espn.EMPTY_RUN + 10
+    gids = [f"4030{i:05d}" for i in range(n)]
+    fake = FakeEspn({"20240115": [make_event(g, "2024-01-16T00:30Z") for g in gids]}, {g: make_summary(g, 0) for g in gids})
+    out, store, _ = run_espn(tmp_path, fake)
+    assert out["games_no_plays"] == espn.EMPTY_RUN and out["seasons_empty"] == 1 and len(fake.summary_calls) == espn.EMPTY_RUN
+    before = len(fake.log)
+    out2, _, _ = run_espn(tmp_path, fake)
+    assert len(fake.log) == before and out2["seasons_empty"] == 1          # the rerun asks for nothing
+
+
+def test_one_game_with_plays_keeps_a_season_going(tmp_path):
+    n = espn.EMPTY_RUN + 5
+    gids = [f"4030{i:05d}" for i in range(n)]
+    sums = {g: make_summary(g, 0) for g in gids}
+    sums[gids[3]] = make_summary(gids[3], 5)
+    fake = FakeEspn({"20240115": [make_event(g, "2024-01-16T00:30Z") for g in gids]}, sums)
+    out, _, _ = run_espn(tmp_path, fake)
+    assert out["games_ok"] == 1 and out["games_no_plays"] == n - 1 and not out.get("seasons_empty")
+
+
 def test_limits_stop_the_run_cleanly(tmp_path):
     out, store, _ = run_espn(tmp_path, nba_world(), limits=espn.Limits(max_games=2))
     assert out["stop_reason"] == "max_games" and len(store.read_ledger("espn", "nba")) == 2
@@ -696,9 +714,7 @@ def test_pack_is_deterministic_and_the_manifest_passes_the_licence_check(tmp_pat
 
 
 def test_a_packed_shard_is_readable_by_the_existing_tokenizer_reader(tmp_path):
-    pytest.importorskip("pandas")
-    pytest.importorskip("pyarrow")
-    from scripts import noggin_tokens
+    from scripts import noggin_tokens                     # needs pandas and pyarrow: requirements-ci.txt and the Mac venv have them
     _, store, _ = run_espn(tmp_path, nba_world())
     m = pack.pack(store)
     games = list(noggin_tokens.games_of("nba", store.root / m["shards"][0]["file"]))

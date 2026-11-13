@@ -29,6 +29,7 @@ from .store import ID_RE, Store, read_game, write_game
 
 BASE = "https://site.api.espn.com/apis/site/v2/sports"
 SLATE_LIMIT = 1000           # events asked for per scoreboard; a full page means the slate may be cut off (an error)
+EMPTY_RUN = 25               # a season whose first this-many finished games all lack plays (and none has any) is abandoned: old seasons with no play-by-play
 BREAKER = 8                  # consecutive failed requests before the run stops
 RECENT_DAYS = 3              # units this close to today are not cached and their unfinished games are not final yet
 DROP_KEYS = frozenset({"headshot", "headshots", "links", "logo", "logos", "displayName", "shortName", "fullName", "flag", "video",
@@ -350,6 +351,13 @@ class Run:
         if why:
             raise _Stop(why)
 
+    @staticmethod
+    def _season_counts(ledger: dict[str, dict], season: int) -> tuple[int, int]:
+        """(games with plays, games without plays or 404) already finished for this season."""
+        ok = sum(1 for e in ledger.values() if e.get("season") == season and e.get("status") == "ok")
+        empty = sum(1 for e in ledger.values() if e.get("season") == season and e.get("status") in ("no_plays", "not_found"))
+        return ok, empty
+
     def _season(self, lg: League, season: int, ledger: dict[str, dict]) -> None:
         self._check()
         if season_fully_fenced(lg.code, season):
@@ -364,6 +372,11 @@ class Run:
             return
         if not cal["units"]:
             self.log(f"{lg.code} {season}: no units ({cal.get('note') or 'empty calendar'})")
+            return
+        ok_n, empty_n = self._season_counts(ledger, season)
+        if ok_n == 0 and empty_n >= EMPTY_RUN:
+            self.log(f"{lg.code} {season}: {empty_n} finished games and none has plays; skipped (delete its ledger lines to retry)")
+            self.summary["seasons_empty"] = self.summary.get("seasons_empty", 0) + 1
             return
         today = self.now().strftime("%Y%m%d")
         before = self.summary["games_ok"]
@@ -408,6 +421,14 @@ class Run:
                 except (FetchError, *BAD_SHAPE) as e:
                     self._fail(f"{lg.code} {season} game {stub['id']}", e)
                     continue
+                if ledger[stub["id"]]["status"] == "ok":
+                    ok_n += 1
+                else:
+                    empty_n += 1
+                if ok_n == 0 and empty_n >= EMPTY_RUN:
+                    self.log(f"{lg.code} {season}: the first {empty_n} games have no plays; abandoning the season")
+                    self.summary["seasons_empty"] = self.summary.get("seasons_empty", 0) + 1
+                    return
                 n = self.summary["games_ok"] + self.summary["games_no_plays"] + self.summary["games_not_found"]
                 if n % 25 == 0:
                     el = max(1.0, self.clock() - self.t0)

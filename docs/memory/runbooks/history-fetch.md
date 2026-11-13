@@ -49,6 +49,22 @@ The B0a target (30M events) is reached by NBA + NFL + CFB + NHL + men's college 
 about 29 hours); the full plan (about 85M) is about 52 hours. Run it in 10 to 12 hour Kaggle sessions or on the Mac in
 the background; re-run the same command after each stop. Disk: about 20 KB per game compressed, so about 3.5 GB for 177,000 games.
 
+### Run it on Kaggle (the big run; the Mac stays free)
+
+Kaggle can reach ESPN (the Claude cloud container cannot: docs/data-sources.md). Until the Kaggle token exists (N1) the code goes
+up through Chrome like the other jobs ([kaggle-run.md](kaggle-run.md)): a private dataset holding `scripts/fetch_history.py` and
+`scripts/history/`, a CPU notebook with Internet on, and one cell:
+
+```sh
+mkdir -p /kaggle/working/history && cp -r /kaggle/input/<previous-output>/history/. /kaggle/working/history/ 2>/dev/null  # resume
+python /kaggle/input/<code>/scripts/fetch_history.py --accept-restrictive --root /kaggle/working/history \
+    --leagues nba,cbb,nfl,cfb,wcbb,nhl,mlb --seasons 2026-2017 --max-minutes 660
+python /kaggle/input/<code>/scripts/fetch_history.py --report
+```
+
+`--max-minutes 660` stops cleanly inside Kaggle's 12-hour session. Each session adds about 39,000 requests (about 11 hours at
+1 per second); attach the last output as input to the next session and the same command carries on. No secret is involved.
+
 ## 3. hoopR and wehoop files (whole seasons, sha256 pinned)
 
 ```sh
