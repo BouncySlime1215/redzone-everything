@@ -112,7 +112,8 @@ def compose(mix: dict, seed: int, *, root: Path | None = None, games: list | Non
     """(recorded games, their whole-night facts, the games used as [league, game id, shift s]) for one census mix: random
     fit games of each league, the first tipping off at the earliest original tip, the others STAGGER later.
     Deterministic in (mix, seed) on one archive; with `games` (from a draw log) exactly those games and shifts, so a
-    mixed episode re-runs identically on another machine. A chosen game that cannot be loaded FAILS (never skipped);
+    mixed episode re-runs identically on another machine; each logged game must be a dev (fit) game of this archive, or
+    it FAILS before anything is opened (a log can never open a locked game). A chosen game that cannot be loaded FAILS (never skipped);
     games with fewer than 60 rows are passed over in the draw (load_replay's own rule) and counted in the error."""
     from redzone.lab.backtest import Replay
     from redzone.lab.gym2.env import replay_module
@@ -131,6 +132,10 @@ def compose(mix: dict, seed: int, *, root: Path | None = None, games: list | Non
         return r
 
     if games:
+        fit = {lg: {g for _, g in fit_games(lg, root)} for lg in {str(x[0]) for x in games}}
+        bad = [f"{lg} {gid}" for lg, gid, _ in games if str(gid) not in fit[str(lg)]]
+        if bad:                                # checked before any file is opened: a locked game is never read
+            raise ValueError(f"mix games that are not recorded dev (fit) games here: {', '.join(bad)} (locked, or not in this archive)")
         out = [pr.repair(shift_replay(load(lg, gid), int(dt))) for lg, gid, dt in games]
         out.sort(key=lambda r: r.wall[0])
         return out, [pc.truth_of(r) for r in out], [list(x) for x in games]
