@@ -84,8 +84,6 @@ sync:
     enabled: false         # logged always (recordings/<day>/sync_anchors.jsonl); fed to the filter only when on.
     start_bias_s: 15       # whistle -> ad on screen, a PRIOR until the Wednesday probe data refits it
     bias_sd_s: 10
-    true_gap_s: null       # [F-01] the sims' TRUE whistle -> ad gap (redzone/lab/backtest.ad_breaks); null = follow start_bias_s, as before
-    true_gap_sd_s: null    # [F-01] ...and its spread; null = follow bias_sd_s, as before
     min_s: 10              # plausible whistle -> ad-on-screen window (feed wall to screen time)
     max_s: 240
   burst_anchor:            # [burst anchor] a burst onset <-> the feed's last dead ball -> a delay sample

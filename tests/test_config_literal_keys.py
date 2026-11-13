@@ -10,7 +10,7 @@ F-01 also removed two blocks nothing read: the 15-key `flags:` block (redzone/co
 production caller) and `eyes.enabled` (read by nothing yet). A key added in the PR that reads it is the rule from now on.
 
 Why: PR 438 found 82 park keys the YAML lacked and F-01 measured 26 more across decider, delay, control, score.context and
-others; the CI test is what keeps the next unwired read from shipping (WORKPLAN F-01).
+others (24 got a key, 2 are allow-listed below); the CI test is what keeps the next unwired read from shipping (WORKPLAN F-01).
 """
 from __future__ import annotations
 
@@ -84,9 +84,29 @@ def reads():
     return literal_reads()
 
 
+# Keys read with an inline fallback INSIDE A FROZEN GRADER FILE (docs/grader_freeze.json) and deliberately not in the YAML:
+# a YAML default would only be read if the grader read it (the key falls back to another key, `start_bias_s` / `bias_sd_s`, so
+# a number or a null in the YAML would change that fallback), and the grader is Nick's to change, not ours. Adding one of
+# these to the YAML needs a grader change: Nick's call. Each entry names why; the test below keeps the list honest.
+FROZEN_GRADER_FALLBACKS = {
+    "sync.break_anchor.true_gap_s": "redzone/lab/backtest.py ad_breaks(): falls back to sync.break_anchor.start_bias_s",
+    "sync.break_anchor.true_gap_sd_s": "redzone/lab/backtest.py ad_breaks(): falls back to sync.break_anchor.bias_sd_s",
+}
+
+
 def test_every_literal_config_key_the_code_reads_is_in_the_yaml(cfg, reads):
     assert len(reads) > 400, f"the scan found only {len(reads)} keys: it has stopped seeing the code's reads"
-    assert missing_keys(reads, cfg.defaults) == []
+    missing = [m for m in missing_keys(reads, cfg.defaults) if m.split(" ")[0] not in FROZEN_GRADER_FALLBACKS]
+    assert missing == []
+
+
+def test_the_frozen_grader_allow_list_is_only_for_keys_read_in_frozen_files_and_absent_from_the_yaml(cfg, reads):
+    import json
+    frozen = set(json.loads((ROOT / "docs" / "grader_freeze.json").read_text())["files"])
+    for key in FROZEN_GRADER_FALLBACKS:
+        files = {f for f, _, _ in reads.get(key, ())}
+        assert files and files <= frozen, f"{key} is read in {sorted(files)}: not (only) frozen grader files, so give it a YAML key"
+        assert cfg.get(key, MISSING) is MISSING, f"{key} is in the YAML now: take it off the allow-list"
 
 
 def test_the_scan_catches_a_key_the_yaml_lacks(cfg, reads):
@@ -115,7 +135,6 @@ F01 = {
     "replay.pause_poll_s": 0.4, "scoring.watch_value": False, "supervisor.ntfy_server": "https://ntfy.sh",
     "two_stick.break_p": 0.5, "timing.behind_live_s.shadow_stay_leave_every_s": 15.0,
     "control.max_switch_s": 150, "control.max_start_switch_s": 75,
-    "sync.break_anchor.true_gap_s": None, "sync.break_anchor.true_gap_sd_s": None,       # None = follow start_bias_s / bias_sd_s
     "score.context.lead_change_cap": 8, "score.context.lead_change_fade_s": 150, "score.context.fresh_flip": 0,
     "score.context.upset_min_spread": 3, "score.context.upset_full_spread": 10, "score.context.overtime": 4,
     "score.context.nba.late_within_6": 4, "score.context.nhl.late_one_goal": 10,
@@ -174,34 +193,6 @@ def test_every_added_key_is_a_legal_setting_at_its_own_value(tmp_path):
     assert Config(user_path=f, history_dir=tmp_path / "hist").rejected == []
     with pytest.raises(ConfigError):                                              # and the limit still bites above the new ceiling
         validate({"score": {"context": {"lead_change_fade_s": 1801}}}, Config(user_path=tmp_path / "none.yaml").defaults)
-
-
-def test_the_sims_true_gap_follows_the_prior_when_unset_and_the_yaml_null_is_unset(cfg):
-    """sync.break_anchor.true_gap_s / _sd_s: null in the YAML means 'follow start_bias_s / bias_sd_s', as it did when the keys
-    were absent (`float(None)` would have raised)."""
-    import random
-
-    from redzone.lab import backtest as B
-    from redzone.models import League
-
-    def play(t, per=1, clk="10:00"):
-        return {"type": {"text": t}, "period": {"number": per}, "clock": {"displayValue": clk}}
-
-    class View:
-        """The real config, with the true_gap keys removed (the old behaviour) or set to a number."""
-        def __init__(self, drop=False, put=None):
-            self.drop, self.put = drop, put or {}
-
-        def get(self, k, default=None):
-            if k in self.put:
-                return self.put[k]
-            return default if self.drop and k.startswith("sync.break_anchor.true_gap") else cfg.get(k, default)
-
-    rp = [B.Replay(League.NFL, "f", {}, [play("Rush"), play("Official Timeout"), play("Pass")], [100.0, 200.0, 300.0])]
-    assert cfg.get("sync.break_anchor.true_gap_s") is None and cfg.get("sync.break_anchor.true_gap_sd_s") is None
-    assert B.ad_breaks(rp, 50.0, cfg, random.Random(7)) == B.ad_breaks(rp, 50.0, View(drop=True), random.Random(7))
-    pinned = View(put={"sync.break_anchor.true_gap_s": 20.0, "sync.break_anchor.true_gap_sd_s": 0.0})
-    assert B.ad_breaks(rp, 50.0, pinned, random.Random(7))["f"] == [(200.0, 270.0)]      # whistle 200 + lag 50 + the set gap 20
 
 
 def test_score_context_is_identical_with_the_keys_present_and_absent(cfg):
