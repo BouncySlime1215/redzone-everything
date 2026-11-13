@@ -1,6 +1,8 @@
 # Catch-up packages: "here's what you missed, then live"
 
-Flag `park.catchup.enabled`, **off**. Replay-proven with fake sticks only; nothing here has run on the TV.
+Flag `park.catchup.enabled`, **off**. Replay-proven with fake sticks only; nothing here has run on the TV. Wired into the
+app's show (task E-01): with the flag on, `ParkRun.begin` builds `CatchupShow` and the cue reaches the sticks through
+`Controller.park_cue` (see "The app's cue" below); the real-TV proof is task E-02.
 
 Nick, Nov 11: "the last time we checked in on this Browns game ... so much has happened in between that, so we're going
 to give you like 4 or 5 plays back to back, and then we'll go back and join live." Phase 2 plan, 2C item 3.
@@ -78,14 +80,14 @@ own tune), `library` (whole game). The planner tunes the hidden stick shortly be
 | Prime Key Moments: lag, open, per play | 60 s, 20 s, 12 s | priors; no driver |
 | Prime rewind | none | docs/park.md: Prime has no rewind |
 
-## Keys (`park.catchup.*`, read with code defaults; not yet in `default_config.yaml`)
+## Keys (`park.catchup.*` in `default_config.yaml`, each at the code's default)
 
 `enabled` (false), `min_gap_s` 120, `cool_s` 300, `leave_wait_s` 20, `join_wait_s` 30, `replay_dead_s` 12,
 `look_ahead_s` 30, `plan_wait_s` 10, and the package's own (`catchup_pack.PackParams`): `max_plays` 5, `cap_s` 120,
 `min_worth` 0.3, `min_value` 0.8, `lead_s` 2, `tail_s` 3, `max_age_s` 180 (one play), `multi_max_age_s` inf (2+ plays),
 `rewind_rule` measured, `reach_s` 175,
-`reel` false, `moments` false, and the source timings above. The YAML block waits for the PARK-UNIFY and
-PARK-TIMING-CONFIG claims on `redzone/default_config.yaml` to close.
+`reel` false, `moments` false, and the source timings above. The app's cue adds `park.steps.cue_lead_s` 8 and
+`park.steps.cue_wait_max_s` 45 (below).
 
 ## Seams
 
@@ -94,11 +96,38 @@ PARK-TIMING-CONFIG claims on `redzone/default_config.yaml` to close.
   While a replay is up the tracker is ticked with no picture for the catch-up's game, so the others go on getting stale.
 - **Director v1**: `CatchupShow.catchup_offer(t, game) -> (Package | None, why)` asks what a catch-up would play now,
   without starting it.
-- **Device**: one rig step, `cu_cue(k, game, frame, source, visible) -> (ok, seconds)`. For the real sticks: rewind =
-  the scrub seek with its label read and the pause before the snap (`replay.yttv_seek: scrub`, `yttv_seek.enter_buffer`);
-  reel = PR 382's `yttv_keyplays.catch_up(stick, Want(period, clock_s))`; moments = nothing yet. The app's
-  `ControllerRig` has no `cu_cue`, so the move never starts in the app (fail closed), and `park_run.py` does not build
-  `CatchupShow` yet.
+- **Device**: one rig step, `cu_cue(k, game, frame, source, visible) -> (ok, seconds)`. The app's is below; reel =
+  PR 382's `yttv_keyplays.catch_up(stick, Want(period, clock_s))` (not merged); moments = nothing yet.
+
+## The app's cue (task E-01; NOT yet run on the TV)
+
+`ControllerRig.cu_cue` maps the show's grid second to YouTube's clock (the inverse of `sync()`) and calls
+`Controller.park_cue(target, content_s, source)`, which refuses unless the PARK steps may run, `park.catchup.enabled` is
+on, the stick is the hidden one and the source is `rewind`. `ParkHands.cue` then:
+
+1. refuses (nothing pressed) when the stick has no read place on that game, the game is on Prime, a sound incident is
+   open, the frame is more than `yttv_seek.max_back_s` (150 s) behind the stick, or there is no label reader to measure
+   where the scrub lands (`Controller._cue_readers`: the label probe armed at the stick's own behind-live, else the
+   engine's reader);
+2. resumes a parked stick (the scrub starts from a playing picture) and scrubs it back with the overlay
+   (`yttv_seek.enter_buffer`) to land `park.steps.cue_lead_s` (8 s) before the frame;
+3. takes the new place from the label reader's measured behind-live (the media session's position after a seek is
+   wrong, so it is never the source), marks the stick behind on that channel (#391);
+4. parks it on the frame with the ordinary park step (pause key when the frame comes, BACK, read back), or drops the
+   place (the show tunes the stick again) when it landed past the frame, more than `cue_wait_max_s` (45 s) before it,
+   or unmeasured.
+
+Not built: a cue of the stick ON SCREEN (the next clip of a package, or the replay stick sent back to live). The app's
+rig says so with `cue_on_screen = False`, and `CatchupShow` then plays one clip per package (a close pair played
+through counts as two plays under Nick's age rule), never makes the live join by re-cueing the replay stick, and gives
+no catch-up whose way back needs that ("h_join": the other stick pinned or on Prime). `scripts/catchup_replay.py
+--hidden` replays exactly that. While a catch-up's own flip is under way the app's loop does not read the show's `on`
+as an outside input change (`CatchupShow.flip_pending`).
+
+UNKNOWN until E-02: whether the scrub works from a stick that was just paused and resumed; the media session's crawl
+after a seek between the measured landing and the pause (about 0.3 s per 20 s, yttv_seek's note); whether the label
+probe's at-live anchor holds when armed behind live; the cue's real time against the plan's `seek_base_s` +
+`seek_per_s`.
 
 ## Replay
 
@@ -108,8 +137,9 @@ nice -n 15 .venv/bin/python scripts/catchup_replay.py --night 20261028 --games 4
 nice -n 15 .venv/bin/python scripts/catchup_replay.py --table                                       # every case below
 ```
 
-It wraps `scripts/park_replay.py` (not edited) and swaps in `CatchupShow`, a fake rig with `cu_cue` and a judge that
-scores a catch-up as one cut. Every scenario uses Nick's age rule. Scenarios: `off`; `proven` (175 s rewind, no reel,
+It runs `scripts/park_replay.replay(..., catchup=params)`, which builds `CatchupShow` (as `ParkRun.begin` does with the
+flag on), `park_replay.CatchupRig` (the fake rig with `cu_cue`) and `park_replay.CatchupJudge` (a catch-up is one cut).
+`python scripts/park_replay.py --night 20261028 --catchup on` runs the same show from the script itself. Every scenario uses Nick's age rule. Scenarios: `off`; `proven` (175 s rewind, no reel,
 no Key Moments); `rewind10` (what-if: the hidden stick rewinds 10 minutes); `library` (what-if: the whole game);
 `reel` (what-if: proven rewind plus the reel at its measured 12-minute lag and Prime Key Moments at priors).
 

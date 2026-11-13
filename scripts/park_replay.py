@@ -3,6 +3,7 @@
     python scripts/park_replay.py --night 20261023 --games 4
     python scripts/park_replay.py --night 20261023 --games 2 --hands runner     # the local show runner's stick moves
     python scripts/park_replay.py --night 20261023 --games 4 --fail flip=2 --fail read=3 --lines 30
+    python scripts/park_replay.py --night 20261028 --games 4 --catchup on      # [park.catchup] the app's CatchupShow
 
 What runs: `redzone.noggin.park_show.Show` (the controller the app runs with park.enabled), fed the recorded games row
 by row as a live feed would have had them (`FactsFeed.offer_rows`), driving `FakeRig`: two fake streams and a fake TV
@@ -431,6 +432,87 @@ class FakeRig:
                 self.paused[k] = False
 
 
+# ---------------------------------------------------------------------------------------------- [park.catchup] the catch-up's fakes
+class CatchupRig(FakeRig):
+    """The fake sticks plus the catch-up's step. `cu_cue(k, game, frame, source, visible)`: stick k is put at grid second
+    `frame` of `game`, paused, by `source`; it takes the package's own model of that source (prep when hidden, the
+    gap when the replay is already on screen). It lands within the read's error (cue_sd). on_screen=False: like the
+    app's ControllerRig today (Controller.park_cue), only the hidden stick is cued (`cue_on_screen`)."""
+
+    def __init__(self, *a, pack=None, cue_sd: float = 1.0, on_screen: bool = True, **kw):
+        from redzone.noggin import catchup_pack as cp
+        super().__init__(*a, **kw)
+        self.pack, self.cue_sd = pack or cp.PackParams(), cue_sd
+        self.cue_on_screen = bool(on_screen)
+        self.cues: list = []
+
+    async def cu_cue(self, k: int, game: int, frame: float, source: str, visible: bool) -> tuple:
+        P, now = self.pack, self._now()
+        if visible and not self.cue_on_screen:
+            return False, 0.0
+        if source == "rewind":
+            took = P.seek_gap_s if visible else P.seek_base_s + P.seek_per_s * max(0.0, now + self.delay - frame)
+        elif source == "reel":
+            took = P.reel_gap_s if visible else P.reel_open_s
+        else:
+            took = P.moments_gap_s if visible else P.moments_open_s
+        took += min(4.0, self.rng.expovariate(1 / 0.8))
+        self.sent.append(("cue", k, game, source))
+        await self._wait(took)
+        if self._fails("cue"):
+            return False, took
+        err = self.rng.gauss(0.0, self.cue_sd)
+        self.game[k], self.paused[k], self.frozen[k] = game, True, float(frame) + err
+        self.lag[k] = self._now() - self.frozen[k]
+        self.cues.append((k, game, float(frame), err, source))
+        return True, took
+
+
+class CatchupJudge(Judge):
+    """The judge plus a catch-up's one cut: the leave's true second taken at the leave, the join's at the join."""
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.catchups: list[int] = []                           # indices into self.cuts that were catch-ups
+
+    def leave_true(self, k: int, g: int, i: int) -> float:
+        e1 = self.tm.errs(g)
+        return i - self.e.get(k, 0.0) + self.rng.gauss(0.0, math.hypot(e1[2], e1[3]))
+
+    def catchup_cut(self, t: int, g1: int, true_i: float, k2: int, g2: int, j: int, paused: bool) -> None:
+        """Judge.flip's bookkeeping, with the leave already taken (the same rules, line for line)."""
+        xs, xh, bad = self.A[g1], self.A[g2], 0
+        e2 = self.tm.errs(g2)
+        true_j = j - self.e.get(k2, 0.0) + self.rng.gauss(0.0, e2[2] if paused else math.hypot(e2[2], e2[3]))
+        ti, ej = self._at(xs, true_i), self._at(xh, true_j)
+        self.catchups.append(len(self.cuts))
+        self.cuts.append((g1, true_i, g2, true_j))
+        self.e_log.append((0.0, self.e.get(k2, 0.0)))
+        if not xs.dead[ti]:
+            if xs.legal[ti]:
+                self.walk_leave += 1
+            else:
+                self.mid_leave, bad = self.mid_leave + 1, bad + 1
+        if xs.hl[ti]:
+            self.hl_leave, bad = self.hl_leave + 1, bad + 1
+        if not xh.dead[ej]:
+            if xh.legal[ej]:
+                self.walk_entry += 1
+            else:
+                self.mid_entry, bad = self.mid_entry + 1, bad + 1
+        if self.last is not None and self.live >= 3:
+            self.jumps.append(self.last)
+            self.plays += self.look_plays
+            self.one_play += int(self.look_plays <= 1)
+        elif self.last is not None:
+            self.noplay += 1
+        wait = xh.left[ej] if xh.dead[ej] else 0
+        self.land_wait.append(wait)
+        self.brk_land += int(bool(xh.brk[ej]) and wait > 10)
+        self.flips.append((t, g2, bad))
+        self.last, self.live, self.look_plays, self.was_dead, self.from_true = t, 0, 0, True, None
+
+
 # ---------------------------------------------------------------------------------------------- the recorded night
 def load_replay(night_id: str, n_games: int, league: str = "nba", repaired: bool = True) -> tuple[list, list]:
     """(the recorded games of the slate, their whole-night facts): the slate park_plan.py would pick on that night.
@@ -512,17 +594,20 @@ def replay(night_id: str, games: int = 4, *, case: str = "tonight", hands: str =
            model=None, eyes=None, emit=None, any_shot: bool = False, grid: tuple | None = None, prime: int = 0,
            prime_k: str = "bug", prime_pad: int | None = None, walk: str = "any", nfl: int = -1, nfl_lag: float | None = None,
            deep: bool = False, slider: float | None = None, pin: bool = False, seen: bool = False, director: bool = False,
-           step_costs: str = "model") -> Show:
+           step_costs: str = "model", catchup=None) -> Show:
     """The app's PARK controller on a recorded dev night: fake sticks, a fake TV, a clock that is not the wall.
     first = "read" (the first picture's place was read: the app's `Controller.park_start`, the local runner's start) or
     "live" (what happens WITHOUT that step: the stream on screen sits at its live edge, never read; the feed is never
     far enough ahead of it for a padded leave, so the show almost never makes its first jump).
     seen / director: [SEEN] park.seen and [DIRECTOR] park.director_v1 for this run (Director v1's numbers and the league
-    weights from the default config); both off = the replay as before."""
+    weights from the default config); both off = the replay as before.
+    catchup: [park.catchup] a park_catchup.CatchupParams: the show is the app's CatchupShow (as ParkRun.begin builds it
+    with park.catchup.enabled on), the rig CatchupRig, the judge CatchupJudge; None = the replay as before."""
     b = build(night_id, games, case=case, hands=hands, first=first, minutes=minutes, seed=seed, league=league, fail=fail,
               poll=poll, say=say, loaded=loaded, params=params, stop_min=stop_min, board=board, rig_kw=rig_kw, model=model,
               eyes=eyes, emit=emit, any_shot=any_shot, grid=grid, prime=prime, prime_k=prime_k, prime_pad=prime_pad, walk=walk,
-              nfl=nfl, nfl_lag=nfl_lag, deep=deep, slider=slider, pin=pin, seen=seen, director=director, step_costs=step_costs)
+              nfl=nfl, nfl_lag=nfl_lag, deep=deep, slider=slider, pin=pin, seen=seen, director=director, step_costs=step_costs,
+              catchup=catchup)
     asyncio.run(b.clock.run(drive(b.show, b.clock, b.rows, b.a, b.b)))
     return b.show
 
@@ -541,11 +626,12 @@ def build(night_id: str, games: int = 4, *, case: str = "tonight", hands: str = 
           model=None, eyes=None, emit=None, any_shot: bool = False, grid: tuple | None = None, prime: int = 0,
           prime_k: str = "bug", prime_pad: int | None = None, walk: str = "any", nfl: int = -1, nfl_lag: float | None = None,
           deep: bool = False, slider: float | None = None, pin: bool = False, seen: bool = False, director: bool = False,
-          step_costs: str = "model", clock_type=None, timing=None) -> Built:
+          step_costs: str = "model", clock_type=None, timing=None, catchup=None) -> Built:
     """Everything `replay` sets up, not yet run: `replay` is `build` then `drive` to the end of the span. The practice
     world (`redzone/lab/gym2`) builds the same way and steps the same drive, so it has no second physics.
     clock_type: the fake clock's class (default FakeClock; the practice world's clock marks each tick's wait).
-    timing: tm -> tm, a practice-world scenario's change to the games' timing before anything is built on it (None = as before)."""
+    timing: tm -> tm, a practice-world scenario's change to the games' timing before anything is built on it (None = as before).
+    catchup: see `replay` (rig_kw's "on_screen": False gives the fake rig the app's hidden-only cue)."""
     P = params or ShowParams.from_config(config.default)
     first = first or "read"
     rs, slate = loaded or load_replay(night_id, games, league)
@@ -591,7 +677,14 @@ def build(night_id: str, games: int = 4, *, case: str = "tonight", hands: str = 
         tune0.update({g: cost for g in primes})
     if STEP_COSTS.get(step_costs):                               # [park.fast_steps] --steps off|on: the step costs measured on the TV
         rig_kw = {**dict(rig_kw or {}), "costs": {**STEP_COSTS[step_costs], **dict((rig_kw or {}).get("costs") or {})}}
-    rig = FakeRig(clock, instant=False, seed=seed, delay=P.show_delay, steps=steps, reads=tm.reads, hands=hands, params=P,
+    rig_cls, judge_cls, show_cls = FakeRig, Judge, Show
+    if catchup is not None:                                      # [park.catchup] the app's CatchupShow, the cue on the fake sticks
+        from functools import partial
+        from redzone.noggin.park_catchup import CatchupShow
+        rig_cls = partial(CatchupRig, pack=catchup.pack, on_screen=bool((rig_kw or {}).get("on_screen", True)))
+        rig_kw = {k: v for k, v in (rig_kw or {}).items() if k != "on_screen"}
+        judge_cls, show_cls = CatchupJudge, partial(CatchupShow, catchup=catchup)
+    rig = rig_cls(clock, instant=False, seed=seed, delay=P.show_delay, steps=steps, reads=tm.reads, hands=hands, params=P,
                   tune_sd=tm.p.tune_sd, **(rig_kw or {}))
     rig.fail.update(fail or {})
     rig.prime_games = set(primes)
@@ -608,12 +701,12 @@ def build(night_id: str, games: int = 4, *, case: str = "tonight", hands: str = 
         rig.lag[0] = rig.true_lag[0] = float(depth[first_g])
     if first == "live":                                          # the app's start: on screen since before PARK, never read
         rig.read[0], rig.lag[0] = False, -float(P.show_delay)
-    judge = Judge(A, tm, seed, first_g, first_read=rig.read[0])
-    show = Show(night, eng, tm, rig, feed, plan=Plan(jump_bonus=P.bonus), judge=judge, board=board, say=say or (lambda line: None),
-                names=[r.matchup or r.gid for r in rs], chans=[f"channel {k + 1}" for k in range(len(rs))], tune0=tune0,
-                params=P, model=model, eyes=eyes, emit=emit, no_back=set(primes) or None, depth=depth,
-                football_slider=slider, keep=0 if pin and any(r.league.base == League.NFL for r in rs) else None, keep_live=pin,
-                seen=seen, director=_director_params() if director else None)
+    judge = judge_cls(A, tm, seed, first_g, first_read=rig.read[0])
+    show = show_cls(night, eng, tm, rig, feed, plan=Plan(jump_bonus=P.bonus), judge=judge, board=board, say=say or (lambda line: None),
+                    names=[r.matchup or r.gid for r in rs], chans=[f"channel {k + 1}" for k in range(len(rs))], tune0=tune0,
+                    params=P, model=model, eyes=eyes, emit=emit, no_back=set(primes) or None, depth=depth,
+                    football_slider=slider, keep=0 if pin and any(r.league.base == League.NFL for r in rs) else None, keep_live=pin,
+                    seen=seen, director=_director_params() if director else None)
     show.replays, show.base = rs, full.base                      # for the frozen grader (graded) and the stamp = snap judge
     S = show.begin(first_g, 0, a)
     S.sb = float(rig.lag[0])
@@ -968,6 +1061,9 @@ def main() -> int:
                     help="walk-in points: after any shot (as before), MADE field goals only, or none (dead time only)")
     ap.add_argument("--seen", action="store_true", help="[SEEN] track what the viewer has seen (park.seen) and print the phase 2C scorecard")
     ap.add_argument("--director", action="store_true", help="[DIRECTOR] Director v1 on (park.director_v1); implies --seen")
+    ap.add_argument("--catchup", choices=("off", "on", "hidden"), default="off",
+                    help="[park.catchup] the show the app builds with park.catchup.enabled on (its other park.catchup.* keys from "
+                         "the default config); hidden: the fake sticks cue only the hidden stick, as the app's controller does")
     a = ap.parse_args()
     shown = [0]
 
@@ -976,10 +1072,17 @@ def main() -> int:
         if shown[0] <= a.lines:
             print(line)
     fail = {k: int(v) for k, v in (x.split("=", 1) for x in a.fail)}
+
+    def catchup_on():
+        if a.catchup == "off":
+            return None
+        from redzone.noggin.park_catchup import CatchupParams
+        return replace(CatchupParams.from_config(config.default), enabled=True)
     show = replay(a.night, a.games, case=a.case, hands=a.hands, first=a.first, minutes=a.minutes, seed=a.seed, league=a.league,
                   fail=fail, say=say, any_shot=a.what_if_any_shot, grid=tuple(a.what_if_grid) if a.what_if_grid else None,
                   prime=a.prime, prime_k=a.prime_k, prime_pad=a.prime_pad, walk=a.walk, nfl=a.nfl, nfl_lag=a.nfl_lag,
-                  deep=a.deep, slider=a.slider, pin=a.pin, seen=a.seen or a.director, director=a.director, step_costs=a.steps)
+                  deep=a.deep, slider=a.slider, pin=a.pin, seen=a.seen or a.director, director=a.director, step_costs=a.steps,
+                  catchup=catchup_on(), rig_kw={"on_screen": False} if a.catchup == "hidden" else None)
     _, text = summary(show, f"SUMMARY (replayed on recorded night {a.night} with FAKE sticks, not measured on the TV; {a.games} games, "
                             f"case {a.case}, hands {a.hands}, paddings {sorted(set(show.pad))} s, show delay {show.delay} s)"
                       + ("\n  WHAT-IF, OUTSIDE RULE #1: the any-shot rule is ON (cuts in the 4 s after any shot, made or missed)" if a.what_if_any_shot else ""))
@@ -988,6 +1091,10 @@ def main() -> int:
         pic = picture_grade(show)
         print(f"  stamp = snap judge (football): joins mid-play {pic['football_joins_mid']}, leaves mid-play {pic['football_leaves_mid']} "
               f"of {pic['football_cuts']} football cuts; plays seen from the snap {snap_share(show, len(show.replays) - 1)}")
+    if a.catchup != "off":
+        log = getattr(show, "cu_log", [])
+        print(f"  [park.catchup] catch-ups {len(log)} ({sum(len(r['plays']) for r in log)} plays) of {len(show.cu_chances)} chances; "
+              f"dropped {sum(show.cu_aborts.values())}; the cuts graded by scripts/catchup_replay.py")
     if a.seen or a.director:
         sc = seen_card(show)
         print(f"  [SEEN] big plays seen live {sc['big_seen_live']} of {sc['big_total']}; longest a game in progress went unseen "
