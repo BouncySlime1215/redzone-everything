@@ -4,9 +4,10 @@ and the row it chose, and the plan it then keeps, over fixed scenarios, pinned a
 Recorded on the planner BEFORE `Planner._search` was split into named steps (the option list, the scoring of the
 options, the choice); the split must leave every digest byte for byte as it was. Numbers are kept exactly (floats as
 float.hex), sets sorted, so a change in arithmetic order, iteration order or a tie-break changes a digest.
-Scenarios: three hand-made nights of tests/test_park_plan.py on the simulator's planner (defaults; every knob a show on
-real sticks sets; a stand-in `unknown` hook with warrants noted), and a recorded dev night through `park_show.Show` on
-the replay's fake sticks (the app's own planner call).
+Scenarios: hand-made nights of tests/test_park_plan.py on the simulator's planner (defaults; every knob a show on
+real sticks sets; a stand-in `unknown` hook with warrants noted; two identical games, so options tie exactly and the
+first best row must win), and two recorded dev nights through `park_show.Show` on the replay's fake sticks (the app's
+own planner call; plain and with Director v1).
 
 Why: WORKPLAN v2 A-05 / track A section 9: a learned scorer will later replace one call over the planner's option
 list; the refactor that makes that one call must not move a single decision first.
@@ -91,9 +92,17 @@ class StandInRate:
         return 0.025 * float(self.A[g].lev[K]) + 0.004 * (g % 2) + 1e-5 * ((K + t) % 7)
 
 
-def run_sim(seed: int, guard: int, plan, **kw) -> tuple[str, int, list]:
-    """The simulator's planner one second at a time over random_night(seed) (as tests/test_park_plan.play steps it)."""
-    night, s = random_night(seed), exact(guard)
+def scenario_night(seed):
+    """random_night(seed); ("twins", seed): its first two games plus a copy of the second, so options tie exactly."""
+    if isinstance(seed, tuple):
+        g = random_night(seed[1], games=2).games
+        return ps.Night([g[0], g[1], dict(g[1], gid=g[1]["gid"] + "_twin")])
+    return random_night(seed)
+
+
+def run_sim(seed, guard: int, plan, **kw) -> tuple[str, int, list]:
+    """The simulator's planner one second at a time over scenario_night(seed) (as tests/test_park_plan.play steps it)."""
+    night, s = scenario_night(seed), exact(guard)
     pl = pp.Planner(plan, **kw)
     log = SearchLog(pl)
     a, b = night.span
@@ -111,6 +120,7 @@ SIM_SCENARIOS = {
                                                     sticky=True, dead_w=0.01, max_wait=40, warrant="need", roll_same=True,
                                                     tune_stick=0.3, join_playing=False)),
     "unknown_hook": (3, 2, dict(jump_bonus=1.0), dict(unknown=StandInRate(), warrant="note")),
+    "twin_ties": (("twins", 4), 2, dict(jump_bonus=1.0), dict()),      # two identical games: exact ties, first row wins
 }
 
 # Recorded on the planner before the split (integration/next 14eba59d): digest, searches, flips.
@@ -118,6 +128,7 @@ SIM_PINNED = {
     "defaults": ("c18a814940092457", 1272, 107),
     "show_knobs": ("2821d8ff15ff9fcc", 1234, 27),
     "unknown_hook": ("14d60410a20c246c", 1277, 137),
+    "twin_ties": ("94adbc0bad75a291", 1269, 133),
 }
 
 
@@ -178,7 +189,7 @@ def test_options_lists_what_a_search_would_without_planning(name):
     """Planner.options (the option list on its own) gives the very rows and value of staying a search builds at the
     same second on the same state, the best of them by plan value, and leaves the planner's plan untouched."""
     seed, guard, plan, kw = SIM_SCENARIOS[name]
-    night, s = random_night(seed), exact(guard)
+    night, s = scenario_night(seed), exact(guard)
     pl = pp.Planner(pp.Plan(**plan), **kw)
     a, b = night.span
     brain = ps.Foresight()
