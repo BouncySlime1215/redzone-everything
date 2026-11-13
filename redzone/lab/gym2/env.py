@@ -149,10 +149,13 @@ class GymV2:
                      say=self.rec.say, emit=self.rec.emit, clock_type=_step_clock_type(pr), **kw)
         if not sc.identity:
             sc.patch(b, pr)
+        # a mix logs the leagues it really holds ("nba+nfl"); the build's own league argument goes in build_league
+        league = "+".join(sorted({str(x[0]) for x in self.mix_games})) if self.mix else self.league
         self.draw = log_draw(self.draw_log, night=self.night, games=self.games, episode_seed=self.seed, scenario=sc,
-                             minutes=self.minutes, league=self.league,
+                             minutes=self.minutes, league=league,
                              extra={"weights": asdict(self.weights), "mask_level": self.mask_level,
-                                    **({"mix": dict(self.mix), "mix_games": self.mix_games} if self.mix else {})})
+                                    **({"mix": dict(self.mix), "mix_games": self.mix_games, "build_league": self.league}
+                                       if self.mix else {})})
         self.show, self.clock, self.rows, self.a, self.b = b.show, b.clock, b.rows, b.a, b.b
         self.meter = RewardMeter(self.show.judge, b.a)
         self.loop = asyncio.new_event_loop()
@@ -176,8 +179,16 @@ class GymV2:
         terms = self.meter.read(upto)
         info = {"t": self.next_t, "scenario": self.scenario.name, "terms": terms, "rule1": rule1(self.show.judge)}
         if self.done:
-            info["mask_audit"] = self.mask().audit(self.show.judge.cuts)
+            info["mask_audit"] = self.mask().audit(self.show.judge.cuts, self.cut_reads())
         return self.observe(), self.weights.total(terms), self.done, info
+
+    def cut_reads(self) -> list:
+        """Per judged cut, (left stream read, joined stream read) as the show knew them when it jumped: its jump records
+        (park_show: one record per jump, written just before the judge's flip)."""
+        recs, cuts = self.show.records, self.show.judge.cuts
+        if len(recs) != len(cuts):
+            raise RuntimeError(f"{len(recs)} jump records for {len(cuts)} judged cuts: read states cannot be matched")
+        return [(bool(r["read"]["from"]), bool(r["read"]["to"])) for r in recs]
 
     def mask(self) -> Rule1Mask:
         """The Rule #1 mask over this episode's recorded games (true seconds on the night's grid)."""
@@ -193,7 +204,7 @@ class GymV2:
     def from_draw(cls, row: dict, **kw) -> "GymV2":
         """The episode a draw-log line describes, set up to run again exactly."""
         kw.setdefault("minutes", row.get("minutes", 0.0))
-        kw.setdefault("league", row.get("league", "nba"))
+        kw.setdefault("league", row.get("build_league", "nba") if row.get("mix") else row.get("league", "nba"))
         kw.setdefault("mask_level", row.get("mask_level", "strict"))
         if "weights" in row:
             kw.setdefault("weights", Weights(**row["weights"]))

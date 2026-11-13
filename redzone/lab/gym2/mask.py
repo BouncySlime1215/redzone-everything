@@ -12,13 +12,22 @@ frozen counters, never looser):
            made-basket window (cutgrade's entries_mid_play); the leave is clean, or else not at a high-leverage moment
            (sportsgrade's cuts_high).
   strict   (default, for training) the join AND the leave are grader dead balls over the whole span the cut may
-           really land in: LAND_MARGIN seconds either side, 2 x the largest measured landing sd of a fresh tune (2.0 s,
-           ledger L18: 1.24 s espn n=21, 1.98 s fs1 n=10); the leave is also clean; no made-basket window; and no
+           really land in: `land_margin` seconds either side, by the READ STATE of that end's stream (A-01b). The
+           margin is MARGIN_SIGMAS (2) x the stream's landing sd, rounded UP to the MARGIN_STEP grid; the sd is the
+           root sum of squares of the four error parts the replay's judge draws and the show pads with
+           (the show's TimingParams, as park_show imports it; ledger L18 and L29-L30): the position (0.29 s once the tune's place was READ: the
+           label is a whole-second floor, L18 (1); a stream NOT known to be read: 2.0 s, the largest measured fresh-tune
+           sd, L18 (2): 1.24 s espn n=21, 1.98 s fs1 n=10), K at its floor (K_SD_MIN 0.5 s, L29-L30), the feed stamp
+           (NBA 0.33, college 0.5, football 0.40 s) and the key (0.13 s). So NBA: read 1.5 s, unread 4.5 s (the flat
+           +-4 s of before was 2 x 2.0 s, the position part alone); college read 2.0 s. A cut with no read state given
+           takes the unread margin (never looser than before). The leave is also clean; no made-basket window; and no
            leave while the game is at a high-leverage moment: no high-leverage feed row within HL_LOOK seconds before
            or after the leave (the show's own crunch look, park_show.ShowParams.crunch_look, 90 s). The frozen
            counters do not count a dead-ball leave in a close-and-late stretch; CLAUDE.md ("never leave a high-leverage
            moment") and the replay's judge (park_replay.Judge.flip counts hl_leave on the high-leverage span whether
            or not the ball is dead) read stricter. Which reading is the rule is Nick's call; strict takes the stricter.
+           NOT covered by any margin here: a game with NO K tonight (the replay's "nok" case, scenario rung R0): its K
+           doubt is the 12 s prior (TimingParams.prior_sd), far past a few seconds of dead ball.
 
 What is and is not shared with the show: NOTHING of the show's own guard is used here. The show's hard guard
 (the PARK facts module's `refusal`, `Controller.park_why`) works on what the show BELIEVES at that second (its feed so far, its
@@ -31,17 +40,36 @@ frozen grader with the measured landing error, and never looser than the grader.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from redzone import grading
 from redzone.lab import cutgrade, leverage
-from redzone.noggin.park_show import SHOW
+from redzone.noggin.k_table import K_SD_MIN
+from redzone.noggin.park_show import SHOW, TIMING
 
-LAND_MARGIN = 2 * 2.0          # seconds either side of a cut: 2 x the largest measured landing sd (L18)
+UNREAD_TUNE_SD = 2.0           # a fresh tune whose place was not read: the largest measured landing sd (L18: 1.98 s fs1)
+MARGIN_SIGMAS = 2.0            # the strict margin covers this many landing sds either side of a cut
 HL_LOOK = SHOW.crunch_look     # seconds before and after a leave with no high-leverage row (park_show's crunch look)
 HIGH_PLAY_LEN = 7.0            # a high-leverage play covers this long before its stamp (veto_audit, park_ceiling)
 MARGIN_STEP = 0.5                     # how finely a margin span is checked for a dead ball
 MASK_LEVELS = ("strict", "grader")
+
+
+def landing_sd(league, read: bool) -> float:
+    """How far (sd, seconds) a cut on a stream of this league truly lands from the second meant: the root sum of squares
+    of the four error parts (position: read or not; K at its floor; feed stamp; key). See the module docstring."""
+    lg = str(getattr(league, "value", league))
+    pos = TIMING.read_sd if read else UNREAD_TUNE_SD
+    return math.sqrt(pos ** 2 + K_SD_MIN ** 2 + TIMING.stamp_sd(lg) ** 2 + TIMING.key_sd ** 2)
+
+
+def land_margin(league, read: bool) -> float:
+    """strict's margin either side of a cut: MARGIN_SIGMAS landing sds, rounded UP to the MARGIN_STEP grid."""
+    return math.ceil(MARGIN_SIGMAS * landing_sd(league, read) / MARGIN_STEP - 1e-9) * MARGIN_STEP
+
+
+LAND_MARGIN = land_margin("nba", False)    # an NBA stream not known to be read (4.5 s); the flat +-4 s before A-01b
 
 
 @dataclass(frozen=True)
@@ -62,16 +90,22 @@ class Rule1Mask:
         r = self.rs[g]
         return grading.dead_at(r.league, r.wall, r.plays, st)[0]
 
-    def _dead_span(self, g: int, st: float) -> bool:
-        n = int(round(2 * LAND_MARGIN / MARGIN_STEP))
-        return all(self._dead(g, st - LAND_MARGIN + k * MARGIN_STEP) for k in range(n + 1))
+    def margin(self, g: int, read: bool) -> float:
+        """strict's margin for a cut on game g on a stream whose place was (`read`) or was not known to be read."""
+        return land_margin(self.rs[g].league, bool(read))
+
+    def _dead_span(self, g: int, st: float, read: bool = False) -> bool:
+        m = self.margin(g, read)
+        n = int(round(2 * m / MARGIN_STEP))
+        return all(self._dead(g, st - m + k * MARGIN_STEP) for k in range(n + 1))
 
     # ---- the two ends ---------------------------------------------------------------------------------------------
-    def join_ok(self, g: int, j: float) -> Verdict:
+    def join_ok(self, g: int, j: float, read: bool = False) -> Verdict:
+        """`read`: the joined stream's place was read at decision time (the show's jump record "read"/"to"); strict only."""
         r = self.rs[g]
         st = self.base + float(j)
         if self.level == "strict":
-            return Verdict(True) if self._dead_span(g, st) else Verdict(False, "join: dead time does not cover the landing error")
+            return Verdict(True) if self._dead_span(g, st, read) else Verdict(False, "join: dead time does not cover the landing error")
         if self._dead(g, st):
             return Verdict(True)
         if cutgrade.after_bucket(r.league, r.wall, r.plays, st):
@@ -95,7 +129,8 @@ class Rule1Mask:
             k -= 1
         return False
 
-    def leave_ok(self, g: int, i: float) -> Verdict:
+    def leave_ok(self, g: int, i: float, read: bool = False) -> Verdict:
+        """`read`: the left stream's place was read at decision time (the jump record's "read"/"from"); strict only."""
         r = self.rs[g]
         st = self.base + float(i)
         clean = grading.clean_leave(r.league, r.wall, r.plays, st)
@@ -103,7 +138,7 @@ class Rule1Mask:
             if clean or not self.high_moment(g, i):
                 return Verdict(True, "" if clean else "low-leverage mid-play leave")
             return Verdict(False, "leave: a high-leverage moment mid-play")
-        if not self._dead_span(g, st):
+        if not self._dead_span(g, st, read):
             return Verdict(False, "leave: dead time does not cover the landing error")
         if not clean:
             return Verdict(False, "leave: not clean")
@@ -111,24 +146,29 @@ class Rule1Mask:
             return Verdict(False, "leave: a high-leverage moment")
         return Verdict(True)
 
-    def allows(self, g1: int, i: float, g2: int, j: float) -> Verdict:
-        """May the director cut from game g1 at true second i to game g2 at true second j?"""
-        lv = self.leave_ok(g1, i)
+    def allows(self, g1: int, i: float, g2: int, j: float, leave_read: bool = False, join_read: bool = False) -> Verdict:
+        """May the director cut from game g1 at true second i to game g2 at true second j? leave_read / join_read: was
+        each stream's place read at decision time (unknown = not read: the wide margin)."""
+        lv = self.leave_ok(g1, i, leave_read)
         if not lv.ok:
             return lv
-        return self.join_ok(g2, j)
+        return self.join_ok(g2, j, join_read)
 
     def mask(self, options: list) -> list[bool]:
-        """options: (g1, i, g2, j) each; True = allowed."""
+        """options: (g1, i, g2, j) or (g1, i, g2, j, leave_read, join_read) each; True = allowed."""
         return [self.allows(*o).ok for o in options]
 
     # ---- the show's own cuts, as a diagnostic ----------------------------------------------------------------------
-    def audit(self, cuts: list) -> dict:
+    def audit(self, cuts: list, reads: list | None = None) -> dict:
         """The judge's true cuts (park_replay.Judge.cuts: (g1, true i, g2, true j)): how many the mask would block, by end
-        and by why."""
+        and by why. reads: per cut (leave stream read, join stream read), as the show's jump records hold them (one
+        record per cut); None = unknown, so every stream takes the unread margin."""
+        if reads is not None and len(reads) != len(cuts):
+            raise ValueError(f"{len(reads)} read states for {len(cuts)} cuts")
+        reads = reads if reads is not None else [(False, False)] * len(cuts)
         out: dict = {"cuts": len(cuts), "blocked": 0, "blocked_leaves": 0, "blocked_joins": 0, "why": {}}
-        for g1, i, g2, j in cuts:
-            lv, jn = self.leave_ok(g1, i), self.join_ok(g2, j)
+        for (g1, i, g2, j), (r1, r2) in zip(cuts, reads):
+            lv, jn = self.leave_ok(g1, i, r1), self.join_ok(g2, j, r2)
             out["blocked_leaves"] += not lv.ok
             out["blocked_joins"] += not jn.ok
             if not (lv.ok and jn.ok):
