@@ -1,0 +1,42 @@
+# Data crew D: pre-game line movement for crew H's daily pre-game report (Nick 12:00 PM Nov 5 2026).
+# ESPN pickcenter (public, plan B personal use) + Polymarket public prices; Kalshi red; no secrets; never the Mac.
+# DERIVED numbers only are pushed (lines, moves, implied probabilities, volume) to markets-pregame-out/*.
+# Start: push markets-pregame-run/<YYYYMMDD> (the date is read from the branch name), or workflow_dispatch.
+name: markets-pregame
+on:
+  push:
+    branches: ["markets-pregame-run/**"]
+  workflow_dispatch:
+    inputs:
+      date: {description: "YYYY-MM-DD (US Eastern)", default: ""}
+jobs:
+  lines:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip -q install requests
+      - name: pull
+        run: |
+          R="${GITHUB_REF_NAME##*/}"; D="${{ inputs.date }}"
+          [ -z "$D" ] && [[ "$R" =~ ^[0-9]{8}$ ]] && D="${R:0:4}-${R:4:2}-${R:6:2}"
+          [ -z "$D" ] && D=$(TZ=America/New_York date +%F)
+          echo "D=$D" >> "$GITHUB_ENV"
+          for lg in nba nfl; do python scripts/markets/pregame_lines.py --league $lg --date "$D" --out out/pregame || true; done
+      - name: push derived lines
+        run: |
+          B="markets-pregame-out/${D//-/}-${{ github.run_id }}"
+          mkdir -p /tmp/d && cp out/pregame/*.jsonl /tmp/d/ 2>/dev/null || exit 0
+          git config user.name "redzone-markets-bot"; git config user.email "actions@users.noreply.github.com"
+          git checkout -q --orphan "$B" && git rm -rq --cached . && git clean -fdq
+          cp /tmp/d/*.jsonl . && git add *.jsonl
+          git commit -qm "pre-game lines ${D} (derived; personal-use, not for commercial release)" && git push -q origin "$B" && echo "pushed $B"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: markets-pregame-${{ env.D }}
+          path: out/pregame/
+          retention-days: 30

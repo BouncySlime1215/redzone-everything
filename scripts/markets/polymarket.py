@@ -292,7 +292,12 @@ class Client:
                 time.sleep(wait)
             self._last = time.monotonic()
             self.n += 1
-            r = self.s.get(url, params=params, timeout=30)
+            try:
+                r = self.s.get(url, params=params, timeout=30)
+            except Exception as e:  # noqa: BLE001 - timeouts / resets: back off and retry, never crash a long pull
+                print(f"  {type(e).__name__} on {url}; retry", file=sys.stderr)
+                time.sleep(min(60.0, 2.0 ** attempt))
+                continue
             if r.status_code == 200:
                 return r.json()
             if r.status_code in (429, 500, 502, 503, 504):
@@ -347,6 +352,7 @@ def run(league: str, start: str, end: str, out: Path, max_markets: int | None, t
     lo, hi = parse_ts(f"{start}T00:00:00Z"), parse_ts(f"{end}T23:59:59Z") + 86400
     by_day: dict[str, list[dict]] = defaultdict(list)
     n_seen = n_markets = n_matched = 0
+    game_rows: list[dict] = []
     for m in list_game_markets(c, tag_id, start, end, max_markets):
         n_seen += 1
         pm = parse_market(m, league, ordering)
@@ -357,6 +363,12 @@ def run(league: str, start: str, end: str, out: Path, max_markets: int | None, t
             continue
         n_markets += 1
         n_matched += bool(pm["game_key"])
+        try:
+            vol = float(m.get("volumeNum") or m.get("volume") or 0.0)
+        except (TypeError, ValueError):
+            vol = 0.0
+        game_rows.append({"game_key": pm["game_key"], "market_id": pm["market_id"], "start_ts": pm["start_ts"],
+                          "volume_usd": round(vol, 2)})
         by_day[pm["day"] or local_date(pm["start_ts"])].extend(scrub(t) for t in ticks)
     d = out / SOURCE / league
     d.mkdir(parents=True, exist_ok=True)
@@ -367,6 +379,9 @@ def run(league: str, start: str, end: str, out: Path, max_markets: int | None, t
             for r in rows:
                 f.write(json.dumps(r) + "\n")
         n_ticks += len(rows)
+    with open(d / "markets.jsonl", "a") as f:          # per-market total traded volume (for attention labels)
+        for g in game_rows:
+            f.write(json.dumps(g) + "\n")
     stats = {"league": league, "start": start, "end": end, "tag_id": tag_id, "markets_listed": n_seen,
              "markets": n_markets, "ticks": n_ticks, "days": len(by_day),
              "matched_share": round(n_matched / n_markets, 4) if n_markets else 0.0, "requests": c.n,

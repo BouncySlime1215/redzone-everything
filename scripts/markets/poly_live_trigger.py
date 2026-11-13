@@ -133,7 +133,7 @@ def tonight_markets(league: str, date: str, max_markets: int | None = None) -> d
         for m in page.get("markets") or []:
             pm = PM.parse_market(m, league, ordering)
             if pm and PM.local_date(pm["start_ts"]) == day:      # slug dates can be UTC: use the US Eastern start
-                pm["check"] = {k: m.get(k) for k in ("question", "outcomes", "outcomePrices", "slug")}
+                pm["check"] = {k: m.get(k) for k in ("question", "outcomes", "outcomePrices", "slug", "volumeNum")}
                 out[pm["market_id"]] = pm
         cur = page.get("next_cursor")
         if not cur or (max_markets and len(out) >= max_markets):
