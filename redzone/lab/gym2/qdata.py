@@ -44,6 +44,16 @@ Decisive and tie. Over the legal options' Q (rounded to QD_ROUND places): gap = 
 (QD_DECISIVE, the EXP1b definition, on value2 points); TIE when gap <= QD_TIE_EPS. A point with one legal option has
 neither (single = True) and is left out of the tie share.
 
+Execution (task A-02b, `execution`, default "a02" = the A-02 rows byte for byte). A forced jump is not always made in its
+rollout, and an option whose jump was not made carries the plain planner's Q, not its own: ties then look far more
+common than they are. "account" runs the same rollouts and records per option `made`, `made_s` (seconds after the
+decision), `exec`, `not_made_reason` and `not_made_class` (not_made_reason, from a read-only log of what stood in the
+way each second), and per point best, gap, decisive and tie over EXECUTED options only (`exec_*`, `n_exec`; fewer than
+two = `no_choice`, left out of the tie share). "fixed" (version qdata-v2) does the same with the two causes found on the
+toy removed: the plain planner gets the show's own search knobs for an instant rig (no landing further than the step's
+land_wait_max before its play, which the step always refuses; no 15 s skip route, which the show does not have), and
+the forced row is kept when the search swaps its rows for banked landings (staying beat every reported jump).
+
 Not modelled here (named, not hidden): stick failures and step-time jitter (Gym v2's FakeRig), feed rows arriving late
 (the heavy tail), and the show's guard (the PARK facts module's refusal): the training mask is the strict grader mask, as in Gym v2.
 
@@ -84,6 +94,8 @@ QD_SLATES = 60000
 QD_PER_SHARD = 200
 QD_MIN_ROWS = 60                    # a recorded game needs this many plays (park_replay.load_replay's rule)
 QD_SOURCES = ("espn",)              # where the archive's games come from (datamanifest's archive kind)
+QD_EXECUTION = ("a02", "account", "fixed")   # how forced jumps are run and accounted (task A-02b; build_slate)
+QD_VERSION_OF = {"a02": QD_VERSION, "account": "qdata-v1-acct", "fixed": "qdata-v2"}
 
 
 # ---------------------------------------------------------------------------------------------- small helpers
@@ -185,6 +197,78 @@ def tie_table_text(tab: dict) -> str:
             c = tab["by"][key][val]
             lines.append(f"  {val:<18} n={c['n']:<6} tie={c['tie_share']:.3f} decisive={c['decisive_share']:.3f} "
                          f"options={c['options_mean']:.2f}")
+    return "\n".join(lines)
+
+
+def option_executed(o: dict) -> bool:
+    """Was this option carried out in its rollout: STAY always; a forced jump when its jump was made (an A-02 row's
+    `done`, a later row's `exec`). An option that was not carried out has the plain planner's Q, not its own."""
+    if "exec" in o:
+        return bool(o["exec"])
+    return o.get("k") == "stay" or o.get("done") is True
+
+
+def exec_flags(legal: list, threshold: float = QD_DECISIVE, eps: float = QD_TIE_EPS) -> dict:
+    """Best, gap, decisive and tie over the EXECUTED legal options only (the others keep their rows, flagged, and never
+    enter): exec_best is an index into the legal options; no_choice when fewer than two were executed."""
+    ix = [k for k, o in enumerate(legal) if option_executed(o) and o.get("q") is not None]
+    d = decisive_of([legal[k]["q"] for k in ix], threshold, eps)
+    return {"n_exec": len(ix), "no_choice": len(ix) < 2, "exec_best": None if d["best"] is None else ix[d["best"]],
+            "exec_gap": d["gap"], "exec_decisive": d["decisive"], "exec_tie": d["tie"]}
+
+
+def exec_tie_table(rows: list[dict], eps: float | None = None, threshold: float = QD_DECISIVE) -> dict:
+    """Tie and decisive shares over EXECUTED options only (denominator: decision points with two executed options or
+    more; 'no_choice' points are counted apart), with the A-02 definition (every legal option) side by side on the same
+    rows, by padding, scenario and mix, and the share of forced jumps not made. Works on A-02 rows too (executed = STAY
+    or `done`). eps None = QD_TIE_EPS."""
+    e = QD_TIE_EPS if eps is None else eps
+    out: dict = {"eps": e, "decisive_at": threshold, "by": {"all": {}, "pad": {}, "scenario": {}, "mix": {}}}
+    for r in rows:
+        legal = [o for o in r["options"] if o.get("q") is not None]
+        new = exec_flags(legal, threshold, e)
+        old = decisive_of([o["q"] for o in legal], threshold, e)
+        jumps = [o for o in legal if o.get("k") != "stay"]
+        for key, val in (("all", "all"), ("pad", str(r["pad"])), ("scenario", r["scenario"]), ("mix", r["mix"])):
+            c = out["by"][key].setdefault(val, {"points": 0, "no_choice": 0, "n": 0, "tie": 0, "decisive": 0,
+                                               "old_n": 0, "old_tie": 0, "old_decisive": 0, "jumps": 0, "jumps_made": 0})
+            c["points"] += 1
+            c["jumps"] += len(jumps)
+            c["jumps_made"] += sum(1 for o in jumps if option_executed(o))
+            if not old["single"]:
+                c["old_n"] += 1
+                c["old_tie"] += int(old["tie"])
+                c["old_decisive"] += int(old["decisive"])
+            if new["no_choice"]:
+                c["no_choice"] += 1
+                continue
+            c["n"] += 1
+            c["tie"] += int(new["exec_tie"])
+            c["decisive"] += int(new["exec_decisive"])
+    for grp in out["by"].values():
+        for c in grp.values():
+            c["no_choice_share"] = round(c["no_choice"] / c["points"], 4)
+            c["tie_share"] = round(c["tie"] / c["n"], 4) if c["n"] else None
+            c["decisive_share"] = round(c["decisive"] / c["n"], 4) if c["n"] else None
+            c["old_tie_share"] = round(c["old_tie"] / c["old_n"], 4) if c["old_n"] else None
+            c["old_decisive_share"] = round(c["old_decisive"] / c["old_n"], 4) if c["old_n"] else None
+            c["not_made_share"] = round(1 - c["jumps_made"] / c["jumps"], 4) if c["jumps"] else None
+    return out
+
+
+def exec_tie_table_text(tab: dict) -> str:
+    def f(x):
+        return "  -  " if x is None else f"{x:.3f}"
+    lines = [f"EXECUTED options only (tie within {tab['eps']:g}, decisive gap >= {tab['decisive_at']:g}); no_choice = "
+             "fewer than two executed options, left out of the denominator; 'old' = every legal option (A-02)"]
+    for key in ("all", "pad", "scenario", "mix"):
+        lines.append(f"by {key}:")
+        for val in sorted(tab["by"][key], key=lambda v: (len(v), v)):
+            c = tab["by"][key][val]
+            lines.append(f"  {val:<18} points={c['points']:<6} no_choice={f(c['no_choice_share'])} n={c['n']:<6} "
+                         f"tie={f(c['tie_share'])} decisive={f(c['decisive_share'])} | old n={c['old_n']:<6} "
+                         f"tie={f(c['old_tie_share'])} decisive={f(c['old_decisive_share'])} | jumps not made "
+                         f"{f(c['not_made_share'])}")
     return "\n".join(lines)
 
 
@@ -356,6 +440,7 @@ class SlatePlan:
     points: int = QD_POINTS
     horizon: int = QD_HORIZON
     mask_level: str = "strict"
+    execution: str = "a02"
 
     @property
     def shards(self) -> int:
@@ -370,7 +455,8 @@ class SlatePlan:
         return {"master_seed": self.master_seed, "slates": self.slates, "per_shard": self.per_shard,
                 "episode_min": self.episode_min, "points": self.points, "horizon": self.horizon, "window": QD_WINDOW,
                 "mask_level": self.mask_level, "cutoff": self.pool.cutoff, "max_nfl": self.pool.max_nfl,
-                "pool": self.pool.digest, "version": QD_VERSION}
+                "pool": self.pool.digest, "version": QD_VERSION_OF[self.execution],
+                **({} if self.execution == "a02" else {"execution": self.execution})}
 
     def digest(self) -> str:
         return hashlib.sha256(qd_canon(self.knobs()).encode()).hexdigest()
@@ -423,28 +509,56 @@ def _planner_classes():
         """The plain planner, also keeping each search's own jump rows (before its choice and before the fall-back to
         banked landings): `qd_seen` = [(t, rows)]. It decides exactly as Planner does (rows are only read)."""
         qd_seen = None
+        qd_raw = ()
 
         def _options(self, f):
             raw = f.jumps(f.scr, f.cs, f.tw, f.m0s, f.live0, f.paid, f.lv, f.ld, self.p.depth, f.T)
+            self.qd_raw = raw
             if self.qd_seen is not None:
                 self.qd_seen.append((f.t, raw))
             return super()._options(f)
 
     class QForced(QRecorder):
         """A rollout's planner: the option is forced (a jump row kept until its jump is made or its second passes;
-        STAY: every jump vetoed through the window), then the plain planner (the default continuation policy)."""
+        STAY: every jump vetoed through the window), then the plain planner (the default continuation policy).
+        qd_diag (a list) logs, each second of the forcing window, what stood in the forced jump's way (read only:
+        it changes no decision). qd_exec (qdata-v2): the forced row is kept even when the search swaps its rows for
+        banked landings (staying beat every reported jump), the one rollout artefact found (task A-02b)."""
         qd_force = None           # None | "stay" | (game, route, tau, landing)
         qd_until = -1
         qd_hops = 0
         qd_kept = 0
+        qd_diag = None
+        qd_exec = False
+
+        def _forcing(self, t) -> bool:
+            return isinstance(self.qd_force, tuple) and t <= self.qd_until and len(self.st.hops) == self.qd_hops
+
+        def _is_forced(self, row) -> bool:
+            fk, o = self.qd_force, row[7]
+            return (not row[1] and o[0] == fk[0] and o[1] == fk[1] and abs(row[2] - fk[2]) <= self.params.plan_ok_s
+                    and row[4] == fk[3])
+
+        def _options(self, f):
+            out = super()._options(f)
+            if not self._forcing(f.t):
+                return out
+            v0, opts, best, landable = out
+            raw = self.qd_raw
+            in_raw = any(self._is_forced(r) for r in raw)
+            in_opts = in_raw and any(self._is_forced(r) for r in opts)
+            swap = in_raw and not in_opts
+            if self.qd_diag is not None:          # (a swap undone by qd_exec leaves the row listed)
+                self.qd_diag.append((f.t, "listed" if in_opts or (swap and self.qd_exec) else "bank_swap" if swap
+                                     else _gone_kind(self, raw)))
+            if self.qd_exec and swap:
+                return v0, raw, self._best_option(raw), landable
+            return out
 
         def _keep(self, f, v0, opts, best):
-            fk = self.qd_force
-            if isinstance(fk, tuple) and f.t <= self.qd_until and len(self.st.hops) == self.qd_hops:
-                ok_s = self.params.plan_ok_s
+            if self._forcing(f.t):
                 for row in opts:
-                    o = row[7]
-                    if not row[1] and o[0] == fk[0] and o[1] == fk[1] and abs(row[2] - fk[2]) <= ok_s and row[4] == fk[3]:
+                    if self._is_forced(row):
                         self.qd_kept += 1
                         return row
             return super()._keep(f, v0, opts, best)
@@ -453,9 +567,136 @@ def _planner_classes():
             out = super()._act(t, S)
             if self.qd_force == "stay" and t <= self.qd_until and out[0]:
                 out = (False,) + tuple(out[1:])
+            elif self.qd_diag is not None and self._forcing(t):
+                self.qd_diag.append((t, _act_event(self, t, S, out)))
             return out
     _QD_CLASSES.extend((QRecorder, QForced))
     return QRecorder, QForced
+
+
+def _gone_kind(pl, raw) -> str:
+    """A search whose rows no longer hold the forced jump: the same jump planned for another second ('tau_drift'),
+    the same game and route with another landing ('landing_moved'), or no row for that game and route ('row_gone')."""
+    fk = pl.qd_force
+    same = [r for r in raw if not r[1] and r[7][0] == fk[0] and r[7][1] == fk[1]]
+    if any(r[4] == fk[3] for r in same):
+        return "tau_drift"
+    return "landing_moved" if same else "row_gone"
+
+
+def gate_refusal(t: int, S, A: list, s, *, guard: int, reach: int, flip: int, lead: int, know: int, n: int,
+                 spot: int, long_stop: int = 20) -> str | None:
+    """Why the core's step would NOT flip to the hidden stick this second although the planner asks for the jump
+    (None = it would). A read-only copy of the step's own jump test, in its order, after the one pause key the step
+    gives a stick that has reached its spot: the stick not ready, a flip in progress, the minimum stay, the stick past
+    reach, the feed not yet reporting the padding, no play shown yet on screen, the screen in high leverage or mid play,
+    a landing not in dead time or too long before its play."""
+    live = s.mode == "live"
+    if S.hg < 0 or t < S.h_ready:
+        return "stick_not_ready"
+    if t < S.black:
+        return "flip_in_progress"
+    if t - S.s_land < s.min_stay:
+        return "min_stay"
+    if not (live or S.hb - S.he <= reach + flip):
+        return "past_reach"
+    xh = A[S.hg]
+    paused = S.h_paused
+    hb_i = min(n - 1, max(0, int(t - S.hb + S.he)))
+    if spot < 0 or hb_i < spot:
+        paused = False
+    elif not paused and xh.since[hb_i] > guard and xh.left[hb_i] >= guard and hb_i + guard <= t + know:
+        paused = True
+    xs = A[S.sg]
+    i = min(n - 1, max(0, int(t - S.sb + S.se)))
+    calm = xs.hlc[min(n, i + guard + 1)] - xs.hlc[max(0, i - guard)] == 0
+    leave = (xs.since[i] > guard and xs.left[i] >= guard and calm) or (s.leave_rule == "low_leverage" and calm) \
+        or t > xs.a1 + S.sb
+    j = min(n - 1, max(0, int(t - S.hb + S.he) + (lead if paused else flip)))
+    if i + guard > t + know or j + guard > t + know:
+        return "feed_not_reported"
+    if S.s_live < s.min_live_s and xs.left[i] < long_stop and t <= xs.a1 + S.sb:
+        return "min_live"
+    if not calm:
+        return "screen_high_leverage"
+    if not leave:
+        return "screen_mid_play"
+    if not (xh.since[j] > guard and xh.left[j] >= guard):
+        return "landing_not_dead"
+    if xh.left[j] > s.land_wait_max:
+        return "landing_long_wait"
+    return None
+
+
+SEARCH_EVENTS = ("listed", "bank_swap", "tau_drift", "landing_moved", "row_gone")
+# each not-made reason: is it a CONSTRAINT (the show's own step or timing could not carry the jump out either: the option
+# was not really available) or an ARTEFACT of how the rollout forces it (the show could, the rollout did not)
+NOT_MADE_CLASS = {"bank_swap": "artefact", "tau_drift": "artefact", "landing_moved": "artefact", "row_gone": "artefact",
+                  "no_log": "artefact"}
+
+
+def not_made_reason(log: list) -> str:
+    """Why a forced jump was not made, from its rollout's forcing log [(second, event)]: the step refused it when asked
+    ('core_<reason>', the last refusal: a constraint); else the first search had already swapped its rows for banked
+    landings and no later search listed it ('bank_swap'); else a later search lost the row ('tau_drift',
+    'landing_moved', 'row_gone', the last such loss after the last listing); else its second passed while the planner
+    waited ('expired_<what it waited for>': a constraint of timing)."""
+    if not log:
+        return "no_log"
+    core = [e for _, e in log if e.startswith("core:")]
+    if core:
+        return "core_" + core[-1][5:]
+    search = [e for _, e in log if e in SEARCH_EVENTS]
+    if "bank_swap" in search and "listed" not in search:
+        return "bank_swap"
+    k = max((n for n, e in enumerate(search) if e == "listed"), default=-1)
+    lost = [e for e in search[k + 1:] if e in ("tau_drift", "landing_moved", "row_gone")]
+    if lost:
+        return lost[-1]
+    acts = [e for _, e in log if e not in SEARCH_EVENTS]
+    return "expired_" + (acts[-1] if acts else "no_second")
+
+
+def not_made_class(reason: str | None) -> str | None:
+    """'constraint' or 'artefact' for a not-made reason (None for a jump that was made)."""
+    if reason is None:
+        return None
+    return NOT_MADE_CLASS.get(reason, "constraint" if reason.startswith(("core_", "expired_")) else "artefact")
+
+
+def _act_event(pl, t: int, S, out) -> str:
+    """What one second of the forcing window did for the forced jump: 'asked' (the jump is asked for and the step's
+    test lets it through), 'core:<reason>' (asked, refused by the step), or why the planner did not ask: a stick
+    command in progress ('stick_tune', 'stick_move'), no jump planned ('no_plan'), another jump planned ('plan_other'),
+    the hidden stick not yet on the game or ready ('stick_loading', 'stick_not_ready'), a flip in progress, the screen
+    not yet at its leave ('wait_leave') or past it ('leave_passed'), the landing not yet in its window ('wait_landing')
+    or past it ('landing_passed')."""
+    fk = pl.qd_force
+    if out[0]:
+        why = gate_refusal(t, S, pl.A, pl.s, guard=pl.G, reach=pl.reach, flip=pl.flip, lead=pl.lead, know=pl.know,
+                           n=pl.n, spot=out[2], long_stop=pl.params.long_stop_s)
+        return "asked" if why is None else "core:" + why
+    if out[3]:
+        return "stick_" + out[3]
+    go = pl.go
+    if go is None:
+        return "no_plan"
+    if go[3] != fk[0]:
+        return "plan_other"
+    if S.hg != go[3]:
+        return "stick_loading"
+    if t < S.h_ready:
+        return "stick_not_ready"
+    if t < S.black:
+        return "flip_in_progress"
+    cs = int(t - S.sb + S.se)
+    if cs < go[1]:
+        return "wait_leave"
+    if cs > go[2]:
+        return "leave_passed"
+    hb = int(t - S.hb + S.he)
+    j = hb + (pl.lead if S.h_paused else pl.flip)
+    return "wait_landing" if j < go[4] else "landing_passed" if j > go[5] else "not_paused"
 
 
 def _fork(S, st):
@@ -551,30 +792,44 @@ def _features(w: SlateWorld, t: int, S) -> dict:
                             "hidden_wait_s"], "state": state}
 
 
-def _rollout(w: SlateWorld, S, st, pl, t: int, force, until: int, horizon: int, brain) -> dict:
+def _rollout(w: SlateWorld, S, st, pl, t: int, force, until: int, horizon: int, brain, execution: str = "a02") -> dict:
     from redzone.noggin import park_core
     QRecorder, QForced = _planner_classes()
     S2, st2 = _fork(S, st)
     p2 = copy.copy(pl)
     p2.__class__ = QForced
     p2.qd_seen, p2.qd_force, p2.qd_until, p2.qd_hops, p2.qd_kept = [], force, until, len(st.hops), 0
+    acct = execution != "a02"
+    if acct:
+        p2.qd_diag, p2.qd_exec = [], execution == "fixed"
     st2, S2 = park_core.run(w.night, brain, w.eng, t0=t, t1=t + horizon, state=S2, stats=st2, planner=p2)
     first = p2.qd_seen[0] if p2.qd_seen else (None, [])
     done = None
     if isinstance(force, tuple):
         done = any(fl[1] == force[0] and t <= fl[0] <= until for fl in st2.flips)
-    return {"q": qd_round(st2.v2_seen), "must": qd_round(sum(st2.seen.values())), "live": int(st2.live_s),
-            "rule1": int(st2.mid_entry + st2.mid_leave + st2.hl_leave), "jumps": len(st2.flips), "done": done,
-            "_first": first}
+    out = {"q": qd_round(st2.v2_seen), "must": qd_round(sum(st2.seen.values())), "live": int(st2.live_s),
+           "rule1": int(st2.mid_entry + st2.mid_leave + st2.hl_leave), "jumps": len(st2.flips), "done": done,
+           "_first": first}
+    if acct and isinstance(force, tuple):
+        at = next((fl[0] for fl in st2.flips if fl[1] == force[0] and t <= fl[0] <= until), None)
+        out["made"] = bool(done)
+        out["made_s"] = None if at is None else int(at - t)
+        out["_log"] = p2.qd_diag
+    return out
 
 
 def build_slate(draw: SlateDraw, loader: QLoader, *, episode_min: float = QD_EPISODE_MIN, points: int = QD_POINTS,
-                horizon: int = QD_HORIZON, mask_level: str = "strict", master_seed: int = 0) -> tuple[list, dict]:
-    """(decision-point rows, the slate's summary). Deterministic in the draw and the archive."""
+                horizon: int = QD_HORIZON, mask_level: str = "strict", master_seed: int = 0,
+                execution: str = "a02") -> tuple[list, dict]:
+    """(decision-point rows, the slate's summary). Deterministic in the draw and the archive. `execution` (QD_EXECUTION):
+    "a02" the A-02 rows byte for byte; "account" the same rollouts with each forced jump's execution recorded and the
+    executable-option flags; "fixed" the same accounting with the bank-swap artefact fixed (qdata-v2)."""
+    if execution not in QD_EXECUTION:
+        raise ValueError(f"execution must be one of {QD_EXECUTION}, not {execution!r}")
     from redzone.lab.gym2.env import replay_module
     from redzone.lab.gym2.mask import Rule1Mask
     from redzone.noggin import park_core
-    from redzone.noggin.park_plan import Plan
+    from redzone.noggin.park_plan import FAR, Plan
     pr = replay_module()
     summary = {"slate": draw.index, "night": draw.night, "draw": draw.to_dict(), "points": 0, "void": ""}
     w, why = slate_world(draw, loader)
@@ -585,7 +840,13 @@ def build_slate(draw: SlateDraw, loader: QLoader, *, episode_min: float = QD_EPI
     from redzone.noggin.park_show import ShowParams
     P = ShowParams.from_config(config.default)
     QRecorder, _ = _planner_classes()
-    pl = QRecorder(Plan(jump_bonus=P.bonus))
+    if execution == "fixed":
+        # the show's own search knobs for an instant rig (park_show's planner): no 15 s skip route, and no landing
+        # further than the step's land_wait_max before its play (the step refuses those, so the show never lists them)
+        lw = w.eng.land_wait_max
+        pl = QRecorder(Plan(jump_bonus=P.bonus), skip=False, max_wait=int(lw) if lw < 900 else FAR)
+    else:
+        pl = QRecorder(Plan(jump_bonus=P.bonus))
     pl.qd_seen = []
     brain = pr._Hindsight()
     mask = Rule1Mask(w.reps, w.night.base, level=mask_level)
@@ -615,13 +876,13 @@ def build_slate(draw: SlateDraw, loader: QLoader, *, episode_min: float = QD_EPI
         used.add(k)
         (S0, st0), pl0 = snap
         pl0.qd_seen = None
-        rows.append(_point(w, S0, st0, pl0, t, cand, mask, rrng, horizon, brain, draw, gids, mix, master_seed))
+        rows.append(_point(w, S0, st0, pl0, t, cand, mask, rrng, horizon, brain, draw, gids, mix, master_seed, execution))
     summary["points"] = len(rows)
     summary.update(start=start, end=end, span=[w.a, w.b], know=w.know, lag=w.lag, games=gids, leagues=w.leagues)
     return rows, summary
 
 
-def _point(w, S, st, pl, t, cand, mask, rrng, horizon, brain, draw, gids, mix, master_seed) -> dict:
+def _point(w, S, st, pl, t, cand, mask, rrng, horizon, brain, draw, gids, mix, master_seed, execution="a02") -> dict:
     """One decision point: the options (STAY and each distinct first jump), the mask, Q of each legal one."""
     from redzone.noggin.park_plan import TUNE
     scr_read, hid_read, tune_read = (rrng.random() < QD_P_READ for _ in range(3))
@@ -648,17 +909,25 @@ def _point(w, S, st, pl, t, cand, mask, rrng, horizon, brain, draw, gids, mix, m
             masked.append({"k": o["k"], "g": o["g"], "route": o["route"], "why": v.why})
     for o in legal:
         if o["k"] == "stay":
-            r = _rollout(w, S, st, pl, t, "stay", t + QD_WINDOW, horizon, brain)
+            r = _rollout(w, S, st, pl, t, "stay", t + QD_WINDOW, horizon, brain, execution)
         else:
             k = tuple(o["k"])
-            r = _rollout(w, S, st, pl, t, k, t + o["tau"] + pl.params.plan_ok_s, horizon, brain)
+            r = _rollout(w, S, st, pl, t, k, t + o["tau"] + pl.params.plan_ok_s, horizon, brain, execution)
         first = r.pop("_first")
         keys = sorted({_row_key(x) for x in first[1] if not x[1] and x[2] - t <= QD_WINDOW})
         if first[0] != t or keys != sorted(seen):
             raise RuntimeError(f"slate {draw.index} t={t}: the rollout did not start from the decision's own search")
+        log = r.pop("_log", None)
+        if execution != "a02":
+            if o["k"] == "stay":
+                r.update(exec=True, not_made_reason=None, not_made_class=None)
+            else:
+                why = None if r["made"] else not_made_reason(log)
+                r.update(exec=bool(r["made"]), not_made_reason=why, not_made_class=not_made_class(why))
         o.update(r)
     d = decisive_of([o["q"] for o in legal])
-    return {"fmt": QD_FORMAT, "version": QD_VERSION, "master_seed": int(master_seed), "slate": draw.index,
+    extra = {} if execution == "a02" else {"execution": execution, **exec_flags(legal)}
+    return {"fmt": QD_FORMAT, "version": QD_VERSION_OF[execution], "master_seed": int(master_seed), "slate": draw.index,
             "night": draw.night, "games": gids, "leagues": list(w.leagues), "mix": mix, "seed": draw.seed,
             "pad": int(draw.pad), "padding": int(draw.pad), "scenario": w.scenario["feed"], "feed": w.scenario,
             "lag": qd_round(w.lag), "know": int(w.know), "t": int(t), "t_wall": int(w.night.base + t),
@@ -666,7 +935,7 @@ def _point(w, S, st, pl, t, cand, mask, rrng, horizon, brain, draw, gids, mix, m
             "reads": {"screen": scr_read, "hidden": hid_read, "tune": tune_read},
             "features": _features(w, t, S), "options": legal, "masked": masked, "n_legal": len(legal),
             "n_masked": len(masked), "n_candidates": len(seen), **{k: d[k] for k in ("best", "gap", "decisive", "tie", "single")},
-            "q_best": None if d["best"] is None else legal[d["best"]]["q"], "q_second": d["second"]}
+            "q_best": None if d["best"] is None else legal[d["best"]]["q"], "q_second": d["second"], **extra}
 
 
 # ---------------------------------------------------------------------------------------------- shards and manifests
@@ -676,7 +945,7 @@ def build_shard(plan: SlatePlan, shard: int, loader: QLoader) -> tuple[list, dic
     for i in plan.shard_slates(shard):
         d = draw_slate(plan.pool, plan.master_seed, i)
         r, s = build_slate(d, loader, episode_min=plan.episode_min, points=plan.points, horizon=plan.horizon,
-                           mask_level=plan.mask_level, master_seed=plan.master_seed)
+                           mask_level=plan.mask_level, master_seed=plan.master_seed, execution=plan.execution)
         for x in r:
             x["shard"] = int(shard)
         rows.extend(r)
@@ -684,6 +953,8 @@ def build_shard(plan: SlatePlan, shard: int, loader: QLoader) -> tuple[list, dic
     tab = tie_table(rows)
     summary = {"fmt": QD_FORMAT, "shard": int(shard), "plan": plan.knobs(), "plan_sha256": plan.digest(),
                "slates": slates, "rows": len(rows), "void": sum(1 for s in slates if s["void"]), "ties": tab}
+    if plan.execution != "a02":
+        summary["exec_ties"] = exec_tie_table(rows)
     return rows, summary
 
 

@@ -11,7 +11,7 @@ sha256 and row count) and OUT/qdata_summary.json (tie table, counts) are rewritt
 
 Under the F-03 job worker (docs/jobs.md; docs/qdata.md has a spec): RZ_JOB_STEP_START/END are the shard range of
 the unit, RZ_JOB_CONFIG holds the plan (master_seed, slates, per_shard, data_root, out, max_nfl, cutoff, episode_min,
-points, horizon, tag), RZ_JOB_WORK is the job's folder. The shard files are written under RZ_JOB_WORK/<out> (default
+points, horizon, tag, execution), RZ_JOB_WORK is the job's folder. The shard files are written under RZ_JOB_WORK/<out> (default
 "qdata"), outside the worker's checkpoints, so a checkpoint never copies or re-hashes the growing data; the unit's
 checkpoint (RZ_JOB_NEXT) gets state.json (the shards done, each file's sha256), qdata.manifest.json and
 qdata_summary.json. A resumed unit re-checks every listed file's sha256 before it trusts a shard; a shard file left
@@ -38,7 +38,8 @@ def plan_of(cfg: dict) -> Q.SlatePlan:
     return Q.SlatePlan(pool, int(cfg["master_seed"]), slates=int(cfg.get("slates", Q.QD_SLATES)),
                        per_shard=int(cfg.get("per_shard", Q.QD_PER_SHARD)),
                        episode_min=float(cfg.get("episode_min", Q.QD_EPISODE_MIN)), points=int(cfg.get("points", Q.QD_POINTS)),
-                       horizon=int(cfg.get("horizon", Q.QD_HORIZON)), mask_level=str(cfg.get("mask_level", "strict")))
+                       horizon=int(cfg.get("horizon", Q.QD_HORIZON)), mask_level=str(cfg.get("mask_level", "strict")),
+                       execution=str(cfg.get("execution", "a02")))
 
 
 def _sha(p: Path) -> str:
@@ -59,6 +60,8 @@ def finish(out: Path, plan: Q.SlatePlan, tag: str, licences: dict | None = None)
                "slates": sum(len(s["slates"]) for s in done), "void": sum(s["void"] for s in done),
                "rows": sum(s["rows"] for s in done), "manifest_sha256": doc["manifest_sha256"] if doc else None, "ties": tab,
                "pool": {"nights": len(plan.pool.nights), "refused": plan.pool.refused}}
+    if plan.execution != "a02":
+        summary["exec_ties"] = Q.exec_tie_table(Q.all_rows(out))
     Q.qd_atomic_write(out / "qdata_summary.json", (Q.qd_canon(summary) + "\n").encode())
     return summary
 
@@ -87,10 +90,13 @@ def by_hand(argv) -> int:
     ap.add_argument("--episode-min", type=float, default=Q.QD_EPISODE_MIN)
     ap.add_argument("--points", type=int, default=Q.QD_POINTS)
     ap.add_argument("--tag", default="")
+    ap.add_argument("--execution", default="a02", choices=Q.QD_EXECUTION,
+                    help="a02: the A-02 rows byte for byte; account: + each forced jump's execution; fixed: qdata-v2")
     ap.add_argument("--nights", default="", help="comma list: only these nights (each must pass the fence)")
     a = ap.parse_args(argv)
     cfg = {"master_seed": a.master_seed, "data_root": a.data_root, "slates": a.slates, "per_shard": a.per_shard,
            "max_nfl": a.max_nfl, "cutoff": a.cutoff, "episode_min": a.episode_min, "points": a.points, "tag": a.tag,
+           "execution": a.execution,
            "nights": [x for x in a.nights.split(",") if x] or None}
     from redzone.lab import fence
     try:

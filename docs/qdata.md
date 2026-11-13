@@ -43,3 +43,25 @@ Then download `<work>/qdata/` and `out/`, and run `python scripts/qdata_build.py
 ## Cost (measured Nov 13 on the Mac, toy, NFL Sundays, `--max-nfl 6`)
 
 `cost --cpu 45`: 364 slates, 2,536 decision points (101 slates had none, all of them at padding 49), 45.1 s CPU (4.9 s loading games), 0.124 s per slate, 0.016 s per decision point, 1.85 legal options and 0.16 masked per point, 89 gzip bytes per point. ESTIMATE, linear: 60,000 slates = 2.1 CPU-hours, about 1 hour on 2 Colab vCPUs as two processes, about 37 MB of shards. NBA slates will cost more (more legal spots, real feature rows instead of missing ones): ESTIMATE 2 to 4 times, still under 12 CPU-hours. Plan: 300 shards of 200 slates, two specs of 150 shards, a checkpoint every 10 shards.
+
+## Execution of forced jumps (task A-02b)
+
+A forced jump is not always made in its rollout; an option whose jump was not made carries the plain planner's Q, not its own, so ties looked far more common than they are. `--execution` (job config key `execution`; library `SlatePlan(execution=...)`) chooses:
+
+- `a02` (default): the A-02 rows byte for byte (digests unchanged, see the PR).
+- `account` (version `qdata-v1-acct`): the same rollouts, plus per option `made`, `made_s` (seconds after the decision), `exec`, `not_made_reason`, `not_made_class` (`constraint` or `artefact`), and per point `exec_best`, `exec_gap`, `exec_decisive`, `exec_tie`, `n_exec`, `no_choice` over EXECUTED options only (STAY always counts; fewer than two executed = `no_choice`, left out of the tie-share denominator).
+- `fixed` (version `qdata-v2`): the same accounting with both causes found below removed. The plain planner gets the show's own search knobs for an instant rig (as the show's planner is built: `max_wait` = the step's `land_wait_max`, `skip=False`), and the forced row is kept when the search swaps its rows for banked landings.
+
+`ties OUT` now prints the A-02 table and, below it, the executed-options table with the old definition side by side, the no_choice share and the share of forced jumps not made (it works on A-02 shards too: executed = STAY or `done`).
+
+Why a forced jump was not made (TOY: NFL Sundays, `--max-nfl 6`, master seed 1, the first 183 slates; not representative of NBA):
+
+| reason | A-02 forcing | fixed | class |
+|---|---|---|---|
+| `core_landing_long_wait`: the step refuses a landing more than `land_wait_max` (20 s) before its play; the show's planner never lists one | 605 | 0 | constraint |
+| `bank_swap`: staying beat every reported jump, so the search swapped its rows for banked landings and the forced row was gone | 36 | 0 | artefact (fixed) |
+| `row_gone` / `landing_moved`: a later search no longer lists the forced row | 4 | 8 | artefact (flagged, not fixed) |
+| `expired_no_plan` | 1 | 0 | constraint |
+| not made / forced jumps | 646 / 1,060 (0.609) | 8 / 639 (0.013) | |
+
+Tie and decisive shares on the same toy: A-02 definition 0.967 / 0.033 (1,054 points); executed options with A-02 forcing 0.922 / 0.078 (412 points, no_choice 0.676); `fixed` 0.921 / 0.079 (631 points of 800, no_choice 0.211). `fixed` has fewer decision points (800 against 1,273) because a landing the step would refuse is no longer an option.
