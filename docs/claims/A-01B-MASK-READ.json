@@ -1,0 +1,14 @@
+{
+  "card": "A-01B-MASK-READ",
+  "session": "a01b",
+  "branch": "a01b-mask-read-state",
+  "files": [
+    "redzone/lab/gym2/mask.py",
+    "redzone/lab/gym2/env.py",
+    "redzone/lab/gym2/slates.py",
+    "tests/test_gym2_mask.py",
+    "tests/test_gym2_scenario.py"
+  ],
+  "started": 1794560625,
+  "expires": 1794603825
+}
