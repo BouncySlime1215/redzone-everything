@@ -96,7 +96,11 @@ def play_attention(rows: list[dict], teams: tuple[str, ...], series: list[Series
 
 def attention_label(rows: list[dict], teams: tuple[str, ...], series: list[Series]) -> np.ndarray:
     """The plug-in label for wv_aux_label: within-game rank of attention, NaN where no source covers."""
-    return rank01(play_attention(rows, teams, series))
+    raw = play_attention(rows, teams, series)
+    ok = np.isfinite(raw)
+    if ok.sum() and np.ptp(raw[ok]) == 0:   # flat over the game: no information, leave it uncovered
+        return np.full(len(rows), np.nan)
+    return rank01(raw)
 
 
 # ---------------------------------------------------------------- loaders
@@ -146,6 +150,22 @@ def _minute_ts(m: str) -> float:
 def _iso_ts(s: str) -> float:
     from datetime import datetime
     return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+
+
+def load_spec(spec: dict) -> list[Series]:
+    """--aux-source JSON -> [Series]. One source per run (EXP-1704 Holm family S1-S5).
+    {"source": "bsky", "paths": [...jsonl.gz], "terms": {"lakers": ["LAL"], ...}}
+    {"source": "wiki_edits" | "wiki_views", "paths": [...B facts parquet]}"""
+    src = spec["source"]
+    paths = [Path(p) for p in spec["paths"]]
+    if src == "bsky":
+        return [load_bsky(paths, spec["terms"])]
+    field = {"wiki_edits": "edit_rate_live_z", "wiki_views": "pageviews_live_z"}.get(src)
+    if field is None:
+        raise ValueError(f"no loader yet for {src}")
+    import pandas as pd
+    recs = [r for p in paths for r in pd.read_parquet(p).to_dict("records")]
+    return [load_b_facts(recs, field, src)]
 
 
 # ---------------------------------------------------------------- drama math (derived, arm A3)

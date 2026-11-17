@@ -69,3 +69,12 @@ def test_drama_uses_train_table_and_realized_surprise():
     table = AL.fit_suspense([g])
     d = AL.drama_label(g, table)
     assert d.shape == (60,) and np.nanmax(d) <= 1 and np.nanmin(d) >= 0
+
+
+def test_flat_game_is_uncovered_not_uniform():
+    s = AL.Series("wiki_edits")
+    for t in range(0, 4000, 900):
+        s.add("BOS", t, -0.04)
+    s.finish()
+    out = AL.attention_label([{"wall": 100.0}, {"wall": 1000.0}, {"wall": 2000.0}], ("BOS", "DET"), [s])
+    assert np.isnan(out).all()
