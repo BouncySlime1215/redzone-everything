@@ -1281,3 +1281,6 @@ views:                     # [build plan WP-21] the phone's clock as of the scre
 
 basketball:                # [NBA-BUCKET] land right after a made basket, including the transition after it (Nick, Nov 9)
   join_after_bucket: false
+
+chrome_source:             # [PARK, Nick Nov 10] Chrome tabs on the Mac as the picture streams (redzone/chrome_source). OFF: nothing imports it yet
+  enabled: false

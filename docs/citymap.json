@@ -4118,6 +4118,107 @@
     "untagged"
    ]
   },
+  "redzone/chrome_source/__init__.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "package",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Chrome tabs on the Mac as picture streams: one YouTube TV tab per game, parked and jumped to by page script.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/chrome_source/bridge.py": {
+   "calls": [
+    "redzone/chrome_source/page_script.py:media_second",
+    "redzone/chrome_source/page_script.py:parse_tag"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/chrome_source/page_script.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/chrome_source/streams.py"
+   ],
+   "owner": "unowned",
+   "role": "The bridge to Chrome: run_js(tab, script) -> dict, open a tab, bring a tab to the front.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/chrome_source/page_script.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/chrome_source/bridge.py",
+    "redzone/chrome_source/streams.py"
+   ],
+   "owner": "unowned",
+   "role": "The page script for the YouTube TV web player (`#movie_player`): one small JavaScript text per call.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/chrome_source/streams.py": {
+   "calls": [
+    "redzone/chrome_source/page_script.py:build",
+    "redzone/chrome_source/page_script.py:epoch_s",
+    "redzone/chrome_source/page_script.py:state_name"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/chrome_source/bridge.py",
+    "redzone/chrome_source/page_script.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "ChromeStreams: N YouTube TV tabs as the streams of the PARK design.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/commands.py": {
    "calls": [],
    "contracts": [],
@@ -18544,13 +18645,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2144,
+  "calls": 2149,
   "data_files": 202,
   "machines": 51,
-  "modules": 463,
-  "orphans": 34,
-  "unowned": 265,
-  "untagged": 394
+  "modules": 467,
+  "orphans": 35,
+  "unowned": 269,
+  "untagged": 398
  },
  "version": 2
 }

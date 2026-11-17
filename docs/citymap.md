@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**463 modules**, 394 untagged, 265 unowned, 34 orphans (no importer); 2144 call edges, 202 data files, 51 machines.
+**467 modules**, 398 untagged, 269 unowned, 35 orphans (no importer); 2149 call edges, 202 data files, 51 machines.
 
 Slice for an agent: `python scripts/citymap.py --focus <file>`; PR risk list: `python scripts/citymap.py --impact <file>`.
 
@@ -251,7 +251,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (265)
+## unowned (269)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -261,6 +261,10 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/calibration.py` | [calib.auto] Self-calibration: values re-measured each night from live telemetry, with no one's input. | contracts.switching, uses:seek_model -> engine, supervisor, scripts.sync_fit | BTN-02, STK-06 |
 | `redzone/canary.py` | [Canary, Nick's Nov 7 order item 8] A daily stick self-test before games, on the HIDDEN stick only, that fails loud. | channels, tuners.adb, tuners.join, tuners.join_calib, tuners.tuners, tuners.yttv_label -> scripts.canary | untagged |
 | `redzone/cheap_labels.py` | Cheap labels: record the data nobody else has, from reads the app already makes (logging only). | screen.scorebug -> engine, supervisor | untagged |
+| `redzone/chrome_source/__init__.py` (package) | Chrome tabs on the Mac as picture streams: one YouTube TV tab per game, parked and jumped to by page script. | - -> - | untagged |
+| `redzone/chrome_source/bridge.py` | The bridge to Chrome: run_js(tab, script) -> dict, open a tab, bring a tab to the front. | chrome_source.page_script -> chrome_source.streams | untagged |
+| `redzone/chrome_source/page_script.py` | The page script for the YouTube TV web player (`#movie_player`): one small JavaScript text per call. | - -> chrome_source.bridge, chrome_source.streams | untagged |
+| `redzone/chrome_source/streams.py` | ChromeStreams: N YouTube TV tabs as the streams of the PARK design. | chrome_source.bridge, chrome_source.page_script -> - | untagged |
 | `redzone/commands.py` | Phone commands that land exactly once: an id, an ack, a status, and safe retries. | - -> engine | BTN-03 |
 | `redzone/context/__init__.py` (package) | Context & hype data (Data Planner B): injuries, refs, weather, standings, buzz. | - -> - | untagged |
 | `redzone/context/buzz.py` | BUZZ core for Data Crew B: Wikipedia pageviews, Wikipedia edit rate and GDELT news volume/tone. | context.tokens, models -> - | untagged |
@@ -521,7 +525,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 | `scripts/yttv_search_tune_try.py` (entry) | Tune the LOCAL stations by YouTube TV search on the HIDDEN stick, through the app's own routing and tuner as if tuners.yttv_local_search were on (ChannelMap.... | channels, tuners.adb, tuners.tuners -> - | untagged |
 
-## Untagged (394)
+## Untagged (398)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -583,6 +587,10 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/canary.py`
 - `redzone/channels.py`
 - `redzone/cheap_labels.py`
+- `redzone/chrome_source/__init__.py`
+- `redzone/chrome_source/bridge.py`
+- `redzone/chrome_source/page_script.py`
+- `redzone/chrome_source/streams.py`
 - `redzone/config.py`
 - `redzone/context/__init__.py`
 - `redzone/context/buzz.py`
@@ -918,7 +926,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/yttv_scrub_try.py`
 - `scripts/yttv_search_tune_try.py`
 
-## Orphans (no importer) (34)
+## Orphans (no importer) (35)
 
 - `agent/install.py`
 - `agent/kaggle/build_moments_kaggle.py`
@@ -949,13 +957,14 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `agent/kaggle/teacher_distill.py`
 - `agent/train/evaluate.py`
 - `agent/train/make_data.py`
+- `redzone/chrome_source/streams.py`
 - `redzone/context/buzz.py`
 - `redzone/context/nba.py`
 - `redzone/context/schedules.py`
 - `redzone/lab/night/presses.py`
 - `redzone/tuners/identity.py`
 
-## Most-called symbols (top 25 of 1126)
+## Most-called symbols (top 25 of 1131)
 
 | symbol | callers |
 |---|---:|
