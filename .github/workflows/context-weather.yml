@@ -24,10 +24,14 @@ jobs:
           L="${{ inputs.league }}"
           case "$GITHUB_REF_NAME" in data-b-weather/*) L="${L:-${GITHUB_REF_NAME#data-b-weather/}}";; esac
           echo "LEAGUE=${L:-nfl}" >> "$GITHUB_ENV"
+          # data-b-weather/nfl-2016-2025 runs seasons 2016..2025 only (one run stays under the 2 h job cap).
+          case "$L" in *-*-*) Y="${L#*-}"; echo "LEAGUE=${L%%-*}" >> "$GITHUB_ENV"
+            echo "SEASONS=--first ${Y%-*} --last ${Y#*-}" >> "$GITHUB_ENV";; esac
       - name: inputs
         run: |
           mkdir -p /tmp/in
-          curl -sSL -o /tmp/in/games.csv https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv
+          curl -fsSL --retry 4 --retry-delay 10 -o /tmp/in/games.csv https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv
+          head -1 /tmp/in/games.csv | grep -q gametime || { echo "::error::games.csv download is not the nflverse schedule"; head -c 300 /tmp/in/games.csv; exit 1; }
           if [ "$LEAGUE" = mlb ]; then
             git clone -q --depth 1 https://github.com/chadwickbureau/retrosheet /tmp/in/retrosheet
           fi
@@ -35,12 +39,12 @@ jobs:
         run: |
           ARGS="--games /tmp/in/games.csv"
           [ "$LEAGUE" = mlb ] && ARGS="--retro-dir /tmp/in/retrosheet"
-          python scripts/context/weather.py archive --league "$LEAGUE" $ARGS --out /tmp/out --cache /tmp/cache --max-calls 9000
+          python scripts/context/weather.py archive --league "$LEAGUE" $ARGS --out /tmp/out --cache /tmp/cache --max-calls 9000 $SEASONS
       - name: push derived shards to data-b-out/weather-<league>
         if: always()
         run: |
           mkdir -p /tmp/out && cd /tmp/out && ls -la
-          git init -q -b "data-b-out/weather-$LEAGUE" && git add -A
+          git init -q -b "data-b-out/weather-${GITHUB_REF_NAME#data-b-weather/}" && git add -A
           git -c user.name=context-weather -c user.email=context-weather@users.noreply.github.com \
             commit -qm "context-weather $LEAGUE from $GITHUB_SHA (run $GITHUB_RUN_ID)" || exit 0
-          git push -f "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY" "HEAD:refs/heads/data-b-out/weather-$LEAGUE"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY" "HEAD:refs/heads/data-b-out/weather-${GITHUB_REF_NAME#data-b-weather/}"

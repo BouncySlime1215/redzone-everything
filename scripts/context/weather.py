@@ -170,8 +170,9 @@ def fetch_json(url: str, cache: Path | None, key: str, pause_s: float = 0.25, tr
             return js
         except Exception as e:   # 429 / 5xx: back off
             last = e
-            time.sleep(2 ** i * 5)
-    raise RuntimeError(f"open-meteo failed for {key}: {last}")
+            time.sleep(2 ** i * 15)
+    print(f"open-meteo failed for {key}, skipped: {last}", flush=True)
+    return {}
 
 
 def load_games(a) -> pd.DataFrame:
@@ -187,6 +188,8 @@ def run_archive(a) -> dict:
     g = load_games(a) if not a.games_csv else pd.read_csv(a.games_csv, parse_dates=["kickoff_utc"])
     if a.first:
         g = g[g["season"] >= a.first]
+    if a.last:
+        g = g[g["season"] <= a.last]
     g = g[g["home_score"].notna()] if "home_score" in g else g
     g = with_venues(g, load_venues(a.venues, a.league))
     plan = plan_calls(g)
@@ -199,8 +202,15 @@ def run_archive(a) -> dict:
         print(f"capped to {a.max_calls} calls this run; rerun tomorrow (cache keeps what landed)")
     facts = []
     cache = Path(a.cache) if a.cache else None
-    for _, c in plan.iterrows():
-        js = fetch_json(archive_url(c["lat"], c["lon"], c["start"], c["end"]), cache, f"{c['venue_id']}_{c['season']}")
+    for i, (_, c) in enumerate(plan.iterrows()):
+        # A venue-season spans ~5 months, which Open-Meteo bills as ~10 calls (it weights by 2-week blocks), and the
+        # free tier allows 5,000 weighted calls an hour: pace at --pause seconds and skip a call that keeps failing.
+        js = fetch_json(archive_url(c["lat"], c["lon"], c["start"], c["end"]), cache, f"{c['venue_id']}_{c['season']}",
+                        pause_s=a.pause)
+        if i % 25 == 0:
+            print(f"{i}/{len(plan)} calls, {len(facts)} facts", flush=True)
+        if not js:
+            continue
         hourly = parse_hourly(js)
         sub = g[(g["venue_id"] == c["venue_id"]) & (g["season"] == c["season"])]
         sub = sub[sub.apply(lambda r: is_outdoor(r.get("roof"), r.get("venue_roof")), axis=1)]
@@ -263,6 +273,8 @@ def main(argv=None):
     ap.add_argument("--hours", type=float, default=36)
     ap.add_argument("--max-calls", type=int, default=9000)
     ap.add_argument("--plan-only", action="store_true")
+    ap.add_argument("--last", type=int, default=0, help="last season to include (chunk a long backfill)")
+    ap.add_argument("--pause", type=float, default=8.0, help="seconds between archive calls (free-tier hourly cap)")
     a = ap.parse_args(argv)
     return run_archive(a) if a.mode == "archive" else run_forecast(a)
 

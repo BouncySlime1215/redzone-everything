@@ -122,11 +122,17 @@ def file_times(t0: int, t1: int, stride: int = 1) -> list[int]:
     return list(range(first, floor_to(t1, Q15) + Q15, Q15 * max(1, stride)))
 
 
-def pull_files(http: Http, idx: TeamIndex, store: Store, times, max_files: int, max_seconds: float = 1e9) -> int:
+def pull_files(http: Http, idx: TeamIndex, store: Store, times, max_files: int, max_seconds: float = 1e9,
+               first_from: int | None = None) -> int:
+    """Pull GDELT files at `times`. With `first_from`, files at or after it (the games' own window) go first and the
+    baseline is filled newest-first, so a capped run still yields facts (oldest-first used to spend the whole cap
+    on the 28-day baseline and never reach the games)."""
     times = sorted(times)
     if not times:
         return 0
     done = store.covered_ts(SRC_GD, times[0] - Q15, times[-1])
+    if first_from is not None:
+        times = [t for t in times if t >= first_from] + [t for t in reversed(times) if t < first_from]
     n, t_start = 0, time.monotonic()
     for t in times:
         if n >= max_files or time.monotonic() - t_start > max_seconds:
