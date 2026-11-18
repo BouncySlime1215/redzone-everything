@@ -1,0 +1,66 @@
+{"t": 1794361619.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 1}
+{"t": 1794361628.0, "kind": "stay", "reason": "no safe exit yet", "for_s": 10}
+{"t": 1794361642.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 1}
+{"t": 1794361651.0, "kind": "park", "game": "BOS @ PHI", "channel": "nbc", "took_s": 31.4}
+{"t": 1794361657.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 6}
+{"t": 1794361672.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 21}
+{"t": 1794361687.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 2}
+{"t": 1794361702.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 17}
+{"t": 1794361713.0, "kind": "alert", "level": "warn", "text": "no jump: a tune did not work"}
+{"t": 1794361717.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 32}
+{"t": 1794361791.0, "kind": "alert", "level": "warn", "text": "no jump: a tune did not work"}
+{"t": 1794361791.0, "kind": "stay", "reason": "a tune did not work", "for_s": 1}
+{"t": 1794361809.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 1}
+{"t": 1794361824.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 16}
+{"t": 1794361839.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 31}
+{"t": 1794361841.0, "kind": "park", "game": "BOS @ PHI", "channel": "nbc", "took_s": 29.3}
+{"t": 1794361913.0, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 14.3}
+{"t": 1794361927.0, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 13.2}
+{"t": 1794361941.0, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 13.6}
+{"t": 1794361961.0, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 19.5}
+{"t": 1794361975.0, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 13.2}
+{"t": 1794361989.0, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 13.3}
+{"t": 1794362003.0, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 13.3}
+{"t": 1794362005.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 1}
+{"t": 1794362020.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 16}
+{"t": 1794362022.0, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 18.7}
+{"t": 1794362036.0, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 13.5}
+{"t": 1794362050.0, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 13.2}
+{"t": 1794362066.1, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 15.4}
+{"t": 1794362263.0, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 12.9}
+{"t": 1794362273.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 1}
+{"t": 1794362288.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 16}
+{"t": 1794362352.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 1}
+{"t": 1794362513.0, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 14.0}
+{"t": 1794362583.0, "kind": "stay", "reason": "the other stick is not ready", "for_s": 1}
+{"t": 1794362596.0, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 14.0}
+{"t": 1794362596.0, "kind": "stay", "reason": "waiting for the planned second", "for_s": 14}
+{"t": 1794362597.0, "kind": "stay", "reason": "the other stick is not ready", "for_s": 15}
+{"t": 1794362600.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 18}
+{"t": 1794362601.0, "kind": "stay", "reason": "waiting for the planned second", "for_s": 19}
+{"t": 1794362608.0, "kind": "stay", "reason": "the leave is outside a padded legal window", "for_s": 26}
+{"t": 1794362610.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 28}
+{"t": 1794362625.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 43}
+{"t": 1794362640.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 58}
+{"t": 1794362655.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 73}
+{"t": 1794362670.0, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 88}
+{"t": 1794362685.1, "kind": "stay", "reason": "no safe place to join the other game yet", "for_s": 103}
+{"t": 1794362690.0, "kind": "stay", "reason": "the plan is to stay", "for_s": 108}
+{"t": 1794362705.0, "kind": "stay", "reason": "the plan is to stay", "for_s": 123}
+{"t": 1794362720.0, "kind": "stay", "reason": "the plan is to stay", "for_s": 138}
+{"t": 1794362735.0, "kind": "stay", "reason": "the plan is to stay", "for_s": 153}
+{"t": 1794362750.0, "kind": "stay", "reason": "the plan is to stay", "for_s": 168}
+{"t": 1794362765.0, "kind": "stay", "reason": "the plan is to stay", "for_s": 183}
+{"t": 1794362776.0, "kind": "jump", "from": "BOS @ PHI", "to": "MSU @ DUKE", "reason": "timeout or break", "jump_s": 2.7, "look_s": 273}
+{"t": 1794362803.0, "kind": "stay", "reason": "the leave is outside a padded legal window", "for_s": 1}
+{"t": 1794362808.0, "kind": "stay", "reason": "a jump is under way", "for_s": 1}
+{"t": 1794362811.0, "kind": "jump", "from": "MSU @ DUKE", "to": "BOS @ PHI", "reason": "dead ball", "jump_s": 3.4, "look_s": 33}
+{"t": 1794362811.0, "kind": "stay", "reason": "the other stick is not ready", "for_s": 4}
+{"t": 1794362816.0, "kind": "stay", "reason": "a jump is under way", "for_s": 1}
+{"t": 1794362818.0, "kind": "jump", "from": "BOS @ PHI", "to": "MSU @ DUKE", "reason": "timeout or break", "jump_s": 3.5, "look_s": 5}
+{"t": 1794362818.0, "kind": "stay", "reason": "the other game is too far behind live", "for_s": 3}
+{"t": 1794362951.0, "kind": "stay", "reason": "waiting for the planned second", "for_s": 1}
+{"t": 1794362966.0, "kind": "stay", "reason": "waiting for the planned second", "for_s": 16}
+{"t": 1794362970.0, "kind": "stay", "reason": "the landing is outside a padded legal window", "for_s": 20}
+{"t": 1794362976.0, "kind": "jump", "from": "MSU @ DUKE", "to": "BOS @ PHI", "reason": "dead ball", "jump_s": 2.4, "look_s": 157}
+{"t": 1794363016.0, "kind": "park", "game": "MSU @ DUKE", "channel": "espn", "took_s": 14.2}

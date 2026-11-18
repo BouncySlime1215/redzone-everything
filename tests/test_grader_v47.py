@@ -1,4 +1,4 @@
-"""Grader / feed fixes of the 2026-11-08 audit (docs/audits/2026-11-08-feeds-scoring.md): each test fails on the
+"""Grader / feed fixes of the 2026-11-08 audit (docs/archive/audits/2026-11-08-feeds-scoring.md): each test fails on the
 code before its fix. Ids F1.. are the audit's."""
 import copy
 import json

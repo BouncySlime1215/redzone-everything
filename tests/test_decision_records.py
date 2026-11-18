@@ -18,6 +18,9 @@ def _night(tmp_path):
     # Nick's taps exist in the same database and must never reach a record
     s.feedback("b", -1, "switch", {"terms": {"crunch": 1.0}})
     s.feedback("a", 0, "missed", {"guess": {"play_id": "p9"}})
+    # Close the writer now: Store sits in a reference cycle, so otherwise a later garbage collection closes it and
+    # SQLite folds the WAL into redzone.db at a random moment (it once landed inside the CLI's "db untouched" check).
+    s._db.close()
     data = tmp_path / "data"
     data.mkdir()
     (data / "supervisor_cuts.jsonl").write_text(

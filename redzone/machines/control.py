@@ -26,19 +26,50 @@ STANDBY = Spec(
         "snap_parked": "ready and paused on the line-up before its next snap: PLAY rolls it at the flip",
         "replay_parked": "rewound to a replay and held still: old footage, never used for a live switch",
         "left_hold": "the game we just left, paused at the dead ball we left it on (STK-07)",
+        "park_held": "[park.enabled] PARK owns the hidden stick (park_tune, park_pause, or the stick a park_jump left): "
+                     "only park_jump resumes and shows it. Not in STANDBY_READY, so no other flip, check or roll uses it",
     },
     edges={
-        "empty": ("loading", "scrubbing", "ready", "replay_parked", "holding"),
-        "loading": ("empty", "scrubbing", "holding", "stuck", "ready", "replay_parked", "left_hold"),
-        "scrubbing": ("empty", "loading", "ready", "holding"),
-        "holding": ("empty", "loading", "scrubbing", "ready"),
-        "stuck": ("empty", "loading", "scrubbing", "holding", "ready"),
-        "ready": ("empty", "loading", "scrubbing", "holding", "snap_parked", "replay_parked", "left_hold"),
-        "snap_parked": ("empty", "loading", "scrubbing", "ready", "replay_parked"),
-        "replay_parked": ("empty", "loading", "scrubbing", "ready"),
-        "left_hold": ("empty", "loading", "scrubbing", "ready", "replay_parked"),
+        "empty": ("loading", "scrubbing", "ready", "replay_parked", "holding", "park_held"),
+        "loading": ("empty", "scrubbing", "holding", "stuck", "ready", "replay_parked", "left_hold", "park_held"),
+        "scrubbing": ("empty", "loading", "ready", "holding", "park_held"),
+        "holding": ("empty", "loading", "scrubbing", "ready", "park_held"),
+        "stuck": ("empty", "loading", "scrubbing", "holding", "ready", "park_held"),
+        "ready": ("empty", "loading", "scrubbing", "holding", "snap_parked", "replay_parked", "left_hold", "park_held"),
+        "snap_parked": ("empty", "loading", "scrubbing", "ready", "replay_parked", "park_held"),
+        "replay_parked": ("empty", "loading", "scrubbing", "ready", "park_held"),
+        "left_hold": ("empty", "loading", "scrubbing", "ready", "replay_parked", "park_held"),
+        "park_held": ("empty", "loading", "ready"),
     },
     initial="empty")
+
+# --- [park.enabled] the PARK device steps on each stick (Controller.park_*, unit PARK-HANDS) -----------------------
+
+PARK_STICK = Spec(
+    "control.park", owner="control.ParkHands.m", keyed=True,
+    doc="What the PARK steps last did to one stick (key = the stick's label, never its address): tune, the per-tune "
+        "read, the timed pause that freezes a dead-ball frame, a jump's resume. Exists only with park.enabled on.",
+    states={
+        "idle": "PARK holds nothing on this stick (start, or a step that lost its place: it is tuned again)",
+        "tuning": "a tune runs: the channel's direct code, then local-station search, then search",
+        "reading": "the read gesture runs (CENTER, LEFT x steps, the time label read, CENTER)",
+        "playing": "on its game and playing; its place on YouTube's clock is read or not (the step says which)",
+        "pausing": "the timed pause key went out; BACK and the read back come next",
+        "parked": "paused on the wanted frame, read back paused with YouTube TV in front",
+        "resuming": "a jump's resume key went out to it",
+        "stopped": "a sound stop (an open incident, or silence not read back): nothing more is sent to it",
+    },
+    edges={
+        "idle": ("tuning", "reading", "stopped"),
+        "tuning": ("reading", "playing", "idle", "stopped"),
+        "reading": ("playing", "idle", "stopped"),
+        "playing": ("tuning", "reading", "pausing", "idle", "stopped"),
+        "pausing": ("parked", "playing", "idle", "stopped"),
+        "parked": ("resuming", "playing", "tuning", "idle", "stopped"),
+        "resuming": ("playing", "parked", "idle", "stopped"),
+        "stopped": ("idle",),
+    },
+    initial="idle")
 
 PRELOAD_SLOT = Spec(
     "control.preload_slot", owner="control.Controller.slot_m",

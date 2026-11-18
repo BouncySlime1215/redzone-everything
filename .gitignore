@@ -18,6 +18,9 @@ data/training/
 # Results: full dev detail and the reserved locked folder never enter git (W2-LOCKED)
 results/dev/
 results/locked/
+# Data lake (F-05, scripts/data_manifest.py): manifests of private data (frames, picture data) and upload bundles never enter git
+*.private.manifest.json
+data-bundles/
 
 # Agent data reports are documents, not data (docs/STANDARD.md).
 !docs/agents/data/

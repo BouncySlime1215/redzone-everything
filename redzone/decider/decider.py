@@ -282,6 +282,7 @@ class Decider:
         # [state machines] redzone/machines/decider.py: each is the one source of truth for its state; the old
         # attribute names (current, replaying, after_replay, home_break_visit, safe_mode, ...) are properties on them
         self.owner_m = M.OWNER.new(clock=clock)          # which decider owns the TV this tick
+        self.park_show = None   # [park.enabled] set by the engine to ParkRun.owns once the flag is on: True = the PARK show holds the sticks
         self.screen_m = M.DECIDER_SCREEN.new(clock=clock)        # unknown / tuning / live / replaying / after_replay
         self.start_m = M.START.new(clock=clock)          # the first pick after a (re)start, and its backoff
         self.gone_m = M.SCREEN_GONE.new(clock=clock)     # [buffered jump] keeping a buffered standby (was _bj_gone_since)
@@ -722,6 +723,8 @@ class Decider:
         # decider's optional switches both follow from this one call (they used to check 8 and 4 conditions)
         owner, why = self._own(d, cands, now)
         self.owner_m.to(owner, why, now=now)
+        if owner == "park":
+            d = self._park(d, now, home_before)
         if owner in ("jump", "buffered") and why != "just_arrived":
             j = self._jump(d, cands, now, why)
         else:
@@ -749,6 +752,8 @@ class Decider:
             self.home_leaks += 1
             log.warning("home visit leaked by a stay (%s): restored", d.reason[:80])
             self._home_restore(home_before, "a stay can't start a visit")
+        if owner == "park":
+            d = self._park(d, now, home_before)   # [park.enabled] nothing after the handoff may switch either (fill, safe)
         d.owner = owner
         if not commit and d.action in ("switch", "replay"):
             # The simulator can commit synchronously. A real TV must confirm
@@ -3796,6 +3801,8 @@ class Decider:
             return "replay", "replaying"
         if self.after_replay:
             return "replay", "after_replay"
+        if self.park_show is not None and self.park_show():
+            return "park", "park_show"   # [park.enabled] the PARK show holds both sticks: it alone jumps (_park)
         if not self.jump_on():
             return "normal", "jump_off"
         cur = cands.get(self.current or "")
@@ -3815,6 +3822,15 @@ class Decider:
         if not rotation:
             return "normal", "screen_not_in_rotation" if cur is not None else "screen_game_unknown"
         return rot, "rotation"
+
+    def _park(self, d: Decision, now: float, home_before: tuple) -> Decision:
+        """[park.enabled] The PARK show holds both sticks (owner `park`): it plans and carries out every jump itself
+        (redzone/park_run.py: its own planner, warrants and hard guard), so any switch or replay another decider
+        made this tick becomes a stay. Reached only while Engine.park owns the sticks; never with the flag off."""
+        if d.action not in ("switch", "replay"):
+            return d
+        self._home_restore(home_before, "the PARK show owns every switch")
+        return Decision(now, "stay", self.current, f"PARK show: {d.reason}", d.state, d.gate, want=d.target)
 
     def _jump_owns(self, d: Decision, cands: dict[str, Candidate], owner: str | None = None,
                    why: str | None = None) -> bool:

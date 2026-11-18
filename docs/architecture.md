@@ -206,14 +206,13 @@ Nothing on the decision path reads them.
 7. **Kill switches**: each subsystem is turned off by its own config key (`brain.enabled`,
    `reasoner.enabled`, `reel.enabled`/`reel.play`, `replay.*`, `tuners.*`, `noggin.*`, `hardening.*`,
    `two_stick.*`). They can be switched from the phone and A/B tested in replays by overriding the key.
-   A part that is off runs in its degraded mode, never an error. The `flags.*` block in config and
-   `redzone/contracts/flags.py` `enabled()` exist but **no production code reads them** (audit R3,
-   2026-11-08): flipping `flags.*` changes nothing, so do not rely on it.
+   A part that is off runs in its degraded mode, never an error. `redzone/contracts/flags.py` `enabled()` is
+   **read by no production code** (audit R3, 2026-11-08) and the `flags.*` block that mirrored it was removed from
+   the config (F-01, 2026-11-12): there is no `flags.*` setting, so use the part's own key.
 8. **Latency budget per tick** (`budget.py`, ms): feeds 50, models 150, sync 10, paths 20,
    reasoner 5, decision 100, command 250, about 585 ms total within a 3 s tick. `TickTimer`
    records any overrun, and an exception returns that part's degraded result. After three
-   overruns in a row, the supervisor is meant to turn that part off (its own key, not `flags.*`, which is
-   not wired) and say so on the phone.
+   overruns in a row, the supervisor is meant to turn that part off (its own key; there is no `flags.*` setting) and say so on the phone.
 9. **Degraded modes** (`flags.DEGRADED`): defined for every part that has a name in `flags.Flag`, plus `one_stick`,
    `feed_down`, `away_from_home` and `tv_unreachable`. The end-to-end night test runs each one.
 
@@ -236,7 +235,7 @@ interface change. Tests belong to the owner of the module they test.
 
 | Owner | Files |
 |---|---|
-| INTEGRATION | `redzone/contracts/*` (core types excepted: they are DECISION's), `redzone/engine.py`, `redzone/config.py`, `redzone/default_config.yaml` (owners edit their own sections), `redzone/models.py`, `redzone/lab/{backtest,sportsdata,sportsgrade,cutgrade,datasets,optimize,replaycheck}.py`, `redzone/lab/tune.py`, `redzone/demo/*`, `scripts/{eval,eval_sports,backtest,replay_check}.py`, `tests/test_contracts.py`, `tests/golden/*`, `tests/e2e/*`, `.github/workflows/*`, `data/eval_config.yaml`, `docs/{architecture,status,integration}.md`, `docs/cloud-build-prompts.md` |
+| INTEGRATION | `redzone/contracts/*` (core types excepted: they are DECISION's), `redzone/engine.py`, `redzone/config.py`, `redzone/default_config.yaml` (owners edit their own sections), `redzone/models.py`, `redzone/lab/{backtest,sportsdata,sportsgrade,cutgrade,datasets,optimize,replaycheck}.py`, `redzone/lab/tune.py`, `redzone/demo/*`, `scripts/{eval,eval_sports,backtest,replay_check}.py`, `tests/test_contracts.py`, `tests/golden/*`, `tests/e2e/*`, `.github/workflows/*`, `data/eval_config.yaml`, `docs/{architecture,status,integration}.md`, `docs/archive/cloud-build-prompts.md` |
 | DECISION | `redzone/decider/core.py` (canonical decision types), `redzone/decider/decider.py`, `redzone/decider/cuts.py`, `redzone/decider/screen.py` (DelayBook moves to SYNC, see below), `redzone/scoring/{engine,drive,gameflow,garbage}.py`, `redzone/reel.py`, `redzone/plan.py`, `redzone/bets.py`, `redzone/fantasy.py`, `redzone/userstate.py`, `scripts/plan_tonight.py` |
 | MOMENT/BREAK | `redzone/scoring/brain.py`, `redzone/scoring/breaks.py`, `redzone/lab/brainfit.py`, `scripts/{train_brain,build_training,eval_brain}.py`, model files under `models/` |
 | LOCAL AI | `agent/*` (incl. `agent/llm_server.py`, `agent/train/*`, `agent/com.redzone.agent.plist`), reasoner modules |
@@ -287,7 +286,7 @@ result in the run summary. It **fails** the release PR (`integration/next` →
 `codex/resume-redzone`).
 
 A part that can't reach its gate ships **OFF** behind its own config key (e.g. `brain.enabled`, `reasoner.enabled`, `jump_mode.enabled`;
-`flags.*` is not wired), so today's behavior stays, and the release PR says exactly how far short it is and why. A gate that can't
+there is no `flags.*` setting), so today's behavior stays, and the release PR says exactly how far short it is and why. A gate that can't
 be measured yet is **PENDING**, and pending never counts as passing.
 
 | Gate | Target |

@@ -13,7 +13,7 @@ Rules that apply to every row: $0 only, never touch keys (Nick adds them as Kagg
 scrape a site whose terms forbid it, collect on Kaggle CPU (never the Mac), keep raw data in the
 **private** Kaggle dataset, and never commit raw rows to this public repo.
 
-**Update, Nick 11:10 PM Nov 4:** betting lines and line moves may also be **inputs to game importance and buzz** (the context engine, [brain engines plan](../plans/2026-11-05-brain-engines.md)); they are still never shown and never a betting prompt. The earlier rule: **betting data is a hidden check only** (overseer, Nov 4 2026). That covers closing lines, CFBD `/lines`, SBRO and Polymarket. Use it only to calibrate and evaluate our WP, crunch and stakes heads. It is never a model feature, a training label or a weight, and it is never shown on the TV or phone (playbook §5: no betting hooks).
+**Update, Nick 11:10 PM Nov 4:** betting lines and line moves may also be **inputs to game importance and buzz** (the context engine, [brain engines plan](../archive/plans/2026-11-05-brain-engines.md)); they are still never shown and never a betting prompt. The earlier rule: **betting data is a hidden check only** (overseer, Nov 4 2026). That covers closing lines, CFBD `/lines`, SBRO and Polymarket. Use it only to calibrate and evaluate our WP, crunch and stakes heads. It is never a model feature, a training label or a weight, and it is never shown on the TV or phone (playbook §5: no betting hooks).
 
 Owner of all price series since Nov 5: Data Division D, contract in [markets/contract.md](markets/contract.md). Kalshi stays red (re-checked Nov 5: [markets/kalshi.md](markets/kalshi.md)).
 

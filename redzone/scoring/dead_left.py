@@ -4,16 +4,23 @@ Why: dead-ball length lived in five tables that disagree (NFL two-minute warning
 `--dead floor` need one guaranteed floor (docs/plans/2026-11-09-anchor-mode.md section 7). It reads the pooled `*` rows of
 redzone/scoring/broadcast/break_lengths.json (stoppage -> real restart, train nights only) and interpolates the stored quantiles.
 Nothing live calls it yet: only scripts/veto_audit.py --dead floor and its tests.
+v2 (`guaranteed_left_v2`, below; for callers behind timing.dead_v2, off; salvaged from branch anchor-mode, whose anchor mode is
+not here): the same promise by break class and by the time already elapsed, from redzone/scoring/broadcast/dead_left_table.json
+(scripts/measure_dead_left.py, train nights only). The reading itself lives in dead_left_lite.py (standard library only).
 
 Pure: the table is read once, no clock.
 """
 from __future__ import annotations
 
 import json
+import math
+import re
+from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
 
 from redzone.models import League
+from redzone.scoring import dead_left_lite as _lite
 
 LENGTHS_FILE = Path(__file__).resolve().parent / "broadcast" / "break_lengths.json"
 QUANTILES = (0.10, 0.25, 0.50, 0.75, 0.90)      # the table's q10 ... q90 (a missing one is skipped)
@@ -53,3 +60,78 @@ def guaranteed_left(league: League | str, stoppage_kind: str, elapsed_s: float, 
     already ran, never below 0. A kind the table never measured (a plain dead ball, `none`) guarantees nothing: 0."""
     length = quantile(league, stoppage_kind, q)
     return 0.0 if length is None else max(0.0, length - max(0.0, elapsed_s))
+
+
+# ----- [timing.dead_v2, off] v2: by break class and by the time already elapsed ----------------------------------------------------
+# Why: the pooled quantile less the elapsed seconds is valid but wasteful. At the 99% level it allowed a clip in 0 of 891 NFL
+# timeouts on 11 held-out nights; the official / team split and the survivors' remaining time allowed 598 (research ledger L1,
+# Nov 10, simulated on recorded nights). scripts/measure_dead_left.py builds the table from train nights only.
+
+TABLE_V2_FILE = _lite.TABLE_FILE
+LANDMARKS = _lite.LANDMARKS     # elapsed seconds the table conditions on (stoppages that outlasted each one)
+ALPHAS = _lite.ALPHAS           # the risk levels the table stores: the share of stoppages allowed to restart sooner
+_TEAM_TIMEOUT = re.compile(r"timeout #?(\d)")
+
+
+def stoppage_class(league: League | str, kind: str, type_text: str = "", text: str = "") -> str:
+    """The break class of a stoppage, from the feed's own words on the play that began it. Football timeouts split three ways:
+    "official" (the type or the text says official, TV or media: a commercial break), "team" ("Timeout #2 by WSH": short) and
+    "other". Every other kind and league is its own single class, named after the kind (so is a timeout whose play carries no
+    timeout type: nothing to read). A class is only ever a finer cell of the same kind."""
+    k = str(getattr(kind, "value", kind) or "")
+    ty = (type_text or "").lower()
+    if k != "timeout" or League(getattr(league, "value", league)).base != League.NFL or "timeout" not in ty:
+        return k
+    tx = (text or type_text or "").lower()      # models.Play.text falls back to the type the same way
+    if "official" in ty or "official" in tx or "tv " in tx or "media" in tx:
+        return "official"
+    named = bool(_TEAM_TIMEOUT.search(tx)) or " by " in tx
+    return "team" if named and "tv" not in tx else "other"
+
+
+def conformal_lower(values, alpha: float) -> float | None:
+    """One-sided split-conformal lower bound on a new draw: the floor(alpha * (n + 1))-th smallest of `values`. None when n is too
+    small for that alpha (fewer than 1 / alpha - 1 values): nothing can be promised at that level."""
+    v = sorted(float(x) for x in values)
+    k = math.floor(Fraction(str(alpha)) * (len(v) + 1))
+    return v[k - 1] if k >= 1 else None
+
+
+def cell_v2(league: League | str, kind: str, mark: int, alpha: float, cls: str | None = None) -> tuple[str, dict] | None:
+    """(the class read, its table cell) at landmark `mark` for this risk level: the stoppage's own class when that cell holds a
+    bound, else the kind's pooled class. A college league reads its own table first, then its pro league's. None: no cell has
+    enough survivors for this level."""
+    k = str(getattr(kind, "value", kind) or "")
+    level = _lite.level(alpha)
+    return None if level is None else _lite.cell(league, cls or k, mark, level, kind=k)
+
+
+def _left_from(league, kind: str, mark: int, elapsed_s: float, alpha: float, cls: str | None) -> float:
+    """The bound read at landmark `mark`, carried to `elapsed_s` (at or after it): what has run since the landmark comes off."""
+    k = str(getattr(kind, "value", kind) or "")
+    return _lite.left_at(league, cls or k, mark, elapsed_s, alpha, kind=k)
+
+
+def guaranteed_left_v2(league: League | str, kind: str, elapsed_s: float, alpha: float, cls: str | None = None) -> float:
+    """Seconds of this stoppage still to come with probability 1 - alpha, given it is still running `elapsed_s` after it began
+    and given its break class (`stoppage_class`; None: the kind's pooled class). Read at the largest landmark at or before
+    `elapsed_s`, less the seconds since that landmark: the stoppages that outlast `elapsed_s` are among those that outlasted the
+    landmark. A class cell that is missing or has too few survivors falls back to the pooled class of the kind (a promise over
+    every stoppage of the kind, not over that class alone); nothing that qualifies, or an unmeasured kind: 0. Never larger at
+    a smaller alpha (dead_left_lite.left_at)."""
+    k = str(getattr(kind, "value", kind) or "")
+    return _lite.guaranteed_left(league, cls or k, elapsed_s, alpha, kind=k)
+
+
+def guaranteed_left_v2_within(league: League | str, kind: str, lo_s: float, hi_s: float, alpha: float,
+                              cls: str | None = None) -> float:
+    """The least `guaranteed_left_v2` over every elapsed time from `lo_s` to `hi_s`: the promise when the time already run is
+    only known to that window (the stream delay is an estimate). The bound can rise at a landmark, so a stoppage that has run
+    less than believed may still sit under the earlier, lower one."""
+    hi = max(0.0, float(hi_s))
+    lo = min(hi, max(0.0, float(lo_s)))
+    least = guaranteed_left_v2(league, kind, hi, alpha, cls)
+    for prev, t in zip(LANDMARKS, LANDMARKS[1:]):
+        if lo < t <= hi:                 # just before landmark t the bound still reads the one before it
+            least = min(least, _left_from(league, kind, prev, t, alpha, cls))
+    return least

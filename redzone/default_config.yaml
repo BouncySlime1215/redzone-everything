@@ -203,6 +203,24 @@ score:
     inning_mult: {early: 0.85, mid: 1.0, eighth: 1.1, ninth_plus: 1.2}
     walk_off_spot: 15
     no_hitter: {through_6: 25, through_7: 35, ninth: 50}
+  context:                 # [F-01] the extra moment points every league shares (redzone/scoring/engine.py context()); each number is the code's own fallback
+    lead_change_cap: 8     # most points a back-and-forth game can add
+    lead_change_fade_s: 150  # a lead change counts as "just flipped" for this long
+    fresh_flip: 0          # points for a lead that just changed hands (0 = off)
+    upset_min_spread: 3    # an upset is brewing only when the pregame spread was at least this
+    upset_full_spread: 10  # ...and counts in full at this spread
+    overtime: 4            # overtime / extras, every league
+    nfl: {wp_leverage: 0, lead_change_each: 0, upset: 0}
+    nba: {wp_leverage: 0, lead_change_each: 0, upset: 8, late_within_6: 4}   # late_within_6: within 6 under 3:00 of the 4th
+    nhl: {wp_leverage: 15, lead_change_each: 2.0, upset: 8, late_one_goal: 10}   # late_one_goal: within a goal in the last 5:00 of the 3rd
+    mlb: {wp_leverage: 6, lead_change_each: 0, upset: 8}
+
+scoring:                   # [F-01] display switches read by the phone (redzone/web/phone_v2.py)
+  watch_value: false       # the /slate view shows each live game's learned watch value (Scored.watch_value); display only, the code's own fallback
+
+control:                   # [F-01] how long a switch may run before the app gives up on it (engine._switch_deadline, supervisor, platform/health, lab/night)
+  max_switch_s: 150        # a switch that never reports back is given up on after this long (the code's own fallback)
+  max_start_switch_s: 75   # ...and a first pick, with nothing confirmed on screen yet, after this long (the code's own fallback)
 
 brain:                     # learned models (redzone/scoring/brain.py, trained by scripts/train_brain.py)
   enabled: false           # feed the brain's game flow / key-moment / break odds into the score and break forecast
@@ -269,6 +287,8 @@ reasoner:                  # live game reasoner (redzone/reasoner): lock_in per 
 decider:
   switch_margin: 10
   mine_late_closeness: 0.2   # [D-11] "your team late and close": closeness at or above this (Decider._mine_late)
+  fail_cooldown_s: 90        # [F-01] a target whose switch failed is not tried again for this long (engine.py; the code's own fallback)
+  safe_auto_resume_s: 600    # [F-01] safe mode (decider.auto_resume) resumes itself after this long (engine.py; the code's own fallback)
   entry:
     enabled: true             # [D-11] the entry timing itself (off: every switch goes straight in)
     allow_live_fallback: false  # [D-01] Rule #1: no go-in-live exit without this (crunch_now live/rewind, max_wait_s, rewind_only, no_wait_leagues, imminent chases)
@@ -293,7 +313,7 @@ decider:
     unknown_wait_leagues: [nfl, nba, nhl, mlb]  # [EXP-089, D-01] never enter on a landing the data can't call ("play may be live"): rewind to a known dead ball or wait (league.base: cfb is nfl, cbb is nba)
     conformal:               # [EXP-024] conformal floor on entries: no landing on less doubt than tau x sigma (off until its gate passes)
       enabled: false
-      tau: {nfl: 0, nba: 0, nhl: 0}   # per league, from conformal risk control on dev (alpha 0.005 a timed entry); 0 = no floor
+      tau: {nfl: 0, nba: 0, nhl: 0, mlb: 0}   # per league, from conformal risk control on dev (alpha 0.005 a timed entry); 0 = no floor. [F-01b] mlb: the read is `tau.<base league>`, so a baseball landing read a key the YAML lacked (0, the code's `or 0.0`)
     ended_strict: false  # [landing lag] a switch off a finished game never takes the urgent (thin-margin) landing
     crunch_now: wait         # [D-01] entries inside crunch's last 2:00 / OT: wait (rewind or wait for a whistle, like any entry) | live, rewind (only with allow_live_fallback)
     max_wait_s: {}         # [D-01] per league, only with allow_live_fallback: a whistle wait into a final period / off a finished game goes live after this (none: Rule #1 waits)
@@ -353,6 +373,7 @@ decider:
   mine_late_max_lead_wp: 1.0
   leave:                   # [cut rules, Nick Nov 4 3:15 PM] never JOIN mid-play; LEAVING mid-play only at low leverage
     dead_windows: []       # [whistle detection] also leave on the play-by-play's dead windows in these leagues
+    high_leverage_recent_s: 30.0   # [F-01] [slate] a basketball walk-up leave waits this long after the game was last high leverage (Decider._may_leave_on_walk; the code's own fallback)
     tune_s: 6              # ...and the window must outlast this tune margin (a visit can't come back inside it)
                            # [Nov 7] these two sat in a second `leave:` block that YAML dropped: merged here
     low_leverage: []       # leagues where a low-leverage moment may be left mid-play ([] = never: today's rule)
@@ -470,6 +491,8 @@ buffered_jump:             # [overseer Nov 8 01:50Z / Nick 20:45 "play by play m
   rotate_every_s: 600      # the hidden stick re-tunes (tune + scrub ~60 s) after the pair has been on this long...
   rotate_dead_s: 120       # ...or when its game's next snap is this far off (a break)
   prep_s: 60               # sim only: a re-tuned hidden stick is ready this long later
+  park_guard_s: 1.5        # [F-01b] cuts.landing calls a play on screen from 1 s before its snap: park a little earlier
+  stuck_s: 60.0            # [F-01b] a standby not ready (nothing running on it) this long is let go for the next pick
 
 crunch:                    # [one brain, step 2] ONE crunch table (redzone/crunch.py), read by the scorer, standby,
                            # the demo and the grading. period / clock_s (left, at or under; null = whole period on) / margin /
@@ -558,7 +581,41 @@ autonomy:
 
 supervisor:                # watches the live system and fixes what it can on its own (redzone/supervisor.py)
   enabled: true
+  # [F-01b] the rest of supervisor.DEFAULTS, each the code's default (Supervisor.opt reads supervisor.<name>, else DEFAULTS)
+  every_s: 10.0            # how often the loop looks
+  screen_confirm_s: 20.0   # the TV must look wrong on two checks this far apart
+  screen_frame_gap_s: 2.0  # two screenshots this far apart: identical = a still page, not video
+  screen_after_fix_s: 45.0   # the controller's own watchdog repaired something this recently: wait
+  stuck_grace_s: 30.0      # a switch older than control.max_switch_s + this is stuck
+  idle_s: 180.0
+  fail_window_s: 1800.0
+  backoff_after: 2
+  backoff_s: 600.0
+  mute_after: 3
+  app_mute_targets: 2
+  app_mute_failures: 5
+  safe_s: 180.0
+  safe_resumes_per_hour: 3
+  stale_s: 120.0
+  stale_hard_s: 420.0
+  adb_offline_s: 120.0
+  adb_server_s: 60.0
+  doubt_s: 900.0           # delay doubt wider than doubt_max_s for this long -> reset
+  doubt_max_s: null        # null = delay.sigma_default + 5
+  finished_hold_s: 180.0
+  log_every_s: 600.0
+  max_log_bytes: 20971520    # 20 MiB
+  keep_log_bytes: 2097152    # 2 MiB
+  max_jsonl_bytes: 10485760  # 10 MiB
+  keep_jsonl_lines: 20000
+  max_imgcache_bytes: 209715200   # 200 MiB
+  keep_imgcache_bytes: 157286400  # 150 MiB
+  max_wal_bytes: 67108864    # 64 MiB
+  paused_alert_s: 600.0    # auto-switching paused this long with a live game -> toast + push (P-11)
+  watchdog_beat_s: 300.0   # the watchdog's heartbeat file older than this with a live game -> push (P-02)
+  watchdog_alert_repeat_s: 1800.0
   ntfy_topic: ""           # optional: push the nightly report to the free ntfy app (pick a hard-to-guess topic)
+  ntfy_server: "https://ntfy.sh"   # [F-01] the ntfy server the push goes to (supervisor.DEFAULTS["ntfy_server"], the same value)
   budget:                  # error budget, over the last window_nights nights that had switches (nightly report)
     window_nights: 7
     failure_pct: 5         # failed + picture-never-confirmed switches, % of live switches
@@ -593,6 +650,8 @@ multiview:                 # YouTube TV multiview as a switch path (redzone/tune
 tuners:                    # per-app switch paths
   prime_fast_confirm: false # [build plan WP-04] confirm a Prime tune without running OCR inside the poll loops
   espn_link_form: false     # [build plan WP-04] use the checked ESPN deep-link form
+  app_change_confirm: false # [TV Nov 10] after another app was in front: let the plain link confirm (about 2.5 s) before the
+                            # resend as a new task, and count the asked channel already playing at a retry as success
   unauthorized_retry_s: 300   # [DEV-15] an adb-unauthorized stick is not re-connected faster than this (re-raises the TV prompt)
   diagnose_timeout_s: 4       # [DEV-17] a failed tune's screen read (names "signed out" etc.) is cut after this
   launch_timeout_s: 30     # [DEV-11] `am start -W` (an app deep link) waits this long: a cold start can top 15 s
@@ -620,6 +679,7 @@ governor:                  # keeps the Mac cool and its disk free (redzone/gover
   enabled: true
   every_s: 30              # look at the Mac this often
   calm_s: 180              # a busy/hot/battery state must clear this long before work resumes
+  footprint_log: true      # [F-01] log the Mac's footprint to data/footprint.jsonl (Governor.from_config; the code's own fallback)
   busy_load: 0.85          # 5-min load per CPU core above this: the Mac is busy (eco)
   battery_eco: true        # on battery: eco (no reel downloads/lab/archive, slower idle polling; OCR keeps its full rate)
   battery_low_pct: 20      # on battery under this: critical (also no OCR, no local model)
@@ -643,6 +703,17 @@ hardening:                 # error handling (PLATFORM). Each switch is off until
   watchdog: false          # the watchdog may ask the app for narrow fixes (POST /api/agent/fix); off: it only tells you
   tv: false                # the TV jumped by itself to a stick on its home screen (a reboot's HDMI-CEC): flip it back
 
+sound_guard:               # [Nick, Nov 10: "Volume must be 1000% off"] the TV's mute and volume by readback (redzone/platform/sound_guard.py)
+  enabled: false           # on: read mute + volume back before the first input switch, after every switch and every check_s;
+                           # off: no guard exists and no sound call is made (read once at app start)
+  must_be_silent: false    # on: muted AND volume 0 is required (not silent, or unreadable unreadable_max times = incident),
+                           # and redzone/tv.py refuses KEY_VOLUP, KEY_MUTE, volumeUp, unmute, setVolume above 0 and volume_duck
+  check_s: 20.0            # the periodic check (tvctl.py watch used 20 s)
+  unreadable_max: 3        # this many readbacks in a row without mute or volume is an incident ("no readback, no test")
+  silence_tries: 4         # volume 0 + mute + read back, this many tries, before the first switch of a session
+  on_incident: off_tv      # off_tv: power the TV off, then block switching until cleared by hand; block: only block
+  settle_s: 0.7            # after volume 0 + mute, wait this long before the readback (tvctl.py); read once at import
+
 two_stick:
   unavailable_backoff_s: 0  # [Nick live test Nov 7] a standby tune that stopped at an account/payment/UNAVAILABLE screen keeps
                             # that game off the standby this long (0 = the usual 120 s retry). Suggested 900
@@ -659,6 +730,7 @@ two_stick:
   cec_flip: true           # HOME -> HDMI-CEC Active Source as the last-resort flip (the TV's own input change,
                            # set up by scripts/tv_setup.py, goes first when it's proven)
   enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment
+  break_p: 0.5             # [F-01] a break forecast at or above this probability lets the hidden stick pre-spend the break (engine._break_standby; the code's own fallback)
   hold_s: 20               # keep the hidden stick on a game at least this long before re-tuning it...
   min_gain: 8              # ...and then only for one this many points better (your game's return and
                            # a replay about to play take it right away)
@@ -803,6 +875,7 @@ join:                      # [Join API] put a HIDDEN stick a chosen time behind 
     target_gross_s: {youtubetv: 20, prime: 8}     # with a plan: |read - target| only for gross misses (16.8 s steps)
     min_behind_s: 5        # a reading at or below this is the live edge, not a buffer
     over_s: 15             # a reading past max_s + this is a runaway / misread
+    max_s: 150.0           # [F-01b] a reading deeper than this is "past join.max_s" (join_watchdog.WATCHDOG_DEFAULTS; the same 150 s as join.max_s)
     max_reseeks: 1         # then fall back
     reprobe_unmeasured: false  # an unmeasured committed join: read the label once more before falling back (+~7.5 s)
     fallback: live         # live = relink to the live edge through another channel; keep = leave it, state unknown
@@ -842,9 +915,11 @@ canary:                    # [item 8, Nov 7] daily pre-game self-test on the HID
   tol_s: 6                 # |measured - predicted| must be within this (2 x the YouTube TV +-3 s)
   settle_s: 8              # after the tune, before the join
   prime: false             # also test a Prime pause (needs a playing Prime title: off pre-game)
+  poll_s: 3.0              # [F-01b] how often it re-checks that no game is live or about to start and the stick is still the hidden one
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true
+  pause_poll_s: 0.4        # [F-01] how often a buffered jump re-reads the hidden stick's player while its PAUSE settles (control.py; the code's own fallback)
   yttv_seek: scrub         # [Nick, Nov 7] a YouTube TV catch-up is seeked on the HIDDEN stick by the overlay scrub
                            # (yttv_seek.enter_buffer, knob-checked), its landing READ on the label (LabelProbe), then
                            # it plays up to park_lead_s before the snap and pauses there; the flip un-pauses it. The
@@ -924,6 +999,7 @@ timing:
     by_league: {nfl: 60, cfb: 60, nba: 90, cbb: 90, wcbb: 90, nhl: 90}
     default: 60
     max_s: 90              # Nick's cap (~1 min behind live accepted, 90 s at most)
+    shadow_stay_leave_every_s: 15.0   # [F-01] the buffer shadow logs an unchanged stay at most this often (buffer_shadow.py; the code's own fallback)
     held_max_age_s: 600    # held.json offsets older than this are not restored at start (the stick may have moved)
     resume_poll_s: 0.5     # how often a hold's resume re-reads playback while it settles
     resume_settle_s: 6     # [overseer Nov 7] a hold's PLAY may read 'stopped' for a moment (Prime re-buffering): wait this long for 'playing'
@@ -933,6 +1009,11 @@ timing:
     shadow_overrides: {"decider.entry.start_timed": true}   # the editor's own settings (flat dotted keys); the live
                            # decider keeps its own (planner: the night lab's untimed NBA start joined 10 s after tip)
     apps: [youtubetv, primevideo]   # apps whose player pauses and resumes on the hidden stick
+    prime_buffer: false    # [S-9, PARK-UNIFY] OFF. "primevideo" above never matched a "prime:<gti>" target in the fresh-tune
+                           # buffer (control._buffer_for), so a Prime hidden tune was never held behind live there (the
+                           # buffered-jump pause-hold already matched both). On: both spellings match there too, so Prime
+                           # tunes get up to max_s of pause. Judged unsafe on the Nov 7 record (handoff 2026-11-09): Nick's
+                           # call. PARK's own Prime hold (park.prime) never reads this
     hold_overreport_s: 0   # [hold calibration] fallback only (no stick positions): the wall span less this. 0 =
                            # the span as is. At 1.5 it fought hold_cal_s (a rebuild's pause is already short by
                            # 1.5 s), so the STK-06 watchdog rebuilt a 2.9 s gap forever on the night lab (Nov 4)
@@ -948,6 +1029,13 @@ timing:
     label_reader: false    # [YTTV scrub buffer item 2, Nick Nov 6 10:15 PM] read YouTube TV's overlay time label (screencap ->
                            # local OCR -> numbers; the frame is deleted at once, never kept) as the behind-live truth
                            # meter after a scrub seek (media_session lies after a seek). Code: redzone/tuners/yttv_label.py
+    # [F-01b] the label reader's numbers (yttv_label.py reads them as timing.behind_live_s.label_<name>), each the code's own fallback
+    label_step_s: 15.0     # the overlay's step per LEFT / RIGHT press
+    label_overlay_wait_s: 1.3   # after a key press, wait this long for the overlay to draw
+    label_open_tries: 4    # tries to bring the overlay up
+    label_key_gap_s: 0.35  # between two key presses
+    label_max_behind_s: 600   # a pair/edge result outside [-5, this] is a misread, not a buffer
+    label_settle_s: 4.0    # after the commit, wait this long for the media session to settle
     scrub_entry: false     # [scrub entry, Nick Nov 6 order item 4] YouTube TV: put the hidden stick B s behind live by the
                            # overlay scrub (yttv_seek.enter_buffer: CENTER, N x LEFT, CENTER) BEFORE the flip, never by
                            # a pause (a pause doesn't hold: docs/sync/2026-11-06-yttv-scrub-buffer-spec.md). held = the
@@ -988,11 +1076,39 @@ timing:
   seek_base_s: 28.7        # a seek lands this far behind live with no LEFT press (time label, 6 of 6, two games)
   seek_per_press_s: 16.5   # ...plus this much per LEFT press
   reach_s: 175             # deepest seek reached (about 175-177 s); catchup.HARD_CAP_S (180) still caps the route
+  # [POSITION-FIX, Nov 10 TV, research/position FINDINGS] each OFF; flag off = today's behaviour (redzone/tuners/yttv_timing.py)
+  label_stamp_at_pause: false    # a label read is timed at the media session's pause event, paired with the position the commit lands on
+  playback_with_package: false   # YouTube TV playback reads pass the app's package (a paused YouTube TV session is invisible without it)
+  no_right_probe_at_live: false  # at the live edge no RIGHT after the LEFT probe (it does not undo it); the LEFT is booked as 15.000 s
+  per_tune_offset: false         # a fresh YouTube TV tune's own lag is unknown (sd 1.2-2.0 s) until one absolute read on that tune
+  per_tune_offset_sd_s: {default: 2.0, espn: 1.24, fs1: 1.98}   # that spread per channel (n=21 espn, n=10 fs1, one night)
+  stats_for_nerds: false         # read Live Latency off the Stats for nerds panel at the live edge (redzone/tuners/yttv_nerds.py)
+  key_constants: false           # pause/resume timed with each stick's own key delays below, not the round trip
+  key_constants_by_stick:        # MEDIA_PLAY_PAUSE: frozen frame this long after the key; playing this long after the resume key
+    "Fire TV Stick 4K (2023)": {pause_s: 0.70, resume_s: 0.69, sd_s: 0.13}   # n=11 each
+    "Fire TV Stick 4K Plus": {pause_s: 0.60, resume_s: 0.53, sd_s: 0.08}     # n=6 each
+  game_offset: false             # per-game K (YouTube-clock time of a frame minus the feed time on it) from game_offset_file; no K = delay unknown
+  game_offset_file: ""           # any K file shape (noggin/k_table.k_rows), only rows naming a game id; empty = off (redzone/decider/tune_offset.py)
+  # [POSITION-FIX] measured numbers the helpers above read once from this file (not live settings; Nov 10 TV, hidden 2023 stick)
+  yttv_left_step_s: 15.0         # one committed LEFT lands exactly this far back (69 of 69 single steps)
+  nerds_shots_s: [11.0, 17.0, 22.0]   # Stats for nerds: Live Latency is readable about 11-23 s after a fresh tune
+  nerds_latest_s: 23.0           # ...past this after the landing it reads 0.00 again
+  nerds_bias_s: 0.34             # Live Latency minus the label's U, mean (espn +0.29 n=6, fs1 +0.42 n=4)
+  nerds_sd_s: 0.19               # ...its spread: one Live Latency read knows the tune's offset to this
+  dead_v2: false           # [DEAD-V2] OFF: true = a caller sizes an open stoppage's sure dead time by break class (an NFL timeout
+                           # the feed calls official is a commercial, "Timeout #n by TEAM" is short) and by the time already run
+                           # (scoring/dead_left_lite.guaranteed_left, table broadcast/dead_left_table.json, train nights only).
+                           # Off = dead_left.guaranteed_left, the pooled quantile less the elapsed time, as before. No app code
+                           # reads it yet (salvaged from branch anchor-mode without its anchor mode). Simulated only (ledger L1, L5)
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
   sigma_default: 15
   model: channel           # channel: predict each channel (channels of one app differ, truTV 22 s vs FS1 42 s); legacy: one figure per app
+  boundary: true           # [F-01] read the YouTube TV sticks around each quarter hour to time a show change (engine._boundary_loop; the code's own fallback)
+  scorebug: true           # [F-01] the Prime score-bug reader loop runs while a Prime game is on screen (engine._scorebug_loop; the code's own fallback)
+  timing:                  # [F-01] [timing] per-app stated doubt; null = absent = today (DelayBook.apply_timing_config)
+    app_sigma: null        # {app: {sigma_s, min_anchors, meter_s, replay: <timing_replay's verdict>}}; needs its hold-out replay verdict
   scorebug_hidden: true    # [Nick 9:25 AM Nov 5] also read the bug on the hidden stick while its Prime preload is live
                            # (our fastest NFL "feed", ~16 s behind the arena); numbers only, never frames
   scorebug_log: true       # every bug read (score, clock, period, down) to data/scorebug_reads.jsonl for the feed race
@@ -1053,23 +1169,6 @@ break_lengths_s:           # typical commercial lengths used to plan catch-ups
   nba: {timeout: 90, end_period: 130, halftime: 900}
   nhl: {timeout: 120, end_period: 150, intermission: 1130}
   mlb: {end_period: 130, pitching_change: 150}
-
-flags:                       # kill switches, one per subsystem (redzone/contracts/flags.py). On = allowed to run
-  brain_v3: true             # (the subsystem's own setting still decides if it's enabled). Off = its degraded mode.
-  hype_v2: true
-  break_model: true
-  reasoner: true
-  watchdog_model: true
-  reel: true
-  highlight_jump: true
-  drive_priority: true
-  trip_budget: true
-  nhl_rules: true
-  tv_flip: true
-  preload: true
-  sync_predictor: true
-  auto_tune: true
-  fastcast: true
 
 noggin:                    # docs/noggin.md
   belief:
@@ -1195,6 +1294,23 @@ league_overrides:          # [league overrides, Nick Nov 4 8:20/8:40 PM] per-lea
 queue:                     # [build plan P-BUILD] one queue owns the hidden stick; ships OFF until its gate passes (WP-02, WP-12)
   enabled: false
   r3_flippable: false      # a route only found by a search hit may be flipped to; undecided until test T3
+  warn_within_s: 180.0     # [F-01] a long-lead route's known lead only counts inside this window, so a game hours away cannot hold the hidden stick (engine._queue_lead; the code's own fallback)
+  # [F-01b] the rest of noggin/gamequeue.py Params, each the code's default (read as queue.<name> by Params.from_config)
+  tune_s: {youtubetv: 4.0, "youtubetv:search": 13.0, prime: 45.0, espn: 20.0, other: 30.0}   # fallbacks until the stick has medians
+  buffer_s: {youtubetv: 56.0, other: 56.0}   # fallbacks until the stick has medians
+  start_budget_s: {youtubetv: 12.0, "youtubetv:search": 30.0, prime: 55.0, espn: 20.0, other: 30.0}
+  hold_apps: [prime]       # the buffer is a pause, so B behind costs B seconds
+  retry_apps: [youtubetv]  # one fresh retry when the video never started
+  behind_s: 75.0
+  reach_margin_s: 2.0
+  evict_margin: 5.0        # value points, 0-100 scale (uncalibrated)
+  evict_per_sunk_s: 0.1    # value points per second of prep the eviction throws away (uncalibrated)
+  tier1_value: 100.0       # (uncalibrated)
+  tier2_value: 60.0        # (uncalibrated)
+  scrub_budget_s: 45.0
+  banner_retry_s: 30.0
+  backoff_s: 120.0
+  up_next: 5
 
 commit_gate:               # [build plan WP-05] one named-veto gate at the flip for every non-tap switch (decider/gate.py)
   enabled: false
@@ -1214,6 +1330,23 @@ discovery:                 # [build plan WP-01]
 
 arbiter:                   # [build plan WP-17] picks among legal options, with a must-show floor; every cut still goes through the commit gate
   enabled: false
+  # [F-01b] the rest of noggin/arbiter.py Params, each the code's default (read as arbiter.<name> by Params.from_config)
+  trigger_order: true      # false: must-shows rank by tier only
+  floor_extra: [rz_trip]   # N5: 95% of red-zone trips live, though tiers.yaml files them as setup
+  decide_last: true        # an option whose window is not open yet (earliest_s > 0) is not committed
+  late_narrow: true        # in the last stretch, non-floor cuts go only to close games
+  visit_budget: 6          # non-floor visits per game per visit_window_s; 0 turns the budget off
+  visit_window_s: 1800.0
+  visit_reserve: 1         # of that budget, kept for the game's final two minutes
+  stay_replay_s: 0.0       # after a score on screen, hold this long for one replay; 0 = off (in the show sim a hold after a score rolled into breaks)
+  repick_max_rank: 0       # decide last: a parked stick moves only for this rank or better (0: a touchdown)
+  last_game: true          # one game left: stop whipping
+  ceiling_per_min: 3       # RedZone's reported peak, a hard ceiling; 0 turns it off
+  brain_margin: 3.0        # a brain's cut must beat stay by this many points
+  flip_margin_s: 1.0       # seconds of slack on every route's deadline
+  catchup_s: 600.0         # a missed must-show may still air as a replay this long after the play; 0 turns it off
+  plan_clip_s: 30.0        # how long one aired clip holds the screen, for the plan
+  class_tie_pts: 2.0       # within this many points it's a tie: class first, then league order
   plan: false              # [MUST-LIVE] schedule must-show clips across both sticks
   save_leave: false        # [MUST-LIVE] may leave a low-leverage play to save a dying must-show; Nick decides
   last_game_to_live: false # [VETO-AUDIT] a finished game on screen may cut to the one game still live
@@ -1227,15 +1360,46 @@ arbiter:                   # [build plan WP-17] picks among legal options, with 
 legal:                     # [LEAVE-AT-FLIP] noggin/legal.py. Needs arbiter.enabled: nothing else reads this list
   leave_at_flip: false     # a cut stays listed with the leave gate shut or no landing yet; it waits (decider.leave_wait) and goes only when the flip's leave rules and a dead-ball landing both allow it
   leave_low_leverage: []   # leagues where a held cut may leave mid-play at a low-leverage moment (Decider._leavable: redzone/lab/leverage.py's floor, your team, crunch, a locked moment). Needs leave_at_flip. [] = only at a dead window: today's rule
+  leave_silent_s: 5.0      # [F-01] a held cut whose brain gives no opinion is dropped after this long (Decider._leave_worth; the code's own fallback)
   leave_wait_s: 45         # the longest a cut waits (per league: league_overrides); it also ends when the target stops being worth it or can't be entered at all
   lock_dead_ball: false    # [YES-1] a moment lock (red-zone drive, power play, at-bat) stops hiding every cut for as long as the game state holds: only a lock at a high-leverage moment (close and late, overtime) hides cuts, and it lets one through at a proven dead ball when the cut outranks it by decider.locked_override_lead. The leave gate still decides when
   facts_urgent: false      # [YES-1] the list plans each landing as the flip gate does (gate.Flip.replan: the urgent margin of a crunch or sticky entry, a possession-start cue). Off: the list plans with neither and is stricter than the gate
 
 slate:                     # [build plan WP-18] blocks of a few games, then catch-up, late narrowing; NBA misses its exit bar
   enabled: false
+  # [F-01b] the rest of moments/slate.py Params, each the code's default (read as slate.<name> by Params.from_config)
+  leagues: [nhl, mlb]      # added to jump_mode and buffered_jump's own league lists
+  whip_max: 4              # up to this many live games: every game in the rotation
+  filter_over: 16          # more than this many live: the relevance filter first
+  filter_to: 8
+  block_size: 3            # "a few games"
+  hold_s: 240.0            # "for a few minutes"
+  catchup_s: 45.0          # then the catch-up scene (a reel or the block's missed plays)
+  anchor_leagues: [nfl, cfb]
+  late_narrow: true
+  return_gap_s: 60.0       # no return to a game this soon without something new; 0 turns it off
+  payoff: true             # a cut needs a snap coming, a big moment, a break to fill, or a must-show
+  leave_after_shot: true   # basketball may leave in the walk after a shot, low leverage only
+  walk_safe_made_s: 6.0    # a join after a make is up 4 s after it with 2 s of doubt, inside the measured 7 s (5th percentile of the next live action)
+  walk_safe_rebound_s: 5.0   # the same after a defensive rebound; a transition has no walk at all
+  bucket_after_s: 1.0      # [NBA-BUCKET, basketball.join_after_bucket] the make is stamped ~1 s before the ball is through the net
+  bucket_guard_s: 2.0      # the next action's stamp can lead its start
+  bucket_sigmas: 1.0       # doubt on the landing, in stick delay sigmas
+  bucket_floor_nba_s: 8.0  # 5th percentile, make to the next shot attempt, wall clock (n=4,455)
+  bucket_floor_cbb_s: 9.0  # the same in men's college (n=1,395)
 
 fill:                      # [build plan WP-19] what the show does when nothing must be shown
   enabled: false
+  # [F-01b] the rest of moments/fill.py FillParams, each the code's default (read as fill.<name> by FillParams.from_config)
+  max_age_s: 1800.0        # unseen moments older than this are stale for the ladder
+  montage_s: 600.0         # the day's montage, about 10 minutes
+  montage_min_clips: 6
+  montage_max_clips: 40
+  montage_min_points: 24.0   # a touchdown-style montage: scores and turnovers, not every slam
+  montage_max_age_s: 86400.0
+  montage_per_game: 3
+  off_night_s: 180.0       # yesterday's best on an off night
+  off_wait_s: 10800.0      # a game starting within 3 h means wait, not replay
 
 threads:                   # [D-ADDICT M1] each live game's open question; holds and bonus stay off until judged on real nights (decisions.md)
   enabled: false           # keep the ledger (no effect on any decision)
@@ -1275,12 +1439,325 @@ threads:                   # [D-ADDICT M1] each live game's open question; holds
 
 labels:                    # [own-data job 17] extra logging only, for data no public source has
   enabled: false
+  # [F-01b] the numbers redzone/cheap_labels.py knob() reads as labels.<name>, each the call site's own fallback
+  max_read_gap_s: 30.0     # picture reads further apart than this end a stretch
+  break_min_s: 20.0        # a stretch with no readable picture at least this long is logged as a break on the picture
+  stale_s: 10.0            # a clock read older than this says nothing about the clock running
+  pair_window_s: 20.0      # the earlier read to compare with lies at most this far back...
+  min_gap_s: 1.5           # ...and at least this far back
 
 views:                     # [build plan WP-21] the phone's clock as of the screen, not the feed
   screen_clock: false
 
 basketball:                # [NBA-BUCKET] land right after a made basket, including the transition after it (Nick, Nov 9)
   join_after_bucket: false
+  join_after_bucket_crunch: false   # [NBA-YES] with join_after_bucket: the made-basket window also takes a join INTO a crunch or high-leverage game (off: only low-leverage games). Nick decides; simulated on recorded nights only
+
+show:                      # the phone's Show view over the new show's state files (redzone/web/show.py; read-only)
+  ui: false                # on: a "Show" tab with what is on the TV, the next move, pace, sound and Rule #1 counters
+  state_dir: ""            # the folder the show writes state.json and events.jsonl to (empty = no show yet)
+  eyes_dir: ""             # the folder the clock watcher writes eyes_state.json to (empty = the state folder, then its sibling eyes/)
+
+park:                      # [PARK, integration plan unit 0b] the two-stick show run by the app itself: the hidden stick is paused on the
+                           # next game; a jump resumes it, flips the TV input and pauses the stick that was left
+  enabled: false           # OFF. The planner, the facts and the timing model are in redzone/noggin/park_*.py; the stick steps
+                           # (tune, place, park, jump, finish) are Controller.park_* in redzone/control.py (unit PARK-HANDS),
+                           # which refuse unless this, sound_guard.enabled and sound_guard.must_be_silent are all on. Nothing calls
+                           # them until the decision-path owner (unit PARK-CONTROLLER) does
+  max_park_s: 180          # the park age cap: a stick paused longer than this is stale; the show tunes it afresh and never jumps
+                           # onto it. 180 = the longest hold whose place was READ BACK after its resume (4 pauses of
+                           # 20-180 s on one channel, ledger L74); nothing longer, no other channel, has been read
+  late_cap_s: 145          # ...and so is one whose picture is more than this behind its stream's live edge (finding 5, ledger L45)
+  pad_k: 4.0               # [PARK-TIMING-CONFIG] each game's padding = pad_k x the root of the summed squares of its error parts
+                           # (park.timing below; redzone/noggin/park_timing.py TimingParams). The code read this key before; the
+                           # config now accepts it. Every value here is the code's own default, so nothing changes until it is set
+  timing:                  # [PARK-TIMING-CONFIG] the error parts (sd, seconds) and the priors behind each game's padding
+    read_sd: 0.29          # the position read once per tune (a label read is a whole-second floor)
+    tune_sd: 1.5           # a tune that was not read: it lands 1.2-2.0 s (sd) off its nominal lag
+    k_sd_min: 0.5          # K is never trusted tighter than this (noggin/k_table.K_SD_MIN). Raising it widens ONLY games that have
+                           # a K: 1.91 gives 8 s on a read tune in every league (NBA, college, football); games with no K stay wide
+    stamp_sd_nba: 0.33     # ESPN NBA play stamps against the game clock
+    stamp_sd_college: 0.5  # college stat crews: looser
+    stamp_sd_football: 0.4  # football play stamp against the snap (one Prime replay, Nov 11): football padding about 3 s
+    key_sd: 0.13           # a key's landing
+    eyes_sd: 0.3           # an edge the clock watcher saw itself
+    prior_delay: 33.0      # no K: a feed stamp to a stick's live edge on the wall clock...
+    prior_sd: 12.0         # ...and its doubt: a game with no K is padded about 4 x 12 = 48 s
+    live_lag: null         # null: park.steps.live_lag_s decides; a number here wins over it (ParkHands._live_lag)
+    k_stale: 1800.0        # Eyes's K keeper calls a read older than this stale
+  read_guard: false       # [PARK-UNIFY] OFF. On: the read gesture has the other overlay gestures' whole focus guard
+                           # (yttv_seek.front_and_playing before ANY key, #356: YouTube TV in front and playing; and no
+                           # committing CENTER on a frame whose focus was never read). Off: only the commit is guarded, and
+                           # only when a frame was read (as merged in PR 425)
+  reread_in_place: false   # [PARK-UNIFY] OFF. On: the show's re-read of a drifted stream ON SCREEN puts the knob back (RIGHT
+                           # once per LEFT) before its commit, so the picture is not sent ~30 s back in front of the viewer, and
+                           # a failed re-read never reloads the picture on screen. Off: as merged (commit 30 s back; a fresh tune
+                           # if the read fails). RIGHT behind the live edge is unmeasured on the TV: the seek check catches it
+  verify_game: false       # [PARK-VERIFY-GAME] OFF. On: after every tune the words on the picture name the game (YouTube TV: the read
+                           # gesture's own overlay text, no extra screenshot; Prime: one screenshot + text read). Another live
+                           # game's two teams named = the WRONG game: that stream is refused and the show re-picked without the
+                           # pair for 30 min. Nothing readable = UNKNOWN: the game's K is kept back (wide padding) until its
+                           # picture confirms it; a guessed channel (Peacock -> NBCSN) is UNKNOWN the same way (noggin/park_verify.py)
+  verify_hold_s: 1800      # [PARK-VERIFY-GAME] a game whose channel's picture showed another game is not taken again for this long
+  picture_grade:          # [PARK-CONFIG-KEYS] the picture grader sidecar (redzone/picture_sidecar.py, PR 432): OFF; the code's defaults
+    enabled: false         # OFF
+    tool: ""               # the grader program's path (empty: no sidecar)
+    python: ""             # the Python that runs it (empty: the app's own)
+    args: []               # extra arguments
+  picture_check:          # [PARK-CONFIG-KEYS] the live picture check (picture_sidecar.LIVE_CHECK_KEY): OFF, nothing calls it yet
+    live: false            # OFF
+  catchup:                # [PARK-CONFIG-KEYS] the catch-up move and its packages (noggin/park_catchup.py, catchup_pack.py, PR 434): OFF.
+                          # Keys only: no caller in the show yet (only scripts/catchup_replay.py and tests). Each is the code's default
+    enabled: false         # park_catchup.CatchupParams
+    min_gap_s: 120         # park_catchup.CatchupParams
+    cool_s: 300            # park_catchup.CatchupParams
+    leave_wait_s: 20       # park_catchup.CatchupParams
+    join_wait_s: 30        # park_catchup.CatchupParams
+    replay_dead_s: 12      # park_catchup.CatchupParams
+    look_ahead_s: 30       # park_catchup.CatchupParams
+    hot_look_s: 300        # park_catchup.CatchupParams
+    plan_wait_s: 10.0      # park_catchup.CatchupParams
+    step_timeout_s: 30     # park_catchup.CatchupParams [E-01b]: a catch-up flip not back within this stops the show
+    max_plays: 5           # catchup_pack.PackParams
+    min_plays: 1           # catchup_pack.PackParams
+    cap_s: 120.0           # catchup_pack.PackParams
+    min_worth: 0.3         # catchup_pack.PackParams
+    min_value: 0.8         # catchup_pack.PackParams
+    lead_s: 2.0            # catchup_pack.PackParams
+    tail_s: 3.0            # catchup_pack.PackParams
+    possession_s: 24.0     # catchup_pack.PackParams
+    snap_s: 7.0            # catchup_pack.PackParams
+    merge_s: 12.0          # catchup_pack.PackParams
+    seg_max_s: 30.0        # catchup_pack.PackParams
+    big_w: 2.0             # catchup_pack.PackParams
+    lead_w: 1.0            # catchup_pack.PackParams
+    tie_w: 0.5             # catchup_pack.PackParams
+    run_w: 1.0             # catchup_pack.PackParams
+    run_pts: 8             # catchup_pack.PackParams
+    max_age_s: 180.0       # catchup_pack.PackParams
+    multi_max_age_s: null    # catchup_pack.PackParams: null = no cap (the code's inf; a JSON settings view cannot carry inf)
+    delay_s: 35.0          # catchup_pack.PackParams
+    rewind_rule: "measured"  # catchup_pack.PackParams
+    reach_s: 175.0         # catchup_pack.PackParams
+    seek_base_s: 12.0      # catchup_pack.PackParams
+    seek_per_s: 0.079      # catchup_pack.PackParams
+    seek_gap_s: 8.0        # catchup_pack.PackParams
+    reel: false            # catchup_pack.PackParams
+    reel_lag_s: 720.0      # catchup_pack.PackParams
+    reel_play_s: 10.0      # catchup_pack.PackParams
+    reel_open_s: 20.0      # catchup_pack.PackParams
+    reel_gap_s: 8.0        # catchup_pack.PackParams
+    moments: false         # catchup_pack.PackParams
+    moments_lag_s: 60.0    # catchup_pack.PackParams
+    moments_play_s: 12.0   # catchup_pack.PackParams
+    moments_open_s: 20.0   # catchup_pack.PackParams
+    moments_gap_s: 6.0     # catchup_pack.PackParams
+  fast_steps: false        # [PARK-SPEED] OFF. On: fewer seconds on the critical path, every check kept (docs/park.md "Fast
+                           # steps"). A jump returns once the new picture is up, playing, on the new input and silence is read
+                           # back after the switch (the TV's own after-switch read is used instead of a second read queued
+                           # behind it; the new stick's playing report and the left stick's pause are read during the flip);
+                           # the stick left's BACK and read-back run after the jump, and a later step on that stick waits for
+                           # them (or ends them before their next key: a new tune, finish). Reads poll every steps.fast_poll_s;
+                           # a read-back reads the stick and its foreground app at once; the TV's mute, volume, power and input
+                           # are read in one round. Off: every step as before (replay decision-identical)
+  steps:                 # each PARK device step as measured on the real sticks and TV on Nov 10 (ledger L13-L21, L41-L51)
+    min_real_pos_s: 60     # after a tune the media session says "playing" at position 0.0 for about 2 s: a position under this
+                           # is never a stream's place
+    live_lag_s: 20         # an unread stream's nominal place: its live edge this far behind YouTube's clock (19-27 s measured;
+                           # park.timing.live_lag wins when set). A read replaces it
+    first_report_s: 8      # ...a tune with no real position within this long is a failed tune
+    poll_s: 0.25           # the media session is read this often while a step waits on it (the runner read 4 times a second)
+    fast_poll_s: 0.1       # [park.fast_steps] ...this often with it on (one read takes about 0.2 s, so reads run back to back)
+    tune_timeout_s: 90     # one way of tuning (direct code, local search, search) gets at most this long
+    read_steps: 2          # the read gesture's LEFT presses (CENTER, LEFT x this, read the label, CENTER); 0 = no read
+    left_step_s: 15        # one committed LEFT is exactly this far back (69 of 69). [PARK-UNIFY] its ONE home: the show's
+                           # planner reads it too (ShowParams.step; park.show.step is only an alias)
+    center_wait_s: 1.3     # after the first CENTER: the overlay comes up and the player pauses
+    left_gap_s: 0.6        # between LEFT presses
+    label_wait_s: 0.7      # after the last LEFT, before the label is read
+    label_timeout_s: 25    # one label read (screenshot, on-Mac text reading, frame deleted) gets at most this long
+    land_wait_s: 4         # after the committing CENTER: playing again within this
+    settle_s: 2.5          # ...then this long before checking the commit did not toggle a pause
+    replay_wait_s: 6       # a resume or pause key's report is waited for this long
+    read_age_min_s: 5      # a label with no programme start: the start is the 5-minute grid point before (capture - label)
+    read_age_max_s: 240    # ...when that leaves a frame this many seconds old or between (worked on nbc, 58.8 s behind)
+    grid_s: 300            # programmes start on this grid
+    base_lag_min_s: 5      # a fresh tune's read is believed when the picture is this far behind YouTube's clock (less the seek)...
+    base_lag_max_s: 90     # ...up to this
+    kept_lag_max_s: 600    # a stream found already on the game is believed up to this far behind (one was 120 s behind, run 6)
+    pause_lead_s: 0.70     # the frozen frame is this far past the pause key: the 2023 stick (and any model not named below)
+    pause_lead_plus_s: 0.60   # ...the 4K Plus
+    back_after_s: 0.4      # BACK clears the pause banner this long after the pause key...
+    confirm_s: 1.6         # ...then the stick is read back (still paused, YouTube TV in front) this long after BACK
+    resume_lead_s: 0.3     # a jump: the resume key goes out this long before the flip command. [PARK-UNIFY] its ONE home:
+                           # the planner reads it too (ShowParams.resume_lead; park.show.resume_lead only an alias)
+    hold_key_s: 1.35       # ...and the pause key to the stick being left this long after the flip command (60 of 60)
+    flip_methods: [smartthings]   # the TV's own input change; never HOME on a stick
+    input_rereads: 2       # an input the sound readback did not return is read again this many times...
+    input_reread_s: 0.7    # ...this far apart
+    cue_lead_s: 8          # [park.catchup, E-01] a catch-up cue scrubs back to land this far before the clip's start (half a
+                           # 15 s LEFT plus the scrub's 6 s tolerance; a prior, not yet run on the TV: E-02), then pauses on it
+    cue_wait_max_s: 45     # ...and is dropped (tune again) when the clip's start is further ahead than this after it lands
+    cue_relock_s: 2        # [E-01b] the cue waits for its frame holding no controller lock, and takes it again this long
+                           # before the pause key goes out (then checks no other step moved the stick meanwhile)
+  leagues: [nba, cbb]      # [PARK-CONTROLLER, unit 8] the leagues whose live games the PARK show takes. [PARK-NFL] nfl / cfb may be
+                           # added: football facts are the grader's NFL dead time, never past the play clock unexplained
+                           # (park.play_clock_s 40 + park.snap_slack_s 5), padding about 3 s (park.timing.stamp_sd_football 0.4)
+  session_min: 240         # one show plans on a grid this many minutes long; the engine starts the next one when it ends
+  possession_cap_s: 30     # after a review's RULING the stoppage is over: silence after it (and the plays it re-logs) is dead only
+                           # this long from the last row; the rest is UNKNOWN, never a place to cut. 24 s shot clock + 6 s
+                           # (inbound, stamp slack). Night 20261023 LAC @ LAL Q1 7:21: a timeout, a challenge ruled 32 s later,
+                           # then 149 s of silence trusted as dead up to the review cap (420 s): a mid-play leave
+  late_row_s: 60           # a feed row stamped more than this after a row that FOLLOWS it in the feed's order is a late edit (a
+                           # substitution re-stamped half an hour on; 30 such rows in four games on Nov 10): it takes the stamp
+                           # of the row before it instead of dragging every later row up to its own (live run 4, flip 4)
+  # [PARK-CONFIG-KEYS] the PARK facts' numbers (noggin/park_facts.FactsParams), read as park.<name>: the code's defaults
+  high_play_s: 7.0         # park_facts.FactsParams
+  shot_window_s: 4.0       # park_facts.FactsParams
+  ghost_s: 60.0            # park_facts.FactsParams
+  open_lead_s: -1.0        # park_facts.FactsParams
+  football_lead_s: 15.0    # park_facts.FactsParams
+  play_clock_s: 40.0       # park_facts.FactsParams
+  snap_slack_s: 5.0        # park_facts.FactsParams
+  play_after_s: 12.0       # park_facts.FactsParams
+  play_after_special_s: 15.0  # park_facts.FactsParams
+  idle_poll_s: 5           # with park.enabled off the engine's park loop only sleeps, and looks at the flag this often
+  start_retry_s: 30        # the stream on screen could not be placed (no read, no fresh tune): try again after this long
+  football_slider: 50      # [football slider] football nights (Nick, Nov 11): 0 = "More everything else" ... 100 = "More football".
+                           # Football's value x 16^((s-50)/50) (1/16 .. 16); the ends are weights, not anchors, so at 100 the
+                           # other games still backfill football's long breaks when a whole look fits. 50 = value decides,
+                           # unchanged. Shown in Settings only with park.enabled and a football game live
+  seen: false              # [SEEN] OFF. On: the show tracks what you have seen of each game (redzone/noggin/seen.py): when it was
+                           # last on screen, the score then, what the feed reported since, a staleness score, the big plays
+                           # missed; the Show tab says "seen 7 min ago" and a templated recap ("Last time: LAL 31-25, 1Q 0:30.
+                           # Since: LAC 12-4 run"; no AI text). Decisions are unchanged
+  director_v1: false       # [DIRECTOR] OFF. On: Director v1 (redzone/noggin/director.py) weighs every game at each choice by
+                           # (a) a big moment pending, (b) how long it has gone unseen, (c) score.league_weight; turns park.seen
+                           # on. Rule #1, the padding and the warrant are unchanged; each jump's warrant names its goal (a/b/c)
+  director_v2: false       # [DIRECTOR v2] OFF. On: the show uses a director object handed to it (Show(director_obj=...), the
+                           # shape of redzone/noggin/director_protocol.py) instead of building Director v1; with nothing handed
+                           # over it is as before. Nothing in the app hands one over yet (task A-04 is the seam only)
+  unknown_rate_v2: false   # [PLANNER v2] OFF. On: the show's planner prices a second the feed has not reported with a rate object
+                           # handed to it (Show(unknown=...): bind(arrs, setting), rate(game, last reported second, now)), held to
+                           # 0.1x..4x the planner's own guess (park_plan.ClampedUnknownRate); with nothing handed over it is as
+                           # before. Nothing in the app hands one over yet (task A-05 is the seam only)
+  director:                # [DIRECTOR] Director v1's numbers (picked in replay on 3 recorded NBA nights; not measured on the TV)
+    big_w: 3.0             # (a) a game with a close-and-late or overtime play in the feed's last big_look seconds: x this
+    big_look: 90           # ...seconds (park.show.crunch_look)
+    fresh_w: 1.0           # (b) a game unseen is weighted up to x (1 + this)...
+    stale_ref: 600         # ...at this many staleness points (a second of play unseen adds its leverage: ~10 min of ordinary play)
+    taste: true            # (c) each game x its league's score.league_weight over the best league on the slate
+  feed_lag:              # [PARK-NFL-LAG] a late feed's game is parked deeper so its dead time is known before it is shown
+    enabled: false         # OFF. On: each game of a listed league starts from its league's feed lag in redzone/lab/feed_lag_profile.json
+                           # (Nov 2-3: nfl median 44 s, q90 62.5 s; n=150) instead of park.show.feed_lag (8 s), and is parked
+                           # (lag - 8 s) deeper: Prime by a longer pause hold, YouTube TV by more LEFT presses. The lag is then
+                           # measured live from each new row's stamp to its first sight. Off: every game as before
+    leagues: [nfl, cfb]    # basketball is not listed: its rows do not change
+    prior_q: 90            # the profile's quantile to start from
+    min_samples: 5         # new rows seen before the measured lag replaces the prior
+    move_s: 5              # ...and only when it moved this much
+  prime:                   # [PRIME-PARK] Prime Video games in the PARK show (redzone/noggin/park_prime.py)
+    enabled: false         # OFF. On: the show also takes live games with a Prime event link (prime:<gti>). A Prime tune is the
+                           # existing Prime tuner, its cost decider.switch_cost.prime plus a pause-hold (prime_pause, in
+                           # buffered_jump.hold_chunk_s chunks); no back route (replay.apps); its place from the epoch position;
+                           # its K from the hidden stick's own score-bug reads (sync.edge.k_min_reads / k_sd_max_s bars).
+                           # Off: decision-identical to before (tests/test_park_prime.py). Unproven on the TV
+    pair_offset_s: 60.0    # K from a paused frame's bug: decider.sync.clock_sample only returns delays of 2-180 s, so the frame's
+                           # epoch is shifted by this before the call and taken off again (K may be negative: -58 to +120 s fit)
+    stop_match_s: 1.0      # a parked frame's bug clock this close to the stoppage's own clock is inside that stoppage (a whole-second
+                           # clock read)
+    pin_football: true     # [pinned anchor] (only with park.prime.enabled on) a Prime FOOTBALL game on screen when the show starts is
+                           # kept on its stick: never held paused when left (it plays on unseen, then is parked again before the way
+                           # back), re-tuned (about 100 s on Prime) only at the lateness cap; all roaming is on the other stick.
+                           # Replay, fake sticks, 3 nights, lag 44 s: football snaps with 3 NBA games 0.11 -> 0.19 (slider 50) and
+                           # 0.26 (slider 100); all value seen 0.46 -> 0.52; both judges 0 / 0 / 0; behind live max 143 s
+    bug_gate: false        # [PARK-NFL-LAG] OFF. On: a parked Prime FOOTBALL frame is kept only if its score bug's play clock is
+                           # below 40 (counting down from a dead ball; at 40 a play runs). Unread: kept (the feed's facts rule).
+                           # The play clock was readable on 76% of frames of one Thursday replay (watcher, Nov 11); unproven live
+  show:                    # the show's own numbers (redzone/noggin/park_show.py ShowParams; each as the local show runner ended
+                           # Nov 10 on, its READY-B state). Pace is a soft pull, never a rule (Nick, Nov 10)
+    show_delay: 35         # the whole show runs this far behind each stream's live edge, so the feed is complete for what is
+                           # on screen and the per-tune read (which steps the stream back) costs nothing extra
+    bonus: 3.0             # the planner's jump bonus: the soft pull toward pace; it only chooses among WARRANTED jumps
+    min_look: 3.0          # seconds of play a look must show before the next jump (whole possessions stay)
+    warrant: need          # need: no jump without a warrant worked out before it (Nick, Nov 10: "If we jump the warrant
+                           # has to exist") | note: only write it down | off
+    crunch: true           # in crunch time the best game is the anchor: the others only fill its stoppages
+    stops: true            # trust an open stoppage for the shortest time its kind has lasted (stop_min below)
+    land_wait: 20          # no landing more than this before a play start the feed has reported (never onto a long break)
+    long_break: 90         # stopped this long at the feed's edge with no restart reported = a long break: nothing is parked there
+    tune_stick: 1.0        # a new tune must be worth this many jump bonuses more than the best plan without one (no thrash)
+    late_cap: 145          # nothing comes up further behind its stream's live edge than this (Nick's lateness cap)
+    jump_real: 3.0         # a jump on the real TV, first key to the new picture: 2.4-3.5 s (ledger L45); the plan uses this.
+                           # [PARK-UNIFY] the flip's other times come from it and resume_lead_s by ONE derivation
+                           # (ShowParams.flip_times: flip, unseen, hold-off), used by the app's rig and the replay's
+    read: 10.5             # the per-tune read gesture, first key to playing again (a tune with it took 13-19 s). Where the
+                           # read leaves a stream: ONE formula, ShowParams.read_back (LEFT steps x left_step_s + read_sat)
+    # [PARK-CONFIG-KEYS] the rest of park_show.ShowParams, each the code's default (step, resume_lead: park.steps.*)
+    unseen: 1.7            # park_show.ShowParams
+    dead_w: 0.0            # park_show.ShowParams
+    stale: 99999           # park_show.ShowParams
+    back_spots: 2          # park_show.ShowParams
+    roll_same: true        # park_show.ShowParams
+    wide_pad: 10           # park_show.ShowParams
+    wide_prospect: 0.3     # park_show.ShowParams
+    confirm: 2             # park_show.ShowParams
+    hold_off: 4            # park_show.ShowParams
+    read_sat: 8.0          # park_show.ShowParams
+    jump_slack: 1          # park_show.ShowParams
+    pause_reach: 180.0     # park_show.ShowParams
+    hold_ok: 1.0           # park_show.ShowParams
+    hold_drift: 2.0        # park_show.ShowParams
+    lag_sane: 60           # park_show.ShowParams
+    lag_read_max: 300.0    # park_show.ShowParams
+    lag_early: 10.0        # park_show.ShowParams
+    refresh: 15            # park_show.ShowParams
+    cool: 10               # park_show.ShowParams
+    tune_retry: 20         # park_show.ShowParams
+    keep_margin: 5         # park_show.ShowParams
+    stay_say: 15           # park_show.ShowParams
+    clip_reach: 150        # park_show.ShowParams
+    clip_steps_max: 9      # park_show.ShowParams
+    crunch_look: 90        # park_show.ShowParams
+    feed_lag: 8.0          # park_show.ShowParams
+    poll: 2.5              # park_show.ShowParams
+    tune0_code: 3.5        # park_show.ShowParams
+    tune0_search: 19.5     # park_show.ShowParams
+    my_pref: 1.25          # park_show.ShowParams
+    stop_max:              # the sanity gate: the longest an OPEN stoppage of each kind can plausibly last (s). "No row since"
+                           # means "still stopped" only this long; after it the feed has gone quiet or lost a row, and the rest
+                           # is unknown (never a place to cut). Plain caps set above the longest real stretch of each kind on
+                           # one recorded night (20261023, four games: whistle 219 s, timeout 258, review 346, period end 223,
+                           # halftime 1046); the stoppage model has the real spread
+      whistle: 240         # a foul, a violation, out of bounds, free throws
+      unknown: 240
+      timeout: 300
+      review: 420
+      injury: 900
+      end_period: 300
+      halftime: 1500
+    stop_min:              # "<league>|<feed row type>": the shortest dead time (s) such a row was followed by on the NBA dev
+                           # nights (1st percentile, never above any one night's; learned by the local show runner, Nov 10)
+      "nba|coach's challenge (overturned)": 9.0
+      "nba|end period": 3.0
+      "nba|free throw - 1 of 3": 4.0
+      "nba|free throw - 2 of 3": 4.0
+      "nba|free throw - technical": 6.0
+      "nba|kicked ball": 4.0
+      "nba|offensive charge": 11.0
+      "nba|offensive foul": 8.0
+      "nba|out of bounds - lost ball turnover": 3.0
+      "nba|out of bounds - step turnover": 6.0
+      "nba|personal foul": 9.0
+      "nba|personal take foul": 14.0
+      "nba|shooting foul": 4.0
+      # [PARK-NFL-LAG] football, from the action row that starts the gap (BRAIN, Kaggle redzone-brain-history-nfl v1: 505 games
+      # of the 2024-25 seasons, locked nights never fetched; dead = next action stamp - 7 s - this stamp; 1st percentile, n)
+      "nfl|timeout": 43.0              # n=10,728 (timeouts, official ones included)
+      "nfl|official timeout": 43.0
+      "nfl|two-minute warning": 78.0   # n=1,011
+      "nfl|end period": 168.0          # n=1,041 (quarter end)
+      "nfl|end of half": 811.0         # n=505
 
 chrome_source:             # [PARK, Nick Nov 10] Chrome tabs on the Mac as the picture streams (redzone/chrome_source). OFF: nothing imports it yet
   enabled: false

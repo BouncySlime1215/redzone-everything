@@ -238,6 +238,24 @@ AUTONOMY_HEALER = Spec(
     edges={"idle": ("checking",), "checking": ("idle",)},
     initial="idle")
 
+# --- sound guard (redzone/platform/sound_guard.py) ------------------------------------------------------
+
+SOUND_GUARD = Spec(
+    "platform.sound_guard", owner="platform.sound_guard.SoundGuard.m",
+    doc="The TV's sound by readback (sound_guard.enabled): muted and volume 0 when sound_guard.must_be_silent is on. "
+        "An incident turns the TV off and blocks every input switch and key until it is cleared by hand.",
+    states={
+        "unchecked": "no readback yet this session, or the TV was off: the next switch silences it and reads back first",
+        "ok": "the last readback was silent, or silence is not required",
+        "unreadable": "the last readback had no mute or volume (unreadable_max in a row is an incident)",
+        "blocked": "sound incident: TV powered off (on_incident off_tv), no switch or key until cleared by hand",
+    },
+    edges={"unchecked": ("ok", "unreadable", "blocked"),
+           "ok": ("unchecked", "unreadable", "blocked"),
+           "unreadable": ("unchecked", "ok", "blocked"),
+           "blocked": ("unchecked",)},
+    initial="unchecked")
+
 # --- governor (redzone/governor.py) -------------------------------------------------------------------
 
 GOVERNOR_LEVEL = Spec(

@@ -9,9 +9,14 @@
 No TV, no stick, no browser, no engine, no network, no training. Dev (`fit`) nights only. Markdown on stdout, every row with
 every column in the CSV. Every number is SIMULATED; the step times fed in are measured or assumed as park_sim.DEVICES says.
 
-Rows, all by park_plan.Planner at one jump_bonus, on the same nights, with the hindsight brain's wants for the yes-rate:
-    sticks, lead (old)       the two-stick show as park_plan has run it: every step instant, and the end of each dead ball
-                             read `feed_lead` (27 s) ahead of the stream. This is the optimistic row.
+WHICH PLANNER. Every row runs scripts/park_plan_n.py inside scripts/park_sim_n.py: a script-side copy of the simulator
+and planner as they stood on Nov 10, plus the new settings. It is NOT the planner the app runs today
+(redzone/noggin/park_plan.py, reworked since for the app's controller). So the rows compare the picture sources with each
+other under one planner; they do not say what the app's controller would do.
+
+Rows, all by park_plan_n.Planner at one jump_bonus, on the same nights, with the hindsight brain's wants for the yes-rate:
+    sticks, lead (old)       the two-stick show as the Nov 10 simulator ran it: every step instant, and the end of each dead
+                             ball read `feed_lead` (27 s) ahead of the stream. This is the optimistic row.
     sticks, rows (honest)    the same two sticks with their measured step times, and a restart known only once a later play
                              row whose game clock has moved has been reported.
     chrome, rows, ...        browser tabs as streams (2 / 4 / 8 of them), a park is one forward seek and a pause, on the
@@ -40,8 +45,8 @@ for _p in (ROOT.as_posix(), (ROOT / "scripts").as_posix()):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import park_plan as pp  # noqa: E402
-import park_sim as ps  # noqa: E402
+import park_plan_n as pp  # noqa: E402
+import park_sim_n as ps  # noqa: E402
 
 WINDOWS = (5, 10, 20, 30, 45, 60)
 SLATES = ("nba 2", "nba 4", "nba 8", "mnf+1", "mnf+3")
@@ -60,7 +65,7 @@ def line(r: dict) -> str:
 
 
 def settings(err: str, delays: tuple, streams: tuple, open_wait: float, extra: dict | None = None) -> list[tuple[str, ps.Setting]]:
-    """Every row's park_sim.Setting. The old row is park_plan.setting untouched; `extra` goes on the others."""
+    """Every row's park_sim_n.Setting. The old row is park_plan_n.setting untouched; `extra` goes on the others."""
     honest = {"restart_known": "rows", "open_wait": open_wait, **(extra or {})}
     out = [("sticks, lead (old)", pp.setting(err, True)),
            ("sticks, rows (honest)", pp.setting(err, True, **{**ps.profile("sticks"), **honest}))]

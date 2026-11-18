@@ -304,6 +304,16 @@ class Engine:
         if self.cfg.get("timing.behind_live_s.label_reader", False):
             from redzone.tuners.yttv_label import LabelProbe
             self.control.label_probe = LabelProbe(self.cfg)   # [label reader] off by default
+        # [timing.per_tune_offset / timing.game_offset, Nov 10 TV] a tune's own lag and a game's K kept apart (both OFF)
+        self.tune_offsets = self.game_offsets = None
+        if self.cfg.get("timing.per_tune_offset", False):
+            from redzone.decider.tune_offset import TuneOffsets
+            self.tune_offsets = TuneOffsets(dict(self.cfg.get("timing.per_tune_offset_sd_s") or {}))
+            if getattr(self.control, "label_probe", None) is not None:
+                self.control.label_probe.on_tune_offset = self._probe_tune_offset
+        if self.cfg.get("timing.game_offset", False) and self.cfg.get("timing.game_offset_file"):
+            from redzone.decider.tune_offset import GameOffsets
+            self.game_offsets = GameOffsets.load(self.cfg.get("timing.game_offset_file"))
         if hasattr(self.delays, "on_label_stale"):
             self.delays.on_label_stale = self.control.label_stale
         if self.cfg.get("delay.edge_prior.enabled", False) and self.cfg.get("delay.edge_prior.refresh.enabled", False):
@@ -375,6 +385,7 @@ class Engine:
         self.fast_feeds = fastfeeds.FastFeeds(self.cfg, lambda: self.merger.games, self.recorder.fast_feed)
         from redzone.sync_probe import SyncProbe
         self.sync_probe = SyncProbe(self.cfg, self.control, lambda: self.recorder.root)   # [SYNC] read-only stick probe
+        self.park = None   # [park.enabled] the PARK show (redzone/park_run.ParkRun), made by _park_loop only once the flag is on
         self.sync_probe.on_condition = self._sync_condition
         self.sync_probe.on_screen_event = self._break_event
         # [SYNC A] the sync filter's (mu, sd) for a target, logged beside each live-edge read
@@ -625,7 +636,30 @@ class Engine:
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
                              self._boundary_loop(), self._scorebug_loop(), self._league_fast_loop(), self.tonight.run(),
                              self.supervisor.run(), self.network.run(), self.governor.run(),
-                             self.sync_probe.run(), self.fast_feeds.run())
+                             self.sync_probe.run(), self.fast_feeds.run(), self._park_loop(), self._picture_loop())
+
+    async def _park_loop(self) -> None:
+        """[park.enabled] The PARK show: the app runs the two-stick show itself (redzone/park_run.py, unit 8). With the
+        flag off this loop only sleeps: nothing of PARK is imported or made, and no decision can change."""
+        while not self.cfg.get("park.enabled", False):
+            await asyncio.sleep(float(self.cfg.get("park.idle_poll_s", 5.0) or 5.0))
+        from redzone.park_run import ParkRun
+        self.park = ParkRun(self)
+        self.decider.park_show = self.park.owns   # the decider's owner `park`: the other deciders' switches become stays
+        await self.park.loop()
+
+    async def _picture_loop(self) -> None:
+        """[park.picture_grade] The picture grader rides along with every PARK show (redzone/picture_sidecar.py): started
+        while a show runs, stopped when it stands down. Off (the default) this loop only sleeps and starts nothing."""
+        from redzone.picture_sidecar import PictureSidecar
+        sidecar = PictureSidecar(self.cfg.get)
+        while True:
+            await asyncio.sleep(float(self.cfg.get("park.idle_poll_s", 5.0) or 5.0))
+            running = self.park is not None and getattr(self.park, "state", "") == "running"
+            if sidecar.enabled() and running:
+                sidecar.start(self.cfg.get("show.state_dir", "") or "data/show")
+            elif sidecar.running():
+                sidecar.stop()
 
     def _delay_estimate(self, target: str) -> tuple[float, float]:
         d = self.delays.get(target)
@@ -667,6 +701,49 @@ class Engine:
                 self.sync.tuned(target, wall, new_stream=new_stream)
             except Exception:
                 log.exception("sync: could not re-sync %s", target)
+        to = getattr(self, "tune_offsets", None)
+        if to is not None and new_stream and target.startswith("youtubetv:"):
+            # [timing.per_tune_offset] a fresh tune does not land at a fixed lag (sd 1.2-2.0 s, Nov 10): unknown until read
+            sd = to.new_tune(target, wall)
+            if self.sync is not None:
+                try:
+                    self.sync.tune_offset(target, sd, wall)
+                except Exception:
+                    log.exception("sync: could not add the tune offset doubt on %s", target)
+
+    def tune_offset_read(self, target: str, u_s: float, kind: str, wall: float, sd_s: float | None = None,
+                         behind_s: float = 0.0) -> tuple[float, float] | None:
+        """[timing.per_tune_offset] One absolute read of this tune's lag behind YouTube's clock (the label stamped at the
+        pause, or Stats for nerds' Live Latency). With the game's K (timing.game_offset) it is a delay sample for the
+        filter; with no K the delay stays unknown (K is never taken as 0). Returns the sample fed, or None."""
+        to = getattr(self, "tune_offsets", None)
+        if to is None:
+            return None
+        r = to.read(target, u_s, kind, wall, sd_s)
+        if r is None:
+            return None
+        from redzone.decider.tune_offset import delay_sample
+        from redzone.sync_edge import night_of
+        go = getattr(self, "game_offsets", None)
+        k = go.k(self._game_on(target, False), night_of(wall)) if go is not None else None
+        z = delay_sample(r, k, behind_s)
+        log.info("tune offset: %s lag %.2f s (%s, sd %.2f)%s", target, r.u_s, kind, r.sd_s,
+                 f" + K {k.k_s:+.2f} -> delay {z[0]:.2f} +- {z[1]:.2f} s" if z else ": no K for this game, delay unknown")
+        if z is not None:
+            self._sync_measure(target, z[0], kind, wall, z[1])
+        return z
+
+    def _probe_tune_offset(self, stick_key: str, u_s: float, behind_s: float, sd_s: float, wall: float) -> None:
+        """The label probe's stamped read on a stick -> the target that stick is playing."""
+        c = self.control
+        target = None
+        for st, tg in ((getattr(c, "hidden", None), getattr(c, "hidden_target", None)),
+                       (getattr(c, "main", None), getattr(c, "on_target", None))):
+            if st is not None and str(getattr(st, "host", st)) == stick_key:
+                target = tg
+                break
+        if target:
+            self.tune_offset_read(target, u_s, "label", wall, sd_s, behind_s)
 
     def _sync_clock(self, target: str, wall: float, delay_s: float) -> None:
         from redzone.decider.sync import SIGMA
@@ -2287,6 +2364,10 @@ class Engine:
             self._plan_owner("idle", "one stick" if not self.control.two_stick else "paused")
             self._game_queue = None
             return
+        if self.park is not None and self.park.owns():
+            # [park.enabled] the PARK show holds the hidden stick: no other plan may tune, scrub or un-park it (risk R4)
+            self._plan_owner("park", "the PARK show holds the hidden stick")
+            return
         queue_on = bool(self.cfg.get("queue.enabled", False))
         queue_plan = self._queue_plan(cands, redzone) if queue_on else None
         if self._peeking():
@@ -3363,6 +3444,7 @@ class Engine:
             "screen_evidence": self.screen_evidence(),
             "queue": [self._queue_item(m) for m in sorted(dec.queue, key=lambda m: -m.value)[:10]],
             **({"game_queue": self._game_queue} if self.cfg.get("queue.enabled", False) else {}),
+            **({"park": self.park.view()} if self.park is not None else {}),   # [park.enabled] the app's own show (absent with the flag off)
             "log": self._log(),
             "server_time": time.time(),
             "recorded_playback": self.recorded.snapshot(),

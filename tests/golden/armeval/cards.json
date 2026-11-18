@@ -1,0 +1,176 @@
+{
+ "arm": [
+  {
+   "big": {
+    "must_sees_missed": 0,
+    "seen_live": 0,
+    "total": 0
+   },
+   "catchup": {
+    "coverage": null,
+    "lateness_s": null,
+    "note": "no catch-up engine in the replay yet (E-01)"
+   },
+   "census_mix": null,
+   "cost": {
+    "note": "deterministic proxies; CPU seconds are in the run's timing.json, outside the verdict",
+    "planner_searches": 1842,
+    "show_seconds": 3600
+   },
+   "decisions_sha256": "65d4fc6b78112edef8c318d4be581bad32e8c23238a5f9b1473c7000d6bdbf88",
+   "freshness": {
+    "mean_unseen_s": 80.0,
+    "worst_unseen_live_s": 480,
+    "worst_unseen_s": 788
+   },
+   "games": [
+    "401909860",
+    "401909906"
+   ],
+   "leagues": [
+    "nba",
+    "nba"
+   ],
+   "minutes": 60.0,
+   "mix": "nba_only",
+   "night": "20261101",
+   "pace": {
+    "flips": 23,
+    "jumps": 22,
+    "jumps_per_min": 0.367,
+    "peak_1m": 2,
+    "warrant_n": 23,
+    "warranted": 23,
+    "warranted_share": 1.0
+   },
+   "picture": null,
+   "rule1": {
+    "hl_leaves_mid_play": 0,
+    "joins": 23,
+    "joins_after_miss": 0,
+    "joins_mid_play": 0,
+    "joins_mid_play_strict": 0,
+    "judge_hl_leave": 0,
+    "judge_mid_entry": 0,
+    "judge_mid_leave": 0,
+    "leaves": 23,
+    "leaves_mid_play": 0
+   },
+   "value": {
+    "catchup_note": "no catch-up engine in the replay yet (E-01)",
+    "catchup_points": null,
+    "live_points": 37.4,
+    "live_share": 0.471
+   },
+   "yes_rate": {
+    "note": "no show-time labels yet (C-track); the planner's own yes_rate is not Nick's",
+    "value": null
+   }
+  }
+ ],
+ "arm_desc": {
+  "director": true,
+  "heavy": false,
+  "name": "director_v1",
+  "seam": "none",
+  "seen": true
+ },
+ "baseline": [
+  {
+   "big": {
+    "must_sees_missed": 0,
+    "seen_live": 0,
+    "total": 0
+   },
+   "catchup": {
+    "coverage": null,
+    "lateness_s": null,
+    "note": "no catch-up engine in the replay yet (E-01)"
+   },
+   "census_mix": null,
+   "cost": {
+    "note": "deterministic proxies; CPU seconds are in the run's timing.json, outside the verdict",
+    "planner_searches": 1842,
+    "show_seconds": 3600
+   },
+   "decisions_sha256": "bde596b670b56defe5fd60af2394f0658ccbf90cb6773b7082ac41e15eac8e03",
+   "freshness": {
+    "mean_unseen_s": 80.0,
+    "worst_unseen_live_s": 480,
+    "worst_unseen_s": 788
+   },
+   "games": [
+    "401909860",
+    "401909906"
+   ],
+   "leagues": [
+    "nba",
+    "nba"
+   ],
+   "minutes": 60.0,
+   "mix": "nba_only",
+   "night": "20261101",
+   "pace": {
+    "flips": 23,
+    "jumps": 22,
+    "jumps_per_min": 0.367,
+    "peak_1m": 2,
+    "warrant_n": 23,
+    "warranted": 23,
+    "warranted_share": 1.0
+   },
+   "picture": null,
+   "rule1": {
+    "hl_leaves_mid_play": 0,
+    "joins": 23,
+    "joins_after_miss": 0,
+    "joins_mid_play": 0,
+    "joins_mid_play_strict": 0,
+    "judge_hl_leave": 0,
+    "judge_mid_entry": 0,
+    "judge_mid_leave": 0,
+    "leaves": 23,
+    "leaves_mid_play": 0
+   },
+   "value": {
+    "catchup_note": "no catch-up engine in the replay yet (E-01)",
+    "catchup_points": null,
+    "live_points": 37.4,
+    "live_share": 0.471
+   },
+   "yes_rate": {
+    "note": "no show-time labels yet (C-track); the planner's own yes_rate is not Nick's",
+    "value": null
+   }
+  }
+ ],
+ "manifest": {
+  "director_v1/20261101.json": "5555555555555555555555555555555555555555555555555555555555555555",
+  "planner/20261101.json": "6666666666666666666666666666666666666666666666666666666666666666"
+ },
+ "meta": {
+  "arm": "director_v1",
+  "baseline": "planner",
+  "code_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+  "config_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+  "data_manifest_hash": "3333333333333333333333333333333333333333333333333333333333333333",
+  "dirty": false,
+  "fence": {
+   "locked_refused": true,
+   "nights": {
+    "20261101": "none"
+   },
+   "tuning_nights": []
+  },
+  "git_sha": "0000000000000000000000000000000000000000",
+  "prereg_hash": "4444444444444444444444444444444444444444444444444444444444444444",
+  "seed": 0
+ },
+ "prereg": {
+  "bars": {
+   "value.live_points": {
+    "delta_at_least": 0.0
+   }
+  }
+ }
+}

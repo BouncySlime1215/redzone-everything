@@ -46,8 +46,18 @@ class BufferedDelays:
         d = self.live.get(target)
         # a stream the live controller already holds behind (timing.behind_live_s.enabled per league) has that
         # hold in mu: only the rest of B is added
-        b = float(self.behind_of(target) or 0.0) - float(getattr(d, "behind", 0.0) or 0.0)
-        return dataclasses.replace(d, mu=d.mu + b) if b > 0 else d
+        big_b = float(self.behind_of(target) or 0.0)
+        held = float(getattr(d, "behind", 0.0) or 0.0)
+        b = big_b - held
+        if b > 0:
+            return dataclasses.replace(d, mu=d.mu + b, behind=0.0)
+        if big_b <= 0:
+            return d
+        # The editor's fresh tune comes up B behind, so it may count only the part of the live hold past B as
+        # "behind": the planner strips behind from mu (a fresh tune), and stripping a standby's 90 s preload
+        # hold planned the editor's picture at the live edge, 90 s off (an entry 6 s after a made free throw,
+        # live on cutgrade).
+        return dataclasses.replace(d, behind=held - big_b)
 
     @property
     def book(self) -> dict:

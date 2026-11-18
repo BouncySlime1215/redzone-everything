@@ -1,5 +1,8 @@
 """The honest feed, N streams, the device profiles and the show delay of the PARK simulator, on tiny hand-made nights.
 
+The simulator under test is the script-side copy (scripts/park_sim_n.py, scripts/park_plan_n.py), not the product
+planner in redzone/noggin: see the top of park_sim_n.py.
+
 Why: the two-stream simulator read the end of every dead ball 27 s ahead, which the real feed cannot do, and Chrome can
 hold more than one spare stream; before anyone reads a pace number from the new modes, each promise they make (nothing
 used before a row shows it, the guards, the step times, and old runs unchanged) has to be checked on nights small enough
@@ -17,9 +20,9 @@ for _p in (ROOT.as_posix(), (ROOT / "scripts").as_posix()):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import park_plan as pp  # noqa: E402
+import park_plan_n as pp  # noqa: E402
 import park_profiles as pf  # noqa: E402
-import park_sim as ps  # noqa: E402
+import park_sim_n as ps  # noqa: E402
 
 T0 = 1000          # every hand-made game tips off here
 NO_ERR = dict(pos_sd=0.0, delay_sd=0.0, stamp_sd=0.0, key_sd=0.0, pad_k=0.0)
@@ -116,8 +119,8 @@ def digest(st):
 @pytest.mark.parametrize("seed, err, bonus, want", [(3, "spec", 0.5, "814f6885ca54df7c"), (5, "middle", 2.0, "3fc02474e1d0a8d5"),
                                                     (5, "today", 0.5, "4f4184660f80d5c9")])
 def test_defaults_reproduce_the_old_two_stream_planner(seed, err, bonus, want):
-    """The digests were taken from park_sim and park_plan as they stood on branch `park` before this change: every flip,
-    every scheduled jump, every second's distance behind live."""
+    """The digests were taken from park_sim and park_plan as they stood on Nov 10 (commit 57fdca52), before the new
+    settings: every flip, every scheduled jump, every second's distance behind live."""
     night = ps.Night(random_games(seed, rows=False))
     st, _ = ps.run(night, ps.Foresight(), pp.setting(err, True, seed=seed), planner=pp.Planner(pp.Plan(jump_bonus=bonus)))
     assert len(st.hops) >= 10 and digest(st) == want

@@ -53,7 +53,10 @@ from zoneinfo import ZoneInfo
 
 log = logging.getLogger("redzone.sync")
 
-SIGMA = {"flip": 3.0, "score": 2.0, "clock": 1.5, "tap": 4.0, "mic": 3.0, "break": 8.0, "epoch": 0.5}
+SIGMA = {"flip": 3.0, "score": 2.0, "clock": 1.5, "tap": 4.0, "mic": 3.0, "break": 8.0, "epoch": 0.5,
+         # [timing.per_tune_offset, Nov 10 TV] one absolute read of a YouTube TV tune's lag: the overlay label stamped at
+         # the pause (a whole-second floor), Stats for nerds' Live Latency. Fed only with that flag and a game's K known.
+         "label": 0.29, "live_latency": 0.19}
 DRIFT_ALARM_S = 5.0           # [SYNC 6] the delay moved this far from what it was when it synced: alarm
 Q_SCALE_MAX = 25.0            # [SYNC 4] worst network condition: the delay wanders this much faster
 POSITION_SIGMA_S = 0.5        # default doubt of one position read once the stick clock is pinned
@@ -400,6 +403,16 @@ class SyncBook:
         t = self._clock() if t is None else t
         self.get(target).shift(t, delta, sd)
         self._log("shift", target, t, delta=round(delta, 2), shift_sd=round(sd, 2))
+        self.on_change(target)
+
+    def tune_offset(self, target: str, sd_s: float, t: float | None = None) -> None:
+        """[timing.per_tune_offset] A fresh tune's own offset is unknown until one absolute read (spread sd_s, measured
+        1.2-2.0 s): its doubt is added to the delay's, apart from the channel's own (called right after tuned())."""
+        t = self._clock() if t is None else t
+        f = self.get(target)
+        f._predict(t)
+        f.P[0][0] += float(sd_s) ** 2
+        self._log("tune_offset", target, t, tune_sd=round(float(sd_s), 2))
         self.on_change(target)
 
     def condition(self, target: str, q_scale: float) -> None:

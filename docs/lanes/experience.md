@@ -50,7 +50,7 @@ Set on Nov 5, 2026, before any rating exists. It is graded by `python scripts/wo
 
 ### EXP-038: orientation beat (phone)
 
-Set on Nov 5, 2026, before any beat night. It is graded by `python scripts/orient_line.py --db <db> --on <nights> --off <nights>`.
+Set on Nov 5, 2026, before any beat night. It is graded by `python scripts/orient_line.py --db <db> --on <nights> --off <nights>` (archived Nov 11 with `redzone/lab/orient.py` to `archive/`; `git mv` both back before grading).
 
 - **What it is:** for `phone.orient_beat_s` (3 s) after each switch, a corner card on the phone shows the score, the clock, one situation fact and the late/close context line. It's plain facts with no button, no sound and no hype. **Honest limit:** this rig can't draw on the TV (the sticks only switch HDMI inputs), so the beat is phone-only. A TV corner overlay would need a new display path, which is a hardware decision for Nick.
 - **Measure:** an override is a user switch to another game within `phone.orient_override_s` (30 s) of an automatic switch. The rate is overrides / automatic switches per night. Whole nights alternate on/off and are never split within a night. The grader reads only the switches table.
@@ -61,7 +61,7 @@ Set on Nov 5, 2026, before any beat night. It is graded by `python scripts/orien
 
 ### EXP-039: "Also close" line (phone)
 
-Set on Nov 5, 2026, before any line night. It is graded by `python scripts/also_close_line.py --db <db> --on <nights> --off <nights>`.
+Set on Nov 5, 2026, before any line night. It is graded by `python scripts/also_close_line.py --db <db> --on <nights> --off <nights>` (archived Nov 11 with `redzone/lab/also_close.py` and `night_ab.py` to `archive/`; `git mv` them back before grading).
 
 - **What it is:** under the watch strip, up to 2 other live games that are late and within one score, shown as text ("UNC @ DUKE UNC down 2, 0:41 left, 1 timeout") in league order. It has no Watch button and no tap target. It answers "is anything else close?" without a switch.
 - **Measure:** the manual-switch share per night (user switches / all switches that went through). Whole nights alternate on/off.
@@ -84,7 +84,7 @@ This is the lane 5 half of EXP-043. Lane 1 owns the weight (how much a followed 
 
 - **What it is (`phone.follow`, off):** a names box in Your priorities saved to `noggin.priority.prefs.followed_players` (at most 12 names), and a "Following" line under the watch strip naming the live games those players are in right now (spotlight, leaders or a going-off flag). It's text only, with no Watch button. Nothing in the decider, scoring or Noggin reads the list until lane 1 adds its weight behind its own flag.
 - **Ship gates (tests):** names are cleaned (trimmed, deduped, letters only, at most 12); a full name never matches a namesake ("Keenan Allen" is not Josh Allen, "K. Jokic" is not Nikola Jokic); finished games are never listed; both routes 404 with either flag off.
-- **Guardrail:** the manual-switch share (`redzone/lab/also_close.py` `manual_share`, the night as the unit) must not rise on `phone.follow` nights. A rise would mean the line pulls switches instead of informing. Same bar as EXP-039: at least 6 nights per side, FAIL if the 95% bootstrap lower bound of share(on) − share(off) is > 0.
+- **Guardrail:** the manual-switch share (`redzone/lab/also_close.py` `manual_share`, now in `archive/`; the night as the unit) must not rise on `phone.follow` nights. A rise would mean the line pulls switches instead of informing. Same bar as EXP-039: at least 6 nights per side, FAIL if the 95% bootstrap lower bound of share(on) − share(off) is > 0.
 - **Outcome line:** Right game agreement (low priority) belongs to lane 1's weight, graded on the locked and dev nights. Group mode is graded separately from the solo gates. The display makes no outcome claim of its own.
 
 ### Morning "Last night" card (phone)

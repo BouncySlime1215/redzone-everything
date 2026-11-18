@@ -82,11 +82,5 @@
  ],
  "redzone/web/ledger.py": [
   "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)"
- ],
- "redzone/lab/also_close.py": [
-  "Big plays live or replayed within 3 min"
- ],
- "scripts/also_close_line.py": [
-  "Big plays live or replayed within 3 min"
  ]
 }

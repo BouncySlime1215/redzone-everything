@@ -76,7 +76,8 @@ function banners(S, m) {
     else if (m.paused) out.push(b("paused", "pause", "Auto-switching paused", "It'll stay right here until you resume.", resume));
     if (m.control_note) out.push(b("paused", "alert", "Heads up", esc(m.control_note)));
   }
-  patch($("banners"), out.join(""));
+  const extra = hooks.banners ? hooks.banners() : "";   // feature modules (rz-show.js: TV sound) go first
+  patch($("banners"), extra + out.join(""));
 }
 
 /* ---------- state ---------- */
@@ -145,6 +146,22 @@ function go(tab, { initial = false } = {}) {
   renderScreen(tab);
   window.scrollTo({ top: initial ? 0 : scrollY[tab] || 0 });
 }
+
+/* A feature module behind a server flag adds its own tab (rz-show.js). With the flag off nothing calls this,
+   so the page is the five tabs above. `after` is the tab it sits behind. */
+hooks.addTab = ({ id, label, ic, render, after = "now" }) => {
+  if (TABS.includes(id)) return;
+  TABS.splice(TABS.indexOf(after) + 1, 0, id);
+  SCREENS[id] = render;
+  const prev = $(`scr-${after}`);
+  prev.insertAdjacentHTML("afterend", `<section class="screen" id="scr-${id}" data-screen="${id}" aria-label="${esc(label)}" hidden></section>`);
+  const bar = $("tabbar");
+  bar.querySelector(`.tab[data-go="${after}"]`).insertAdjacentHTML("afterend",
+    `<button class="tab" role="tab" data-go="${id}" aria-selected="false"><span class="tab-ic"><svg class="ico"><use href="#i-${ic}"/></svg><i class="tab-alarm" hidden></i></span><span>${esc(label)}</span></button>`);
+  bar.style.setProperty("--n", TABS.length);
+  bar.style.setProperty("--i", TABS.indexOf(app.tab));
+  if (firstTab === id) go(id);
+};
 
 /* ---------- live timers (1s) ---------- */
 function tick() {
@@ -239,10 +256,12 @@ ACTIONS["hold-auto"] = (el) => act("hold_auto", { value: el.dataset.v === "1" },
 installImages();
 installEvents();
 const first = (location.hash || "").slice(1) || (Q.get("tab") || "") || store.get("tab", "now");
+const firstTab = first;   // a flag tab registers after boot; it opens itself if it was asked for
 go(TABS.includes(first) ? first : "now", { initial: true });
 render();
 startStream({ state: applyState, conn });
 setTimeout(() => loadTeams().then(() => render()), 1500);
 conn(MOCK ? "mock" : "wait");
 setInterval(tick, 1000);
+if (MOCK && Q.has("show")) import("./rz-show.js?v=4");   // the server adds this script itself when show.ui is on
 window.addEventListener("hashchange", () => { const t = location.hash.slice(1); if (TABS.includes(t) && t !== app.tab) go(t); });

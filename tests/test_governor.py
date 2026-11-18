@@ -192,6 +192,10 @@ def test_default_config_governor_section_matches_code_defaults():
     import yaml
     from pathlib import Path
     d = yaml.safe_load((Path(gv.__file__).with_name("default_config.yaml")).read_text())["governor"]
+    # F-01: `footprint_log` is the one governor setting that is not an option of `Governor` (Governor.from_config reads it
+    # and passes a path; options() ignores it), so it is not in DEFAULTS. It sits in the YAML so the Config accepts
+    # `governor.footprint_log: false` (its documented off switch), at the fallback the code reads it with: on.
+    assert d.pop("footprint_log") is True
     assert d == gv.DEFAULTS
     from redzone.config import validate
     with pytest.raises(ConfigError):

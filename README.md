@@ -1,224 +1,107 @@
-# RedZone Everything
+# RedZone
 
-A local sports director for NFL, NBA, NHL and MLB. It ranks live games using the moment,
-Washington teams, bets and fantasy interests, then proposes or performs a switch when the
-estimated screen timing permits it. Your phone is the dashboard and remote.
+NFL RedZone, for every sport. A Mac app watches live games and drives one Samsung TV and two Fire TV sticks.
+It cuts from game to game, and only at a dead ball (a moment when the play is over and the ball is not live).
+Your phone is the dashboard and remote.
 
-**Current status:** software recovery and safety review are complete; physical Fire Stick,
-provider, replay-position and display-input validation are still required. The app starts in
-**dry-run**. No paid data service is required; viewing games still requires your own provider
-access. It does not record or rebroadcast stream video.
+League order: NFL, then college football, NBA, college basketball, NHL, MLB. Nick's teams (Washington, UNC) come
+first, and crunch time (close and late) comes first of all. The full spec is the
+[North Star](docs/context/claude-memory/redzone-north-star.md). The gap to perfect is in
+[docs/northstar.md](docs/northstar.md).
 
-## Run locally
+**Status (2026-11-11).** The app starts in dry run: it shows what it would do and never touches the TV. The
+two-stick show described below is built and tested in replay with fake sticks. **It has not run on the real TV
+through the app yet**, and it is off by default. The app is for a trusted home network, not public hosting.
 
-```bash
+## Rule #1
+
+Join a game only at a dead ball. Never leave mid-play. Never leave a high-leverage moment: close and late, or
+overtime. In basketball a join may come right after a made or missed shot, unless that moment is a transition play.
+
+A frozen grader judges this on replayed nights (`redzone/grading.py`, `redzone/lab/cutgrade.py`). CI counts
+`entries_mid_play` (it must stay 0), plus mid-play leaves of high-leverage moments, missed plays and dead air. The full
+rule is in [CLAUDE.md](CLAUDE.md).
+
+## The two-stick show (PARK)
+
+One stick is on the TV. The other, the hidden stick, is tuned to the next game and paused on a dead-ball frame.
+A jump resumes the hidden stick, flips the TV input, and pauses the stick that was left. A jump needs a **warrant**
+worked out first (why go there, why now). Before each jump a hard guard re-checks that the leave and the landing
+are both inside padded dead time and that nothing is too far behind live. If anything fails, the picture on screen
+stays.
+
+It supports basketball, football (including Prime Video and Thursday Night Football) and an NFL-night slider. It is
+behind `park.enabled` (off). Details, config keys and what is not proven: [docs/park.md](docs/park.md).
+
+## Run it
+
+You need Python 3.12 and a checkout with `.venv` set up (`pip install -r requirements.txt`).
+
+```sh
+# The app, in dry run (the default: mode.dry_run is true). Open the printed LAN address or QR code on a phone.
 .venv/bin/python -m redzone
-# Use another port if an older session is still running:
-PORT=8778 .venv/bin/python -m redzone
+PORT=8778 .venv/bin/python -m redzone          # another port, if an older session is running
+
+# Replay the PARK show on a recorded night with fake sticks and a fake TV (no device is touched)
+python scripts/fetch_eval_data.py              # pinned eval data, once
+.venv/bin/python scripts/park_replay.py --night 20261023 --games 4
+
+# Tests and checks
+.venv/bin/python -m pytest -q tests/<file>.py   # prefer targeted tests; the full suite when the app is idle
+ruff check .
+python scripts/citymap.py --check               # code map is current
+python scripts/check_memory.py                  # doc links resolve, decisions logged
 ```
 
-The app prints a LAN address and QR code. Keep the Mac awake and on the same network as the
-phone. `scripts/install_service.sh check` performs a read-only service readiness check;
-it does not start anything. A separately installed login service can run without Codex open.
-See [unattended operation](docs/service-operation.md) for installation, enforced dry-run,
-restart behavior, logs, credentials and sleep limits. Local runtime data is under `data/`.
+Running the app as a login service: [docs/service-operation.md](docs/service-operation.md) (use
+`scripts/install_service.sh check` for a read-only readiness check). Never start live tests or deploys without
+Nick: `scripts/deploy.py --dry-run` is the only deploy an agent runs.
 
-## What the engine knows
+## Devices
 
-Sports feeds describe events on the field. Fire TV media reports describe playback transport.
-Neither directly identifies whether the TV currently shows a live play, an editorial replay,
-an ad, or a loading screen. The Screen timing panel keeps those facts separate.
+- Two Fire OS sticks, controlled over ADB. Vega OS sticks are not supported.
+- One Samsung TV. The TV input flip uses SmartThings today. Decision N1 (Nov 8) dropped it; Nick turned it back on
+  Nov 10 because it was the only flip that worked on his TV (see `docs/memory/decisions.md`). The free access ends
+  2026-12-15 and the $0 rule forbids a paid plan, so a second flip path is needed before then.
+- YouTube TV and Prime Video, signed in by Nick. Agents never type passwords.
+- The app records feed observations and command results, never stream video.
 
-- Play-by-play timestamps plus a per-channel delay estimate produce **estimated** play, break
-  and gap intervals. Missing timestamps, stale feeds and conflicting calibration widen
-  uncertainty; absent evidence holds automatic switching.
-- A safe exit must cover the command's full latency interval. The engine checks again after
-  preparation and immediately before wake, launch, retry and input commands.
-- Destination timing is refreshed before entry. A missed opportunity is abandoned; a failed
-  command does not become the watched game.
-- A new stream transition or uninterrupted known stream is required for tune confirmation.
-  This is stronger than a timer or “app opened,” but still does not independently prove the
-  exact matchup displayed. Provider links and game-title mappings need device validation.
-- A display input command being accepted does not prove the input changed. An uncertain
-  result stops further mutations until the visible input is established.
+## Where to look
 
-There is **no arbitrary switch quota, minimum dwell, cooldown or switch-count freeze**.
-Selection considers the content, actual switching cost, explicit user focus/locks and timing
-evidence. An operation already in flight is not duplicated. Zero mid-play cuts and complete
-highlight coverage are goals, not guarantees from these public feeds.
+| You want | Read |
+|---|---|
+| The rules for every AI and the protected paths | [CLAUDE.md](CLAUDE.md) |
+| The only plan | [docs/PLAN.md](docs/PLAN.md) |
+| How agents work together (roles, claims, merge path) | [docs/coordination.md](docs/coordination.md) |
+| Interfaces, owners, the 95% release gate | [docs/architecture.md](docs/architecture.md) |
+| How the parts connect | [docs/system-map.md](docs/system-map.md), [docs/citymap.md](docs/citymap.md) |
+| The PARK show | [docs/park.md](docs/park.md) |
+| Every doc, indexed | [docs/README.md](docs/README.md) |
+| Live status and verify-first commands | [docs/handoff.md](docs/handoff.md) |
+| Every decision, and every lesson | [docs/memory/decisions.md](docs/memory/decisions.md), [docs/memory/lessons.md](docs/memory/lessons.md) |
 
-## Device setup
+New to the repo: run `python scripts/context_pack.py`, then the "Verify first" commands in
+[docs/handoff.md](docs/handoff.md). To find code, use `python scripts/citymap.py --focus <file>`.
 
-First confirm the exact model and OS, finish the device's normal setup, and sign in to the
-streaming apps yourself. Current control uses Fire OS/Android ADB. Vega devices have different
-Amazon developer tooling and are **unsupported by this app's current controller**.
+## Hard rules
 
-For a known Fire OS stick, enable ADB debugging through its developer settings. Use its IP
-from the device's Network page. Only approve a debugging prompt on the intended device for
-this Mac. The setup checker can connect and trigger that prompt; it is not a dry-run command.
+- **The TV stays muted.** PARK refuses to run unless the sound guard is on and silence is required. A sound
+  incident stops the show until a person clears it.
+- **$0 budget.** Ask Nick before anything that costs money.
+- **No secrets in this public repo.** Do not read, print or commit keys, tokens, passwords or stick addresses.
+  Nick adds them. Fantasy and account credentials stay in local `.env` and `data/`, which are not committed.
+- **No hardware from an agent.** No adb, stick or TV scripts unless Nick unlocks them (`data/.agent_hw_ok`). Use
+  `tests/fake_adb.py` or the simulator.
+- **Branches.** Every PR targets `integration/next`. Nothing goes to `main`, `integration/release` or the old
+  `codex/resume-redzone` branch, and no force-push.
+- **Protected paths** (`.claude/`, `.github/`, `tests/conftest.py`, the release gate, leak check, eval scripts and
+  locks, gate baseline, grader freeze) change only in a grader PR for Nick.
+- **Heavy jobs** (training, big evals) go to Kaggle or CI, not the 8 GB Mac that runs the live app.
+- **Every state change names a reason** (`machine.to("state", why="...")`), and every commit has a `Why:` line.
+- **No Peacock.**
 
-```bash
-# Target only the intended stick; do not scan unrelated devices.
-.venv/bin/python scripts/doctor.py --no-scan --ip STICK_IP --display-type monitor
-# A second intended stick can be supplied with another --ip.
-```
+## Data sources
 
-The monitor option clears a previously saved Samsung target. A newly discovered Samsung is
-never selected automatically. For an intended Samsung, select it explicitly with `--tv-ip TV_IP`.
-
-**One stick:** the app can change its streaming app/channel after playback validation.
-**Two sticks:** hot standby additionally requires supported, verified display-input control.
-The current readback adapter is for an explicitly selected Samsung SmartThings device;
-a normal monitor is not assumed to support it. Without readback, use one stick and select
-its HDMI input manually. Do not point the app at an unrelated TV to make dual-stick mode appear ready.
-
-Provider subscriptions, local channels, blackouts and stream delay must be checked on the
-actual device. Settings → Channels accepts manual channel links/corrections; verified discovery
-preserves those corrections. Automatic device discovery is opt-in and disabled in dry-run.
-Account, purchase and sign-in screens stop automated discovery instead of being clicked through.
-
-After setup, validate a user-selected channel, playback continuity, actual delay, pause/resume,
-rewind step and recovery before enabling unattended switching. The CLI `scripts/rz.py` has
-explicit device diagnostics (`now`, `tune`, `bench`, `flipcheck`); tune/bench/flipcheck change
-playback or display inputs and should only be run when ready. The separate `screencap` diagnostic
-captures a device screenshot; the normal engine does not use video capture.
-
-## Phone controls
-
-- **Now:** current proposal or confirmed stream, reasons, screen evidence, Focus, Back, Skip and Pause.
-- **Focus:** prefer one game during meaningful action, with other games/replays during estimated breaks.
-  Garbage-time handling can release a home-team preference.
-- **Bets/Fantasy:** personalize scoring. Fantasy credentials stay in local `.env`; never commit them.
-- **“I just saw it”:** match an exact-timestamp play while watching a confirmed live stream.
-  Ambiguous taps, unknown timestamps, simulations and replays cannot establish precise delay.
-  The action also accepts an explicit play ID. Microphone crowd-noise matches are advisory only.
-- **Lab:** archived simulations and stored user observations. Labels/votes are observations for
-  later analysis; they do not establish a trained visual classifier.
-- **Pause:** stops automatic actions. Unknown outcomes require establishing the actual screen
-  before resuming. Dry-run simulates decisions without device discovery or control.
-
-Catch-up replay uses provider seek controls. Failed seek commands do not count as successful
-replays. Completion is modeled only after an uninterrupted clip interval; exact footage and
-seek behavior still need real-device validation. When no bounded break budget exists, the
-engine does not invent time for a replay.
-
-## Data and resilience
-
-The project includes ESPN public scoreboards/play-by-play, NBA/NHL/MLB sources, source merging,
-and provider event-link discovery. These unofficial endpoints can change or fail. Polling uses
-caching/backoff; the recorder keeps feed observations and command outcomes, not stream video.
-Optional ESPN Fastcast push has protocol/fixture coverage and remains **off by default** until
-validated against current major-league events; polling remains the fallback.
-
-Background jobs handle source refresh, verified provider discovery and recovery. They respect
-dry-run, selected devices, unknown power state and controller locks. A sleeping/unknown standby
-is not woken merely to preload. The server rejects non-LAN clients and cross-origin mutation
-requests; it is intended for a trusted home network, not public deployment.
-
-The supervisor (`redzone/supervisor.py`) checks the live system every ~10 s and fixes what it can:
-the TV on the Fire TV home or an app page instead of the game, a stuck switch, idle with live
-games on, a target/app that keeps failing (back off, mute for the night, use another source),
-safe mode, stale feeds, adb drops, delay doubt that never narrows, a hold on a finished game, and
-log growth. Every fix is rate-limited and logged to `data/supervisor.jsonl`. Each morning it
-writes `data/reports/YYYY-MM-DD.md` (switches, failures by cause, key moments seen/missed, delays
-measured, what it fixed). Set `supervisor.ntfy_topic` to get that summary on your phone through
-the free ntfy app. Any night by hand: `.venv/bin/python -m redzone.supervisor report 2026-11-02`.
-
-## Verification
-
-```bash
-.venv/bin/python -m pytest -q
-.venv/bin/python scripts/eval.py
-.venv/bin/python scripts/eval_sports.py nba --nights 999
-.venv/bin/python scripts/eval_sports.py nhl --nights 999
-.venv/bin/python scripts/eval_sports.py mlb --nights 999
-# Combined feed/delay faults (same flags work with eval.py):
-.venv/bin/python scripts/eval_sports.py mlb --nights 999 \
-  --true-delay 41 --sigma 5 --lag-jitter --drop --late-plays --no-wallclock
-```
-
-See [verification notes](docs/verification-2026-11-02.md) for measured software results and limits.
-Report cards separate modeled stoppage time from modeled tuning blackout. NFL/MLB live credit
-requires the whole modeled play interval; replay credit requires modeled completion. NBA/NHL
-coverage is event coverage, not proof that an entire possession was viewed. Some archived NFL
-timestamps are estimated and archives are not video ground truth. Do not equate a scorecard
-with real-TV validation, or an old optimizer report with the current build.
-
-## Code map
-
-`engine.py` coordinates feeds, scoring, decisions, commands and phone state. `decider/` models
-screen timing and selection. `control.py`, `tuners/` and `tv.py` handle device transactions.
-`standby.py` plans the hidden stick. `discovery/` and `autonomy.py` coordinate provider checks.
-`sources/` contains public feeds and parsing; `lab/` contains simulations and grading;
-`web/` contains the LAN API and phone UI. Configuration defaults are in
-`redzone/default_config.yaml`; validated local overrides are in `data/config.yaml`.
-
-## Training data (for the learned break / key-moment / game-flow models)
-
-```
-.venv/bin/python -m pip install pandas pyarrow     # once, ~150 MB
-.venv/bin/python scripts/build_training.py         # about 1 minute plus downloads; ~500 MB peak, 223 MB kept
-```
-
-This writes one snapshot table per league to `data/training/<league>.parquet` (git-ignored) plus
-`data/training/manifest.json` (rows, label rates, sources, hotness percentile knots). Raw downloads go
-to `data/training/raw/` and are deleted after each league. Load it with `redzone.lab.datasets`:
-`datasets.load("nba")`, `datasets.splits(df, "break_soon")` (train/valid/test split by game).
-
-| League | Source (free) | License / terms | Seasons |
-|---|---|---|---|
-| nfl | [nflverse-data](https://github.com/nflverse/nflverse-data) `pbp` release (nflfastR WP/EPA) | CC-BY 4.0 | 2023–2025 |
-| cfb | [sportsdataverse-data](https://github.com/sportsdataverse/sportsdataverse-data) `cfbfastR_cfb_pbp` (cfbfastR WP/EPA) | MIT code; ESPN data, personal use | 2025 |
-| nba | sportsdataverse-data `espn_nba_pbp` (hoopR) | MIT code; ESPN data, personal use | 2024-25, 2025-26 |
-| cbb / wcbb | sportsdataverse-data `espn_mens_/womens_college_basketball_pbp` (hoopR / wehoop), 3,500 games each | MIT code; ESPN data, personal use | 2025-26 |
-| nhl | sportsdataverse-data `nhl_pbp_full` (fastRhockey, from the NHL public API) | MIT code; NHL data, personal use | 2024-25, 2025-26 |
-| mlb | sportsdataverse-data `mlb_pbp` + `mlb_pitches` (MLB Stats API) | MLBAM terms, personal use | 2025 |
-| espn_* | our own `data/archive` ESPN summaries, classified by the live code (`espn.stoppage_for`) | ESPN data, personal use | recent |
-
-One row = the game right after one logged event. Features: score/diff, period, clock, time left,
-wall clock, win probability with its recent change and volatility, lead changes, ties, scoring runs,
-possession, down/distance/field position, timeouts left, team fouls/bonus, skaters (power play),
-outs/runners/count, the current stoppage type, time since the last break, crunch flag. Labels:
-
-- `break_soon`: a real break (timeout, TV timeout, end of period, review, injury, pitching change,
-  post-score break, two-minute warning) starts within 60 s of game clock (MLB: wall clock).
-  `break_soon_wall` is the same on the wall clock where the feed has timestamps.
-- `key_soon` / `key_now`: a key moment (TD, turnover, 20+ yd play, goal, score in crunch time, late
-  lead change, 3 or dunk in crunch, home run in a close late game, any play that swings win
-  probability by 10%+ (15% college football)) within the next 2–5 minutes / on this event.
-- `hotness`: 0–100 game flow, like ESPN's game-flow chart: win-probability movement over the
-  surrounding window plus how close and late the game is, smoothed, as a percentile within the league.
-
-Win probability comes from the source for NFL/CFB (and ESPN where it has one); NBA/college basketball
-use a spread-plus-normal model fit to ESPN's WP, NHL a Poisson model with power plays, MLB run
-expectancy. These are personal-use datasets: don't redistribute the ESPN, NHL or MLB-derived files.
-
-## The brain (learned models)
-
-`redzone/scoring/brain.py` gives every live game three numbers, from small per-league gradient-boosted
-tree models trained on the tables above (`scripts/train_brain.py`, about 3 minutes on an M2; 120-420 KB per
-league in `redzone/scoring/brain_models/`, read with plain numpy, about 0.3 ms per game state):
-
-- `break_soon_p`: chance a real break starts within a minute. Blended 50/50 with the hand-written rules
-  in `breaks.py` (`brain.break_weight`); a break already in the data is never second-guessed.
-- `key_soon_p`: chance of a big moment in the next 2-5 minutes. Adds up to `brain.<league>.key_points`
-  to the excitement score when it's likelier than usual for that league.
-- `hotness`: 0-100 game flow, like ESPN's game-flow chart. The game sheet on the phone draws it play by
-  play ("Game flow"), with the top reasons (win probability swinging, close game, late, ...).
-
-Training split is by time: older seasons train, the newest season is split by schedule (valid, then test).
-The live-path test replays our own recorded ESPN games (`data/archive`, all after the training data) one play
-at a time through the real code (`scripts/eval_brain.py`), against the rules on the same plays:
-
-| league | games | break AUC rules / brain / blend | key AUC scorer / brain | game-flow ρ scorer / brain |
-|---|---|---|---|---|
-| nfl | 285 | 0.682 / 0.748 / 0.841 | 0.621 / 0.675 | 0.624 / 0.945 |
-| nba | 104 | 0.648 / 0.819 / 0.825 | 0.947 / 0.967 | 0.763 / 0.980 |
-| nhl | 99 | 0.621 / 0.680 / 0.665 | 0.542 / 0.539 | 0.528 / 0.851 |
-| mlb | 54 | 0.774 / 0.814 / 0.820 | 0.629 / 0.666 | 0.398 / 0.668 |
-
-`brain.enabled` is on: the scorecards stay at 0 mid-play cuts with no metric worse (NBA dead air 19.3 -> 19.0,
-NHL goals live 42.3 -> 42.5, NHL crunch live 87.0 -> 87.5; NFL unchanged: its key points are 0 because any
-nudge cost crunch time there). Turn it off in settings to get the rules alone. No model file for a league, or
-a broken one, means that league just uses the rules. Retrain: `pip install lightgbm`, then
-`scripts/build_training.py`, `scripts/train_brain.py`, `scripts/eval_brain.py --save`.
+ESPN public scoreboards and play-by-play, plus NBA, NHL and MLB feeds, merged by `redzone/sources/`. These are
+unofficial endpoints and can change or fail; polling backs off and caches. Viewing games needs your own provider
+accounts. See [docs/data-sources.md](docs/data-sources.md).

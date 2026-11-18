@@ -40,6 +40,6 @@ Columns: entries mid-play / missed on entry for NFL, NBA, NHL and the demo; 0 mi
 | #32 multiview (off) | a50fb8e | green | 0 / 0 | 14 / 9 | 0 / 0 | 2 / 0 | |
 | #33 FastCast (watch-only) | ff84725 | green | 0 / 0 | 14 / 9 | 0 / 0 | 2 / 0 | |
 | #34 deploy into the Mac checkout | fecbd83 | green (1 flake, passed on rerun) | 0 / 0 | 14 / 9 | 0 / 0 | 2 / 0 | |
-| #35 checklist path, no-overfitting gate, brain off | e52913d | 1705 pass | 0 / 0 (locked) | 5 / 4 (locked) | 0 / 0 (locked) | 2 / 0 | RC 1 = `integration/release`; gate in `docs/gate-report-rc1.md` |
+| #35 checklist path, no-overfitting gate, brain off | e52913d | 1705 pass | 0 / 0 (locked) | 5 / 4 (locked) | 0 / 0 (locked) | 2 / 0 | RC 1 = `integration/release`; gate in `docs/archive/gate-report-rc1.md` |
 | RC 3 / RC 4 deploy test-step fixes (timeout 3600, speed budgets at background priority, night pins host + network) | 0ea1766, 8a47053 | 1722 pass | = | = | = | = | RC 4 = `integration/release` 8a47053 (cut by Nick) |
 | #41 SmartThings OAuth app query + port map, #42 launchd off ~/Documents, #43 hostile-host e2e night | 9d3001b | 1734 pass (CI) | = | = | = | = | scorecards unchanged on every card |

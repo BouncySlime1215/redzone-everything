@@ -148,4 +148,4 @@ generalize them; until then each is a named rule, tested on replayed nights.
 - **~150 entries** are the target by the end of cycle 03; this file holds the first 79. Each cycle plan
   takes the next P0 → P1 → P2 entries per lane.
 - **Scenario tree (idea #19):** GAME-* entries are the first branches. The cloud builds the full tree
-  (see idea-bank.md #19); the Mac reads the branch that matches the live state.
+  (see archive/cycles/idea-bank.md #19); the Mac reads the branch that matches the live state.

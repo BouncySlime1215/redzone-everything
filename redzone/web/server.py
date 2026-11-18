@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 import re
@@ -25,7 +25,7 @@ from redzone.channels import parse_yttv_link
 from redzone import userstate
 from redzone.config import LIMITS, ConfigError
 from redzone.engine import Engine
-from redzone.web import phone_v2
+from redzone.web import phone_v2, show
 
 STATIC = Path(__file__).with_name("static")
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -180,12 +180,18 @@ def build_app(engine: Engine) -> FastAPI:
             resp.headers["Cache-Control"] = "no-store"
         return resp
 
+    show_on = show.enabled(engine.cfg)   # flag show.ui (off): the Show view; off = no route, no markup, no script
+
     @app.get("/")
     async def index():
+        if show_on and show.enabled(engine.cfg):
+            return HTMLResponse(show.inject((STATIC / "index.html").read_text(encoding="utf-8")))
         return FileResponse(STATIC / "index.html")
 
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
     app.include_router(phone_v2.router(engine))   # flag phone.v2 (off): reasons, 👍/👎, "I missed that", L2
+    if show_on:
+        app.include_router(show.router(engine))
 
     @app.get("/reel.mp4")
     def reel_file():

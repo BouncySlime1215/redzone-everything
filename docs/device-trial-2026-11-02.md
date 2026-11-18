@@ -65,7 +65,7 @@ initial direct remote-interface probes and ARP resolution failed from the Mac, a
 ping also failed from the new stick. Network control is not yet established.
 
 Unattended Prime search has now selected two distinct November 1 games with exact date,
-subscription-access and player-title checks. See [provider routing readiness](provider-routing-readiness.md)
+subscription-access and player-title checks. See [provider routing readiness](archive/provider-routing-readiness.md)
 for measured runs and negative cases. This does not establish unattended YouTube TV navigation,
 visible play-boundary detection, or the complete two-provider switching loop.
 

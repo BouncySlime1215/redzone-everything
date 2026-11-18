@@ -2,7 +2,7 @@
 
 Why: Brain v3: one compact numpy-only model per league, calibrated, with a cautious learned entry and v2 fallback per league (commits 2026-11-03).
 
-One file per league (``brain_models/<league>.v3.npz``, trained by ``scripts/train_brain3.py``) holds
+One file per league (``brain_models/<league>.v3.npz``, trained by ``archive/scripts/train_brain3.py``) holds
 every head as LightGBM trees flattened into arrays, walked together in one pass, plus isotonic
 calibration knots for the probabilities:
 

@@ -28,6 +28,7 @@ from redzone.fsm import MachineMap
 from redzone.machines import decider as _M
 from redzone.decider.delaymodel import Centre, app_prior, combine, replay_allows_floor, timing_replay_allows
 from redzone.models import REAL_BREAKS, ByLeague, GameState, League, Phase, Stoppage, pro_period
+from redzone.scoring.dead_left import stoppage_class
 
 log = logging.getLogger(__name__)
 
@@ -949,6 +950,8 @@ class Event:
     to_go: int | None = None
     to_goal: int | None = None
     ptype: str = ""       # ESPN's play type text, for the moment words
+    stop_class: str = ""  # [timing.dead_v2] "stop_start" events: the break class beside the label (dead_left.stoppage_class:
+                          # a football timeout is "official", "team" or "other"; else the label itself). "" = not read
 
     @property
     def lo(self) -> float:
@@ -1120,7 +1123,9 @@ class Timeline:
         stopped = g.stoppage not in (Stoppage.NONE, Stoppage.UNKNOWN)
         if stopped and not self._stopped:
             self.events.append(Event(at, "stop_start", g.stoppage.value,
-                                     pid=lp.id if lp else "", spread=at - stop_lo))
+                                     pid=lp.id if lp else "", spread=at - stop_lo,
+                                     stop_class=stoppage_class(self.league, g.stoppage, getattr(lp, "type_text", ""),
+                                                               lp.text) if lp else ""))
         elif not stopped and self._stopped and g.stoppage == Stoppage.NONE:
             # [mid-play guard] Resumed with no play to time it by. It was still stopped in the data at the
             # last fresh poll; assume the EARLIEST resume consistent with that (was now - 6 - lead,

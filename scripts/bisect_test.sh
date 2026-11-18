@@ -56,14 +56,16 @@ if ! git diff --quiet HEAD; then
 fi
 
 # The script may not exist in old commits, so each step runs a copy from outside the checkout.
-copy=$(mktemp -t rz_bisect) || exit 2
+# An explicit XXXXXX template: GNU mktemp (Linux CI) rejects `-t rz_bisect` ("too few X's"); BSD accepts both.
+copy=$(mktemp "${TMPDIR:-/tmp}/rz_bisect.XXXXXX") || exit 2
 cp "$script" "$copy"
 trap 'git bisect reset >/dev/null 2>&1; rm -f "$copy"' EXIT
 
 git bisect start "$bad" "$good" >/dev/null || exit 2
 log=$(git bisect run bash "$copy" --step "$node" "$night" "$needs" 2>&1)
 code=$?
-if [ $code -eq 0 ] && printf '%s\n' "$log" | grep -q "is the first bad commit"; then
+# git before 2.4x prints "is the first bad commit"; newer git (2.56 on CI) quotes the term: "is the first 'bad' commit".
+if [ $code -eq 0 ] && printf '%s\n' "$log" | grep -Eq "is the first '?bad'? commit"; then
     culprit=$(git rev-parse refs/bisect/bad)
     echo "Bisected-to: $(git log -1 --format='%h %s' "$culprit")"
     exit 0
