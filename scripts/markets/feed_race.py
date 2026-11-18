@@ -13,6 +13,9 @@ Sources, all public, $0, no accounts:
     python scripts/markets/feed_race.py grade --espn out/race/espn.jsonl \
         --poly out/markets_live/polymarket/nfl/20261105.jsonl --sync sync.jsonl --game-key nfl:20261105:JAX@BAL \
         --since 2026-11-06T01:00:00Z --out out/race/grades.json
+    # fallback when the live app has no score-bug read (RC6.2): source order only, no screen lead
+    python scripts/markets/feed_race.py order --espn race_derived.jsonl --poly race_derived.jsonl \
+        --app-race race.jsonl --game-key nfl:20261105:JAX@BAL --out out/race/order.json
 
 Clocks: the cloud box and the Mac must both be NTP-synced; the residual (~0.1 s) is far below the leads measured.
 Why: TNF feed race: which source sees a score first, shadow only (tracker item 4, Nov 5).
@@ -150,6 +153,75 @@ def grade(screens: list[dict], espn: list[dict], poly: list[dict], game_key: str
             "note": "lead_s = screen onset - source first-seen; positive means the source had the score first"}
 
 
+ORDER_NOTE = "source order only, no screen lead: RC6.2 has no Prime score-bug read, so nothing here is timed against the TV"
+
+
+def app_sightings(race_rows: list[dict], scores: set[tuple[int, int]]) -> dict[tuple[int, int], dict[str, float]]:
+    """RC6.2 data/recordings/<day>/race.jsonl -> {score: {"app:<source>": first-seen}} for the game whose score
+    labels best overlap `scores` (the ESPN score changes). Row: {"t","game","label","first","others": {src: lag_s}}."""
+    by_game: dict[str, list[dict]] = {}
+    for r in race_rows:
+        lab = str(r.get("label") or "")
+        if lab.startswith("score ") and r.get("t") is not None:
+            by_game.setdefault(str(r.get("game")), []).append(r)
+
+    def sc(r):
+        try:
+            a, h = r["label"].split()[1].split("-")
+            return int(a), int(h)
+        except (IndexError, ValueError):
+            return None
+
+    if not by_game:
+        return {}
+    game = max(by_game, key=lambda g: len({sc(r) for r in by_game[g]} & scores))
+    out: dict[tuple[int, int], dict[str, float]] = {}
+    for r in by_game[game]:
+        s = sc(r)
+        if s not in scores:
+            continue
+        seen = {f"app:{r['first']}": float(r["t"])}
+        seen.update({f"app:{k}": float(r["t"]) + float(v) for k, v in (r.get("others") or {}).items()})
+        cur = out.setdefault(s, {})
+        for k, v in seen.items():                  # the merger may log a label twice: keep the earliest copy
+            cur[k] = min(v, cur.get(k, v))
+    return out
+
+
+def order(espn: list[dict], poly: list[dict], app_race: list[dict], game_key: str) -> dict:
+    """Fallback grade (no screen): per score change, when each source first had it and its lag behind the first."""
+    matchup = game_key.split(":")[-1]
+    first: dict[tuple[int, int], dict[str, float]] = {}
+    for r in espn:
+        if r.get("prev") is None or r.get("source") == "polymarket":
+            continue
+        s = tuple(r["score"])
+        first.setdefault(s, {})
+        first[s][r["source"]] = min(float(r["recv_ts"]), first[s].get(r["source"], float("inf")))
+    for s, seen in app_sightings(app_race, set(first)).items():
+        first[s].update(seen)
+    trig = sorted(float(r["recv_ts"]) for r in poly if r.get("row") == "trigger"
+                  and str(r.get("game_key", "")).split(":")[-1] == matchup)
+    events, t_used = [], -1
+    for s, seen in sorted(first.items(), key=lambda kv: min(kv[1].values())):
+        t0 = min(seen.values())
+        p = [(j, t) for j, t in enumerate(trig) if j > t_used and t0 - POLY_BEFORE_S <= t <= t0 + POLY_AFTER_S]
+        if p:
+            t_used = p[0][0]
+            seen = {**seen, "polymarket": p[0][1]}
+        t0 = min(seen.values())
+        events.append({"score": list(s), "first": min(seen, key=seen.get),
+                       "lag_s": {k: round(v - t0, 2) for k, v in sorted(seen.items())}})
+    srcs = sorted({k for e in events for k in e["lag_s"]})
+    summary = {}
+    for k in srcs:
+        v = [e["lag_s"][k] for e in events if k in e["lag_s"]]
+        summary[k] = {"n": len(v), "first_n": sum(e["first"] == k for e in events),
+                      "median_lag_s": round(statistics.median(v), 2), "max_lag_s": round(max(v), 2)}
+    return {"game_key": game_key, "mode": "order", "events": len(events), "summary": summary, "rows": events,
+            "note": ORDER_NOTE + "; lag_s = source first-seen - earliest source (0 = first)"}
+
+
 # ------------------------------------------------------------------ network
 
 def poll_espn(teams: set[str], hours: float, out: Path) -> None:
@@ -233,7 +305,20 @@ def main(argv=None) -> int:
     g.add_argument("--since", required=True)
     g.add_argument("--until", default="2100-01-01T00:00:00Z")
     g.add_argument("--out", type=Path, default=Path("out/race/grades.json"))
+    o = sub.add_parser("order", help="fallback without a screen read: " + ORDER_NOTE)
+    o.add_argument("--espn", type=Path, required=True)
+    o.add_argument("--poly", type=Path)
+    o.add_argument("--app-race", type=Path, help="RC6.2 data/recordings/<day>/race.jsonl, copied read-only after the game")
+    o.add_argument("--game-key", default="nfl:20261105:JAX@BAL")
+    o.add_argument("--out", type=Path, default=Path("out/race/order.json"))
     a = ap.parse_args(argv)
+    if a.cmd == "order":
+        res = order(_jsonl(a.espn), _jsonl(a.poly) if a.poly else [], _jsonl(a.app_race) if a.app_race else [],
+                    a.game_key)
+        a.out.parent.mkdir(parents=True, exist_ok=True)
+        a.out.write_text(json.dumps(res, indent=1) + "\n")
+        print(json.dumps({k: res[k] for k in ("game_key", "mode", "events", "summary", "note")}, indent=1))
+        return 0
     if a.cmd == "espn":
         poll_espn({t.strip().upper() for t in a.teams.split(",")}, a.hours, a.out / "espn.jsonl")
         return 0
