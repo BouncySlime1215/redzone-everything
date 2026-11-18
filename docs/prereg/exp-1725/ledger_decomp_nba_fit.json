@@ -1,0 +1,28 @@
+{
+ "stay_leave_timing": {
+  "big": 12.0,
+  "crunch": 5.0,
+  "mine": 0.0,
+  "dead": 13.22
+ },
+ "wrong_game_value": {
+  "big": 12.0,
+  "crunch": 18.0,
+  "mine": 0.0,
+  "dead": 34.86
+ },
+ "break_estimate": {
+  "big": 0.0,
+  "crunch": 0.0,
+  "mine": 0.0,
+  "dead": 6.6
+ },
+ "_all": {
+  "big": 24.0,
+  "crunch": 23.0,
+  "mine": 0.0,
+  "dead": 54.68
+ },
+ "_nights": 9,
+ "_tag": "personal-use, not for commercial release"
+}
