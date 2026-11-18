@@ -81,17 +81,38 @@ def fetch(league: str, year: int, raw: Path) -> Path | None:
     return dst
 
 
-def build_games(leagues, out: Path, smoke: bool) -> list[dict]:
-    """[{league, gid, night, tokens}] for every tokenized game."""
+def v2_edges(lg: str, years: list[int], out: Path) -> dict | None:
+    """Vocab v2 bucket edges for a league, fit once on its middle season (always a train season under split(): the
+    last 20% of nights are valid + test), then shared by every season."""
+    import noggin_tokens_v2 as V2
+    p = out / "tokens_v2" / f"{lg}_edges.json"
+    if p.exists():
+        return json.loads(p.read_text())
+    y = years[len(years) // 2]
+    raw = fetch(lg, y, out / "raw")
+    if raw is None:
+        return None
+    info = V2.build(TOKEN_LEAGUE.get(lg, lg), raw, y, out / "tokens_v2" / "fit" / lg)
+    p.write_text(json.dumps(info["edges"]))
+    return info["edges"]
+
+
+def build_games(leagues, out: Path, smoke: bool, vocab: int = 1) -> list[dict]:
+    """[{league, gid, night, tokens}] for every tokenized game (vocab 1: noggin_tokens; 2: noggin_tokens_v2)."""
     games = []
     for lg in leagues:
         years = SEASONS[lg][-1:] if smoke else SEASONS[lg]
+        edges = v2_edges(lg, years, out) if vocab == 2 else None
         for y in years:
             raw = fetch(lg, y, out / "raw")
             if raw is None:
                 continue
             tl = TOKEN_LEAGUE.get(lg, lg)
-            info = T.build(tl, raw, y, out / "tokens" / lg)
+            if vocab == 2:
+                import noggin_tokens_v2 as V2
+                info = V2.build(tl, raw, y, out / "tokens" / lg, edges=edges)
+            else:
+                info = T.build(tl, raw, y, out / "tokens" / lg)
             arr = np.load(out / "tokens" / lg / tl / f"{y}.npy")
             for gid, night, off, n, _ in info["index"]:
                 games.append({"league": lg, "gid": gid, "night": night, "tokens": arr[off:off + n]})
@@ -218,13 +239,24 @@ def make_model(vocab: int, d: int, layers: int, heads: int, ctx: int, dropout: f
     return WM()
 
 
+def cuts(t: np.ndarray, ctx: int) -> list[int]:
+    """Window starts that tile the game exactly, each at an event's KIND token (or 0) and at most ctx apart. v1 events
+    are 6 tokens; vocab v2 events carry a variable number of (FIELD VALUE) pairs, so cut on the KIND ids."""
+    ev = np.flatnonzero((t >= T.KIND0) & (t < T.DT0))
+    out, a = [0], 0
+    while a + ctx < len(t) - 1:
+        nxt = ev[(ev > a) & (ev <= a + ctx)]
+        a = int(nxt[-1]) if len(nxt) else a + ctx      # a single event longer than ctx: hard cut
+        out.append(a)
+    return out
+
+
 def windows(games, ctx: int, rng) -> np.ndarray:
-    """Every game cut into ctx+1 windows at multiples of a whole number of events (the same cut as grade())."""
+    """Every game cut into ctx+1 windows on event boundaries (the same cut as grade())."""
     out = []
-    step = (ctx // T.TOKENS_PER_EVENT) * T.TOKENS_PER_EVENT
     for g in games:
         t = g["tokens"].astype(np.int64)
-        for s in range(0, max(1, len(t) - 1), step):
+        for s in cuts(t, ctx):
             w = t[s:s + ctx + 1]
             if len(w) < 2:
                 continue
@@ -236,9 +268,9 @@ def windows(games, ctx: int, rng) -> np.ndarray:
 
 # ---------------------------------------------------------------------------------------------- grades
 def positions(t: np.ndarray):
-    """Indices (into a game's tokens) of each event's kind, dt and stop token."""
-    n_ev = (len(t) - 4) // T.TOKENS_PER_EVENT
-    base = 3 + T.TOKENS_PER_EVENT * np.arange(n_ev)
+    """Indices (into a game's tokens) of each event's kind, dt and stop token (v1 and v2: the 6 v1 tokens lead)."""
+    base = np.flatnonzero((t >= T.KIND0) & (t < T.DT0))
+    base = base[base + 5 < len(t)]
     return base, base + 1, base + 5
 
 
@@ -315,9 +347,9 @@ def grade(model, games, base, ctx, dev) -> dict:
             if len(k) < 3:
                 continue
             logits = []
-            step = (ctx // T.TOKENS_PER_EVENT) * T.TOKENS_PER_EVENT
-            for a in range(0, len(t) - 1, step):       # non-overlapping windows on event boundaries
-                x = torch.tensor(t[a:a + ctx], device=dev)[None]
+            cs = cuts(t, ctx) + [len(t) - 1]
+            for a, b in zip(cs[:-1], cs[1:]):           # windows that tile the game, on event boundaries
+                x = torch.tensor(t[a:b], device=dev)[None]
                 with torch.autocast(device_type=dev, dtype=torch.bfloat16, enabled=dev == "cuda"):
                     logits.append(model(x)[0].float())
             lg = torch.cat(logits)                      # lg[i] predicts token i+1
@@ -373,6 +405,7 @@ def main(argv=None) -> int:
     ap.add_argument("--smoke", action="store_true", help="CPU test: one season, a tiny model, a few steps")
     ap.add_argument("--from-tokens", type=Path, default=None,
                     help="train on the factory's token shards (<dir>/<league>/<year>.npy) instead of fetching")
+    ap.add_argument("--vocab", type=int, default=1, choices=(1, 2), help="2 = rich tokens (noggin_tokens_v2)")
     ap.add_argument("--extra-shards", type=Path, default=None,
                     help="synthetic token shards (synth_build.py augment, EXP-1401): train only, before valid, <=3x")
     a = ap.parse_args(argv)
@@ -390,8 +423,10 @@ def main(argv=None) -> int:
     if a.from_tokens:
         games, licenses = load_shards(a.from_tokens, a.leagues.split(","))
     else:
-        games = build_games(a.leagues.split(","), a.out, a.smoke)
+        games = build_games(a.leagues.split(","), a.out, a.smoke, a.vocab)
         licenses = {PERSONAL} if ESPN_DERIVED & set(a.leagues.split(",")) else {"open"}
+        for js in (a.out / "tokens").rglob("*.json") if a.vocab == 2 else ():   # v2 shards carry their own license
+            licenses.add(json.loads(js.read_text()).get("license", "open"))
     sp = split(games)
     starts = valid_start(games)
     print("first valid night:", json.dumps(starts), flush=True)
@@ -406,7 +441,8 @@ def main(argv=None) -> int:
                   "first": min((g["night"] for g in v), default=None), "last": max((g["night"] for g in v), default=None)}
               for k, v in sp.items()}
     print("split:", json.dumps(counts), flush=True)
-    model = make_model(T.VOCAB_SIZE, a.d, a.layers, a.heads, a.ctx, a.dropout).to(dev)
+    vocab = max(T.VOCAB_SIZE, 1 + max(int(g["tokens"].max()) for g in games if len(g["tokens"])))  # v2 > v1
+    model = make_model(vocab, a.d, a.layers, a.heads, a.ctx, a.dropout).to(dev)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"model: {n_params / 1e6:.1f}M params on {dev}", flush=True)
     tr = windows(sp["train"], a.ctx, rng)
@@ -425,7 +461,7 @@ def main(argv=None) -> int:
         with torch.no_grad(), torch.autocast(**amp):
             for i in range(0, len(va), a.batch):
                 x = torch.tensor(va[i:i + a.batch], device=dev)
-                tot += float(loss_fn(model(x[:, :-1]).float().reshape(-1, T.VOCAB_SIZE), x[:, 1:].reshape(-1)))
+                tot += float(loss_fn(model(x[:, :-1]).float().reshape(-1, vocab), x[:, 1:].reshape(-1)))
                 n += 1
         model.train()
         return round(tot / max(1, n), 4)
@@ -446,7 +482,7 @@ def main(argv=None) -> int:
             for gr in opt.param_groups:
                 gr["lr"] = lr_at(step)
             with torch.autocast(**amp):
-                loss = loss_fn(model(x[:, :-1]).float().reshape(-1, T.VOCAB_SIZE), x[:, 1:].reshape(-1))
+                loss = loss_fn(model(x[:, :-1]).float().reshape(-1, vocab), x[:, 1:].reshape(-1))
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -505,8 +541,8 @@ def main(argv=None) -> int:
                       for k in ("next_kind_acc", "next_kind_acc_bigram", "break_dt_mae_s", "break_dt_mae_s_baseline")}
                   for y in seasons}
     g = {"exp": a.exp, "seed": SEED,
-         "license": PERSONAL if any(x != "open" and not x.startswith("open") for x in licenses) else "open", "data_sha256_16": data_hash(games), "vocab": T.VOCAB_VERSION,
-         "vocab_size": T.VOCAB_SIZE, "leagues": a.leagues, "split": counts,
+         "license": PERSONAL if any(x != "open" and not x.startswith("open") for x in licenses) else "open", "data_sha256_16": data_hash(games), "vocab": 2 if vocab > T.VOCAB_SIZE else T.VOCAB_VERSION,
+         "vocab_size": vocab, "leagues": a.leagues, "split": counts,
          "valid_first_night": starts, "extra_shards": extra_rep, "selection": "valid loss (early stop)",
          "recipe": {"d": a.d, "layers": a.layers, "heads": a.heads, "ctx": a.ctx, "batch": a.batch, "lr": a.lr, "dropout": a.dropout, "weight_decay": a.weight_decay,
                     "params_m": round(n_params / 1e6, 1), "steps": step, "epochs_seen": round(step * a.batch / max(1, len(tr)), 2)},
