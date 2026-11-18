@@ -403,3 +403,18 @@ def watchdog_wordings(answers: Iterable[dict], held_out: Iterable[str] = ()) -> 
         if r["agree"]:
             out.setdefault(r["kind"], []).append(r["line"])
     return {k: sorted(v) for k, v in sorted(out.items())}
+
+
+def balance_by_league(reqs: list[dict]) -> list[dict]:
+    """Round-robin the teacher queue by league, keeping each league's hardest-first order. V7 answered 0% of
+    CBB/NHL/MLB: after the time split the budget ran out inside the NFL/NBA head of the queue. Watchdog
+    requests (wd_*) are one more lane in the rotation."""
+    lanes: dict[str, list[dict]] = {}
+    for q in reqs:
+        key = "wd" if str(q.get("task", "")).startswith("wd_") else str(q.get("id", "")).split(":")[0]
+        lanes.setdefault(key, []).append(q)
+    out, i = [], 0
+    while any(i < len(v) for v in lanes.values()):
+        out += [v[i] for v in lanes.values() if i < len(v)]
+        i += 1
+    return out

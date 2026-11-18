@@ -66,6 +66,39 @@ def truth_safe(r: dict) -> bool:
     return r["target"]["safe_to_leave"] == "yes"
 
 
+# Down the stretch is sticky (Nick, Nov 4 3:15 PM): close + late = never leave. Margins per base league.
+STICKY_MARGIN = {"nba": 6, "cbb": 6, "wcbb": 6, "nfl": 8, "cfb": 8, "nhl": 1, "mlb": 2}
+# Nick 4:15 PM: crunch is a LEARNED state, not a hard rule. The graded answer is the model's own; the floor
+# (never leave a high-leverage moment for a LOW-value game) lives in the decider, and the report shows the
+# student with this prior applied too, as "floored", so the floor's effect stays visible.
+CRUNCH_STAY_PRIOR = False
+
+
+def sticky(r: dict) -> bool:
+    """Observable now (no hindsight): a crunch state, or late and within the league's sticky margin."""
+    if r.get("garbage"):
+        return False
+    if r.get("crunch"):
+        return True
+    d = r.get("abs_diff")
+    return bool(r.get("late") and d is not None and d <= STICKY_MARGIN.get(r.get("league", ""), 3))
+
+
+def high_leverage(r: dict) -> bool:
+    """A leave here is a hard error under the 3:15 rule: sticky now, or a crunch play due inside the horizon."""
+    return sticky(r) or bool(r.get("crunch_next") and not r.get("garbage"))
+
+
+def apply_priors(r: dict, p: dict | None) -> dict | None:
+    """crunch = stay: a model may never say safe_to_leave on a sticky row (and crunch is always must_see)."""
+    if not p or p is MISSING or not sticky(r):
+        return p
+    q = dict(p, safe_to_leave="no")
+    if r.get("crunch"):
+        q["lock_in"] = "must_see"
+    return q
+
+
 def score_of(source: str, r: dict) -> float | None:
     """The number a baseline ranks moments by: today's brain key-soon odds, or the fast head's odds."""
     if source == "head":
@@ -95,9 +128,11 @@ def fit_thresholds(source: str, valid_rows: list[dict]) -> tuple[float, float]:
 
 
 def answers_for(source: str, rows: list[dict], answers: dict[str, dict] | None = None,
-                thresholds: dict[str, tuple[float, float]] | None = None) -> dict[str, dict | None]:
+                thresholds: dict[str, tuple[float, float]] | None = None,
+                priors: bool | None = None) -> dict[str, dict | None]:
     """{row id: cleaned answer or None} for one source. thresholds: per league (baselines only)."""
     out: dict[str, dict | None] = {}
+    priors = CRUNCH_STAY_PRIOR if priors is None else priors
     for r in rows:
         if source in ("today", "head"):
             p = score_of(source, r)
@@ -114,7 +149,7 @@ def answers_for(source: str, rows: list[dict], answers: dict[str, dict] | None =
             out[r["id"]] = MISSING
             continue
         d = a if "lock_in" in a else extract_json(a.get("text", ""))
-        out[r["id"]] = clean_reasoner(d)
+        out[r["id"]] = apply_priors(r, clean_reasoner(d)) if priors else clean_reasoner(d)
     return out
 
 
@@ -147,6 +182,9 @@ def score(rows: list[dict], preds: dict[str, dict | None]) -> dict:
         "lock_excluded_rows": len(usable) - len(lock_rows),
         "leave_allowed_pct": pct(len(safe_said), len(usable)),
         "unsafe_leave_pct": pct(sum(not truth_safe(r) for r in safe_said), len(safe_said)),
+        # the 3:15 rule: a high-leverage unsafe leave is a hard 0; a low-leverage one is reported as info
+        "unsafe_leave_hi_pct": pct(sum(not truth_safe(r) and high_leverage(r) for r in safe_said), len(safe_said)),
+        "unsafe_leave_lo_pct": pct(sum(not truth_safe(r) and not high_leverage(r) for r in safe_said), len(safe_said)),
         "over_cautious_pct": pct(sum(truth_safe(r) for r in stay_said), len(stay_said)),
         "eta_mae_s": round(sum(errs) / len(errs), 1) if errs else None,
     }
@@ -188,7 +226,9 @@ def table(res: dict, league: str = "all") -> str:
 # Ship gate (Nick, Nov 3, approved): valid answers 100%, lock_in >= 95% against the gold labels
 # (Nick's rules applied exactly, agent/distill/gold.py), and a missed big play after "safe to leave"
 # at most 0.5% on held-out nights.
-GATE = {"usable_json_pct": ("min", 100.0), "lock_acc": ("min", 95.0), "unsafe_leave_pct": ("max", 0.5)}
+# Nick Nov 4 3:15 PM: a high-leverage unsafe leave (sticky now, or a crunch play due) is a hard 0.
+GATE = {"usable_json_pct": ("min", 100.0), "lock_acc": ("min", 95.0), "unsafe_leave_pct": ("max", 0.5),
+        "unsafe_leave_hi_pct": ("max", 0.0)}
 WATCHDOG_GATE = 95.0
 
 

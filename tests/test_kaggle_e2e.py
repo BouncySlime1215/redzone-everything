@@ -102,7 +102,7 @@ def data_pack(d: Path) -> Path:
     return d
 
 
-@pytest.mark.parametrize("upload", ["tarball", "kaggle-extracted", "students-only"])
+@pytest.mark.parametrize("upload", ["tarball", "kaggle-extracted", "students-only", "watchdog-only"])
 def test_notebook_end_to_end_on_cpu(tmp_path, upload):
     import tarfile
     from agent.kaggle.pack_data import code_pack
@@ -121,8 +121,11 @@ def test_notebook_end_to_end_on_cpu(tmp_path, upload):
         (inp / "v2-out" / "rz" / "teacher_out.jsonl").write_text(json.dumps(
             {"id": "wd:paused:0", "task": "wd_paraphrase", "kind": "paused", "model": "prev",
              "text": "stream froze again", "followups": [{"item": "stream froze again", "text": "none"}]}) + "\n")
+    extra = {}
+    if upload == "watchdog-only":        # [Colab EXP-085] no teacher answers at all: the watchdog never reads them
+        mode, extra = "students", {"RZ_JOBS": "watchdog"}
     work.mkdir()
-    env = {"RZ_MODE": mode, **os.environ, "RZ_KAGGLE_INPUT": str(inp), "RZ_KAGGLE_WORKING": str(work), "RZ_SMOKE": "1",
+    env = {"RZ_MODE": mode, **extra, **os.environ, "RZ_KAGGLE_INPUT": str(inp), "RZ_KAGGLE_WORKING": str(work), "RZ_SMOKE": "1",
            "RZ_FAKE_TEACHER": "1", "RZ_BASE_DIR": str(tiny_base(tmp_path / "base")),
            "RZ_BUILD_ARCHIVE": str(archive(tmp_path / "archive")), "CUDA_VISIBLE_DEVICES": ""}
     p = subprocess.run([sys.executable, str(ROOT / "agent/kaggle/teacher_distill.py")], env=env, cwd=tmp_path,
@@ -130,6 +133,13 @@ def test_notebook_end_to_end_on_cpu(tmp_path, upload):
     log = p.stdout + p.stderr
     assert p.returncode == 0, log[-4000:]
     assert "| code: pack" not in log, "the notebook fell back to round-1 code"
+    if upload == "watchdog-only":
+        z = zipfile.ZipFile(work / "out.zip")
+        assert "watchdog/mlx/adapters.safetensors" in z.namelist(), log[-3000:]
+        assert "game-reasoner/mlx/adapters.safetensors" not in z.namelist()
+        g = json.loads((work / "grades.json").read_text())
+        assert g["coverage"]["watchdog"]["complete"] and g["coverage"]["game-reasoner"] is None and g["complete"], g
+        return
     if mode == "students":
         assert "students-only: reusing 1 teacher answers" in log, log[-3000:]
         assert "teacher:" not in log and not (work / "build.log").exists(), "students-only ran the teacher or build"
