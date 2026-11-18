@@ -1,6 +1,6 @@
 """ChromeStreams: N YouTube TV tabs as the streams of the PARK design. Park one at a second, jump to one, read them.
 
-    streams = ChromeStreams(AppleScriptBridge(), channel_map)
+    streams = chrome_source.from_config(cfg, channel_map)      # None while chrome_source.enabled is false
     streams.open(["espn", "tnt", "nbatv", "abc"])      # one tab per channel, every one muted through the player
     streams.park(2, content_second)                    # seek tab 2 just short of that second on YouTube's clock, pause it
     streams.jump(2)                                    # bring tab 2 to the front, play it, pause the tab that was left
@@ -11,8 +11,9 @@ setting, type into a page, or sign in. Sound is only the player's own mute. A ta
 error page, still loading) is reported as such by health() and left alone.
 
 Step times fed to the simulator (scripts/park_sim.DEVICES["chrome"]): pause exact, resume 0.28 s, a forward seek 0.46 s
-landing 0.22 s past its target (MEASURED by hand, Nov 10, one seek); a tab switch 0.3 s (ASSUMED). `lead_s` aims every
-park that much early so the overshoot cannot carry it past the second asked for. Nothing in this file has run against
+landing 0.22 s past its target (MEASURED by hand, Nov 10, one seek); a tab switch 0.3 s (ASSUMED). `lead_s`
+(`chrome_source.park_lead_s` in the config) aims every park that much early so the overshoot cannot carry it past the
+second asked for. Nothing in this file has run against
 the real browser: it was written with no Mac, and tested on FakeBridge only.
 
 Why: a park has to be "a spot the feed has already reported" to the second, and a jump has to be three small steps in
@@ -29,7 +30,6 @@ from . import page_script
 from .bridge import Bridge
 
 WATCH_URL = "https://tv.youtube.com/watch/{code}"
-LEAD_S = 0.3             # ASSUMED margin over the one measured overshoot (0.22 s)
 
 
 @dataclass
@@ -41,8 +41,8 @@ class Stream:
 
 
 class ChromeStreams:
-    def __init__(self, bridge: Bridge, channel_map, *, clock: Callable[[], float] = time.time,
-                 sleep: Callable[[float], None] = time.sleep, lead_s: float = LEAD_S):
+    def __init__(self, bridge: Bridge, channel_map, *, lead_s: float, clock: Callable[[], float] = time.time,
+                 sleep: Callable[[float], None] = time.sleep):
         self.bridge, self.channels, self.clock, self.sleep, self.lead_s = bridge, channel_map, clock, sleep, lead_s
         self.streams: list[Stream] = []
         self.on_screen: int | None = None

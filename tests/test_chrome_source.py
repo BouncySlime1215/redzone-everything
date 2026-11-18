@@ -43,7 +43,7 @@ def rig(tmp_path, channels=("espn", "tnt", "abc"), **fake):
     cm = ChannelMap(tmp_path / "channels.json")
     cm.codes = dict(CODES)
     fb = br.FakeBridge(clock, **fake)
-    cs = ChromeStreams(fb, cm, clock=clock, sleep=clock.sleep)
+    cs = ChromeStreams(fb, cm, lead_s=0.3, clock=clock, sleep=clock.sleep)
     cs.open(list(channels))
     return cs, fb, clock
 
@@ -156,7 +156,7 @@ def test_open_waits_for_each_player_and_can_leave_one_with_sound(tmp_path):
     cm = ChannelMap(tmp_path / "channels.json")
     cm.codes = dict(CODES)
     fb = br.FakeBridge(clock, load_polls=3)
-    cs = ChromeStreams(fb, cm, clock=clock, sleep=clock.sleep)
+    cs = ChromeStreams(fb, cm, lead_s=0.3, clock=clock, sleep=clock.sleep)
     t = clock()
     cs.open(["espn", "tnt"], audio=1)
     assert [fb.tabs[s.tab].muted for s in cs.streams] == [True, False]
@@ -250,10 +250,16 @@ def test_the_bridge_can_only_open_select_close_a_tab_and_run_page_script():
 
 def test_the_flag_ships_off_and_nothing_in_the_app_imports_the_package():
     cfg = yaml.safe_load((ROOT / "redzone/default_config.yaml").read_text())
-    assert cfg["chrome_source"] == {"enabled": False}
+    assert cfg["chrome_source"] == {"enabled": False, "park_lead_s": 0.3}
     assert chrome_source.enabled(cfg) is False and chrome_source.enabled(None) is False and chrome_source.enabled({}) is False
     assert chrome_source.enabled({"chrome_source": {"enabled": True}}) is True
     assert chrome_source.enabled(SimpleNamespace(get=lambda key, default=None: default)) is False
+    # off: no streams, and the bridge is never asked for anything
+    fb = br.FakeBridge(Clock())
+    assert chrome_source.from_config(cfg, object(), fb) is None and chrome_source.from_config(None, object(), fb) is None and fb.calls == []
+    # on: the streams, with the park lead the config holds
+    on = chrome_source.from_config({"chrome_source": {"enabled": True, "park_lead_s": 0.5}}, object(), fb)
+    assert isinstance(on, ChromeStreams) and on.lead_s == 0.5 and on.bridge is fb and fb.calls == []
     users = [p.relative_to(ROOT).as_posix() for p in (ROOT / "redzone").rglob("*.py")
              if "chrome_source" not in p.parts and re.search(r"chrome_source", p.read_text())]
     assert users == []                             # flag off is decision-identical: no runtime module even names it

@@ -4119,14 +4119,20 @@
    ]
   },
   "redzone/chrome_source/__init__.py": {
-   "calls": [],
+   "calls": [
+    "redzone/chrome_source/bridge.py:AppleScriptBridge",
+    "redzone/chrome_source/streams.py:ChromeStreams"
+   ],
    "contracts": [],
    "data": {
     "reads": [],
     "uses": [],
     "writes": []
    },
-   "inputs": [],
+   "inputs": [
+    "redzone/chrome_source/bridge.py",
+    "redzone/chrome_source/streams.py"
+   ],
    "kind": "package",
    "machines": {
     "declares": [],
@@ -4159,6 +4165,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/chrome_source/__init__.py",
     "redzone/chrome_source/streams.py"
    ],
    "owner": "unowned",
@@ -4212,7 +4219,9 @@
     "declares": [],
     "drives": []
    },
-   "outputs": [],
+   "outputs": [
+    "redzone/chrome_source/__init__.py"
+   ],
    "owner": "unowned",
    "role": "ChromeStreams: N YouTube TV tabs as the streams of the PARK design.",
    "serves": [
@@ -18645,11 +18654,11 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2149,
+  "calls": 2151,
   "data_files": 202,
   "machines": 51,
   "modules": 467,
-  "orphans": 35,
+  "orphans": 34,
   "unowned": 269,
   "untagged": 398
  },

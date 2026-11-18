@@ -17,10 +17,25 @@ so tabs can be the streams of the PARK design.
 from __future__ import annotations
 
 
-def enabled(cfg) -> bool:
-    """The flag, read from a Config (`cfg.get("chrome_source.enabled")`) or a plain dict. Off unless it says true."""
+def _read(cfg, key: str, default=None):
+    """`chrome_source.<key>` from a Config (dotted get) or a plain dict."""
     if cfg is None:
-        return False
+        return default
     if isinstance(cfg, dict):
-        return bool((cfg.get("chrome_source") or {}).get("enabled", False))
-    return bool(cfg.get("chrome_source.enabled", False))
+        return (cfg.get("chrome_source") or {}).get(key, default)
+    return cfg.get(f"chrome_source.{key}", default)
+
+
+def enabled(cfg) -> bool:
+    """The flag. Off unless the config says true."""
+    return bool(_read(cfg, "enabled", False))
+
+
+def from_config(cfg, channel_map, bridge=None):
+    """The streams as the config says, or None while the flag is off (then the bridge and the streams are not even
+    imported). `bridge` defaults to the real Chrome on this Mac."""
+    if not enabled(cfg):
+        return None
+    from .bridge import AppleScriptBridge
+    from .streams import ChromeStreams
+    return ChromeStreams(bridge or AppleScriptBridge(), channel_map, lead_s=float(_read(cfg, "park_lead_s")))

@@ -1284,3 +1284,4 @@ basketball:                # [NBA-BUCKET] land right after a made basket, includ
 
 chrome_source:             # [PARK, Nick Nov 10] Chrome tabs on the Mac as the picture streams (redzone/chrome_source). OFF: nothing imports it yet
   enabled: false
+  park_lead_s: 0.3         # a park is aimed this much before its second. ASSUMED: a margin over the one measured seek overshoot (0.22 s)
