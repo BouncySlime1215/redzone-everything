@@ -1758,3 +1758,7 @@ park:                      # [PARK, integration plan unit 0b] the two-stick show
       "nfl|two-minute warning": 78.0   # n=1,011
       "nfl|end period": 168.0          # n=1,041 (quarter end)
       "nfl|end of half": 811.0         # n=505
+
+chrome_source:             # [PARK, Nick Nov 10] Chrome tabs on the Mac as the picture streams (redzone/chrome_source). OFF: nothing imports it yet
+  enabled: false
+  park_lead_s: 0.3         # a park is aimed this much before its second. ASSUMED: a margin over the one measured seek overshoot (0.22 s)

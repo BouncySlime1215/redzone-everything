@@ -1,5 +1,19 @@
 {
  "data_files": {
+  "LAYOUT.json": {
+   "readers": [],
+   "users": [],
+   "writers": [
+    "redzone/lab/datamanifest.py"
+   ]
+  },
+  "MANIFEST.json": {
+   "readers": [],
+   "users": [
+    "scripts/fetch_history.py"
+   ],
+   "writers": []
+  },
   "_eval_channels.json": {
    "readers": [],
    "users": [
@@ -604,11 +618,26 @@
     "redzone/discovery/yttv.py"
    ]
   },
+  "dataset-metadata.json": {
+   "readers": [],
+   "users": [
+    "redzone/lab/datamanifest.py",
+    "scripts/data_manifest.py"
+   ],
+   "writers": []
+  },
   "dead_left_table.json": {
    "readers": [
     "redzone/scoring/dead_left_lite.py"
    ],
    "users": [],
+   "writers": []
+  },
+  "dedup.jsonl": {
+   "readers": [],
+   "users": [
+    "redzone/lab/corpus/manifest.py"
+   ],
    "writers": []
   },
   "default_config.yaml": {
@@ -772,6 +801,20 @@
    "writers": [
     "redzone/lab/brain3cal.py"
    ]
+  },
+  "espn_cbb_summary_401820788.json": {
+   "readers": [],
+   "users": [
+    "scripts/feature_parity.py"
+   ],
+   "writers": []
+  },
+  "espn_nba_summary_401909860.json": {
+   "readers": [],
+   "users": [
+    "scripts/feature_parity.py"
+   ],
+   "writers": []
   },
   "eval-data.lock.json": {
    "readers": [
@@ -998,6 +1041,13 @@
    ],
    "writers": []
   },
+  "l105.json": {
+   "readers": [],
+   "users": [],
+   "writers": [
+    "scripts/arm_verdict.py"
+   ]
+  },
   "ladder.jsonl": {
    "readers": [],
    "users": [
@@ -1033,7 +1083,9 @@
    "readers": [
     "scripts/results_ledger.py"
    ],
-   "users": [],
+   "users": [
+    "redzone/lab/datamanifest.py"
+   ],
    "writers": [
     "scripts/results_ledger.py"
    ]
@@ -1063,6 +1115,7 @@
     "redzone/noggin/value_shards.py",
     "scripts/build_training.py",
     "scripts/build_training3.py",
+    "scripts/data_manifest.py",
     "scripts/kaggle_gamevalue.py",
     "scripts/kaggle_pbp_crew.py",
     "scripts/noggin_factory.py"
@@ -1094,7 +1147,9 @@
     "scripts/eval_brain.py",
     "scripts/train_brain.py"
    ],
-   "users": [],
+   "users": [
+    "scripts/job.py"
+   ],
    "writers": [
     "scripts/eval_brain.py",
     "scripts/train_brain.py"
@@ -1103,6 +1158,13 @@
   "moved.json": {
    "readers": [
     "scripts/deploy.py"
+   ],
+   "users": [],
+   "writers": []
+  },
+  "names.json": {
+   "readers": [
+    "redzone/lab/corpus/manifest.py"
    ],
    "users": [],
    "writers": []
@@ -1181,6 +1243,22 @@
    ],
    "writers": []
   },
+  "qdata.manifest.json": {
+   "readers": [
+    "scripts/qdata_build.py"
+   ],
+   "users": [],
+   "writers": [
+    "redzone/lab/gym2/qdata_job.py"
+   ]
+  },
+  "qdata_summary.json": {
+   "readers": [],
+   "users": [],
+   "writers": [
+    "redzone/lab/gym2/qdata_job.py"
+   ]
+  },
   "qwen_model.json": {
    "readers": [
     "agent/kaggle/qwen_eval.py"
@@ -1195,6 +1273,17 @@
    "users": [],
    "writers": [
     "redzone/recorder.py"
+   ]
+  },
+  "raw/manifest.json": {
+   "readers": [
+    "scripts/arm_verdict.py"
+   ],
+   "users": [
+    "redzone/lab/armeval/verdict.py"
+   ],
+   "writers": [
+    "scripts/arm_verdict.py"
    ]
   },
   "recommendation.json": {
@@ -1248,6 +1337,13 @@
    ],
    "writers": [
     "agent/kaggle/grade.py"
+   ]
+  },
+  "robots_espn.json": {
+   "readers": [],
+   "users": [],
+   "writers": [
+    "scripts/fetch_history.py"
    ]
   },
   "round.json": {
@@ -1318,6 +1414,13 @@
    ],
    "writers": []
   },
+  "shards/index.json": {
+   "readers": [
+    "scripts/fetch_history.py"
+   ],
+   "users": [],
+   "writers": []
+  },
   "smartthings_oauth.json": {
    "readers": [],
    "users": [
@@ -1331,6 +1434,13 @@
     "scripts/park_step_bench.py"
    ],
    "writers": []
+  },
+  "spec.json": {
+   "readers": [],
+   "users": [],
+   "writers": [
+    "scripts/job.py"
+   ]
   },
   "special_tokens_map.json": {
    "readers": [],
@@ -1374,17 +1484,27 @@
    "readers": [
     "agent/kaggle/data_fetch.py",
     "agent/kaggle/qwen_finetune.py",
+    "redzone/lab/gym2/qdata_job.py",
     "redzone/web/show.py",
     "scripts/deploy.py"
    ],
    "users": [
-    "agent/kaggle/fetch_sports_mlb.py"
+    "agent/kaggle/fetch_sports_mlb.py",
+    "scripts/job.py"
    ],
    "writers": [
     "agent/kaggle/data_fetch.py",
     "agent/kaggle/qwen_finetune.py",
+    "redzone/lab/gym2/qdata_job.py",
     "redzone/showboard.py"
    ]
+  },
+  "stats.json": {
+   "readers": [
+    "redzone/lab/corpus/manifest.py"
+   ],
+   "users": [],
+   "writers": []
   },
   "student_data.json": {
    "readers": [
@@ -1592,6 +1712,14 @@
    ],
    "writers": []
   },
+  "terms.json": {
+   "readers": [
+    "scripts/corpus_build.py",
+    "scripts/data_manifest.py"
+   ],
+   "users": [],
+   "writers": []
+  },
   "test.jsonl": {
    "readers": [
     "agent/kaggle/student_data.py",
@@ -1636,6 +1764,13 @@
     "scripts/distill.py"
    ]
   },
+  "tests/fixtures/featurestore_value_v3_golden.json": {
+   "readers": [],
+   "users": [
+    "scripts/feature_parity.py"
+   ],
+   "writers": []
+  },
   "text.jsonl": {
    "readers": [],
    "users": [],
@@ -1649,6 +1784,13 @@
    ],
    "users": [],
    "writers": []
+  },
+  "timing.json": {
+   "readers": [],
+   "users": [],
+   "writers": [
+    "scripts/arm_verdict.py"
+   ]
   },
   "traces.jsonl": {
    "readers": [
@@ -1745,6 +1887,15 @@
    ],
    "users": [],
    "writers": []
+  },
+  "verdict.json": {
+   "readers": [
+    "scripts/arm_verdict.py"
+   ],
+   "users": [],
+   "writers": [
+    "scripts/arm_verdict.py"
+   ]
   },
   "verified.json": {
    "readers": [],
@@ -4161,6 +4312,116 @@
     "untagged"
    ]
   },
+  "redzone/chrome_source/__init__.py": {
+   "calls": [
+    "redzone/chrome_source/bridge.py:AppleScriptBridge",
+    "redzone/chrome_source/streams.py:ChromeStreams"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/chrome_source/bridge.py",
+    "redzone/chrome_source/streams.py"
+   ],
+   "kind": "package",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Chrome tabs on the Mac as picture streams: one YouTube TV tab per game, parked and jumped to by page script.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/chrome_source/bridge.py": {
+   "calls": [
+    "redzone/chrome_source/page_script.py:media_second",
+    "redzone/chrome_source/page_script.py:parse_tag"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/chrome_source/page_script.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/chrome_source/__init__.py",
+    "redzone/chrome_source/streams.py"
+   ],
+   "owner": "unowned",
+   "role": "The bridge to Chrome: run_js(tab, script) -> dict, open a tab, bring a tab to the front.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/chrome_source/page_script.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/chrome_source/bridge.py",
+    "redzone/chrome_source/streams.py"
+   ],
+   "owner": "unowned",
+   "role": "The page script for the YouTube TV web player (`#movie_player`): one small JavaScript text per call.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/chrome_source/streams.py": {
+   "calls": [
+    "redzone/chrome_source/page_script.py:build",
+    "redzone/chrome_source/page_script.py:epoch_s",
+    "redzone/chrome_source/page_script.py:state_name"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/chrome_source/bridge.py",
+    "redzone/chrome_source/page_script.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/chrome_source/__init__.py"
+   ],
+   "owner": "unowned",
+   "role": "ChromeStreams: N YouTube TV tabs as the streams of the PARK design.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/commands.py": {
    "calls": [],
    "contracts": [],
@@ -4221,6 +4482,7 @@
     "redzone/lab/breakblend.py",
     "redzone/lab/decision_records.py",
     "redzone/lab/evaldata.py",
+    "redzone/lab/gym2/qdata.py",
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
     "redzone/lab/reasoner_data.py",
@@ -5214,6 +5476,7 @@
     "redzone/tuners/tuners.py:apply_flags",
     "redzone/tuners/tuners.py:channel_matcher",
     "redzone/tuners/yttv_label.py:LabelProbe",
+    "redzone/tuners/yttv_seek.py:_cfg",
     "redzone/tuners/yttv_seek.py:enter_buffer",
     "redzone/tuners/yttv_seek.py:front_and_playing",
     "redzone/tuners/yttv_timing.py:key_constants",
@@ -6845,6 +7108,31 @@
     "untagged"
    ]
   },
+  "redzone/featurestore.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/armeval/stage6.py",
+    "redzone/lab/gym2/qdata.py",
+    "scripts/feature_parity.py"
+   ],
+   "owner": "unowned",
+   "role": "Feature store: the ONE place model features are built from a feed prefix, for training notebooks and the app alike.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/fsm.py": {
    "calls": [],
    "contracts": [],
@@ -6957,6 +7245,8 @@
    },
    "outputs": [
     "redzone/engine.py",
+    "redzone/lab/armeval/episode.py",
+    "redzone/lab/armeval/recompute.py",
     "redzone/lab/backtest.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/gym2/mask.py",
@@ -7023,6 +7313,193 @@
    "outputs": [],
    "owner": "unowned",
    "role": "no docstring",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/armeval/__init__.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "package",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Evaluation harness (task F-04): one named arm (a decision policy) on a fixed set of real nights, one JSON verdict.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/armeval/arms.py": {
+   "calls": [
+    "redzone/lab/fence.py:cutoff_of",
+    "redzone/lab/fence.py:file_sha256",
+    "redzone/lab/fence.py:load_guarded"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/fence.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/armeval/stage6.py",
+    "scripts/arm_verdict.py"
+   ],
+   "owner": "unowned",
+   "role": "The arms the evaluation harness can run: each is the show's own planner with at most one hook changed.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/armeval/episode.py": {
+   "calls": [
+    "redzone/grading.py:dead_at",
+    "redzone/grading.py:idx",
+    "redzone/lab/fence.py:file_sha256",
+    "redzone/lab/leverage.py:high_leverage",
+    "redzone/lab/splits.py:archive_nights"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/grading.py",
+    "redzone/lab/fence.py",
+    "redzone/lab/leverage.py",
+    "redzone/lab/splits.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/armeval/recompute.py",
+    "scripts/arm_verdict.py"
+   ],
+   "owner": "unowned",
+   "role": "One arm on one real night: the show's own replay, the frozen grader's counts, the scorecard and the raw per-jump log.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/armeval/recompute.py": {
+   "calls": [
+    "redzone/grading.py:SwitchLog",
+    "redzone/lab/armeval/episode.py:hl_leaves_mid_play",
+    "redzone/lab/cutgrade.py:grade",
+    "redzone/lab/fence.py:file_sha256"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/grading.py",
+    "redzone/lab/armeval/episode.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/lab/fence.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/arm_verdict.py"
+   ],
+   "owner": "unowned",
+   "role": "Recount a verdict's per-night numbers from its raw logs, without running the show (the verifier's check, F-04 item 5).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/armeval/stage6.py": {
+   "calls": [
+    "redzone/featurestore.py:fs_columns",
+    "redzone/featurestore.py:fs_kind",
+    "redzone/featurestore.py:fs_norm_type",
+    "redzone/featurestore.py:fs_parse",
+    "redzone/lab/fence.py:cutoff_of",
+    "redzone/lab/fence.py:file_sha256",
+    "redzone/lab/fence.py:guard_model",
+    "redzone/lab/fence.py:night_key",
+    "redzone/models_rt/registry.py:read_promoted"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/featurestore.py",
+    "redzone/lab/armeval/arms.py",
+    "redzone/lab/fence.py",
+    "redzone/models_rt/registry.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/arm_verdict.py",
+    "scripts/feature_parity.py"
+   ],
+   "owner": "unowned",
+   "role": "Stage 6 reranker as a plug-in arm: the four-feature value model priced into the planner's `unknown.rate` hook.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/armeval/verdict.py": {
+   "calls": [
+    "redzone/models_rt/registry.py:validate_record"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [
+     "raw/manifest.json"
+    ],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models_rt/registry.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/arm_verdict.py"
+   ],
+   "owner": "unowned",
+   "role": "The per-night cards of one arm folded into ONE verdict: the V2-PLAN section 8.4 scorecard, paired by night against a baseline arm, with run-registry metadata...",
    "serves": [
     "untagged"
    ]
@@ -7106,6 +7583,7 @@
     "agent/kaggle/build_moments_kaggle.py",
     "redzone/demo/engine.py",
     "redzone/lab/cutgrade.py",
+    "redzone/lab/gym2/qdata.py",
     "redzone/lab/gym2/slates.py",
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
@@ -7124,6 +7602,7 @@
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/exp607_trace_prime_belief.py",
+    "scripts/feature_parity.py",
     "scripts/holdset_public.py",
     "scripts/kaggle_gamevalue_holdset.py",
     "scripts/ladder_replay.py",
@@ -7309,6 +7788,430 @@
     "untagged"
    ]
   },
+  "redzone/lab/corpus/__init__.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "package",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Corpus v1 (B-02): play-by-play events tokenised with vocab v1 into hashed shards.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/corpus/build.py": {
+   "calls": [
+    "redzone/lab/corpus/dedup.py:resolve",
+    "redzone/lab/corpus/manifest.py:assemble",
+    "redzone/lab/corpus/manifest.py:file_entry",
+    "redzone/lab/corpus/manifest.py:file_license",
+    "redzone/lab/corpus/manifest.py:licence_block",
+    "redzone/lab/corpus/manifest.py:verify_corpus",
+    "redzone/lab/corpus/records.py:era_of",
+    "redzone/lab/corpus/records.py:light_of",
+    "redzone/lab/corpus/records.py:tier_of",
+    "redzone/lab/corpus/shardio.py:game_sha16",
+    "redzone/lab/corpus/shardio.py:write_shard",
+    "redzone/lab/corpus/sources.py:ArchiveSource",
+    "redzone/lab/corpus/sources.py:FenceGate",
+    "redzone/lab/corpus/sources.py:HistorySource",
+    "redzone/lab/corpus/stats.py:compute",
+    "redzone/lab/corpus/tokenise.py:NameTables",
+    "redzone/lab/corpus/tokenise.py:add_counters",
+    "redzone/lab/corpus/tokenise.py:tokenise_game",
+    "redzone/lab/corpus/tokenise.py:vocab_fingerprint",
+    "redzone/lab/corpus/walkforward.py:fold_ranges",
+    "redzone/lab/corpus/walkforward.py:plan",
+    "redzone/lab/datamanifest.py:ManifestError",
+    "redzone/lab/datamanifest.py:assert_not_committable",
+    "redzone/lab/datamanifest.py:check_tag",
+    "redzone/lab/datamanifest.py:render",
+    "redzone/lab/datamanifest.py:write_manifest",
+    "redzone/lab/evaldata.py:tree_digest"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/corpus/dedup.py",
+    "redzone/lab/corpus/manifest.py",
+    "redzone/lab/corpus/records.py",
+    "redzone/lab/corpus/shardio.py",
+    "redzone/lab/corpus/sources.py",
+    "redzone/lab/corpus/stats.py",
+    "redzone/lab/corpus/tokenise.py",
+    "redzone/lab/corpus/walkforward.py",
+    "redzone/lab/datamanifest.py",
+    "redzone/lab/evaldata.py",
+    "redzone/lab/fence.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/corpus_build.py"
+   ],
+   "owner": "unowned",
+   "role": "The corpus build: read the local history folder and archive, keep fenced nights out, drop duplicate games, assign walk-forward roles, tokenise with vocab v1...",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/corpus/dedup.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/corpus/records.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/corpus/build.py"
+   ],
+   "owner": "unowned",
+   "role": "Keep one copy of a game that two providers (or two folders) both hold: ESPN direct against hoopR or wehoop, or a packed shard against the recorded archive.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/corpus/manifest.py": {
+   "calls": [
+    "redzone/lab/corpus/records.py:era_of",
+    "redzone/lab/corpus/records.py:night_class",
+    "redzone/lab/corpus/shardio.py:read_shard",
+    "redzone/lab/corpus/shardio.py:shard_problems",
+    "redzone/lab/corpus/stats.py:compute",
+    "redzone/lab/corpus/tokenise.py:vocab_fingerprint",
+    "redzone/lab/corpus/walkforward.py:LeagueSplit",
+    "redzone/lab/corpus/walkforward.py:split_problems",
+    "redzone/lab/datamanifest.py:ManifestError",
+    "redzone/lab/datamanifest.py:_SHA",
+    "redzone/lab/datamanifest.py:_is_night",
+    "redzone/lab/datamanifest.py:_licence_problems",
+    "redzone/lab/datamanifest.py:_safe_rel",
+    "redzone/lab/datamanifest.py:check_tag",
+    "redzone/lab/datamanifest.py:manifest_hash",
+    "redzone/lab/datamanifest.py:scrub_problems",
+    "redzone/lab/datamanifest.py:verify_files",
+    "redzone/lab/evaldata.py:tree_digest"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "names.json",
+     "stats.json"
+    ],
+    "uses": [
+     "dedup.jsonl"
+    ],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/corpus/records.py",
+    "redzone/lab/corpus/shardio.py",
+    "redzone/lab/corpus/stats.py",
+    "redzone/lab/corpus/tokenise.py",
+    "redzone/lab/corpus/walkforward.py",
+    "redzone/lab/datamanifest.py",
+    "redzone/lab/evaldata.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/corpus/build.py",
+    "redzone/lab/corpus/reader.py",
+    "redzone/lab/corpus/stats.py",
+    "scripts/corpus_build.py"
+   ],
+   "owner": "unowned",
+   "role": "The corpus manifest: the data-manifest envelope (tag, licences, one sha256 per file, tree digest, manifest hash) plus a `corpus` section that describes every...",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/corpus/reader.py": {
+   "calls": [
+    "redzone/lab/corpus/manifest.py:check_corpus_manifest",
+    "redzone/lab/corpus/manifest.py:verify_corpus",
+    "redzone/lab/corpus/shardio.py:read_shard",
+    "redzone/lab/corpus/tokenise.py:NameTables",
+    "redzone/lab/datamanifest.py:ManifestError",
+    "redzone/lab/datamanifest.py:read_manifest",
+    "redzone/lab/fence.py:FenceError",
+    "redzone/lab/fence.py:assert_train_nights",
+    "redzone/lab/fence.py:night_key",
+    "redzone/lab/fence.py:nights_sha256"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/corpus/manifest.py",
+    "redzone/lab/corpus/records.py",
+    "redzone/lab/corpus/shardio.py",
+    "redzone/lab/corpus/tokenise.py",
+    "redzone/lab/datamanifest.py",
+    "redzone/lab/fence.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/corpus_build.py"
+   ],
+   "owner": "unowned",
+   "role": "Load a corpus for training or evaluation: verify it against its manifest first, then hand out shards by role, and refuse a shard that is not allowed to train.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/corpus/records.py": {
+   "calls": [
+    "redzone/lab/fence.py:fenced",
+    "redzone/lab/fence.py:night_key",
+    "redzone/sources/espn.py:_int"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/fence.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/corpus/build.py",
+    "redzone/lab/corpus/dedup.py",
+    "redzone/lab/corpus/manifest.py",
+    "redzone/lab/corpus/reader.py",
+    "redzone/lab/corpus/sources.py",
+    "redzone/lab/corpus/tokenise.py",
+    "redzone/lab/corpus/walkforward.py"
+   ],
+   "owner": "unowned",
+   "role": "One game as the corpus sees it, plus the leak-fence verdict for its night and the tags every shard carries.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/corpus/shardio.py": {
+   "calls": [
+    "redzone/lab/corpus/tokenise.py:counters_from_tokens",
+    "redzone/lab/corpus/tokenise.py:vocab_fingerprint"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/corpus/tokenise.py",
+    "scripts/noggin_tokens.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/corpus/build.py",
+    "redzone/lab/corpus/manifest.py",
+    "redzone/lab/corpus/reader.py",
+    "redzone/lab/corpus/stats.py"
+   ],
+   "owner": "unowned",
+   "role": "The corpus shard file: one league-season-tier-role of tokenised games in one self-describing file, written atomically and byte-for-byte the same for the same...",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/corpus/sources.py": {
+   "calls": [
+    "redzone/lab/corpus/records.py:GameRec",
+    "redzone/lab/corpus/records.py:night_class",
+    "redzone/lab/corpus/records.py:season_of",
+    "redzone/lab/fence.py:file_sha256",
+    "redzone/models.py:League",
+    "redzone/noggin/factory.py:_plays_basketball",
+    "redzone/sources/espn.py:flatten_plays"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/corpus/records.py",
+    "redzone/lab/fence.py",
+    "redzone/models.py",
+    "redzone/noggin/factory.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/corpus/build.py"
+   ],
+   "owner": "unowned",
+   "role": "Read games from the B-01 history folder and from the recorded archive, and keep fenced nights out before anything is tokenised.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/corpus/stats.py": {
+   "calls": [
+    "redzone/lab/corpus/shardio.py:CORPUS_INDEX_FIELDS",
+    "redzone/lab/corpus/shardio.py:read_header",
+    "redzone/lab/corpus/tokenise.py:NameTables",
+    "redzone/lab/corpus/tokenise.py:add_counters",
+    "redzone/lab/corpus/tokenise.py:vocab_fingerprint"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/corpus/manifest.py",
+    "redzone/lab/corpus/shardio.py",
+    "redzone/lab/corpus/tokenise.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/corpus/build.py",
+    "redzone/lab/corpus/manifest.py",
+    "scripts/corpus_build.py"
+   ],
+   "owner": "unowned",
+   "role": "The corpus stats report: events per game by league and era, tokens per game, vocab coverage, shard sizes.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/corpus/tokenise.py": {
+   "calls": [
+    "redzone/models.py:League",
+    "redzone/sources/espn.py:_clock_s",
+    "redzone/sources/espn.py:_get",
+    "redzone/sources/espn.py:_kind",
+    "scripts/noggin_tokens.py:BASES",
+    "scripts/noggin_tokens.py:LEAGUES",
+    "scripts/noggin_tokens.py:STOPS",
+    "scripts/noggin_tokens.py:encode_game",
+    "scripts/noggin_tokens.py:game_tags"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/corpus/records.py",
+    "redzone/models.py",
+    "redzone/sources/espn.py",
+    "scripts/noggin_tokens.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/corpus/build.py",
+    "redzone/lab/corpus/manifest.py",
+    "redzone/lab/corpus/reader.py",
+    "redzone/lab/corpus/shardio.py",
+    "redzone/lab/corpus/stats.py",
+    "scripts/corpus_build.py"
+   ],
+   "owner": "unowned",
+   "role": "Vocab v1 tokenise and detokenise for corpus games, with the coverage counters and the name tables that make tokens readable.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/corpus/walkforward.py": {
+   "calls": [
+    "redzone/lab/corpus/records.py:season_of",
+    "redzone/lab/splits.py:Split",
+    "redzone/lab/splits.py:folds",
+    "redzone/lab/splits.py:leaks"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/corpus/records.py",
+    "redzone/lab/splits.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/corpus/build.py",
+    "redzone/lab/corpus/manifest.py",
+    "scripts/corpus_build.py"
+   ],
+   "owner": "unowned",
+   "role": "Walk-forward roles for the corpus: train, valid and holdout by whole season (or whole night when there are too few seasons), per league.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/cutgrade.py": {
    "calls": [
     "redzone/grading.py:dead_at",
@@ -7339,6 +8242,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/lab/armeval/recompute.py",
     "redzone/lab/backtest.py",
     "redzone/lab/gym2/mask.py",
     "redzone/lab/oracle.py",
@@ -7355,6 +8259,49 @@
    ],
    "owner": "INTEGRATION",
    "role": "Cut-timing scorecard: WHERE in each game we left, and WHERE we landed.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/datamanifest.py": {
+   "calls": [
+    "redzone/lab/evaldata.py:tree_digest",
+    "redzone/lab/fence.py:assert_train_nights",
+    "redzone/lab/fence.py:fenced",
+    "redzone/lab/fence.py:night_key"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [
+     "dataset-metadata.json",
+     "ledger.jsonl"
+    ],
+    "writes": [
+     "LAYOUT.json"
+    ]
+   },
+   "inputs": [
+    "redzone/lab/evaldata.py",
+    "redzone/lab/fence.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/corpus/build.py",
+    "redzone/lab/corpus/manifest.py",
+    "redzone/lab/corpus/reader.py",
+    "redzone/lab/gym2/qdata.py",
+    "redzone/lab/gym2/qdata_job.py",
+    "scripts/corpus_build.py",
+    "scripts/data_manifest.py",
+    "scripts/qdata_build.py"
+   ],
+   "owner": "unowned",
+   "role": "Versioned data manifests: pin exactly which files a training run saw, by tag, window, sha256 and fence status.",
    "serves": [
     "untagged"
    ]
@@ -7479,6 +8426,9 @@
    "outputs": [
     "redzone/demo/__main__.py",
     "redzone/lab/backtest.py",
+    "redzone/lab/corpus/build.py",
+    "redzone/lab/corpus/manifest.py",
+    "redzone/lab/datamanifest.py",
     "redzone/lab/splits.py",
     "scripts/backfill_eval_v2.py",
     "scripts/bucket_join_measure.py",
@@ -7489,6 +8439,7 @@
     "scripts/eval_break_blend.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
+    "scripts/fence_check.py",
     "scripts/fetch_eval_data.py",
     "scripts/holdset_public.py",
     "scripts/kaggle_gamevalue_holdset.py",
@@ -7570,6 +8521,49 @@
     "untagged"
    ]
   },
+  "redzone/lab/fence.py": {
+   "calls": [
+    "redzone/sources/espn.py:flatten_plays"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/armeval/arms.py",
+    "redzone/lab/armeval/episode.py",
+    "redzone/lab/armeval/recompute.py",
+    "redzone/lab/armeval/stage6.py",
+    "redzone/lab/corpus/build.py",
+    "redzone/lab/corpus/reader.py",
+    "redzone/lab/corpus/records.py",
+    "redzone/lab/corpus/sources.py",
+    "redzone/lab/datamanifest.py",
+    "redzone/lab/gym2/qdata.py",
+    "redzone/lab/gym2/qdata_job.py",
+    "scripts/arm_verdict.py",
+    "scripts/data_manifest.py",
+    "scripts/feature_parity.py",
+    "scripts/fence_check.py",
+    "scripts/qdata_build.py"
+   ],
+   "owner": "unowned",
+   "role": "The leak fence in code: fenced nights no model may train on, and a loader guard that refuses a model whose training cutoff reaches into them or into the nigh...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/gym2/__init__.py": {
    "calls": [],
    "contracts": [],
@@ -7621,6 +8615,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/lab/gym2/qdata.py",
     "redzone/lab/gym2/slates.py",
     "scripts/gym2_parity.py"
    ],
@@ -7636,7 +8631,8 @@
     "redzone/grading.py:dead_at",
     "redzone/grading.py:idx",
     "redzone/lab/cutgrade.py:after_bucket",
-    "redzone/lab/leverage.py:high_leverage"
+    "redzone/lab/leverage.py:high_leverage",
+    "redzone/noggin/park_show.py:TIMING"
    ],
    "contracts": [],
    "data": {
@@ -7648,6 +8644,7 @@
     "redzone/grading.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/leverage.py",
+    "redzone/noggin/k_table.py",
     "redzone/noggin/park_show.py"
    ],
    "kind": "module",
@@ -7656,10 +8653,124 @@
     "drives": []
    },
    "outputs": [
-    "redzone/lab/gym2/env.py"
+    "redzone/lab/gym2/env.py",
+    "redzone/lab/gym2/qdata.py"
    ],
    "owner": "unowned",
    "role": "Gym v2's Rule #1 mask: which cuts a director may make, judged on the recorded truth (A-01 slice 3).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/gym2/qdata.py": {
+   "calls": [
+    "redzone/featurestore.py:fs_facts",
+    "redzone/featurestore.py:fs_parse",
+    "redzone/featurestore.py:fs_rows",
+    "redzone/featurestore.py:fs_spec",
+    "redzone/featurestore.py:fs_tag",
+    "redzone/lab/backtest.py:Replay",
+    "redzone/lab/datamanifest.py:_derive",
+    "redzone/lab/datamanifest.py:check_tag",
+    "redzone/lab/datamanifest.py:fence_status",
+    "redzone/lab/datamanifest.py:manifest_hash",
+    "redzone/lab/datamanifest.py:scrub_problems",
+    "redzone/lab/fence.py:FenceError",
+    "redzone/lab/fence.py:fenced",
+    "redzone/lab/fence.py:night_key",
+    "redzone/lab/gym2/env.py:replay_module",
+    "redzone/lab/gym2/mask.py:Rule1Mask",
+    "redzone/lab/gym2/scenario.py:sample",
+    "redzone/lab/splits.py:archive_nights",
+    "redzone/lab/splits.py:nights_for",
+    "redzone/models.py:League",
+    "redzone/noggin/park_core.py:Night",
+    "redzone/noggin/park_core.py:State",
+    "redzone/noggin/park_core.py:Stats",
+    "redzone/noggin/park_core.py:run",
+    "redzone/noggin/park_plan.py:Plan",
+    "redzone/noggin/park_show.py:ShowParams",
+    "redzone/noggin/park_show.py:engine_setting",
+    "scripts/data_manifest.py:licence_entry"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/config.py",
+    "redzone/featurestore.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/datamanifest.py",
+    "redzone/lab/fence.py",
+    "redzone/lab/gym2/env.py",
+    "redzone/lab/gym2/mask.py",
+    "redzone/lab/gym2/scenario.py",
+    "redzone/lab/splits.py",
+    "redzone/models.py",
+    "redzone/noggin/park_core.py",
+    "redzone/noggin/park_plan.py",
+    "redzone/noggin/park_show.py",
+    "scripts/data_manifest.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/gym2/qdata_job.py",
+    "scripts/qdata_build.py"
+   ],
+   "owner": "unowned",
+   "role": "Decisive-Q dataset (task A-02): Q for every legal option at sampled decision points of training-night slates.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/gym2/qdata_job.py": {
+   "calls": [
+    "redzone/lab/datamanifest.py:render",
+    "redzone/lab/gym2/qdata.py:QLoader",
+    "redzone/lab/gym2/qdata.py:SlatePlan",
+    "redzone/lab/gym2/qdata.py:all_rows",
+    "redzone/lab/gym2/qdata.py:exec_tie_table",
+    "redzone/lab/gym2/qdata.py:manifest_doc",
+    "redzone/lab/gym2/qdata.py:night_pool",
+    "redzone/lab/gym2/qdata.py:qd_atomic_write",
+    "redzone/lab/gym2/qdata.py:qd_canon",
+    "redzone/lab/gym2/qdata.py:run_shards",
+    "redzone/lab/gym2/qdata.py:tie_table"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "state.json"
+    ],
+    "uses": [],
+    "writes": [
+     "qdata.manifest.json",
+     "qdata_summary.json",
+     "state.json"
+    ]
+   },
+   "inputs": [
+    "redzone/lab/datamanifest.py",
+    "redzone/lab/fence.py",
+    "redzone/lab/gym2/qdata.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/qdata_build.py"
+   ],
+   "owner": "unowned",
+   "role": "Job entry for the decisive-Q dataset (task A-02): build shards [A, B) with a checkpoint after every shard.",
    "serves": [
     "untagged"
    ]
@@ -7707,7 +8818,8 @@
     "drives": []
    },
    "outputs": [
-    "redzone/lab/gym2/env.py"
+    "redzone/lab/gym2/env.py",
+    "redzone/lab/gym2/qdata.py"
    ],
    "owner": "unowned",
    "role": "Gym v2 scenarios: what one practice episode draws, from a seed, and the log that lets any episode be run again (A-01 slice 2).",
@@ -7777,6 +8889,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/lab/armeval/episode.py",
     "redzone/lab/backtest.py",
     "redzone/lab/gym2/mask.py",
     "redzone/lab/outcome_label.py",
@@ -8493,8 +9606,11 @@
     "drives": []
    },
    "outputs": [
+    "redzone/lab/armeval/episode.py",
     "redzone/lab/brain3data.py",
     "redzone/lab/breakblend.py",
+    "redzone/lab/corpus/walkforward.py",
+    "redzone/lab/gym2/qdata.py",
     "redzone/lab/gym2/slates.py",
     "redzone/lab/tune.py",
     "scripts/backfill_eval_v2.py",
@@ -8505,6 +9621,8 @@
     "scripts/eval.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
+    "scripts/feature_parity.py",
+    "scripts/fence_check.py",
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
     "scripts/measure_dead_left.py",
@@ -8679,6 +9797,141 @@
    ],
    "owner": "unowned",
    "role": "[auto sync] Sync-error scorecard: how far the delay the app uses is from the screen's real delay.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/taste/__init__.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "package",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Taste lab: offline fits of Nick's Game Picker answers (Picker v2, WORKPLAN v2 task D-01).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/taste/active_pairs.py": {
+   "calls": [
+    "redzone/lab/taste/factorised_bt.py:FactorisedBT",
+    "redzone/lab/taste/factorised_bt.py:answer_cards",
+    "redzone/lab/taste/factorised_bt.py:answer_events",
+    "redzone/lab/taste/factorised_bt.py:answer_pairs",
+    "redzone/lab/taste/factorised_bt.py:pairwise_hits"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/taste/factorised_bt.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/taste/picker_report.py"
+   ],
+   "owner": "unowned",
+   "role": "Active pair selection for the Game Picker: which card pair to ask Nick next, from the factorised model's posterior.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/taste/factorised_bt.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/taste/active_pairs.py",
+    "redzone/lab/taste/picker_report.py"
+   ],
+   "owner": "unowned",
+   "role": "Bradley-Terry fits of Game Picker answers: the page's own conditional logit, a league-only baseline, and a factorised model.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/taste/package_pick.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/picker_report.py"
+   ],
+   "owner": "unowned",
+   "role": "Typed interface for a \"package pick\" label: Nick orders several catch-up clips by which he wants shown first.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/taste/picker_report.py": {
+   "calls": [
+    "redzone/lab/taste/active_pairs.py:replay_curves",
+    "redzone/lab/taste/factorised_bt.py:FactorisedBT",
+    "redzone/lab/taste/factorised_bt.py:FactorisedPrior",
+    "redzone/lab/taste/factorised_bt.py:answer_events",
+    "redzone/lab/taste/factorised_bt.py:answer_pairs",
+    "redzone/lab/taste/factorised_bt.py:fit_page",
+    "redzone/lab/taste/factorised_bt.py:pairwise_hits",
+    "redzone/lab/taste/factorised_bt.py:repeat_root",
+    "redzone/lab/taste/factorised_bt.py:usable"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/taste/active_pairs.py",
+    "redzone/lab/taste/factorised_bt.py"
+   ],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "scripts/picker_report.py"
+   ],
+   "owner": "unowned",
+   "role": "Step-0 re-fit report for Picker v2: counts, repeat consistency, grouped cross-validated pairwise accuracy of the page fit vs the league-only baseline vs the...",
    "serves": [
     "untagged"
    ]
@@ -9064,8 +10317,12 @@
     "redzone/lab/backtest.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
+    "redzone/lab/corpus/sources.py",
+    "redzone/lab/corpus/tokenise.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/feedlag.py",
+    "redzone/lab/fence.py",
+    "redzone/lab/gym2/qdata.py",
     "redzone/lab/gym2/slates.py",
     "redzone/lab/leverage.py",
     "redzone/lab/night/presses.py",
@@ -9129,6 +10386,7 @@
     "scripts/exp023_belief.py",
     "scripts/exp1722_read.py",
     "scripts/fault_drill.py",
+    "scripts/feature_parity.py",
     "scripts/feedlag_logger.py",
     "scripts/holdset_public.py",
     "scripts/kaggle_gamevalue_holdset.py",
@@ -9230,6 +10488,8 @@
     "drives": []
    },
    "outputs": [
+    "redzone/lab/armeval/stage6.py",
+    "redzone/lab/armeval/verdict.py",
     "scripts/model_registry.py"
    ],
    "owner": "unowned",
@@ -9650,7 +10910,8 @@
    },
    "outputs": [
     "redzone/noggin/park_catchup.py",
-    "scripts/catchup_replay.py"
+    "scripts/catchup_replay.py",
+    "scripts/park_replay.py"
    ],
    "owner": "unowned",
    "role": "Catch-up packages (park.catchup, off): the 3-5 plays a viewer missed on a game, each from its start, then live.",
@@ -9683,6 +10944,29 @@
     "untagged"
    ]
   },
+  "redzone/noggin/director_protocol.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "module",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/noggin/park_show.py"
+   ],
+   "owner": "unowned",
+   "role": "The shape of a show director: exactly what `park_show.Show` uses of the object it weighs games with (task A-04).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/noggin/factory.py": {
    "calls": [
     "redzone/models.py:League",
@@ -9707,6 +10991,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/lab/corpus/sources.py",
     "redzone/noggin/value_shards.py",
     "scripts/exp022_tpp.py",
     "scripts/green_summaries.py",
@@ -9855,6 +11140,7 @@
    "outputs": [
     "redzone/control.py",
     "redzone/decider/tune_offset.py",
+    "redzone/lab/gym2/mask.py",
     "redzone/noggin/park_timing.py",
     "redzone/park_run.py"
    ],
@@ -9958,11 +11244,13 @@
     "redzone/noggin/catchup_pack.py:PackParams",
     "redzone/noggin/catchup_pack.py:Play",
     "redzone/noggin/catchup_pack.py:Stick",
+    "redzone/noggin/catchup_pack.py:_segments",
     "redzone/noggin/catchup_pack.py:age_ok",
     "redzone/noggin/catchup_pack.py:plan",
     "redzone/noggin/catchup_pack.py:recap_line",
     "redzone/noggin/catchup_pack.py:rewind_floor",
     "redzone/noggin/catchup_pack.py:select",
+    "redzone/noggin/catchup_pack.py:worth",
     "redzone/noggin/park_show.py:_result",
     "redzone/noggin/park_show.py:refusal",
     "redzone/sources/espn.py:_get",
@@ -9986,7 +11274,9 @@
     "drives": []
    },
    "outputs": [
-    "scripts/catchup_replay.py"
+    "redzone/park_run.py",
+    "scripts/catchup_replay.py",
+    "scripts/park_replay.py"
    ],
    "owner": "unowned",
    "role": "Catch-up on game X: the PARK show's third move beside stay and jump (flag park.catchup.enabled, off).",
@@ -10009,6 +11299,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/lab/gym2/qdata.py",
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_plan.py",
     "redzone/noggin/park_show.py",
@@ -10104,6 +11395,7 @@
     "drives": []
    },
    "outputs": [
+    "redzone/lab/gym2/qdata.py",
     "redzone/noggin/park_show.py",
     "scripts/park_compare.py",
     "scripts/park_plan.py",
@@ -10161,6 +11453,7 @@
     "redzone/grading.py:raw_type",
     "redzone/models.py:League",
     "redzone/noggin/director.py:Director",
+    "redzone/noggin/director_protocol.py:is_show_director",
     "redzone/noggin/park_core.py:Arr",
     "redzone/noggin/park_core.py:Setting",
     "redzone/noggin/park_core.py:State",
@@ -10172,6 +11465,7 @@
     "redzone/noggin/park_facts.py:pad_arr",
     "redzone/noggin/park_facts.py:refusal",
     "redzone/noggin/park_facts.py:shift",
+    "redzone/noggin/park_plan.py:ClampedUnknownRate",
     "redzone/noggin/park_plan.py:Plan",
     "redzone/noggin/park_plan.py:Planner",
     "redzone/noggin/park_timing.py:ErrorParts",
@@ -10191,6 +11485,7 @@
     "redzone/grading.py",
     "redzone/models.py",
     "redzone/noggin/director.py",
+    "redzone/noggin/director_protocol.py",
     "redzone/noggin/park_core.py",
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_plan.py",
@@ -10205,6 +11500,7 @@
    },
    "outputs": [
     "redzone/lab/gym2/mask.py",
+    "redzone/lab/gym2/qdata.py",
     "redzone/lab/gym2/scenario.py",
     "redzone/lab/gym2/slates.py",
     "redzone/noggin/park_catchup.py",
@@ -10791,6 +12087,7 @@
    "calls": [
     "redzone/noggin/director.py:DirectorParams",
     "redzone/noggin/k_table.py:read_k_table",
+    "redzone/noggin/park_catchup.py:CatchupParams",
     "redzone/noggin/park_facts.py:FactsParams",
     "redzone/noggin/park_prime.py:app_of",
     "redzone/noggin/park_prime.py:prime_on",
@@ -10799,7 +12096,6 @@
     "redzone/noggin/park_prime.py:tune_cost",
     "redzone/noggin/park_show.py:FactsFeed",
     "redzone/noggin/park_show.py:LiveNight",
-    "redzone/noggin/park_show.py:Show",
     "redzone/noggin/park_show.py:ShowParams",
     "redzone/noggin/park_show.py:ShowTiming",
     "redzone/noggin/park_show.py:engine_setting",
@@ -10821,6 +12117,7 @@
     "redzone/models.py",
     "redzone/noggin/director.py",
     "redzone/noggin/k_table.py",
+    "redzone/noggin/park_catchup.py",
     "redzone/noggin/park_core.py",
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_prime.py",
@@ -12165,8 +13462,12 @@
     "redzone/lab/backtest.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
+    "redzone/lab/corpus/records.py",
+    "redzone/lab/corpus/sources.py",
+    "redzone/lab/corpus/tokenise.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/feedlag.py",
+    "redzone/lab/fence.py",
     "redzone/lab/gym2/slates.py",
     "redzone/lab/leverage.py",
     "redzone/lab/night/run.py",
@@ -13989,6 +15290,57 @@
     "untagged"
    ]
   },
+  "scripts/arm_verdict.py": {
+   "calls": [
+    "redzone/lab/armeval/arms.py:ARMEVAL_ARMS",
+    "redzone/lab/armeval/arms.py:make_arm",
+    "redzone/lab/armeval/episode.py:load_night",
+    "redzone/lab/armeval/episode.py:replay_module",
+    "redzone/lab/armeval/episode.py:run_night",
+    "redzone/lab/armeval/recompute.py:recheck",
+    "redzone/lab/armeval/stage6.py:stage6_hl_card",
+    "redzone/lab/armeval/stage6.py:stage6_l105",
+    "redzone/lab/armeval/verdict.py:build_verdict",
+    "redzone/lab/armeval/verdict.py:canon_json",
+    "redzone/lab/armeval/verdict.py:sha256_text",
+    "redzone/lab/armeval/verdict.py:totals",
+    "redzone/lab/fence.py:fenced",
+    "redzone/lab/fence.py:file_sha256"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "raw/manifest.json",
+     "verdict.json"
+    ],
+    "uses": [],
+    "writes": [
+     "l105.json",
+     "raw/manifest.json",
+     "timing.json",
+     "verdict.json"
+    ]
+   },
+   "inputs": [
+    "redzone/lab/armeval/arms.py",
+    "redzone/lab/armeval/episode.py",
+    "redzone/lab/armeval/recompute.py",
+    "redzone/lab/armeval/stage6.py",
+    "redzone/lab/armeval/verdict.py",
+    "redzone/lab/fence.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Evaluation harness command (task F-04): run one named arm on a fixed set of real nights, write ONE JSON verdict.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/attention_labels.py": {
    "calls": [
     "scripts/wv_aux_label.py:rank01"
@@ -14833,6 +16185,49 @@
     "untagged"
    ]
   },
+  "scripts/corpus_build.py": {
+   "calls": [
+    "redzone/lab/corpus/build.py:BuildConfig",
+    "redzone/lab/corpus/build.py:build_corpus",
+    "redzone/lab/corpus/manifest.py:verify_corpus",
+    "redzone/lab/corpus/reader.py:load_corpus",
+    "redzone/lab/corpus/stats.py:compute",
+    "redzone/lab/corpus/stats.py:format_table",
+    "redzone/lab/corpus/tokenise.py:detokenise_game",
+    "redzone/lab/datamanifest.py:default_root",
+    "redzone/lab/datamanifest.py:read_manifest",
+    "scripts/license_check.py:check"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "terms.json"
+    ],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/corpus/build.py",
+    "redzone/lab/corpus/manifest.py",
+    "redzone/lab/corpus/reader.py",
+    "redzone/lab/corpus/stats.py",
+    "redzone/lab/corpus/tokenise.py",
+    "redzone/lab/corpus/walkforward.py",
+    "redzone/lab/datamanifest.py",
+    "scripts/license_check.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Corpus v1: tokenise the local play-by-play (B-01 history folder, recorded archive) with vocab v1 into hashed shards, then verify and report.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/coverage_audit.py": {
    "calls": [
     "redzone/channels.py:ChannelMap",
@@ -14930,6 +16325,54 @@
    "role": "Data ledger: fold a factory manifest into docs/data-ledger.json and print the cycle plan's table.",
    "serves": [
     "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)"
+   ]
+  },
+  "scripts/data_manifest.py": {
+   "calls": [
+    "redzone/lab/datamanifest.py:ManifestError",
+    "redzone/lab/datamanifest.py:build_manifest",
+    "redzone/lab/datamanifest.py:check_manifest",
+    "redzone/lab/datamanifest.py:default_manifest_dir",
+    "redzone/lab/datamanifest.py:default_root",
+    "redzone/lab/datamanifest.py:diff_manifests",
+    "redzone/lab/datamanifest.py:find_manifest",
+    "redzone/lab/datamanifest.py:plan_bundle",
+    "redzone/lab/datamanifest.py:read_manifest",
+    "redzone/lab/datamanifest.py:render",
+    "redzone/lab/datamanifest.py:verify_manifest",
+    "redzone/lab/datamanifest.py:write_bundle_skeleton",
+    "redzone/lab/datamanifest.py:write_manifest",
+    "scripts/license_check.py:check"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "terms.json"
+    ],
+    "uses": [
+     "dataset-metadata.json"
+    ],
+    "writes": [
+     "manifest.json"
+    ]
+   },
+   "inputs": [
+    "redzone/lab/datamanifest.py",
+    "redzone/lab/fence.py",
+    "scripts/license_check.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [
+    "redzone/lab/gym2/qdata.py"
+   ],
+   "owner": "unowned",
+   "role": "Data-lake manifests: build, verify, diff, list and package a pinned version of the archive, history or feed-arrival data.",
+   "serves": [
+    "untagged"
    ]
   },
   "scripts/dead_left_coverage.py": {
@@ -15855,6 +17298,48 @@
     "untagged"
    ]
   },
+  "scripts/feature_parity.py": {
+   "calls": [
+    "redzone/featurestore.py:fs_parse",
+    "redzone/featurestore.py:fs_rows",
+    "redzone/featurestore.py:fs_tag",
+    "redzone/lab/armeval/stage6.py:Stage6Rows",
+    "redzone/lab/backtest.py:Replay",
+    "redzone/lab/fence.py:cut_feed",
+    "redzone/lab/splits.py:archive_nights",
+    "redzone/lab/splits.py:nights_for",
+    "redzone/models.py:League"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [
+     "espn_cbb_summary_401820788.json",
+     "espn_nba_summary_401909860.json",
+     "tests/fixtures/featurestore_value_v3_golden.json"
+    ],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/featurestore.py",
+    "redzone/lab/armeval/stage6.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/fence.py",
+    "redzone/lab/splits.py",
+    "redzone/models.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Feature-store parity on real nights: the store's features equal the old builders' for the same sampled states.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/feedlag_logger.py": {
    "calls": [
     "redzone/lab/feedlag.py:ArrivalTracker",
@@ -15925,6 +17410,39 @@
     "untagged"
    ]
   },
+  "scripts/fence_check.py": {
+   "calls": [
+    "redzone/lab/evaldata.py:window_end",
+    "redzone/lab/fence.py:disjoint_by_hash",
+    "redzone/lab/fence.py:game_files",
+    "redzone/lab/fence.py:model_problems",
+    "redzone/lab/fence.py:read_meta",
+    "redzone/lab/splits.py:archive_nights",
+    "redzone/lab/splits.py:league_split"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/evaldata.py",
+    "redzone/lab/fence.py",
+    "redzone/lab/splits.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Leak-fence report: which shipped model files the fence would refuse, and whether the pinned archive's train/valid and locked games are disjoint by content ha...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/fetch_eval_data.py": {
    "calls": [
     "redzone/lab/evaldata.py:asset_url",
@@ -15949,6 +17467,33 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Fetch the pinned eval dataset (eval-data.lock.json) into data/, verified, so every thread and CI grades on the same nights.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/fetch_history.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "shards/index.json"
+    ],
+    "uses": [
+     "MANIFEST.json"
+    ],
+    "writes": [
+     "robots_espn.json"
+    ]
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Grow the play-by-play corpus: polite, resumable history fetchers with a per-league report (task B-01, Track B).",
    "serves": [
     "untagged"
    ]
@@ -16268,6 +17813,32 @@
    ],
    "owner": "unowned",
    "role": "The bar the brain must beat: the hold-set measurement with the REAL standby.Planner, and on public seasons.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/job.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [
+     "metrics.json",
+     "state.json"
+    ],
+    "writes": [
+     "spec.json"
+    ]
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Job runner CLI: write a JobSpec, print its Colab cell, check a result read back from the page, prove resume locally.",
    "serves": [
     "untagged"
    ]
@@ -16710,7 +18281,10 @@
     "declares": [],
     "drives": []
    },
-   "outputs": [],
+   "outputs": [
+    "scripts/corpus_build.py",
+    "scripts/data_manifest.py"
+   ],
    "owner": "unowned",
    "role": "F8 license-tag check (Test Factory; Nick, Nov 4 2026 11:20 PM ET, data B).",
    "serves": [
@@ -17103,7 +18677,10 @@
     "declares": [],
     "drives": []
    },
-   "outputs": [],
+   "outputs": [
+    "redzone/lab/corpus/shardio.py",
+    "redzone/lab/corpus/tokenise.py"
+   ],
    "owner": "unowned",
    "role": "Noggin Foundation Model (NFM) event tokens: every play of every game as a short token group, per season.",
    "serves": [
@@ -17414,6 +18991,27 @@
     "untagged"
    ]
   },
+  "scripts/park_plan_n.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "PARK planner for N streams and an honest feed: a script-side copy of the Nov 10 planner, run inside park_sim_n.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/park_prime_accept.py": {
    "calls": [
     "redzone/channels.py:ChannelMap",
@@ -17462,6 +19060,27 @@
     "untagged"
    ]
   },
+  "scripts/park_profiles.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "One table per slate and timing scenario: two sticks as simulated until now, two sticks on the honest feed, and Chrome tabs.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/park_replay.py": {
    "calls": [
     "redzone/config.py:default",
@@ -17476,7 +19095,9 @@
     "redzone/lab/splits.py:archive_nights",
     "redzone/lab/splits.py:nights_for",
     "redzone/models.py:League",
+    "redzone/noggin/catchup_pack.py:PackParams",
     "redzone/noggin/director.py:DirectorParams",
+    "redzone/noggin/park_catchup.py:CatchupParams",
     "redzone/noggin/park_core.py:Night",
     "redzone/noggin/park_core.py:run",
     "redzone/noggin/park_core.py:summarize",
@@ -17486,7 +19107,6 @@
     "redzone/noggin/park_prime.py:tune_cost",
     "redzone/noggin/park_show.py:FactsFeed",
     "redzone/noggin/park_show.py:LiveNight",
-    "redzone/noggin/park_show.py:Show",
     "redzone/noggin/park_show.py:ShowParams",
     "redzone/noggin/park_show.py:ShowTiming",
     "redzone/noggin/park_show.py:engine_setting",
@@ -17510,7 +19130,9 @@
     "redzone/lab/cutgrade.py",
     "redzone/lab/splits.py",
     "redzone/models.py",
+    "redzone/noggin/catchup_pack.py",
     "redzone/noggin/director.py",
+    "redzone/noggin/park_catchup.py",
     "redzone/noggin/park_core.py",
     "redzone/noggin/park_facts.py",
     "redzone/noggin/park_plan.py",
@@ -17576,6 +19198,27 @@
    "outputs": [],
    "owner": "unowned",
    "role": "PARK step 1: a fast simulator of the two-stick show on recorded nights, driven by the grader's own facts.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/park_sim_n.py": {
+   "calls": [],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "PARK simulator for N streams and an honest feed: a script-side copy of the two-stick simulator as it stood on Nov 10.",
    "serves": [
     "untagged"
    ]
@@ -17714,6 +19357,32 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Import Nick's own downloaded exports (Apple privacy export, YouTube watch history, Spotify extended history) into the local store.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/picker_report.py": {
+   "calls": [
+    "redzone/lab/taste/picker_report.py:build_report"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/taste/package_pick.py",
+    "redzone/lab/taste/picker_report.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Picker v2 step-0 report: re-fit Nick's Game Picker answers offline and print aggregates (redzone/lab/taste).",
    "serves": [
     "untagged"
    ]
@@ -17997,6 +19666,49 @@
    "role": "Publish live-night summaries into the repo so the North Star workflow grades real nights (cycle 04, lane 4: \"live nights into northstar\").",
    "serves": [
     "STK-06"
+   ]
+  },
+  "scripts/qdata_build.py": {
+   "calls": [
+    "redzone/lab/datamanifest.py:verify_manifest",
+    "redzone/lab/gym2/qdata.py:QLoader",
+    "redzone/lab/gym2/qdata.py:SlatePlan",
+    "redzone/lab/gym2/qdata.py:all_rows",
+    "redzone/lab/gym2/qdata.py:build_slate",
+    "redzone/lab/gym2/qdata.py:draw_slate",
+    "redzone/lab/gym2/qdata.py:exec_tie_table",
+    "redzone/lab/gym2/qdata.py:exec_tie_table_text",
+    "redzone/lab/gym2/qdata.py:night_pool",
+    "redzone/lab/gym2/qdata.py:qd_atomic_write",
+    "redzone/lab/gym2/qdata.py:shard_files",
+    "redzone/lab/gym2/qdata.py:tie_table",
+    "redzone/lab/gym2/qdata.py:tie_table_text",
+    "redzone/lab/gym2/qdata_job.py:by_hand"
+   ],
+   "contracts": [],
+   "data": {
+    "reads": [
+     "qdata.manifest.json"
+    ],
+    "uses": [],
+    "writes": []
+   },
+   "inputs": [
+    "redzone/lab/datamanifest.py",
+    "redzone/lab/fence.py",
+    "redzone/lab/gym2/qdata.py",
+    "redzone/lab/gym2/qdata_job.py"
+   ],
+   "kind": "entry",
+   "machines": {
+    "declares": [],
+    "drives": []
+   },
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Decisive-Q dataset CLI (task A-02): the training-night pool, shard builds, the tie-share table, verify, cost, data volume.",
+   "serves": [
+    "untagged"
    ]
   },
   "scripts/queue_replay.py": {
@@ -19592,13 +21304,13 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "calls": 2382,
-  "data_files": 206,
+  "calls": 2630,
+  "data_files": 225,
   "machines": 53,
-  "modules": 485,
+  "modules": 529,
   "orphans": 36,
-  "unowned": 287,
-  "untagged": 417
+  "unowned": 331,
+  "untagged": 461
  },
  "version": 2
 }
