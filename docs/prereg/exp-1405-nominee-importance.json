@@ -1,0 +1,136 @@
+{
+ "exp": "EXP-1405 (Game Importance, EXP-091 bar)",
+ "status": "WITHDRAWN for tonight's read: fails on valid",
+ "model_id": "gi-v1-excitement-rank-seed1700",
+ "code_pack": {
+  "branch": "claude/wv-aux-source",
+  "commit": "c5cb621",
+  "script": "scripts/game_importance.py"
+ },
+ "seed": 1700,
+ "label": "within-night rank of Data A game excitement (sum |dWP|)",
+ "features": "Data B pre-game shards only (asof <= start): stakes, schedule/rest, broadcast, availability, weather, season",
+ "groups": {
+  "stakes": [
+   "clinch_status",
+   "div_rank",
+   "elimination_game",
+   "elo",
+   "elo_diff_abs",
+   "elo_win_prob",
+   "games_back",
+   "win_pct",
+   "playin_odds",
+   "playoff_odds",
+   "playoff_odds_swing",
+   "stakes_swing_max",
+   "stakes_swing_sum",
+   "top10_odds",
+   "top10_odds_swing"
+  ],
+  "schedule": [
+   "back_to_back",
+   "games_in_last_7",
+   "rest_days",
+   "rest_diff",
+   "travel_km",
+   "tz_shift_h",
+   "home_stand_game",
+   "road_trip_game",
+   "kickoff_hour_et",
+   "weekday",
+   "div_game"
+  ],
+  "broadcast": [
+   "national_tv",
+   "primetime"
+  ],
+  "availability": [
+   "players_out",
+   "players_doubtful",
+   "players_questionable",
+   "qb_out"
+  ],
+  "weather": [
+   "temp_f",
+   "wind_mph",
+   "precip_mm",
+   "snow",
+   "roof_open"
+  ],
+  "season": [
+   "month_frac",
+   "playoffs"
+  ]
+ },
+ "valid_grade": {
+  "nba": {
+   "games": 6305,
+   "data_sha1": "572cfdc040b4",
+   "seasons": {
+    "train": [
+     2020,
+     2022
+    ],
+    "valid": [
+     2023,
+     2023
+    ],
+    "test": [
+     2024,
+     2024
+    ]
+   },
+   "valid_pair_agree": 49.55,
+   "baselines": {
+    "national_tv": 51.05,
+    "closeness": 51.94,
+    "stakes_swing": 47.59,
+    "coin": 50.0
+   },
+   "minus_group": {
+    "stakes": 50.75,
+    "schedule": 52.57,
+    "broadcast": 52.95,
+    "availability": 49.55,
+    "weather": 49.55,
+    "season": 52.05
+   }
+  },
+  "nfl": {
+   "games": 6302,
+   "data_sha1": "8b4eb51cdc28",
+   "seasons": {
+    "train": [
+     1999,
+     2020
+    ],
+    "valid": [
+     2021,
+     2022
+    ],
+    "test": [
+     2023,
+     2024
+    ]
+   },
+   "valid_pair_agree": 54.83,
+   "baselines": {
+    "national_tv": 48.76,
+    "closeness": 54.91,
+    "stakes_swing": 48.85,
+    "coin": 50.0
+   },
+   "minus_group": {
+    "stakes": 49.47,
+    "schedule": 51.45,
+    "broadcast": 50.32,
+    "availability": 47.45,
+    "weather": 48.56,
+    "season": 51.92
+   }
+  }
+ },
+ "why_withdrawn": "Pre-game numbers barely order tonight's games by how they turn out: NFL 54.8 vs closeness 54.9, NBA 49.6 vs closeness 51.9 (coin = 50). Nothing to grade on locked nights. The game-level signal has to come from in-game Watch Value plus human attention per game (pageviews), which is the weekend model.",
+ "license": "personal-use, not for commercial release"
+}

@@ -1,0 +1,207 @@
+{
+ "exp": "EXP-1405",
+ "role": "L3 nominee (Watch Value v1 on real attention labels)",
+ "model_id": "wv-v1-A1-wiki_views-seed0",
+ "arm": "EXP-1704 A1: target = 0.7 * future WP swing + 0.3 * within-game rank of Wikipedia team pageviews (window (t, t+3600 s]), TRAIN rows only; valid and locked rows keep the swing label",
+ "label_sources": [
+  "wiki_views (Data B, Wikimedia pageviews, team articles)",
+  "WP swing (#166 labels())"
+ ],
+ "never_labels": [
+  "market data (inputs only)",
+  "Nick's viewing or buttons",
+  "Teacher outputs"
+ ],
+ "code_pack": {
+  "branch": "claude/wv-aux-source",
+  "commit": "c5cb621",
+  "pr": 317,
+  "label_code_pr": 340
+ },
+ "seed": 0,
+ "model_sha256_16": {
+  "nba": "c09b5909dc27d15c",
+  "nfl": "9c524e769df27c5f"
+ },
+ "label_spec_sha256_16": "0ec6f71928d65e50",
+ "eval_pin": "eval-data-v1 (dev_before none, so league_split == split_nights)",
+ "nights": {
+  "nba": {
+   "train": [
+    "20261020",
+    "20261021",
+    "20261022",
+    "20261023",
+    "20261024",
+    "20261025",
+    "20261026"
+   ],
+   "valid": [
+    "20261027",
+    "20261028"
+   ],
+   "locked_count": 4
+  },
+  "nfl": {
+   "train": [
+    "20250905",
+    "20250906",
+    "20250907",
+    "20250908",
+    "20250909",
+    "20250912",
+    "20250914",
+    "20250915",
+    "20250916",
+    "20250919",
+    "20250921",
+    "20250922",
+    "20250923",
+    "20250926",
+    "20250928",
+    "20250929",
+    "20250930",
+    "20251003",
+    "20251005",
+    "20251006",
+    "20251007",
+    "20251010",
+    "20251012",
+    "20251013",
+    "20251014",
+    "20251017",
+    "20251019",
+    "20251020",
+    "20251021",
+    "20251024",
+    "20251026",
+    "20251027",
+    "20251028",
+    "20251031",
+    "20251102",
+    "20251103",
+    "20251104",
+    "20251107",
+    "20251109",
+    "20251110",
+    "20251111",
+    "20251114",
+    "20251116",
+    "20251117",
+    "20251118"
+   ],
+   "valid": [
+    "20251121",
+    "20251123",
+    "20251124",
+    "20251125",
+    "20251127",
+    "20251128",
+    "20251130",
+    "20251202",
+    "20251205",
+    "20251207",
+    "20251208"
+   ],
+   "locked_count": 19
+  }
+ },
+ "valid_grade": {
+  "nba": {
+   "A0": {
+    "rank_agree_pct": 72.6,
+    "calibration_err": 0.0559,
+    "forward_cv_mean": 68.2,
+    "forward_cv_worst": 64.7,
+    "train_rows_with_label": 0
+   },
+   "A1_views": {
+    "rank_agree_pct": 70.6,
+    "calibration_err": 0.0601,
+    "forward_cv_mean": 66.0,
+    "forward_cv_worst": 63.3,
+    "train_rows_with_label": 4964
+   },
+   "A2_views": {
+    "rank_agree_pct": 68.4,
+    "calibration_err": 0.0618,
+    "forward_cv_mean": 66.0,
+    "forward_cv_worst": 63.1,
+    "train_rows_with_label": 4964
+   },
+   "A1_edits": {
+    "rank_agree_pct": 70.6,
+    "calibration_err": 0.061,
+    "forward_cv_mean": 67.2,
+    "forward_cv_worst": 63.9,
+    "train_rows_with_label": 2106
+   },
+   "A2_edits": {
+    "rank_agree_pct": 70.3,
+    "calibration_err": 0.0595,
+    "forward_cv_mean": 67.1,
+    "forward_cv_worst": 63.9,
+    "train_rows_with_label": 2106
+   },
+   "A3": {
+    "rank_agree_pct": 65.3,
+    "calibration_err": 0.063,
+    "forward_cv_mean": 66.3,
+    "forward_cv_worst": 63.4,
+    "train_rows_with_label": 26780
+   }
+  },
+  "nfl": {
+   "A0": {
+    "rank_agree_pct": 62.5,
+    "calibration_err": 0.0619,
+    "forward_cv_mean": 60.4,
+    "forward_cv_worst": 59.7,
+    "train_rows_with_label": 0
+   },
+   "A1_views": {
+    "rank_agree_pct": 60.6,
+    "calibration_err": 0.0659,
+    "forward_cv_mean": 60.4,
+    "forward_cv_worst": 58.6,
+    "train_rows_with_label": 5105
+   },
+   "A2_views": {
+    "rank_agree_pct": 61.2,
+    "calibration_err": 0.0631,
+    "forward_cv_mean": 60.4,
+    "forward_cv_worst": 58.7,
+    "train_rows_with_label": 5105
+   },
+   "A1_edits": {
+    "rank_agree_pct": 60.6,
+    "calibration_err": 0.0638,
+    "forward_cv_mean": 59.9,
+    "forward_cv_worst": 58.8,
+    "train_rows_with_label": 5112
+   },
+   "A2_edits": {
+    "rank_agree_pct": 60.9,
+    "calibration_err": 0.0651,
+    "forward_cv_mean": 59.9,
+    "forward_cv_worst": 58.8,
+    "train_rows_with_label": 5112
+   },
+   "A3": {
+    "rank_agree_pct": 56.7,
+    "calibration_err": 0.0775,
+    "forward_cv_mean": 56.7,
+    "forward_cv_worst": 55.7,
+    "train_rows_with_label": 29399
+   }
+  }
+ },
+ "why_this_one": "Chosen on valid only, before any locked read. Best attention arm on NBA valid (70.6 vs its placebo A2 68.4); on NFL it is 0.6 below its placebo. No attention arm beats A0 on valid rank agreement against the swing label (NBA 72.6, NFL 62.5), and label coverage is thin (about 5k of 27-29k train rows). Expected verdict under bar 3: 'Watch Value helps, the attention labels do not (yet)'.",
+ "ablation_groups": {
+  "crew_h_game_context": [],
+  "pregame_report": [],
+  "note": "WV v1 reads #166 features_for() only (in-game facts). Neither group is in this model, so L5 and L6 equal L3 and can be skipped."
+ },
+ "dev_runs_read_locked": false,
+ "license": "personal-use, not for commercial release"
+}
