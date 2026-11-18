@@ -1,3 +1,4 @@
+import pytest
 import json
 import sys
 import time
@@ -58,6 +59,7 @@ def test_live_night_rows_landings_and_sync_anchor_error_per_stick(tmp_path):
     assert (tmp_path / "out" / "summary.json").exists()
 
 
+@pytest.mark.playbook("SLATE-02")
 def test_the_supervisor_collects_each_live_night_by_itself_once(tmp_path):
     from datetime import date
     from types import SimpleNamespace

@@ -71,6 +71,7 @@ def test_final_without_the_last_play_assumes_it_just_happened(dec, clock):
     assert dec.decide(cands(b=50)).action == "stay"
 
 
+@pytest.mark.playbook("FEED-07")
 def test_vanished_game_is_not_treated_as_final(dec, clock):
     """A game that drops out of the feed may still be live: wait for a provable gap, and only
     give up after GONE_MAX_HOLD_S of flying blind."""
@@ -297,6 +298,7 @@ def test_backtest_regression_buf_cle_kneel_downs(slates, real_cfg):
     ("CLE @ LV", dict(true_delay=29.0, lag_jitter=(3.0, 25.0), drop=0.1, late_plays=0.15,
                       no_wallclock=0.5, seed=1)),
 ])
+@pytest.mark.playbook("FEED-04")     # late / out-of-order plays (late_plays, lag jitter: B12) never cut mid-play
 def test_backtest_zero_cuts_under_real_world_mess(slates, real_cfg, name, kw):
     rep = _cuts(slates, real_cfg, name, **kw)
     assert rep.mid_play_cuts == [], rep.mid_play_cuts

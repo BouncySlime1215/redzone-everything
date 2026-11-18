@@ -45,6 +45,15 @@ def test_playbook_faults_never_cause_a_mid_play_cut(pb_night):
     assert {"feed_frozen", "rate_limit", "slow_poll", "wifi_degrade", "buffering"} <= {x["fault"] for x in c["detail"]}
 
 
+@pytest.mark.playbook("FEED-07")
+def test_a_game_missing_from_the_scoreboard_is_handled(pb_night):
+    c = _check(pb_night, "net_feed_faults_handled")
+    assert c["ok"], json.dumps(c["detail"], indent=1)
+    got = {x["fault"]: x for x in c["detail"]}
+    if got.get("game_missing", {}).get("game"):                # no switch into it, still known after
+        assert got["game_missing"]["switched_into"] == 0 and got["game_missing"].get("kept", True)
+
+
 def test_playbook_night_does_not_crash_or_stick(pb_night):
     for name in ("no_crash", "no_stuck_state", "zero_midplay_cuts", "tv_shows_games"):
         c = _check(pb_night, name)

@@ -40,6 +40,7 @@ async def _preload_and_wait(c, target):
     await c._preload_task
 
 
+@pytest.mark.playbook("APP-07")
 def test_hold_pauses_waits_and_plays_then_reports_the_offset(held):
     c, tuner, stick, calls = held
     asyncio.run(_preload_and_wait(c, "youtubetv:fox"))
@@ -78,6 +79,7 @@ def test_off_by_default_and_a_fresh_tune_clears_the_hold(held):
     assert "youtubetv:espn" not in c.held and calls[-1] == ("youtubetv:espn", 0.0, 90.0)
 
 
+@pytest.mark.playbook("APP-07")
 def test_a_player_that_wont_pause_stays_at_the_live_edge(held):
     c, tuner, stick, calls = held
 
@@ -89,6 +91,7 @@ def test_a_player_that_wont_pause_stays_at_the_live_edge(held):
     assert not c.held and c.hidden_ready
 
 
+@pytest.mark.playbook("APP-07")
 def test_landing_keeps_held_offsets(cfg):
     from redzone.decider.decider import Decider
     book = DelayBook({"default": 40.0}, 4.0)

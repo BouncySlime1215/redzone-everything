@@ -1,4 +1,5 @@
 """Catch-up reel: which plays, how long each, and where the live angle of a clip ends."""
+import pytest
 import asyncio
 
 import numpy as np
@@ -104,6 +105,7 @@ def test_a_clip_that_fails_is_skipped_and_not_retried_every_poll(tmp_path):
     assert asyncio.run(cache.prepare(c)) is False and calls == []
 
 
+@pytest.mark.playbook("MAC-08")
 def test_no_room_on_disk_means_no_download(tmp_path):
     async def boom(url, dest):
         raise AssertionError("must not download")

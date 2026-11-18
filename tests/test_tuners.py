@@ -239,6 +239,7 @@ async def test_loading_gets_longer_grace_before_reading_the_screen():
     assert st.screen_reads == 0
 
 
+@pytest.mark.playbook("APP-03")
 async def test_a_prompt_on_screen_is_cleared():
     def on_key(stick, key):
         if key == "KEYCODE_DPAD_CENTER":
