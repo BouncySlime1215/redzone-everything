@@ -96,7 +96,11 @@ def play_attention(rows: list[dict], teams: tuple[str, ...], series: list[Series
 
 def attention_label(rows: list[dict], teams: tuple[str, ...], series: list[Series]) -> np.ndarray:
     """The plug-in label for wv_aux_label: within-game rank of attention, NaN where no source covers."""
-    return rank01(play_attention(rows, teams, series))
+    raw = play_attention(rows, teams, series)
+    ok = np.isfinite(raw)
+    if ok.sum() and np.ptp(raw[ok]) == 0:   # flat over the game: no information, leave it uncovered
+        return np.full(len(rows), np.nan)
+    return rank01(raw)
 
 
 # ---------------------------------------------------------------- loaders
