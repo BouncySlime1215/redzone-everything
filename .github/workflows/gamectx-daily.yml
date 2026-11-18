@@ -1,0 +1,43 @@
+# Data H daily PRE-GAME REPORT (NBA + NFL), numbers only: scripts/gamectx/pregame.py loop.
+# Builds every game of the day, then rebuilds a league whenever one of its games is 45-75 min from start.
+# Scheduled runs fire only from the default branch, so on a schedule this checks out integration/next for the code.
+# Push gamectx-daily/<anything> to run it by hand. Output: branch gamectx-out/daily (<league>/daily/<YYYYMMDD>.csv,
+# <league>/latest.csv). Personal-use, not for commercial release.
+name: gamectx-daily
+on:
+  schedule:
+    - cron: "0 15 * * *"     # 11 AM ET (10 AM EST): morning build, refresh through ~4:30 PM ET
+    - cron: "30 21 * * *"    # 5:30 PM ET: evening refresh through ~11 PM ET
+  push:
+    branches: ["gamectx-daily/**"]
+concurrency:
+  group: gamectx-daily
+  cancel-in-progress: false
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    timeout-minutes: 345
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'integration/next' || github.ref }}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: restore wiki context + previous reports
+        run: |
+          mkdir -p ctx out
+          git fetch --depth 1 origin gamectx-out/wiki 2>/dev/null && git --work-tree=ctx checkout FETCH_HEAD -- . 2>/dev/null || true
+          git fetch --depth 1 origin gamectx-out/daily 2>/dev/null && git --work-tree=out checkout FETCH_HEAD -- . 2>/dev/null || true
+          git reset -q
+      - name: build + refresh loop
+        run: |
+          cat > push.sh <<'SH'
+          set -e
+          rm -rf /tmp/pub && cp -r out /tmp/pub && cd /tmp/pub && rm -rf .git && git init -q -b gamectx-out/daily && git add -A
+          git -c user.name=gamectx -c user.email=gamectx@users.noreply.github.com commit -qm "pre-game report $(date -u +%FT%TZ); personal-use, not for commercial release"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:refs/heads/gamectx-out/daily
+          SH
+          python scripts/gamectx/pregame.py loop --ctx ctx --out out --hours 5.5 --push-cmd "bash push.sh"
+        env:
+          GH_TOKEN: ${{ github.token }}
