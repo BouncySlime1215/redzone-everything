@@ -1,0 +1,53 @@
+# Data crew D: Polymarket market-attention labels for Watch Value (crew G), Nick 11:30 AM Nov 5 2026.
+# Public Polymarket endpoints only (Kalshi is red), free runner, no secrets, never the Mac.
+# Pushes DERIVED numbers only (|dp| per minute, per-game volume, swing counts) to markets-attn-out/*;
+# raw price ticks stay in the 30-day artifact. Start: push markets-attn-run/<anything>, or workflow_dispatch.
+name: markets-attention
+on:
+  push:
+    branches: ["markets-attn-run/**"]
+  workflow_dispatch:
+concurrency:
+  group: markets-attention-${{ github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  attn:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 3          # stay polite: ~2 req/s per job
+      matrix:
+        league: [nba, nfl]     # Nick 2:00 AM: NBA first, then NFL
+        window: ["2024-07-01:2025-06-30", "2025-07-01:2026-06-30", "2026-07-01:2026-11-05"]   # one season each
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip -q install requests
+      - name: pull + derive
+        run: |
+          S="${{ matrix.window }}"; START="${S%%:*}"; END="${S##*:}"; R="${GITHUB_REF_NAME}"
+          # a run branch ending in -nba or -nfl runs that league only
+          if [[ "$R" =~ -(nba|nfl)$ && "${BASH_REMATCH[1]}" != "${{ matrix.league }}" ]]; then echo "SKIP=1" >> "$GITHUB_ENV"; exit 0; fi
+          python scripts/markets/polymarket.py --league ${{ matrix.league }} --start "$START" --end "$END" --out out/markets
+          python scripts/markets/market_attention.py --in out/markets --out out/attention
+      - name: push derived labels
+        if: always()
+        run: |
+          [ "${SKIP:-0}" = 1 ] && exit 0
+          S="${{ matrix.window }}"; B="markets-attn-out/${{ matrix.league }}-${S%%:*}-${{ github.run_id }}"
+          mkdir -p /tmp/d && cp out/attention/* /tmp/d/ 2>/dev/null || exit 0
+          git config user.name "redzone-markets-bot"; git config user.email "actions@users.noreply.github.com"
+          git checkout -q --orphan "$B" && git rm -rq --cached . && git clean -fdq
+          cp /tmp/d/* . && gzip -9 market_minutes.csv          # GitHub rejects files > 100 MB (NBA season ~150 MB raw)
+          git add market_minutes.csv.gz market_games.csv counts.json
+          git commit -qm "market attention labels ${{ matrix.league }} ${S} (derived; personal-use, not for commercial release)"
+          git push -q origin "$B" && echo "pushed $B" && cat counts.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: markets-raw-${{ matrix.league }}-${{ strategy.job-index }}
+          path: out/markets/
+          retention-days: 30
