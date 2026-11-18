@@ -14,6 +14,13 @@ public endpoints only; no logins, CAPTCHAs or bypasses; rate limits respected; *
 titles, user ids, chat or video stored, enforced by tests/test_attention_pull.py); free GitHub runners, never the
 Mac; no spending; keys are made by Nick and added as Actions secrets, never pasted in chat.
 
+## Priority (Nick, 2:00 AM Nov 5): NBA first, then NFL
+
+1. **NBA:** G3 builds and scores the attention label on NBA games first (EXP-1701 reads NBA nights first and reports NBA on its own). Twitch and G2 press-release viewers start with NBA (ESPN/ABC, NBC/Peacock, Amazon games).
+2. **NFL:** second, using TNF, SNF, MNF and the Sunday slate.
+3. **NHL, MLB, CBB:** not collected (Cycle 16, #274). Their term lists were removed from `scripts/attention_terms.json`; nicknames shared with NBA/NFL teams (kings, jets, panthers, cardinals, giants) stay and get resolved to the team playing.
+
+
 ## Crew
 
 | Worker | Job | Runs as |
